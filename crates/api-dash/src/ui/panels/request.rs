@@ -988,6 +988,105 @@ impl RequestPanel {
         }
     }
 
+    /// Save the current request to a .http file
+    fn save_request(&mut self, _cx: &mut Context<Self>) {
+        // Generate .http file content
+        let content = self.generate_http_content();
+
+        // Open save dialog
+        let default_name = if self.url.is_empty() {
+            "new-request.http".to_string()
+        } else {
+            // Extract path from URL for filename
+            let url = &self.url;
+            let name = url.split('/')
+                .filter(|s| !s.is_empty() && !s.contains("://") && !s.contains('.'))
+                .last()
+                .unwrap_or("request");
+            format!("{}.http", name)
+        };
+
+        let mut dialog = rfd::FileDialog::new()
+            .set_title("Save Request")
+            .set_file_name(&default_name)
+            .add_filter("HTTP Request", &["http"]);
+
+        if let Some(home) = dirs::home_dir() {
+            dialog = dialog.set_directory(home);
+        }
+
+        if let Some(path) = dialog.save_file() {
+            let path = if path.extension().map_or(true, |ext| ext != "http") {
+                path.with_extension("http")
+            } else {
+                path
+            };
+
+            if let Err(e) = std::fs::write(&path, content) {
+                eprintln!("Failed to save request: {}", e);
+            }
+        }
+    }
+
+    /// Generate .http file content from current request state
+    fn generate_http_content(&self) -> String {
+        let mut lines = Vec::new();
+
+        // Request name comment
+        let name = if self.url.is_empty() {
+            "New Request"
+        } else {
+            &self.url
+        };
+        lines.push(format!("### {}", name));
+        lines.push(String::new());
+
+        // Method and URL
+        let method = format!("{:?}", self.method).to_uppercase();
+        lines.push(format!("{} {}", method, self.url));
+
+        // Headers
+        for header in &self.headers {
+            if header.enabled && !header.key.is_empty() {
+                lines.push(format!("{}: {}", header.key, header.value));
+            }
+        }
+
+        // Auth headers
+        match self.auth_type {
+            AuthType::None => {}
+            AuthType::Bearer => {
+                if !self.bearer_token.is_empty() {
+                    lines.push(format!("Authorization: Bearer {}", self.bearer_token));
+                }
+            }
+            AuthType::Basic => {
+                if !self.basic_username.is_empty() || !self.basic_password.is_empty() {
+                    // Base64 encoding for username:password
+                    let credentials = format!("{}:{}", self.basic_username, self.basic_password);
+                    let encoded = base64_encode(credentials.as_bytes());
+                    lines.push(format!("Authorization: Basic {}", encoded));
+                }
+            }
+            AuthType::ApiKey => {
+                if !self.api_key_name.is_empty() && !self.api_key_value.is_empty() {
+                    if self.api_key_location == ApiKeyLocation::Header {
+                        lines.push(format!("{}: {}", self.api_key_name, self.api_key_value));
+                    }
+                    // Query params are added to URL, handled separately
+                }
+            }
+        }
+
+        // Body
+        if !self.body.is_empty() {
+            lines.push(String::new());
+            lines.push(self.body.clone());
+        }
+
+        lines.join("\n")
+    }
+
     fn send_request(&mut self, cx: &mut Context<Self>) {
         if self.loading || self.url.is_empty() {
             return;
@@ -1722,6 +1821,29 @@ impl RequestPanel {
                             .text_size(px(10.0))
                             .text_color(theme.colors.text_muted)
                             .child("⌘↵")
+                    )
+                    // Save button
+                    .child(
+                        div()
+                            .id("save-button")
+                            .h(px(32.0))
+                            .px(px(10.0))
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .gap(px(4.0))
+                            .rounded(px(6.0))
+                            .text_size(px(11.0))
+                            .text_color(theme.colors.text_secondary)
+                            .cursor_pointer()
+                            .border_1()
+                            .border_color(theme.colors.border)
+                            .hover(|s| s.bg(theme.colors.bg_tertiary).border_color(theme.colors.text_muted))
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.save_request(cx);
+                            }))
+                            .child("💾")
+                            .child("Save")
                     )
             )
     }

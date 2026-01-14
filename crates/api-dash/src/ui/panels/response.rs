@@ -3,7 +3,7 @@
 use std::time::Duration;
 
 use gpui::{
-    div, prelude::*, px, Context, IntoElement, ParentElement, Render, SharedString, Styled,
+    div, prelude::*, px, Context, Hsla, IntoElement, ParentElement, Render, SharedString, Styled,
     Window,
 };
 
@@ -537,31 +537,32 @@ impl ResponsePanel {
             .map(|(_, v)| v.to_lowercase());
 
         // Detect content type and format - prioritize Content-Type header
-        let (body, format_label, format_color) = if let Some(ct) = &content_type {
+        // Returns (body, format_label, format_color, is_json)
+        let (body, format_label, format_color, is_json) = if let Some(ct) = &content_type {
             if ct.contains("application/json") || ct.contains("+json") {
                 if let Ok(json) = serde_json::from_str::<serde_json::Value>(&response.body) {
                     let formatted = serde_json::to_string_pretty(&json).unwrap_or_else(|_| response.body.clone());
-                    (formatted, "JSON", theme.colors.status_success)
+                    (formatted, "JSON", theme.colors.status_success, true)
                 } else {
-                    (response.body.clone(), "JSON", theme.colors.status_success)
+                    (response.body.clone(), "JSON", theme.colors.status_success, false)
                 }
             } else if ct.contains("text/html") {
-                (response.body.clone(), "HTML", theme.colors.method_patch)
+                (response.body.clone(), "HTML", theme.colors.method_patch, false)
             } else if ct.contains("application/xml") || ct.contains("text/xml") || ct.contains("+xml") {
-                (response.body.clone(), "XML", theme.colors.method_put)
+                (response.body.clone(), "XML", theme.colors.method_put, false)
             } else if ct.contains("text/css") {
-                (response.body.clone(), "CSS", theme.colors.method_delete)
+                (response.body.clone(), "CSS", theme.colors.method_delete, false)
             } else if ct.contains("javascript") || ct.contains("text/js") {
-                (response.body.clone(), "JS", theme.colors.accent)
+                (response.body.clone(), "JS", theme.colors.accent, false)
             } else if ct.contains("text/plain") {
-                (response.body.clone(), "Text", theme.colors.text_muted)
+                (response.body.clone(), "Text", theme.colors.text_muted, false)
             } else {
                 // Fallback to content detection for unknown types
-                self.detect_body_format(response, &theme)
+                self.detect_body_format_with_json(response, &theme)
             }
         } else {
             // No Content-Type header - detect from body content
-            self.detect_body_format(response, &theme)
+            self.detect_body_format_with_json(response, &theme)
         };
 
         let is_empty = body.trim().is_empty();
@@ -694,8 +695,8 @@ impl ResponsePanel {
                                 div()
                                     .text_size(px(12.0))
                                     .font_family("monospace")
-                                    .text_color(theme.colors.text_primary)
-                                    .child(body)
+                                    .when(is_json, |el| el.child(self.render_json_highlighted(&body, cx)))
+                                    .when(!is_json, |el| el.text_color(theme.colors.text_primary).child(body.clone()))
                             )
                     )
             )
@@ -867,31 +868,166 @@ impl ResponsePanel {
     }
 
     /// Detect body format from content when Content-Type header is unavailable
-    fn detect_body_format(&self, response: &ResponseData, theme: &theme::Theme) -> (String, &'static str, gpui::Hsla) {
+    fn detect_body_format_with_json(&self, response: &ResponseData, theme: &theme::Theme) -> (String, &'static str, gpui::Hsla, bool) {
         let trimmed = response.body.trim();
 
         // Try JSON first
         if let Ok(json) = serde_json::from_str::<serde_json::Value>(&response.body) {
             let formatted = serde_json::to_string_pretty(&json).unwrap_or_else(|_| response.body.clone());
-            return (formatted, "JSON", theme.colors.status_success);
+            return (formatted, "JSON", theme.colors.status_success, true);
         }
 
         // Check for HTML
         if trimmed.starts_with("<!DOCTYPE") ||
            trimmed.starts_with("<!doctype") ||
            trimmed.to_lowercase().starts_with("<html") {
-            return (response.body.clone(), "HTML", theme.colors.method_patch);
+            return (response.body.clone(), "HTML", theme.colors.method_patch, false);
         }
 
         // Check for XML (but not HTML)
         if trimmed.starts_with("<?xml") ||
            (trimmed.starts_with("<") && !trimmed.to_lowercase().starts_with("<html") && trimmed.contains("</")) {
-            return (response.body.clone(), "XML", theme.colors.method_put);
+            return (response.body.clone(), "XML", theme.colors.method_put, false);
         }
 
         // Default to plain text
-        (response.body.clone(), "Text", theme.colors.text_muted)
+        (response.body.clone(), "Text", theme.colors.text_muted, false)
     }
+
+    /// Render JSON with syntax highlighting
+    fn render_json_highlighted(&self, json: &str, cx: &Context<Self>) -> impl IntoElement {
+        let theme = theme::current(cx);
+
+        // Colors for different token types
+        let key_color = theme.colors.accent;
+        let string_color = theme.colors.status_success;
+        let number_color = theme.colors.method_patch;
+        let bool_color = theme.colors.method_delete;
+        let null_color = theme.colors.method_put;
+        let punct_color = theme.colors.text_muted;
+
+        div()
+            .flex()
+            .flex_col()
+            .children(json.lines().map(|line| {
+                let tokens = tokenize_json_line(line, key_color, string_color, number_color, bool_color, null_color, punct_color);
+                div()
+                    .flex()
+                    .children(tokens.into_iter().map(|(text, color)| {
+                        div()
+                            .text_color(color)
+                            .child(text)
+                    }))
+            }))
+    }
+}
+
+/// Tokenize a single line of JSON for syntax highlighting
+fn tokenize_json_line(line: &str, key_color: Hsla, string_color: Hsla, number_color: Hsla, bool_color: Hsla, null_color: Hsla, punct_color: Hsla) -> Vec<(String, Hsla)> {
+    let mut tokens = Vec::new();
+    let mut chars = line.chars().peekable();
+    let mut current = String::new();
+    let mut in_string = false;
+    let mut is_key = false;
+    let mut after_colon = false;
+
+    while let Some(c) = chars.next() {
+        match c {
+            '"' => {
+                if in_string {
+                    current.push(c);
+                    let color = if is_key { key_color } else { string_color };
+                    tokens.push((current.clone(), color));
+                    current.clear();
+                    in_string = false;
+                    is_key = false;
+                } else {
+                    if !current.is_empty() {
+                        tokens.push((current.clone(), punct_color));
+                        current.clear();
+                    }
+                    current.push(c);
+                    in_string = true;
+                    is_key = !after_colon;
+                }
+            }
+            ':' if !in_string => {
+                if !current.is_empty() {
+                    tokens.push((current.clone(), punct_color));
+                    current.clear();
+                }
+                tokens.push((":".to_string(), punct_color));
+                after_colon = true;
+            }
+            ',' if !in_string => {
+                if !current.is_empty() {
+                    // Check for number, bool, or null
+                    let trimmed = current.trim();
+                    let color = if trimmed.parse::<f64>().is_ok() {
+                        number_color
+                    } else if trimmed == "true" || trimmed == "false" {
+                        bool_color
+                    } else if trimmed == "null" {
+                        null_color
+                    } else {
+                        punct_color
+                    };
+                    tokens.push((current.clone(), color));
+                    current.clear();
+                }
+                tokens.push((",".to_string(), punct_color));
+                after_colon = false;
+            }
+            '{' | '}' | '[' | ']' if !in_string => {
+                if !current.is_empty() {
+                    let trimmed = current.trim();
+                    let color = if trimmed.parse::<f64>().is_ok() {
+                        number_color
+                    } else if trimmed == "true" || trimmed == "false" {
+                        bool_color
+                    } else if trimmed == "null" {
+                        null_color
+                    } else {
+                        punct_color
+                    };
+                    tokens.push((current.clone(), color));
+                    current.clear();
+                }
+                tokens.push((c.to_string(), punct_color));
+                if c == '{' || c == '[' {
+                    after_colon = false;
+                }
+            }
+            '\\' if in_string => {
+                current.push(c);
+                if let Some(next) = chars.next() {
+                    current.push(next);
+                }
+            }
+            _ => {
+                current.push(c);
+            }
+        }
+    }
+
+    // Handle remaining content
+    if !current.is_empty() {
+        let trimmed = current.trim();
+        let color = if in_string {
+            if is_key { key_color } else { string_color }
+        } else if trimmed.parse::<f64>().is_ok() {
+            number_color
+        } else if trimmed == "true" || trimmed == "false" {
+            bool_color
+        } else if trimmed == "null" {
+            null_color
+        } else {
+            punct_color
+        };
+        tokens.push((current, color));
+    }
+
+    tokens
 }
 
 fn format_size(bytes: usize) -> String {
