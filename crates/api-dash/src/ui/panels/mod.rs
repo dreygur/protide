@@ -1,8 +1,16 @@
 //! Panel components for the dockable layout
+//!
+//! This module contains the main UI panels:
+//! - `ExplorerPanel` - File tree and environment management
+//! - `RequestPanel` - HTTP request builder
+//! - `ResponsePanel` - Response viewer with syntax highlighting
+//! - `RequestHistory` - Request history tracking
 
 mod explorer;
 mod history;
 mod request;
+mod request_types;
+mod request_utils;
 mod response;
 
 pub use explorer::ExplorerPanel;

@@ -1,4 +1,7 @@
 //! HTTP client implementation using reqwest
+//!
+//! Note: This async client is reserved for future use. Currently,
+//! blocking HTTP is used directly in `RequestPanel::send_request`.
 
 #![allow(dead_code)]
 

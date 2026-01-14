@@ -1,0 +1,1501 @@
+//! Request editor panel
+//!
+//! The main request builder UI with URL input, method selector,
+//! headers/params/body editors, and authentication configuration.
+
+mod render;
+
+#[cfg(test)]
+mod tests;
+
+use std::ops::Range;
+
+use gpui::{
+    div, prelude::*, px, ClipboardItem, Context, Entity, FocusHandle, IntoElement, KeyDownEvent,
+    MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement, Render, Styled,
+    Window,
+};
+
+use crate::ui::components::{render_text_view_with_max, find_word_start, find_word_end};
+
+use super::explorer::ExplorerPanel;
+use super::request_types::{ApiKeyLocation, AuthType, BodyType, EditTarget, HttpMethod, KeyValuePair};
+use super::request_utils::{base64_encode, status_text, url_decode, url_encode};
+use super::response::{ResponseData, ResponsePanel};
+
+/// Helper to render text with selection highlighting
+fn render_text_view(
+    text: &str,
+    selection: &Range<usize>,
+    is_focused: bool,
+    font_size: f32,
+    text_color: gpui::Hsla,
+    placeholder: Option<&str>,
+    placeholder_color: gpui::Hsla,
+) -> gpui::AnyElement {
+    render_text_view_with_max(text, selection, is_focused, font_size, text_color, placeholder, placeholder_color, None)
+}
+
+/// Request editor panel
+pub struct RequestPanel {
+    pub(super) active_tab: usize,
+    pub(super) method: HttpMethod,
+    pub(super) url: String,
+    pub(super) url_selection: Range<usize>,
+    pub(super) method_dropdown_open: bool,
+    pub(super) url_focus: FocusHandle,
+    pub(super) is_selecting: bool,
+    pub(super) url_input_left: f32,
+    pub(super) response_panel: Entity<ResponsePanel>,
+    pub(super) loading: bool,
+    pub(super) headers: Vec<KeyValuePair>,
+    pub(super) params: Vec<KeyValuePair>,
+    pub(super) body: String,
+    pub(super) body_type: BodyType,
+    pub(super) syncing_params: bool,
+    pub(super) auth_type: AuthType,
+    pub(super) bearer_token: String,
+    pub(super) basic_username: String,
+    pub(super) basic_password: String,
+    pub(super) api_key_name: String,
+    pub(super) api_key_value: String,
+    pub(super) api_key_location: ApiKeyLocation,
+    pub(super) active_edit: Option<EditTarget>,
+    pub(super) edit_selection: Range<usize>,
+    pub(super) edit_is_selecting: bool,
+    pub(super) edit_input_left: f32,
+    pub(super) url_undo_stack: Vec<(String, Range<usize>)>,
+    pub(super) url_redo_stack: Vec<(String, Range<usize>)>,
+    pub(super) edit_undo_stack: Vec<(EditTarget, String, Range<usize>)>,
+    pub(super) edit_redo_stack: Vec<(EditTarget, String, Range<usize>)>,
+    pub(super) skip_blur: bool,
+    pub(super) edit_focus: FocusHandle,
+    pub(super) explorer_panel: Option<Entity<ExplorerPanel>>,
+}
+
+impl RequestPanel {
+    pub fn new(cx: &mut Context<Self>, response_panel: Entity<ResponsePanel>) -> Self {
+        let url = "https://httpbin.org/post".to_string();
+        let url_len = url.len();
+        Self {
+            active_tab: 0,
+            method: HttpMethod::Post,
+            url,
+            url_selection: url_len..url_len,
+            method_dropdown_open: false,
+            url_focus: cx.focus_handle(),
+            is_selecting: false,
+            url_input_left: 0.0,
+            response_panel,
+            loading: false,
+            headers: vec![
+                KeyValuePair {
+                    key: "Content-Type".to_string(),
+                    value: "application/json".to_string(),
+                    enabled: true,
+                },
+                KeyValuePair::default(),
+            ],
+            params: vec![KeyValuePair::default()],
+            body: "{\n  \"name\": \"API Dash\",\n  \"version\": \"0.1.0\"\n}".to_string(),
+            body_type: BodyType::Json,
+            syncing_params: false,
+            auth_type: AuthType::None,
+            bearer_token: String::new(),
+            basic_username: String::new(),
+            basic_password: String::new(),
+            api_key_name: String::new(),
+            api_key_value: String::new(),
+            api_key_location: ApiKeyLocation::Header,
+            active_edit: None,
+            edit_selection: 0..0,
+            edit_is_selecting: false,
+            edit_input_left: 0.0,
+            url_undo_stack: Vec::new(),
+            url_redo_stack: Vec::new(),
+            edit_undo_stack: Vec::new(),
+            edit_redo_stack: Vec::new(),
+            skip_blur: false,
+            edit_focus: cx.focus_handle(),
+            explorer_panel: None,
+        }
+    }
+
+    /// Set the explorer panel reference for environment variable substitution
+    pub fn set_explorer_panel(&mut self, explorer_panel: Entity<ExplorerPanel>, cx: &mut Context<Self>) {
+        self.explorer_panel = Some(explorer_panel);
+        cx.notify();
+    }
+
+    fn cursor(&self) -> usize {
+        self.url_selection.end
+    }
+
+    /// Load request data from a history entry
+    pub fn load_from_history(
+        &mut self,
+        method: String,
+        url: String,
+        headers: Vec<(String, String)>,
+        body: Option<String>,
+        cx: &mut Context<Self>,
+    ) {
+        // Set method
+        if let Some(m) = HttpMethod::from_str(&method) {
+            self.method = m;
+        }
+
+        // Set URL
+        self.url = url;
+        self.url_selection = self.url.len()..self.url.len();
+
+        // Set headers
+        self.headers = headers
+            .into_iter()
+            .map(|(key, value)| KeyValuePair {
+                key,
+                value,
+                enabled: true,
+            })
+            .collect();
+        // Always have at least one empty row
+        if self.headers.is_empty() {
+            self.headers.push(KeyValuePair::default());
+        } else {
+            self.headers.push(KeyValuePair::default());
+        }
+
+        // Set body
+        if let Some(b) = body {
+            self.body = b;
+        }
+
+        // Sync params from URL
+        self.sync_params_from_url(cx);
+
+        // Reset editing state
+        self.active_edit = None;
+        self.method_dropdown_open = false;
+
+        cx.notify();
+    }
+
+    fn set_tab(&mut self, index: usize, cx: &mut Context<Self>) {
+        self.active_tab = index;
+        cx.notify();
+    }
+
+    fn toggle_method_dropdown(&mut self, cx: &mut Context<Self>) {
+        self.method_dropdown_open = !self.method_dropdown_open;
+        cx.notify();
+    }
+
+    fn select_method(&mut self, method: HttpMethod, cx: &mut Context<Self>) {
+        self.method = method;
+        self.method_dropdown_open = false;
+        cx.notify();
+    }
+
+    fn set_body_type(&mut self, body_type: BodyType, cx: &mut Context<Self>) {
+        self.body_type = body_type;
+        // Update Content-Type header based on body type
+        let content_type = match body_type {
+            BodyType::Json => "application/json",
+            BodyType::Form => "application/x-www-form-urlencoded",
+            BodyType::Raw => "text/plain",
+        };
+        // Update existing Content-Type header or add one
+        if let Some(header) = self.headers.iter_mut().find(|h| h.key.eq_ignore_ascii_case("content-type")) {
+            header.value = content_type.to_string();
+        } else {
+            self.headers.insert(0, KeyValuePair {
+                key: "Content-Type".to_string(),
+                value: content_type.to_string(),
+                enabled: true,
+            });
+        }
+        cx.notify();
+    }
+
+    fn toggle_header(&mut self, index: usize, cx: &mut Context<Self>) {
+        if let Some(header) = self.headers.get_mut(index) {
+            header.enabled = !header.enabled;
+            cx.notify();
+        }
+    }
+
+    fn add_header(&mut self, cx: &mut Context<Self>) {
+        self.headers.push(KeyValuePair::default());
+        cx.notify();
+    }
+
+    fn remove_header(&mut self, index: usize, cx: &mut Context<Self>) {
+        if index < self.headers.len() && self.headers.len() > 1 {
+            self.headers.remove(index);
+            // Clear editing if removed row was being edited
+            if let Some(target) = self.active_edit {
+                match target {
+                    EditTarget::HeaderKey(i) | EditTarget::HeaderValue(i) if i == index => {
+                        self.active_edit = None;
+                    }
+                    EditTarget::HeaderKey(i) if i > index => {
+                        self.active_edit = Some(EditTarget::HeaderKey(i - 1));
+                    }
+                    EditTarget::HeaderValue(i) if i > index => {
+                        self.active_edit = Some(EditTarget::HeaderValue(i - 1));
+                    }
+                    _ => {}
+                }
+            }
+            cx.notify();
+        }
+    }
+
+    fn toggle_param(&mut self, index: usize, cx: &mut Context<Self>) {
+        if let Some(param) = self.params.get_mut(index) {
+            param.enabled = !param.enabled;
+            self.sync_url_from_params(cx);
+            cx.notify();
+        }
+    }
+
+    fn add_param(&mut self, cx: &mut Context<Self>) {
+        self.params.push(KeyValuePair::default());
+        // Don't sync URL for empty params
+        cx.notify();
+    }
+
+    fn remove_param(&mut self, index: usize, cx: &mut Context<Self>) {
+        if index < self.params.len() && self.params.len() > 1 {
+            self.params.remove(index);
+            // Clear editing if removed row was being edited
+            if let Some(target) = self.active_edit {
+                match target {
+                    EditTarget::ParamKey(i) | EditTarget::ParamValue(i) if i == index => {
+                        self.active_edit = None;
+                    }
+                    EditTarget::ParamKey(i) if i > index => {
+                        self.active_edit = Some(EditTarget::ParamKey(i - 1));
+                    }
+                    EditTarget::ParamValue(i) if i > index => {
+                        self.active_edit = Some(EditTarget::ParamValue(i - 1));
+                    }
+                    _ => {}
+                }
+            }
+            self.sync_url_from_params(cx);
+            cx.notify();
+        }
+    }
+
+    fn set_auth_type(&mut self, auth_type: AuthType, cx: &mut Context<Self>) {
+        self.auth_type = auth_type;
+        self.active_edit = None;
+        cx.notify();
+    }
+
+    fn toggle_api_key_location(&mut self, cx: &mut Context<Self>) {
+        self.api_key_location = match self.api_key_location {
+            ApiKeyLocation::Header => ApiKeyLocation::QueryParam,
+            ApiKeyLocation::QueryParam => ApiKeyLocation::Header,
+        };
+        cx.notify();
+    }
+
+    // ===== URL <-> Params Sync Methods =====
+
+    /// Get the base URL without query string
+    fn get_base_url(&self) -> &str {
+        self.url.split('?').next().unwrap_or(&self.url)
+    }
+
+    /// Parse query params from URL and update params list
+    fn sync_params_from_url(&mut self, cx: &mut Context<Self>) {
+        if self.syncing_params {
+            return;
+        }
+        self.syncing_params = true;
+
+        // Find query string
+        if let Some(query_start) = self.url.find('?') {
+            let query_string = &self.url[query_start + 1..];
+            let mut new_params: Vec<KeyValuePair> = Vec::new();
+
+            for pair in query_string.split('&') {
+                if pair.is_empty() {
+                    continue;
+                }
+                let mut parts = pair.splitn(2, '=');
+                let key = url_decode(parts.next().unwrap_or(""));
+                let value = url_decode(parts.next().unwrap_or(""));
+                new_params.push(KeyValuePair {
+                    key,
+                    value,
+                    enabled: true,
+                });
+            }
+
+            // Always keep at least one empty param row
+            if new_params.is_empty() {
+                new_params.push(KeyValuePair::default());
+            }
+
+            self.params = new_params;
+        } else {
+            // No query string - reset to single empty param
+            self.params = vec![KeyValuePair::default()];
+        }
+
+        self.syncing_params = false;
+        cx.notify();
+    }
+
+    /// Build URL from base URL and params
+    fn sync_url_from_params(&mut self, cx: &mut Context<Self>) {
+        if self.syncing_params {
+            return;
+        }
+        self.syncing_params = true;
+
+        let base_url = self.get_base_url().to_string();
+
+        // Build query string from enabled params with non-empty keys
+        let query_parts: Vec<String> = self
+            .params
+            .iter()
+            .filter(|p| p.enabled && !p.key.is_empty())
+            .map(|p| {
+                if p.value.is_empty() {
+                    url_encode(&p.key)
+                } else {
+                    format!("{}={}", url_encode(&p.key), url_encode(&p.value))
+                }
+            })
+            .collect();
+
+        // Update URL
+        let old_len = self.url.len();
+        if query_parts.is_empty() {
+            self.url = base_url;
+        } else {
+            self.url = format!("{}?{}", base_url, query_parts.join("&"));
+        }
+
+        // Adjust cursor if it was beyond the new URL length
+        let new_len = self.url.len();
+        if self.url_selection.start > new_len {
+            self.url_selection.start = new_len;
+        }
+        if self.url_selection.end > new_len {
+            self.url_selection.end = new_len;
+        }
+
+        self.syncing_params = false;
+        if old_len != new_len {
+            cx.notify();
+        }
+    }
+
+    // ===== Unified Text Editing Methods =====
+
+    /// Get reference to text for an edit target
+    fn get_edit_text(&self, target: EditTarget) -> &str {
+        match target {
+            EditTarget::Url => &self.url,
+            EditTarget::HeaderKey(i) => self.headers.get(i).map(|h| h.key.as_str()).unwrap_or(""),
+            EditTarget::HeaderValue(i) => self.headers.get(i).map(|h| h.value.as_str()).unwrap_or(""),
+            EditTarget::ParamKey(i) => self.params.get(i).map(|p| p.key.as_str()).unwrap_or(""),
+            EditTarget::ParamValue(i) => self.params.get(i).map(|p| p.value.as_str()).unwrap_or(""),
+            EditTarget::Body => &self.body,
+            EditTarget::BearerToken => &self.bearer_token,
+            EditTarget::BasicUsername => &self.basic_username,
+            EditTarget::BasicPassword => &self.basic_password,
+            EditTarget::ApiKeyName => &self.api_key_name,
+            EditTarget::ApiKeyValue => &self.api_key_value,
+        }
+    }
+
+    /// Get mutable reference to text for an edit target
+    fn get_edit_text_mut(&mut self, target: EditTarget) -> Option<&mut String> {
+        match target {
+            EditTarget::Url => Some(&mut self.url),
+            EditTarget::HeaderKey(i) => self.headers.get_mut(i).map(|h| &mut h.key),
+            EditTarget::HeaderValue(i) => self.headers.get_mut(i).map(|h| &mut h.value),
+            EditTarget::ParamKey(i) => self.params.get_mut(i).map(|p| &mut p.key),
+            EditTarget::ParamValue(i) => self.params.get_mut(i).map(|p| &mut p.value),
+            EditTarget::Body => Some(&mut self.body),
+            EditTarget::BearerToken => Some(&mut self.bearer_token),
+            EditTarget::BasicUsername => Some(&mut self.basic_username),
+            EditTarget::BasicPassword => Some(&mut self.basic_password),
+            EditTarget::ApiKeyName => Some(&mut self.api_key_name),
+            EditTarget::ApiKeyValue => Some(&mut self.api_key_value),
+        }
+    }
+
+    /// Start editing a field
+    fn start_editing(&mut self, target: EditTarget, window: &mut Window, cx: &mut Context<Self>) {
+        let text_len = self.get_edit_text(target).len();
+        self.active_edit = Some(target);
+        self.edit_selection = text_len..text_len; // Cursor at end
+        self.edit_is_selecting = false;
+        self.edit_focus.focus(window, cx);
+        cx.notify();
+    }
+
+    /// Stop editing
+    fn stop_editing(&mut self, cx: &mut Context<Self>) {
+        self.active_edit = None;
+        self.edit_selection = 0..0;
+        self.edit_is_selecting = false;
+        cx.notify();
+    }
+
+    /// Get cursor position for current edit
+    fn edit_cursor(&self) -> usize {
+        self.edit_selection.end
+    }
+
+    /// Check if there's a selection in current edit
+    fn edit_has_selection(&self) -> bool {
+        self.edit_selection.start != self.edit_selection.end
+    }
+
+    /// Get selected text for current edit
+    fn edit_selected_text(&self) -> String {
+        if let Some(target) = self.active_edit {
+            let text = self.get_edit_text(target);
+            let start = self.edit_selection.start.min(self.edit_selection.end);
+            let end = self.edit_selection.start.max(self.edit_selection.end);
+            text[start..end].to_string()
+        } else {
+            String::new()
+        }
+    }
+
+    /// Move cursor to position in current edit
+    fn edit_move_to(&mut self, offset: usize, cx: &mut Context<Self>) {
+        if let Some(target) = self.active_edit {
+            let text_len = self.get_edit_text(target).len();
+            let offset = offset.min(text_len);
+            self.edit_selection = offset..offset;
+            cx.notify();
+        }
+    }
+
+    /// Extend selection to position
+    fn edit_select_to(&mut self, offset: usize, cx: &mut Context<Self>) {
+        if let Some(target) = self.active_edit {
+            let text_len = self.get_edit_text(target).len();
+            self.edit_selection.end = offset.min(text_len);
+            cx.notify();
+        }
+    }
+
+    /// Select all text in current edit
+    fn edit_select_all(&mut self, cx: &mut Context<Self>) {
+        if let Some(target) = self.active_edit {
+            let text_len = self.get_edit_text(target).len();
+            self.edit_selection = 0..text_len;
+            cx.notify();
+        }
+    }
+
+    /// Delete selected text
+    fn edit_delete_selection(&mut self, cx: &mut Context<Self>) {
+        if self.active_edit.is_some() && self.edit_has_selection() {
+            self.save_edit_state();
+            self.edit_delete_selection_no_save(cx);
+        }
+    }
+
+    /// Delete edit selection without saving to undo (used internally)
+    fn edit_delete_selection_no_save(&mut self, cx: &mut Context<Self>) {
+        if let Some(target) = self.active_edit {
+            if self.edit_has_selection() {
+                let start = self.edit_selection.start.min(self.edit_selection.end);
+                let end = self.edit_selection.start.max(self.edit_selection.end);
+                if let Some(text) = self.get_edit_text_mut(target) {
+                    text.replace_range(start..end, "");
+                    self.edit_selection = start..start;
+                    // Sync URL <-> params
+                    self.sync_after_edit(target, cx);
+                    cx.notify();
+                }
+            }
+        }
+    }
+
+    /// Insert text at cursor (replacing selection if any)
+    /// Save edit state to undo stack before making changes
+    fn save_edit_state(&mut self) {
+        if let Some(target) = self.active_edit {
+            let text = self.get_edit_text(target).to_string();
+            self.edit_undo_stack.push((target, text, self.edit_selection.clone()));
+            if self.edit_undo_stack.len() > 100 {
+                self.edit_undo_stack.remove(0);
+            }
+            self.edit_redo_stack.clear();
+        }
+    }
+
+    /// Undo edit change
+    fn edit_undo(&mut self, cx: &mut Context<Self>) {
+        if let Some((target, text, selection)) = self.edit_undo_stack.pop() {
+            // Save current state to redo
+            let current_text = self.get_edit_text(target).to_string();
+            self.edit_redo_stack.push((target, current_text, self.edit_selection.clone()));
+
+            // Restore previous state
+            if let Some(field) = self.get_edit_text_mut(target) {
+                *field = text;
+            }
+            self.edit_selection = selection;
+            self.sync_after_edit(target, cx);
+            cx.notify();
+        }
+    }
+
+    /// Redo edit change
+    fn edit_redo(&mut self, cx: &mut Context<Self>) {
+        if let Some((target, text, selection)) = self.edit_redo_stack.pop() {
+            // Save current state to undo
+            let current_text = self.get_edit_text(target).to_string();
+            self.edit_undo_stack.push((target, current_text, self.edit_selection.clone()));
+
+            // Restore redo state
+            if let Some(field) = self.get_edit_text_mut(target) {
+                *field = text;
+            }
+            self.edit_selection = selection;
+            self.sync_after_edit(target, cx);
+            cx.notify();
+        }
+    }
+
+    fn edit_insert_text(&mut self, insert: &str, cx: &mut Context<Self>) {
+        if let Some(target) = self.active_edit {
+            self.save_edit_state();
+            self.edit_delete_selection_no_save(cx);
+            let pos = self.edit_selection.start;
+            if let Some(text) = self.get_edit_text_mut(target) {
+                text.insert_str(pos, insert);
+                let new_pos = pos + insert.len();
+                self.edit_selection = new_pos..new_pos;
+                // Sync URL <-> params
+                self.sync_after_edit(target, cx);
+                cx.notify();
+            }
+        }
+    }
+
+    /// Sync URL and params after editing
+    fn sync_after_edit(&mut self, target: EditTarget, cx: &mut Context<Self>) {
+        match target {
+            EditTarget::ParamKey(_) | EditTarget::ParamValue(_) => {
+                self.sync_url_from_params(cx);
+            }
+            EditTarget::Url => {
+                self.sync_params_from_url(cx);
+            }
+            _ => {}
+        }
+    }
+
+    /// Calculate character index from x position
+    fn edit_index_for_x(&self, x: f32, char_width: f32) -> usize {
+        if let Some(target) = self.active_edit {
+            let text_len = self.get_edit_text(target).len();
+            if x <= 0.0 {
+                0
+            } else {
+                let approx_char = (x / char_width) as usize;
+                approx_char.min(text_len)
+            }
+        } else {
+            0
+        }
+    }
+
+    /// Handle mouse down for edit fields
+    fn handle_edit_mouse_down(&mut self, event: &MouseDownEvent, input_left: f32, char_width: f32, cx: &mut Context<Self>) {
+        self.edit_is_selecting = true;
+        self.edit_input_left = input_left;
+        let click_x = f32::from(event.position.x) - input_left;
+        let index = self.edit_index_for_x(click_x, char_width);
+
+        // Cycle: 1=cursor, 2=word, 3=all, 4+=cursor
+        let effective_click = if event.click_count >= 4 { 1 } else { event.click_count };
+
+        match effective_click {
+            2 => {
+                // Double-click: select word
+                if let Some(target) = self.active_edit {
+                    let text = self.get_edit_text(target);
+                    let start = find_word_start(&text, index);
+                    let end = find_word_end(&text, index);
+                    self.edit_selection = start..end;
+                    cx.notify();
+                }
+            }
+            3 => {
+                // Triple-click: select all
+                self.edit_select_all(cx);
+            }
+            _ => {
+                // Single click (or 4th+ click to deselect)
+                if event.modifiers.shift {
+                    self.edit_select_to(index, cx);
+                } else {
+                    self.edit_move_to(index, cx);
+                }
+            }
+        }
+    }
+
+    /// Handle mouse move for edit fields
+    fn handle_edit_mouse_move(&mut self, event: &MouseMoveEvent, char_width: f32, cx: &mut Context<Self>) {
+        if self.edit_is_selecting {
+            let click_x = f32::from(event.position.x) - self.edit_input_left;
+            let index = self.edit_index_for_x(click_x, char_width);
+            self.edit_selection.end = index;
+            cx.notify();
+        }
+    }
+
+    /// Handle mouse up for edit fields
+    fn handle_edit_mouse_up(&mut self, _event: &MouseUpEvent, _cx: &mut Context<Self>) {
+        self.edit_is_selecting = false;
+    }
+
+    /// Unified key handler for all edit fields
+    fn handle_edit_key(&mut self, event: &KeyDownEvent, cx: &mut Context<Self>) {
+        let Some(target) = self.active_edit else {
+            return;
+        };
+
+        let key = event.keystroke.key.as_str();
+        let ctrl = event.keystroke.modifiers.control;
+        let shift = event.keystroke.modifiers.shift;
+        let is_body = matches!(target, EditTarget::Body);
+
+        // Handle Ctrl shortcuts
+        if ctrl {
+            match key {
+                "a" => {
+                    self.edit_select_all(cx);
+                    return;
+                }
+                "c" => {
+                    if self.edit_has_selection() {
+                        cx.write_to_clipboard(ClipboardItem::new_string(self.edit_selected_text()));
+                    }
+                    return;
+                }
+                "x" => {
+                    if self.edit_has_selection() {
+                        cx.write_to_clipboard(ClipboardItem::new_string(self.edit_selected_text()));
+                        self.edit_delete_selection(cx);
+                    }
+                    return;
+                }
+                "v" => {
+                    if let Some(item) = cx.read_from_clipboard() {
+                        if let Some(text) = item.text() {
+                            let insert_text = if is_body {
+                                text.to_string()
+                            } else {
+                                text.replace('\n', "")
+                            };
+                            self.edit_insert_text(&insert_text, cx);
+                        }
+                    }
+                    return;
+                }
+                "z" => {
+                    if shift {
+                        // Ctrl+Shift+Z = Redo
+                        self.edit_redo(cx);
+                    } else {
+                        // Ctrl+Z = Undo
+                        self.edit_undo(cx);
+                    }
+                    return;
+                }
+                "y" => {
+                    // Ctrl+Y = Redo (alternative)
+                    self.edit_redo(cx);
+                    return;
+                }
+                _ => {}
+            }
+        }
+
+        match key {
+            "left" => {
+                if shift {
+                    if self.edit_selection.end > 0 {
+                        self.edit_selection.end -= 1;
+                        cx.notify();
+                    }
+                } else if self.edit_has_selection() {
+                    let start = self.edit_selection.start.min(self.edit_selection.end);
+                    self.edit_move_to(start, cx);
+                } else if self.edit_cursor() > 0 {
+                    self.edit_move_to(self.edit_cursor() - 1, cx);
+                }
+            }
+            "right" => {
+                let text_len = self.get_edit_text(target).len();
+                if shift {
+                    if self.edit_selection.end < text_len {
+                        self.edit_selection.end += 1;
+                        cx.notify();
+                    }
+                } else if self.edit_has_selection() {
+                    let end = self.edit_selection.start.max(self.edit_selection.end);
+                    self.edit_move_to(end, cx);
+                } else if self.edit_cursor() < text_len {
+                    self.edit_move_to(self.edit_cursor() + 1, cx);
+                }
+            }
+            "home" => {
+                if shift {
+                    self.edit_selection.end = 0;
+                    cx.notify();
+                } else {
+                    self.edit_move_to(0, cx);
+                }
+            }
+            "end" => {
+                let text_len = self.get_edit_text(target).len();
+                if shift {
+                    self.edit_selection.end = text_len;
+                    cx.notify();
+                } else {
+                    self.edit_move_to(text_len, cx);
+                }
+            }
+            "backspace" => {
+                if self.edit_has_selection() {
+                    self.edit_delete_selection(cx);
+                } else if self.edit_cursor() > 0 {
+                    self.save_edit_state();
+                    let pos = self.edit_cursor() - 1;
+                    if let Some(text) = self.get_edit_text_mut(target) {
+                        text.remove(pos);
+                        self.edit_selection = pos..pos;
+                        self.sync_after_edit(target, cx);
+                        cx.notify();
+                    }
+                }
+            }
+            "delete" => {
+                let text_len = self.get_edit_text(target).len();
+                if self.edit_has_selection() {
+                    self.edit_delete_selection(cx);
+                } else {
+                    let cursor = self.edit_cursor();
+                    if cursor < text_len {
+                        self.save_edit_state();
+                        if let Some(text) = self.get_edit_text_mut(target) {
+                            text.remove(cursor);
+                            self.sync_after_edit(target, cx);
+                            cx.notify();
+                        }
+                    }
+                }
+            }
+            "escape" => {
+                self.stop_editing(cx);
+            }
+            "enter" => {
+                if is_body {
+                    self.edit_insert_text("\n", cx);
+                } else {
+                    // Move to next field in kv pairs
+                    self.move_to_next_field(cx);
+                }
+            }
+            "tab" => {
+                if is_body {
+                    self.edit_insert_text("  ", cx);
+                } else {
+                    self.move_to_next_field(cx);
+                }
+            }
+            _ => {
+                // Handle printable characters
+                if let Some(ch) = &event.keystroke.key_char {
+                    self.edit_insert_text(ch, cx);
+                }
+            }
+        }
+    }
+
+    /// Move to next field (for tab/enter in kv editors)
+    fn move_to_next_field(&mut self, cx: &mut Context<Self>) {
+        let Some(target) = self.active_edit else {
+            return;
+        };
+
+        let next_target = match target {
+            EditTarget::HeaderKey(i) => Some(EditTarget::HeaderValue(i)),
+            EditTarget::HeaderValue(i) => {
+                if i + 1 < self.headers.len() {
+                    Some(EditTarget::HeaderKey(i + 1))
+                } else {
+                    None
+                }
+            }
+            EditTarget::ParamKey(i) => Some(EditTarget::ParamValue(i)),
+            EditTarget::ParamValue(i) => {
+                if i + 1 < self.params.len() {
+                    Some(EditTarget::ParamKey(i + 1))
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        };
+
+        if let Some(next) = next_target {
+            let text_len = self.get_edit_text(next).len();
+            self.active_edit = Some(next);
+            self.edit_selection = text_len..text_len;
+            cx.notify();
+        } else {
+            self.stop_editing(cx);
+        }
+    }
+
+    /// Save the current request to a .http file
+    fn save_request(&mut self, _cx: &mut Context<Self>) {
+        // Generate .http file content
+        let content = self.generate_http_content();
+
+        // Open save dialog
+        let default_name = if self.url.is_empty() {
+            "new-request.http".to_string()
+        } else {
+            // Extract path from URL for filename
+            let url = &self.url;
+            let name = url.split('/')
+                .filter(|s| !s.is_empty() && !s.contains("://") && !s.contains('.'))
+                .last()
+                .unwrap_or("request");
+            format!("{}.http", name)
+        };
+
+        let mut dialog = rfd::FileDialog::new()
+            .set_title("Save Request")
+            .set_file_name(&default_name)
+            .add_filter("HTTP Request", &["http"]);
+
+        if let Some(home) = dirs::home_dir() {
+            dialog = dialog.set_directory(home);
+        }
+
+        if let Some(path) = dialog.save_file() {
+            let path = if path.extension().map_or(true, |ext| ext != "http") {
+                path.with_extension("http")
+            } else {
+                path
+            };
+
+            if let Err(e) = std::fs::write(&path, content) {
+                eprintln!("Failed to save request: {}", e);
+            }
+        }
+    }
+
+    /// Generate .http file content from current request state
+    fn generate_http_content(&self) -> String {
+        let mut lines = Vec::new();
+
+        // Request name comment
+        let name = if self.url.is_empty() {
+            "New Request"
+        } else {
+            &self.url
+        };
+        lines.push(format!("### {}", name));
+        lines.push(String::new());
+
+        // Method and URL
+        let method = format!("{:?}", self.method).to_uppercase();
+        lines.push(format!("{} {}", method, self.url));
+
+        // Headers
+        for header in &self.headers {
+            if header.enabled && !header.key.is_empty() {
+                lines.push(format!("{}: {}", header.key, header.value));
+            }
+        }
+
+        // Auth headers
+        match self.auth_type {
+            AuthType::None => {}
+            AuthType::Bearer => {
+                if !self.bearer_token.is_empty() {
+                    lines.push(format!("Authorization: Bearer {}", self.bearer_token));
+                }
+            }
+            AuthType::Basic => {
+                if !self.basic_username.is_empty() || !self.basic_password.is_empty() {
+                    // Base64 encoding for username:password
+                    let credentials = format!("{}:{}", self.basic_username, self.basic_password);
+                    let encoded = base64_encode(credentials.as_bytes());
+                    lines.push(format!("Authorization: Basic {}", encoded));
+                }
+            }
+            AuthType::ApiKey => {
+                if !self.api_key_name.is_empty() && !self.api_key_value.is_empty() {
+                    if self.api_key_location == ApiKeyLocation::Header {
+                        lines.push(format!("{}: {}", self.api_key_name, self.api_key_value));
+                    }
+                    // Query params are added to URL, handled separately
+                }
+            }
+        }
+
+        // Body
+        if !self.body.is_empty() {
+            lines.push(String::new());
+            lines.push(self.body.clone());
+        }
+
+        lines.join("\n")
+    }
+
+    fn send_request(&mut self, cx: &mut Context<Self>) {
+        if self.loading || self.url.is_empty() {
+            return;
+        }
+
+        self.loading = true;
+        cx.notify();
+
+        // Set response panel to loading
+        self.response_panel.update(cx, |panel, cx| {
+            panel.set_loading(cx);
+        });
+
+        // Get environment state for variable substitution
+        let env_state = self.explorer_panel.as_ref().map(|panel| {
+            panel.read(cx).env_state().clone()
+        });
+
+        // Helper closure to substitute variables
+        let substitute = |s: &str| -> String {
+            if let Some(ref env) = env_state {
+                env.substitute(s)
+            } else {
+                s.to_string()
+            }
+        };
+
+        // Substitute variables in URL
+        let url = substitute(&self.url);
+        let method = self.method;
+        let response_panel = self.response_panel.clone();
+
+        // Substitute variables in headers
+        let mut headers: Vec<(String, String)> = self
+            .headers
+            .iter()
+            .filter(|h| h.enabled && !h.key.is_empty())
+            .map(|h| (substitute(&h.key), substitute(&h.value)))
+            .collect();
+
+        // Add authentication headers (with variable substitution)
+        let auth_type = self.auth_type;
+        let bearer_token = substitute(&self.bearer_token);
+        let basic_username = substitute(&self.basic_username);
+        let basic_password = substitute(&self.basic_password);
+        let api_key_name = substitute(&self.api_key_name);
+        let api_key_value = substitute(&self.api_key_value);
+        let api_key_location = self.api_key_location;
+
+        match auth_type {
+            AuthType::None => {}
+            AuthType::Bearer => {
+                if !bearer_token.is_empty() {
+                    headers.push(("Authorization".to_string(), format!("Bearer {}", bearer_token)));
+                }
+            }
+            AuthType::Basic => {
+                if !basic_username.is_empty() || !basic_password.is_empty() {
+                    let credentials = format!("{}:{}", basic_username, basic_password);
+                    let encoded = base64_encode(credentials.as_bytes());
+                    headers.push(("Authorization".to_string(), format!("Basic {}", encoded)));
+                }
+            }
+            AuthType::ApiKey => {
+                if !api_key_name.is_empty() && !api_key_value.is_empty() {
+                    if api_key_location == ApiKeyLocation::Header {
+                        headers.push((api_key_name.clone(), api_key_value.clone()));
+                    }
+                    // Query param will be handled in URL
+                }
+            }
+        }
+
+        // Substitute variables in body
+        let body = if matches!(method, HttpMethod::Post | HttpMethod::Put | HttpMethod::Patch) {
+            Some(substitute(&self.body))
+        } else {
+            None
+        };
+
+        // Build final URL with API key as query param if needed
+        let final_url = if auth_type == AuthType::ApiKey
+            && api_key_location == ApiKeyLocation::QueryParam
+            && !api_key_name.is_empty()
+            && !api_key_value.is_empty()
+        {
+            if url.contains('?') {
+                format!("{}&{}={}", url, api_key_name, api_key_value)
+            } else {
+                format!("{}?{}={}", url, api_key_name, api_key_value)
+            }
+        } else {
+            url
+        };
+
+        // Add to history
+        let history_id = cx.update_global::<super::history::RequestHistory, _>(|history, _| {
+            history.add(
+                method.as_str().to_string(),
+                final_url.clone(),
+                headers.clone(),
+                body.clone(),
+            )
+        });
+
+        // Spawn background thread for HTTP request (reqwest blocking)
+        cx.spawn(async move |this: gpui::WeakEntity<Self>, cx: &mut gpui::AsyncApp| {
+            // Run blocking HTTP in a thread
+            let result = std::thread::spawn(move || {
+                let start = std::time::Instant::now();
+
+                let client = reqwest::blocking::Client::new();
+                let req_method = match method {
+                    HttpMethod::Get => reqwest::Method::GET,
+                    HttpMethod::Post => reqwest::Method::POST,
+                    HttpMethod::Put => reqwest::Method::PUT,
+                    HttpMethod::Patch => reqwest::Method::PATCH,
+                    HttpMethod::Delete => reqwest::Method::DELETE,
+                };
+
+                let mut req_builder = client.request(req_method, &final_url);
+
+                // Add headers
+                for (key, value) in headers {
+                    req_builder = req_builder.header(&key, &value);
+                }
+
+                // Add body for POST/PUT/PATCH
+                if let Some(body_content) = body {
+                    req_builder = req_builder.body(body_content);
+                }
+
+                let result = req_builder.send();
+                let elapsed = start.elapsed();
+
+                match result {
+                    Ok(response) => {
+                        let status = response.status().as_u16();
+                        let status_text_str = status_text(status).to_string();
+                        let headers: Vec<(String, String)> = response
+                            .headers()
+                            .iter()
+                            .map(|(k, v)| (k.to_string(), v.to_str().unwrap_or("").to_string()))
+                            .collect();
+
+                        let body = response.text().unwrap_or_default();
+                        let size = body.len();
+
+                        Ok(ResponseData {
+                            status,
+                            status_text: status_text_str,
+                            headers,
+                            body,
+                            time: elapsed,
+                            size,
+                        })
+                    }
+                    Err(e) => Err(e.to_string()),
+                }
+            }).join();
+
+            match result {
+                Ok(Ok(data)) => {
+                    let status = data.status;
+                    let response_time = data.time;
+                    let _ = cx.update(|cx| {
+                        // Update history with response
+                        cx.update_global::<super::history::RequestHistory, _>(|history, _| {
+                            history.update_response(history_id, status, response_time);
+                        });
+                        response_panel.update(cx, |panel, cx| {
+                            panel.set_response(data, cx);
+                        });
+                    });
+                }
+                Ok(Err(e)) => {
+                    let _ = cx.update(|cx| {
+                        response_panel.update(cx, |panel, cx| {
+                            panel.set_error(e, cx);
+                        });
+                    });
+                }
+                Err(_) => {
+                    let _ = cx.update(|cx| {
+                        response_panel.update(cx, |panel, cx| {
+                            panel.set_error("Request thread panicked".to_string(), cx);
+                        });
+                    });
+                }
+            }
+
+            let _ = cx.update(|cx| {
+                let _ = this.update(cx, |this, cx| {
+                    this.loading = false;
+                    cx.notify();
+                });
+            });
+        }).detach();
+    }
+
+    fn focus_url(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.url_focus.focus(window, cx);
+    }
+
+    fn move_to(&mut self, offset: usize, cx: &mut Context<Self>) {
+        let offset = offset.min(self.url.len());
+        self.url_selection = offset..offset;
+        cx.notify();
+    }
+
+    fn select_to(&mut self, offset: usize, cx: &mut Context<Self>) {
+        let offset = offset.min(self.url.len());
+        self.url_selection.end = offset;
+        // Normalize range
+        if self.url_selection.end < self.url_selection.start {
+            self.url_selection = self.url_selection.end..self.url_selection.start;
+        }
+        cx.notify();
+    }
+
+    fn select_all(&mut self, cx: &mut Context<Self>) {
+        self.url_selection = 0..self.url.len();
+        cx.notify();
+    }
+
+    fn has_selection(&self) -> bool {
+        self.url_selection.start != self.url_selection.end
+    }
+
+    fn selected_text(&self) -> &str {
+        &self.url[self.url_selection.clone()]
+    }
+
+    fn delete_selection(&mut self, cx: &mut Context<Self>) {
+        if self.has_selection() {
+            self.save_url_state();
+            self.delete_selection_no_save(cx);
+        }
+    }
+
+    /// Delete selection without saving to undo (used internally)
+    fn delete_selection_no_save(&mut self, cx: &mut Context<Self>) {
+        if self.has_selection() {
+            let start = self.url_selection.start;
+            self.url.replace_range(self.url_selection.clone(), "");
+            self.url_selection = start..start;
+            self.sync_params_from_url(cx);
+            cx.notify();
+        }
+    }
+
+    /// Save URL state to undo stack before making changes
+    fn save_url_state(&mut self) {
+        self.url_undo_stack.push((self.url.clone(), self.url_selection.clone()));
+        if self.url_undo_stack.len() > 100 {
+            self.url_undo_stack.remove(0);
+        }
+        self.url_redo_stack.clear();
+    }
+
+    /// Undo URL change
+    fn url_undo(&mut self, cx: &mut Context<Self>) {
+        if let Some((text, selection)) = self.url_undo_stack.pop() {
+            self.url_redo_stack.push((self.url.clone(), self.url_selection.clone()));
+            self.url = text;
+            self.url_selection = selection;
+            self.sync_params_from_url(cx);
+            cx.notify();
+        }
+    }
+
+    /// Redo URL change
+    fn url_redo(&mut self, cx: &mut Context<Self>) {
+        if let Some((text, selection)) = self.url_redo_stack.pop() {
+            self.url_undo_stack.push((self.url.clone(), self.url_selection.clone()));
+            self.url = text;
+            self.url_selection = selection;
+            self.sync_params_from_url(cx);
+            cx.notify();
+        }
+    }
+
+    fn insert_text(&mut self, text: &str, cx: &mut Context<Self>) {
+        self.save_url_state();
+        self.delete_selection_no_save(cx);
+        let pos = self.url_selection.start;
+        self.url.insert_str(pos, text);
+        let new_pos = pos + text.len();
+        self.url_selection = new_pos..new_pos;
+        self.sync_params_from_url(cx);
+        cx.notify();
+    }
+
+    fn index_for_x(&self, x: f32) -> usize {
+        // Approximate character position from x coordinate
+        // ~7.8px per character at 13px font size
+        let char_width: f32 = 7.8;
+        if x <= 0.0 {
+            0
+        } else {
+            let approx_char = (x / char_width) as usize;
+            approx_char.min(self.url.len())
+        }
+    }
+
+    fn handle_url_mouse_down(&mut self, event: &MouseDownEvent, cx: &mut Context<Self>) {
+        self.is_selecting = true;
+        let click_x = f32::from(event.position.x) - self.url_input_left;
+        let index = self.index_for_x(click_x);
+
+        // Cycle: 1=cursor, 2=word, 3=all, 4+=cursor
+        let effective_click = if event.click_count >= 4 { 1 } else { event.click_count };
+
+        match effective_click {
+            2 => {
+                // Double-click: select word
+                let start = find_word_start(&self.url, index);
+                let end = find_word_end(&self.url, index);
+                self.url_selection = start..end;
+                cx.notify();
+            }
+            3 => {
+                // Triple-click: select all
+                self.select_all(cx);
+            }
+            _ => {
+                // Single click (or 4th+ click to deselect)
+                if event.modifiers.shift {
+                    self.select_to(index, cx);
+                } else {
+                    self.move_to(index, cx);
+                }
+            }
+        }
+    }
+
+    fn handle_url_mouse_move(&mut self, event: &MouseMoveEvent, cx: &mut Context<Self>) {
+        if self.is_selecting {
+            let click_x = f32::from(event.position.x) - self.url_input_left;
+            let index = self.index_for_x(click_x);
+            self.url_selection.end = index.min(self.url.len());
+            cx.notify();
+        }
+    }
+
+    fn handle_url_mouse_up(&mut self, _event: &MouseUpEvent, _cx: &mut Context<Self>) {
+        self.is_selecting = false;
+    }
+
+    fn handle_url_key(&mut self, event: &KeyDownEvent, cx: &mut Context<Self>) {
+        let key = event.keystroke.key.as_str();
+        let ctrl = event.keystroke.modifiers.control;
+        let shift = event.keystroke.modifiers.shift;
+
+        // Handle Ctrl shortcuts
+        if ctrl {
+            match key {
+                "enter" => {
+                    // Ctrl+Enter = Send request
+                    self.send_request(cx);
+                    return;
+                }
+                "a" => {
+                    self.select_all(cx);
+                    return;
+                }
+                "c" => {
+                    if self.has_selection() {
+                        cx.write_to_clipboard(ClipboardItem::new_string(
+                            self.selected_text().to_string(),
+                        ));
+                    }
+                    return;
+                }
+                "x" => {
+                    if self.has_selection() {
+                        cx.write_to_clipboard(ClipboardItem::new_string(
+                            self.selected_text().to_string(),
+                        ));
+                        self.delete_selection(cx);
+                    }
+                    return;
+                }
+                "v" => {
+                    if let Some(item) = cx.read_from_clipboard() {
+                        if let Some(text) = item.text() {
+                            self.insert_text(&text.replace('\n', ""), cx);
+                        }
+                    }
+                    return;
+                }
+                "z" => {
+                    if shift {
+                        // Ctrl+Shift+Z = Redo
+                        self.url_redo(cx);
+                    } else {
+                        // Ctrl+Z = Undo
+                        self.url_undo(cx);
+                    }
+                    return;
+                }
+                "y" => {
+                    // Ctrl+Y = Redo (alternative)
+                    self.url_redo(cx);
+                    return;
+                }
+                _ => {}
+            }
+        }
+
+        match key {
+            "left" => {
+                if shift {
+                    if self.url_selection.end > 0 {
+                        self.url_selection.end -= 1;
+                        cx.notify();
+                    }
+                } else if self.has_selection() {
+                    let start = self.url_selection.start.min(self.url_selection.end);
+                    self.move_to(start, cx);
+                } else if self.cursor() > 0 {
+                    self.move_to(self.cursor() - 1, cx);
+                }
+            }
+            "right" => {
+                if shift {
+                    if self.url_selection.end < self.url.len() {
+                        self.url_selection.end += 1;
+                        cx.notify();
+                    }
+                } else if self.has_selection() {
+                    let end = self.url_selection.start.max(self.url_selection.end);
+                    self.move_to(end, cx);
+                } else if self.cursor() < self.url.len() {
+                    self.move_to(self.cursor() + 1, cx);
+                }
+            }
+            "home" => {
+                if shift {
+                    self.url_selection.end = 0;
+                    cx.notify();
+                } else {
+                    self.move_to(0, cx);
+                }
+            }
+            "end" => {
+                if shift {
+                    self.url_selection.end = self.url.len();
+                    cx.notify();
+                } else {
+                    self.move_to(self.url.len(), cx);
+                }
+            }
+            "backspace" => {
+                if self.has_selection() {
+                    self.delete_selection(cx);
+                } else if self.cursor() > 0 {
+                    self.save_url_state();
+                    let pos = self.cursor() - 1;
+                    self.url.remove(pos);
+                    self.url_selection = pos..pos;
+                    self.sync_params_from_url(cx);
+                    cx.notify();
+                }
+            }
+            "delete" => {
+                if self.has_selection() {
+                    self.delete_selection(cx);
+                } else if self.cursor() < self.url.len() {
+                    self.save_url_state();
+                    self.url.remove(self.cursor());
+                    self.sync_params_from_url(cx);
+                    cx.notify();
+                }
+            }
+            "enter" => {
+                self.send_request(cx);
+            }
+            _ => {
+                // Handle printable characters
+                if let Some(ch) = &event.keystroke.key_char {
+                    self.insert_text(ch, cx);
+                }
+            }
+        }
+    }
+}
+
+impl Render for RequestPanel {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        // Reset skip_blur flag at start of each render
+        self.skip_blur = false;
+
+        div()
+            .id("request-panel")
+            .size_full()
+            .flex()
+            .flex_col()
+            .relative()
+            .on_mouse_down(gpui::MouseButton::Left, cx.listener(|this, _, _, cx| {
+                // Only clear focus if an input wasn't clicked
+                if !this.skip_blur && this.active_edit.is_some() {
+                    this.active_edit = None;
+                    cx.notify();
+                }
+                // Close dropdown when clicking outside
+                if this.method_dropdown_open {
+                    this.method_dropdown_open = false;
+                    cx.notify();
+                }
+            }))
+            // URL bar
+            .child(self.render_url_bar(window, cx))
+            // Tabs
+            .child(self.render_tabs(cx))
+            // Tab content
+            .child(
+                div()
+                    .id("tab-content")
+                    .flex_1()
+                    .p(px(12.0))
+                    .overflow_scroll()
+                    .child(self.render_tab_content(cx)),
+            )
+            // Floating dropdown overlay (rendered last to be on top)
+            .when(self.method_dropdown_open, |el| {
+                el.child(self.render_method_dropdown_overlay(cx))
+            })
+    }
+}
+
+
