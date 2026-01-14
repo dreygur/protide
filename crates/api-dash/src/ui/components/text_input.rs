@@ -6,12 +6,16 @@
 //! - Keyboard navigation (arrows, home, end)
 //! - Selection extension (Shift+Arrow)
 //! - Copy/Cut/Paste (Ctrl+C/X/V)
+//! - Undo/Redo (Ctrl+Z / Ctrl+Shift+Z)
 //! - Select All (Ctrl+A)
 //! - Customizable styling
 
 #![allow(dead_code)]
 
 use std::ops::Range;
+
+/// Maximum number of undo states to keep
+const MAX_UNDO_HISTORY: usize = 100;
 
 use gpui::{
     div, prelude::*, px, ClipboardItem, Context, FocusHandle, Hsla, IntoElement,
@@ -118,6 +122,13 @@ impl TextInputStyle {
     }
 }
 
+/// Snapshot of text state for undo/redo
+#[derive(Clone)]
+struct TextState {
+    text: String,
+    selection: Range<usize>,
+}
+
 /// A full-featured text input component
 pub struct TextInput {
     /// Unique ID for this input
@@ -138,6 +149,10 @@ pub struct TextInput {
     style: TextInputStyle,
     /// Whether to allow multiline (for body editors)
     multiline: bool,
+    /// Undo stack
+    undo_stack: Vec<TextState>,
+    /// Redo stack
+    redo_stack: Vec<TextState>,
     /// Callback when text changes
     on_change: Option<Box<dyn Fn(&str, &mut Context<Self>) + 'static>>,
     /// Callback when Enter is pressed (single-line mode)
@@ -158,6 +173,8 @@ impl TextInput {
             input_left: 0.0,
             style: TextInputStyle::default(),
             multiline: false,
+            undo_stack: Vec::new(),
+            redo_stack: Vec::new(),
             on_change: None,
             on_submit: None,
             on_blur: None,
@@ -236,6 +253,63 @@ impl TextInput {
         cx.notify();
     }
 
+    /// Save current state to undo stack before making changes
+    fn save_state(&mut self) {
+        let state = TextState {
+            text: self.text.clone(),
+            selection: self.selection.clone(),
+        };
+        self.undo_stack.push(state);
+        // Limit undo history size
+        if self.undo_stack.len() > MAX_UNDO_HISTORY {
+            self.undo_stack.remove(0);
+        }
+        // Clear redo stack on new action
+        self.redo_stack.clear();
+    }
+
+    /// Undo the last change
+    fn undo(&mut self, cx: &mut Context<Self>) {
+        if let Some(state) = self.undo_stack.pop() {
+            // Save current state to redo stack
+            let current = TextState {
+                text: self.text.clone(),
+                selection: self.selection.clone(),
+            };
+            self.redo_stack.push(current);
+
+            // Restore previous state
+            self.text = state.text;
+            self.selection = state.selection;
+
+            if let Some(on_change) = &self.on_change {
+                on_change(&self.text, cx);
+            }
+            cx.notify();
+        }
+    }
+
+    /// Redo the last undone change
+    fn redo(&mut self, cx: &mut Context<Self>) {
+        if let Some(state) = self.redo_stack.pop() {
+            // Save current state to undo stack
+            let current = TextState {
+                text: self.text.clone(),
+                selection: self.selection.clone(),
+            };
+            self.undo_stack.push(current);
+
+            // Restore redo state
+            self.text = state.text;
+            self.selection = state.selection;
+
+            if let Some(on_change) = &self.on_change {
+                on_change(&self.text, cx);
+            }
+            cx.notify();
+        }
+    }
+
     // Internal helpers
     fn cursor(&self) -> usize {
         self.selection.end
@@ -265,6 +339,7 @@ impl TextInput {
 
     fn delete_selection(&mut self, cx: &mut Context<Self>) {
         if self.has_selection() {
+            self.save_state();
             let start = self.selection.start.min(self.selection.end);
             let end = self.selection.start.max(self.selection.end);
             self.text.replace_range(start..end, "");
@@ -277,6 +352,7 @@ impl TextInput {
     }
 
     fn insert_text(&mut self, insert: &str, cx: &mut Context<Self>) {
+        self.save_state();
         // Delete selection first
         if self.has_selection() {
             let start = self.selection.start.min(self.selection.end);
@@ -395,6 +471,21 @@ impl TextInput {
                     }
                     return;
                 }
+                "z" => {
+                    if shift {
+                        // Ctrl+Shift+Z = Redo
+                        self.redo(cx);
+                    } else {
+                        // Ctrl+Z = Undo
+                        self.undo(cx);
+                    }
+                    return;
+                }
+                "y" => {
+                    // Ctrl+Y = Redo (alternative)
+                    self.redo(cx);
+                    return;
+                }
                 _ => {}
             }
         }
@@ -446,6 +537,7 @@ impl TextInput {
                 if self.has_selection() {
                     self.delete_selection(cx);
                 } else if self.cursor() > 0 {
+                    self.save_state();
                     let pos = self.cursor() - 1;
                     self.text.remove(pos);
                     self.selection = pos..pos;
@@ -459,6 +551,7 @@ impl TextInput {
                 if self.has_selection() {
                     self.delete_selection(cx);
                 } else if self.cursor() < self.text.len() {
+                    self.save_state();
                     self.text.remove(self.cursor());
                     if let Some(on_change) = &self.on_change {
                         on_change(&self.text, cx);

@@ -42,6 +42,10 @@ pub struct ExplorerPanel {
     new_env_name: String,
     /// Show new environment input
     show_new_env_input: bool,
+    /// Undo stack for edit fields (target, text, selection)
+    edit_undo_stack: Vec<(EnvEditTarget, String, Range<usize>)>,
+    /// Redo stack for edit fields
+    edit_redo_stack: Vec<(EnvEditTarget, String, Range<usize>)>,
 }
 
 impl ExplorerPanel {
@@ -57,6 +61,8 @@ impl ExplorerPanel {
             edit_focus: cx.focus_handle(),
             new_env_name: String::new(),
             show_new_env_input: false,
+            edit_undo_stack: Vec::new(),
+            edit_redo_stack: Vec::new(),
         }
     }
 
@@ -232,6 +238,37 @@ impl ExplorerPanel {
         }
     }
 
+    fn save_edit_state(&mut self) {
+        if let Some(target) = self.active_edit {
+            let text = self.get_edit_text(target);
+            self.edit_undo_stack.push((target, text, self.edit_selection.clone()));
+            if self.edit_undo_stack.len() > 100 {
+                self.edit_undo_stack.remove(0);
+            }
+            self.edit_redo_stack.clear();
+        }
+    }
+
+    fn edit_undo(&mut self, cx: &mut Context<Self>) {
+        if let Some((target, text, selection)) = self.edit_undo_stack.pop() {
+            let current_text = self.get_edit_text(target);
+            self.edit_redo_stack.push((target, current_text, self.edit_selection.clone()));
+            self.set_edit_text(target, text);
+            self.edit_selection = selection;
+            cx.notify();
+        }
+    }
+
+    fn edit_redo(&mut self, cx: &mut Context<Self>) {
+        if let Some((target, text, selection)) = self.edit_redo_stack.pop() {
+            let current_text = self.get_edit_text(target);
+            self.edit_undo_stack.push((target, current_text, self.edit_selection.clone()));
+            self.set_edit_text(target, text);
+            self.edit_selection = selection;
+            cx.notify();
+        }
+    }
+
     fn handle_edit_key(&mut self, event: &KeyDownEvent, cx: &mut Context<Self>) {
         let Some(target) = self.active_edit else {
             return;
@@ -266,6 +303,18 @@ impl ExplorerPanel {
                     }
                     return;
                 }
+                "z" => {
+                    if event.keystroke.modifiers.shift {
+                        self.edit_redo(cx);
+                    } else {
+                        self.edit_undo(cx);
+                    }
+                    return;
+                }
+                "y" => {
+                    self.edit_redo(cx);
+                    return;
+                }
                 _ => {}
             }
         }
@@ -288,6 +337,7 @@ impl ExplorerPanel {
             "backspace" => {
                 let mut text = self.get_edit_text(target);
                 if self.edit_selection.start != self.edit_selection.end {
+                    self.save_edit_state();
                     let start = self.edit_selection.start.min(self.edit_selection.end);
                     let end = self.edit_selection.start.max(self.edit_selection.end);
                     text.replace_range(start..end, "");
@@ -295,6 +345,7 @@ impl ExplorerPanel {
                     self.set_edit_text(target, text);
                     cx.notify();
                 } else if self.edit_selection.end > 0 {
+                    self.save_edit_state();
                     let pos = self.edit_selection.end - 1;
                     text.remove(pos);
                     self.edit_selection = pos..pos;
@@ -330,6 +381,7 @@ impl ExplorerPanel {
     }
 
     fn insert_text(&mut self, target: EnvEditTarget, text: &str, cx: &mut Context<Self>) {
+        self.save_edit_state();
         let mut current = self.get_edit_text(target);
 
         // Delete selection if any

@@ -9,7 +9,7 @@ use gpui::{
 };
 
 use crate::theme;
-use crate::ui::components::{render_text_view, find_word_start, find_word_end, is_word_char};
+use crate::ui::components::{render_text_view, find_word_start, find_word_end};
 use super::explorer::ExplorerPanel;
 use super::response::{ResponseData, ResponsePanel};
 
@@ -153,6 +153,14 @@ pub struct RequestPanel {
     edit_is_selecting: bool,
     /// Edit input left offset for click calculation
     edit_input_left: f32,
+    /// Undo stack for URL (text, selection)
+    url_undo_stack: Vec<(String, Range<usize>)>,
+    /// Redo stack for URL
+    url_redo_stack: Vec<(String, Range<usize>)>,
+    /// Undo stack for edit fields (stores target + text + selection)
+    edit_undo_stack: Vec<(EditTarget, String, Range<usize>)>,
+    /// Redo stack for edit fields
+    edit_redo_stack: Vec<(EditTarget, String, Range<usize>)>,
     /// Focus handle for editable fields
     edit_focus: FocusHandle,
     /// Reference to explorer panel for environment variable substitution
@@ -196,6 +204,10 @@ impl RequestPanel {
             edit_selection: 0..0,
             edit_is_selecting: false,
             edit_input_left: 0.0,
+            url_undo_stack: Vec::new(),
+            url_redo_stack: Vec::new(),
+            edit_undo_stack: Vec::new(),
+            edit_redo_stack: Vec::new(),
             edit_focus: cx.focus_handle(),
             explorer_panel: None,
         }
@@ -561,6 +573,14 @@ impl RequestPanel {
 
     /// Delete selected text
     fn edit_delete_selection(&mut self, cx: &mut Context<Self>) {
+        if self.active_edit.is_some() && self.edit_has_selection() {
+            self.save_edit_state();
+            self.edit_delete_selection_no_save(cx);
+        }
+    }
+
+    /// Delete edit selection without saving to undo (used internally)
+    fn edit_delete_selection_no_save(&mut self, cx: &mut Context<Self>) {
         if let Some(target) = self.active_edit {
             if self.edit_has_selection() {
                 let start = self.edit_selection.start.min(self.edit_selection.end);
@@ -577,9 +597,56 @@ impl RequestPanel {
     }
 
     /// Insert text at cursor (replacing selection if any)
+    /// Save edit state to undo stack before making changes
+    fn save_edit_state(&mut self) {
+        if let Some(target) = self.active_edit {
+            let text = self.get_edit_text(target).to_string();
+            self.edit_undo_stack.push((target, text, self.edit_selection.clone()));
+            if self.edit_undo_stack.len() > 100 {
+                self.edit_undo_stack.remove(0);
+            }
+            self.edit_redo_stack.clear();
+        }
+    }
+
+    /// Undo edit change
+    fn edit_undo(&mut self, cx: &mut Context<Self>) {
+        if let Some((target, text, selection)) = self.edit_undo_stack.pop() {
+            // Save current state to redo
+            let current_text = self.get_edit_text(target).to_string();
+            self.edit_redo_stack.push((target, current_text, self.edit_selection.clone()));
+
+            // Restore previous state
+            if let Some(field) = self.get_edit_text_mut(target) {
+                *field = text;
+            }
+            self.edit_selection = selection;
+            self.sync_after_edit(target, cx);
+            cx.notify();
+        }
+    }
+
+    /// Redo edit change
+    fn edit_redo(&mut self, cx: &mut Context<Self>) {
+        if let Some((target, text, selection)) = self.edit_redo_stack.pop() {
+            // Save current state to undo
+            let current_text = self.get_edit_text(target).to_string();
+            self.edit_undo_stack.push((target, current_text, self.edit_selection.clone()));
+
+            // Restore redo state
+            if let Some(field) = self.get_edit_text_mut(target) {
+                *field = text;
+            }
+            self.edit_selection = selection;
+            self.sync_after_edit(target, cx);
+            cx.notify();
+        }
+    }
+
     fn edit_insert_text(&mut self, insert: &str, cx: &mut Context<Self>) {
         if let Some(target) = self.active_edit {
-            self.edit_delete_selection(cx);
+            self.save_edit_state();
+            self.edit_delete_selection_no_save(cx);
             let pos = self.edit_selection.start;
             if let Some(text) = self.get_edit_text_mut(target) {
                 text.insert_str(pos, insert);
@@ -715,6 +782,21 @@ impl RequestPanel {
                     }
                     return;
                 }
+                "z" => {
+                    if shift {
+                        // Ctrl+Shift+Z = Redo
+                        self.edit_redo(cx);
+                    } else {
+                        // Ctrl+Z = Undo
+                        self.edit_undo(cx);
+                    }
+                    return;
+                }
+                "y" => {
+                    // Ctrl+Y = Redo (alternative)
+                    self.edit_redo(cx);
+                    return;
+                }
                 _ => {}
             }
         }
@@ -768,6 +850,7 @@ impl RequestPanel {
                 if self.edit_has_selection() {
                     self.edit_delete_selection(cx);
                 } else if self.edit_cursor() > 0 {
+                    self.save_edit_state();
                     let pos = self.edit_cursor() - 1;
                     if let Some(text) = self.get_edit_text_mut(target) {
                         text.remove(pos);
@@ -784,6 +867,7 @@ impl RequestPanel {
                 } else {
                     let cursor = self.edit_cursor();
                     if cursor < text_len {
+                        self.save_edit_state();
                         if let Some(text) = self.get_edit_text_mut(target) {
                             text.remove(cursor);
                             self.sync_after_edit(target, cx);
@@ -1090,6 +1174,14 @@ impl RequestPanel {
 
     fn delete_selection(&mut self, cx: &mut Context<Self>) {
         if self.has_selection() {
+            self.save_url_state();
+            self.delete_selection_no_save(cx);
+        }
+    }
+
+    /// Delete selection without saving to undo (used internally)
+    fn delete_selection_no_save(&mut self, cx: &mut Context<Self>) {
+        if self.has_selection() {
             let start = self.url_selection.start;
             self.url.replace_range(self.url_selection.clone(), "");
             self.url_selection = start..start;
@@ -1098,8 +1190,40 @@ impl RequestPanel {
         }
     }
 
+    /// Save URL state to undo stack before making changes
+    fn save_url_state(&mut self) {
+        self.url_undo_stack.push((self.url.clone(), self.url_selection.clone()));
+        if self.url_undo_stack.len() > 100 {
+            self.url_undo_stack.remove(0);
+        }
+        self.url_redo_stack.clear();
+    }
+
+    /// Undo URL change
+    fn url_undo(&mut self, cx: &mut Context<Self>) {
+        if let Some((text, selection)) = self.url_undo_stack.pop() {
+            self.url_redo_stack.push((self.url.clone(), self.url_selection.clone()));
+            self.url = text;
+            self.url_selection = selection;
+            self.sync_params_from_url(cx);
+            cx.notify();
+        }
+    }
+
+    /// Redo URL change
+    fn url_redo(&mut self, cx: &mut Context<Self>) {
+        if let Some((text, selection)) = self.url_redo_stack.pop() {
+            self.url_undo_stack.push((self.url.clone(), self.url_selection.clone()));
+            self.url = text;
+            self.url_selection = selection;
+            self.sync_params_from_url(cx);
+            cx.notify();
+        }
+    }
+
     fn insert_text(&mut self, text: &str, cx: &mut Context<Self>) {
-        self.delete_selection(cx);
+        self.save_url_state();
+        self.delete_selection_no_save(cx);
         let pos = self.url_selection.start;
         self.url.insert_str(pos, text);
         let new_pos = pos + text.len();
@@ -1201,6 +1325,21 @@ impl RequestPanel {
                     }
                     return;
                 }
+                "z" => {
+                    if shift {
+                        // Ctrl+Shift+Z = Redo
+                        self.url_redo(cx);
+                    } else {
+                        // Ctrl+Z = Undo
+                        self.url_undo(cx);
+                    }
+                    return;
+                }
+                "y" => {
+                    // Ctrl+Y = Redo (alternative)
+                    self.url_redo(cx);
+                    return;
+                }
                 _ => {}
             }
         }
@@ -1252,6 +1391,7 @@ impl RequestPanel {
                 if self.has_selection() {
                     self.delete_selection(cx);
                 } else if self.cursor() > 0 {
+                    self.save_url_state();
                     let pos = self.cursor() - 1;
                     self.url.remove(pos);
                     self.url_selection = pos..pos;
@@ -1263,6 +1403,7 @@ impl RequestPanel {
                 if self.has_selection() {
                     self.delete_selection(cx);
                 } else if self.cursor() < self.url.len() {
+                    self.save_url_state();
                     self.url.remove(self.cursor());
                     self.sync_params_from_url(cx);
                     cx.notify();
