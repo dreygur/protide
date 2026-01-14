@@ -4,13 +4,32 @@ use gpui::{
     div, prelude::*, px, ClipboardItem, Context, Entity, FocusHandle, IntoElement, KeyDownEvent,
     MouseDownEvent, ParentElement, Render, SharedString, Styled, Window,
 };
+use std::fs;
 use std::ops::Range;
+use std::path::PathBuf;
 
 use crate::models::{Environment, EnvironmentState};
 use crate::theme;
 use crate::ui::components::render_text_view_with_max;
 use super::history::{HistoryEntry, RequestHistory};
 use super::request::RequestPanel;
+
+/// Represents an item in the collection tree (either a folder or a .http file)
+#[derive(Clone, Debug)]
+pub struct CollectionItem {
+    /// Display name
+    pub name: String,
+    /// Full path to the item
+    pub path: PathBuf,
+    /// Whether this is a folder
+    pub is_folder: bool,
+    /// Children (for folders)
+    pub children: Vec<CollectionItem>,
+    /// HTTP method (for .http files, parsed from first line)
+    pub method: Option<String>,
+    /// Whether this folder is expanded
+    pub expanded: bool,
+}
 
 /// Edit target for environment variable editor
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -26,6 +45,12 @@ pub struct ExplorerPanel {
     request_panel: Option<Entity<RequestPanel>>,
     /// Whether history section is expanded
     history_expanded: bool,
+    /// Whether collections section is expanded
+    collections_expanded: bool,
+    /// Current workspace root path
+    workspace_path: Option<PathBuf>,
+    /// Collection items (folders and .http files)
+    collection_items: Vec<CollectionItem>,
     /// Environment state
     env_state: EnvironmentState,
     /// Whether the environment dropdown is open
@@ -53,6 +78,9 @@ impl ExplorerPanel {
         Self {
             request_panel: None,
             history_expanded: true,
+            collections_expanded: true,
+            workspace_path: None,
+            collection_items: Vec::new(),
             env_state: EnvironmentState::new(),
             env_dropdown_open: false,
             env_editor_open: false,
@@ -173,6 +201,197 @@ impl ExplorerPanel {
         self.new_env_name.clear();
         self.active_edit = None;
         cx.notify();
+    }
+
+    /// Toggle collections section expanded/collapsed
+    fn toggle_collections(&mut self, cx: &mut Context<Self>) {
+        self.collections_expanded = !self.collections_expanded;
+        cx.notify();
+    }
+
+    /// Open folder dialog and load collection
+    pub fn open_folder(&mut self, cx: &mut Context<Self>) {
+        // Use blocking file dialog (runs on main thread)
+        if let Some(folder) = rfd::FileDialog::new()
+            .set_title("Open Collection Folder")
+            .pick_folder()
+        {
+            self.load_collection_from_path(folder, cx);
+        }
+    }
+
+    /// Create a new .http file
+    pub fn create_new_request(&mut self, cx: &mut Context<Self>) {
+        // Default directory is workspace path or home
+        let default_dir = self.workspace_path.clone()
+            .or_else(|| dirs::home_dir());
+
+        let mut dialog = rfd::FileDialog::new()
+            .set_title("Create New Request")
+            .set_file_name("new-request.http")
+            .add_filter("HTTP Request", &["http"]);
+
+        if let Some(dir) = default_dir {
+            dialog = dialog.set_directory(dir);
+        }
+
+        if let Some(path) = dialog.save_file() {
+            // Ensure .http extension
+            let path = if path.extension().is_none() || path.extension().unwrap() != "http" {
+                path.with_extension("http")
+            } else {
+                path
+            };
+
+            // Create default content
+            let content = "### New Request\n# @name new-request\n\nGET https://api.example.com\n";
+
+            if fs::write(&path, content).is_ok() {
+                // If parent is in workspace, refresh collection
+                if let Some(workspace) = &self.workspace_path {
+                    if path.starts_with(workspace) {
+                        self.collection_items = self.scan_directory(workspace);
+                    }
+                }
+
+                // Load the new file into request panel
+                self.load_request_file(path, cx);
+            }
+        }
+    }
+
+    /// Load collection from a specific path
+    pub fn load_collection_from_path(&mut self, path: PathBuf, cx: &mut Context<Self>) {
+        if path.is_dir() {
+            self.workspace_path = Some(path.clone());
+            self.collection_items = self.scan_directory(&path);
+            cx.notify();
+        }
+    }
+
+    /// Recursively scan a directory for .http files and subdirectories
+    fn scan_directory(&self, path: &PathBuf) -> Vec<CollectionItem> {
+        let mut items = Vec::new();
+
+        if let Ok(entries) = fs::read_dir(path) {
+            let mut entries: Vec<_> = entries.filter_map(|e| e.ok()).collect();
+            // Sort: folders first, then alphabetically
+            entries.sort_by(|a, b| {
+                let a_is_dir = a.path().is_dir();
+                let b_is_dir = b.path().is_dir();
+                match (a_is_dir, b_is_dir) {
+                    (true, false) => std::cmp::Ordering::Less,
+                    (false, true) => std::cmp::Ordering::Greater,
+                    _ => a.file_name().cmp(&b.file_name()),
+                }
+            });
+
+            for entry in entries {
+                let entry_path = entry.path();
+                let name = entry.file_name().to_string_lossy().to_string();
+
+                // Skip hidden files/folders
+                if name.starts_with('.') {
+                    continue;
+                }
+
+                if entry_path.is_dir() {
+                    let children = self.scan_directory(&entry_path);
+                    // Only include folders that contain .http files (directly or in subfolders)
+                    if !children.is_empty() || self.folder_has_http_files(&entry_path) {
+                        items.push(CollectionItem {
+                            name,
+                            path: entry_path,
+                            is_folder: true,
+                            children,
+                            method: None,
+                            expanded: false,
+                        });
+                    }
+                } else if entry_path.extension().is_some_and(|ext| ext == "http") {
+                    let method = self.parse_method_from_file(&entry_path);
+                    items.push(CollectionItem {
+                        name,
+                        path: entry_path,
+                        is_folder: false,
+                        children: Vec::new(),
+                        method,
+                        expanded: false,
+                    });
+                }
+            }
+        }
+
+        items
+    }
+
+    /// Check if a folder contains any .http files
+    fn folder_has_http_files(&self, path: &PathBuf) -> bool {
+        if let Ok(entries) = fs::read_dir(path) {
+            for entry in entries.filter_map(|e| e.ok()) {
+                let entry_path = entry.path();
+                if entry_path.is_file() && entry_path.extension().is_some_and(|ext| ext == "http") {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+
+    /// Parse the HTTP method from a .http file
+    fn parse_method_from_file(&self, path: &PathBuf) -> Option<String> {
+        if let Ok(content) = fs::read_to_string(path) {
+            // Use http-parser to parse the file
+            if let Ok(requests) = http_parser::parse(&content) {
+                if let Some(req) = requests.first() {
+                    return Some(format!("{:?}", req.method).to_uppercase());
+                }
+            }
+        }
+        None
+    }
+
+    /// Toggle a folder's expanded state
+    fn toggle_collection_folder(&mut self, path: PathBuf, cx: &mut Context<Self>) {
+        fn toggle_in_items(items: &mut [CollectionItem], target: &PathBuf) -> bool {
+            for item in items.iter_mut() {
+                if item.path == *target && item.is_folder {
+                    item.expanded = !item.expanded;
+                    return true;
+                }
+                if item.is_folder && toggle_in_items(&mut item.children, target) {
+                    return true;
+                }
+            }
+            false
+        }
+
+        toggle_in_items(&mut self.collection_items, &path);
+        cx.notify();
+    }
+
+    /// Load a .http file into the request panel
+    fn load_request_file(&mut self, path: PathBuf, cx: &mut Context<Self>) {
+        if let Ok(content) = fs::read_to_string(&path) {
+            if let Ok(requests) = http_parser::parse(&content) {
+                if let Some(req) = requests.first() {
+                    if let Some(request_panel) = &self.request_panel {
+                        let method = format!("{:?}", req.method).to_uppercase();
+                        let url = req.url.clone();
+                        let headers: Vec<(String, String)> = req.headers
+                            .iter()
+                            .filter(|h| h.enabled)
+                            .map(|h| (h.key.clone(), h.value.clone()))
+                            .collect();
+                        let body = req.body.clone();
+
+                        request_panel.update(cx, |panel, cx| {
+                            panel.load_from_history(method, url, headers, body, cx);
+                        });
+                    }
+                }
+            }
+        }
     }
 
     fn delete_environment(&mut self, index: usize, cx: &mut Context<Self>) {
@@ -400,24 +619,287 @@ impl ExplorerPanel {
         cx.notify();
     }
 
-    fn render_history_section(&self, cx: &Context<Self>) -> impl IntoElement {
+    /// Flatten collection items into a list with depth information for rendering
+    fn flatten_collection_items(&self, items: &[CollectionItem], depth: usize) -> Vec<(CollectionItem, usize)> {
+        let mut result = Vec::new();
+        for item in items {
+            result.push((item.clone(), depth));
+            if item.is_folder && item.expanded {
+                result.extend(self.flatten_collection_items(&item.children, depth + 1));
+            }
+        }
+        result
+    }
+
+    fn render_collections_section(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = theme::current(cx);
-        let entries = self.get_history_entries(cx);
+        let has_collections = !self.collection_items.is_empty();
+        let collections_expanded = self.collections_expanded;
+        let workspace_name = self.workspace_path.as_ref()
+            .and_then(|p| p.file_name())
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_else(|| "Collections".to_string());
+
+        // Flatten items for non-recursive rendering
+        let flattened_items = if has_collections && collections_expanded {
+            self.flatten_collection_items(&self.collection_items, 0)
+        } else {
+            Vec::new()
+        };
 
         div()
             .w_full()
             .flex()
             .flex_col()
+            .pt(px(8.0))
+            // Collections header
+            .child(
+                div()
+                    .id("collections-header")
+                    .h(px(32.0))
+                    .w_full()
+                    .flex()
+                    .items_center()
+                    .justify_between()
+                    .px(px(12.0))
+                    .mx(px(4.0))
+                    .cursor_pointer()
+                    .rounded(px(4.0))
+                    .hover(|s| s.bg(theme.colors.bg_tertiary))
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.toggle_collections(cx);
+                    }))
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap(px(6.0))
+                            .child(
+                                div()
+                                    .text_size(px(11.0))
+                                    .text_color(theme.colors.text_muted)
+                                    .child(if collections_expanded { "▾" } else { "▸" })
+                            )
+                            .child(
+                                div()
+                                    .text_size(px(13.0))
+                                    .text_color(theme.colors.text_muted)
+                                    .child("📁")
+                            )
+                            .child(
+                                div()
+                                    .text_size(px(12.0))
+                                    .font_weight(gpui::FontWeight::MEDIUM)
+                                    .text_color(theme.colors.text_secondary)
+                                    .child(workspace_name)
+                            )
+                    )
+                    // Open folder button
+                    .child(
+                        div()
+                            .id("open-folder-btn")
+                            .size(px(22.0))
+                            .rounded(px(4.0))
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .cursor_pointer()
+                            .text_size(px(11.0))
+                            .text_color(theme.colors.text_muted)
+                            .hover(|s| s.bg(theme.colors.bg_tertiary).text_color(theme.colors.text_primary))
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.open_folder(cx);
+                            }))
+                            .child("📂")
+                    )
+            )
+            // Content
+            .when(collections_expanded, |el| {
+                if has_collections {
+                    el.child(
+                        div()
+                            .w_full()
+                            .flex()
+                            .flex_col()
+                            .px(px(4.0))
+                            .pt(px(4.0))
+                            .children(flattened_items.into_iter().enumerate().map(|(idx, (item, depth))| {
+                                self.render_collection_item_row(item, depth, idx, cx)
+                            }))
+                    )
+                } else {
+                    // Empty state for collections
+                    el.child(
+                        div()
+                            .w_full()
+                            .px(px(16.0))
+                            .py(px(20.0))
+                            .flex()
+                            .flex_col()
+                            .items_center()
+                            .gap(px(8.0))
+                            .child(
+                                div()
+                                    .size(px(40.0))
+                                    .rounded(px(8.0))
+                                    .bg(theme.colors.bg_tertiary)
+                                    .flex()
+                                    .items_center()
+                                    .justify_center()
+                                    .child(
+                                        div()
+                                            .text_size(px(18.0))
+                                            .text_color(theme.colors.text_muted)
+                                            .child("📁")
+                                    )
+                            )
+                            .child(
+                                div()
+                                    .text_size(px(12.0))
+                                    .text_color(theme.colors.text_secondary)
+                                    .child("No collections")
+                            )
+                            .child(
+                                div()
+                                    .id("open-folder-empty-btn")
+                                    .mt(px(4.0))
+                                    .px(px(12.0))
+                                    .py(px(6.0))
+                                    .rounded(px(6.0))
+                                    .cursor_pointer()
+                                    .text_size(px(11.0))
+                                    .font_weight(gpui::FontWeight::MEDIUM)
+                                    .text_color(theme.colors.accent)
+                                    .border_1()
+                                    .border_color(theme.colors.accent.opacity(0.3))
+                                    .hover(|s| s.bg(theme.colors.accent.opacity(0.1)))
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        this.open_folder(cx);
+                                    }))
+                                    .child("Open Folder")
+                            )
+                    )
+                }
+            })
+    }
+
+    /// Render a single collection item row (non-recursive)
+    fn render_collection_item_row(&self, item: CollectionItem, depth: usize, idx: usize, cx: &Context<Self>) -> impl IntoElement {
+        let theme = theme::current(cx);
+        let indent = px((depth * 16 + 8) as f32);
+        let path = item.path.clone();
+        let is_folder = item.is_folder;
+        let is_expanded = item.expanded;
+        let display_name = item.name.trim_end_matches(".http").to_string();
+        let method = item.method.clone();
+
+        div()
+            .id(SharedString::from(format!("collection-item-{}", idx)))
+            .w_full()
+            .h(px(28.0))
+            .flex()
+            .items_center()
+            .pl(indent)
+            .pr(px(8.0))
+            .gap(px(6.0))
+            .cursor_pointer()
+            .rounded(px(4.0))
+            .hover(|s| s.bg(theme.colors.bg_tertiary))
+            .on_click({
+                cx.listener(move |this, _, _, cx| {
+                    if is_folder {
+                        this.toggle_collection_folder(path.clone(), cx);
+                    } else {
+                        this.load_request_file(path.clone(), cx);
+                    }
+                })
+            })
+            // Expand/collapse icon for folders
+            .when(is_folder, |el| {
+                el.child(
+                    div()
+                        .text_size(px(10.0))
+                        .text_color(theme.colors.text_muted)
+                        .w(px(10.0))
+                        .child(if is_expanded { "▾" } else { "▸" })
+                )
+            })
+            // Spacer for files to align with folders
+            .when(!is_folder, |el| {
+                el.child(div().w(px(10.0)))
+            })
+            // Icon
+            .child(
+                div()
+                    .text_size(px(12.0))
+                    .text_color(if is_folder { theme.colors.text_muted } else { theme.colors.accent })
+                    .child(if is_folder { "📁" } else { "📄" })
+            )
+            // Method badge (for .http files)
+            .when_some(method, |el, method| {
+                let method_color = theme.method_color(&method);
+                el.child(
+                    div()
+                        .min_w(px(36.0))
+                        .h(px(16.0))
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .rounded(px(3.0))
+                        .bg(method_color.opacity(0.12))
+                        .child(
+                            div()
+                                .text_size(px(9.0))
+                                .font_weight(gpui::FontWeight::SEMIBOLD)
+                                .text_color(method_color)
+                                .child(method)
+                        )
+                )
+            })
+            // Name
+            .child(
+                div()
+                    .flex_1()
+                    .min_w(px(0.0))
+                    .overflow_hidden()
+                    .text_size(px(12.0))
+                    .text_color(theme.colors.text_primary)
+                    .child(display_name)
+            )
+    }
+
+    fn render_history_section(&self, cx: &Context<Self>) -> impl IntoElement {
+        let theme = theme::current(cx);
+        let entries = self.get_history_entries(cx);
+        let has_entries = !entries.is_empty();
+        let entry_count = entries.len();
+
+        div()
+            .w_full()
+            .flex()
+            .flex_col()
+            .pt(px(4.0))
+            // Divider
+            .child(
+                div()
+                    .mx(px(12.0))
+                    .h(px(1.0))
+                    .bg(theme.colors.border.opacity(0.5))
+            )
             // History header
             .child(
                 div()
                     .id("history-header")
-                    .h(px(28.0))
+                    .h(px(32.0))
                     .w_full()
                     .flex()
                     .items_center()
-                    .px(px(8.0))
+                    .justify_between()
+                    .px(px(12.0))
+                    .mt(px(8.0))
                     .cursor_pointer()
+                    .rounded(px(4.0))
+                    .mx(px(4.0))
                     .hover(|s| s.bg(theme.colors.bg_tertiary))
                     .on_click(cx.listener(|this, _, _, cx| {
                         this.toggle_history(cx);
@@ -426,27 +908,41 @@ impl ExplorerPanel {
                         div()
                             .flex()
                             .items_center()
-                            .gap(px(4.0))
-                            .child(
-                                div()
-                                    .text_size(px(10.0))
-                                    .text_color(theme.colors.text_muted)
-                                    .child(if self.history_expanded { "▼" } else { "▶" })
-                            )
+                            .gap(px(6.0))
                             .child(
                                 div()
                                     .text_size(px(11.0))
-                                    .font_weight(gpui::FontWeight::SEMIBOLD)
-                                    .text_color(theme.colors.text_secondary)
-                                    .child("HISTORY")
+                                    .text_color(theme.colors.text_muted)
+                                    .child(if self.history_expanded { "▾" } else { "▸" })
                             )
                             .child(
                                 div()
-                                    .text_size(px(10.0))
+                                    .text_size(px(13.0))
                                     .text_color(theme.colors.text_muted)
-                                    .child(format!("({})", entries.len()))
+                                    .child("⏱")
+                            )
+                            .child(
+                                div()
+                                    .text_size(px(12.0))
+                                    .font_weight(gpui::FontWeight::MEDIUM)
+                                    .text_color(theme.colors.text_secondary)
+                                    .child("History")
                             )
                     )
+                    // Count badge
+                    .when(entry_count > 0, |el| {
+                        el.child(
+                            div()
+                                .px(px(6.0))
+                                .py(px(2.0))
+                                .rounded(px(10.0))
+                                .bg(theme.colors.accent.opacity(0.15))
+                                .text_size(px(10.0))
+                                .font_weight(gpui::FontWeight::MEDIUM)
+                                .text_color(theme.colors.accent)
+                                .child(format!("{}", entry_count))
+                        )
+                    })
             )
             // History items
             .when(self.history_expanded, |el| {
@@ -455,6 +951,24 @@ impl ExplorerPanel {
                         .w_full()
                         .flex()
                         .flex_col()
+                        .px(px(4.0))
+                        .pt(px(4.0))
+                        // Empty state
+                        .when(!has_entries, |el| {
+                            el.child(
+                                div()
+                                    .w_full()
+                                    .py(px(16.0))
+                                    .flex()
+                                    .justify_center()
+                                    .child(
+                                        div()
+                                            .text_size(px(12.0))
+                                            .text_color(theme.colors.text_muted)
+                                            .child("No requests yet")
+                                    )
+                            )
+                        })
                         .children(entries.into_iter().map(|entry| {
                             let entry_id = entry.id;
                             let method = entry.method.clone();
@@ -466,12 +980,13 @@ impl ExplorerPanel {
                             div()
                                 .id(gpui::ElementId::Name(format!("history-{}", entry_id).into()))
                                 .w_full()
-                                .h(px(26.0))
+                                .h(px(30.0))
                                 .flex()
                                 .items_center()
-                                .px(px(12.0))
-                                .gap(px(8.0))
+                                .px(px(8.0))
+                                .gap(px(10.0))
                                 .cursor_pointer()
+                                .rounded(px(4.0))
                                 .hover(|s| s.bg(theme.colors.bg_tertiary))
                                 .on_click(cx.listener(move |this, _, _, cx| {
                                     this.load_history_item(entry_id, cx);
@@ -479,17 +994,17 @@ impl ExplorerPanel {
                                 // Method badge
                                 .child(
                                     div()
-                                        .min_w(px(42.0))
-                                        .h(px(16.0))
+                                        .min_w(px(44.0))
+                                        .h(px(18.0))
                                         .flex()
                                         .items_center()
                                         .justify_center()
-                                        .rounded(px(3.0))
-                                        .bg(method_color.opacity(0.15))
+                                        .rounded(px(4.0))
+                                        .bg(method_color.opacity(0.12))
                                         .child(
                                             div()
-                                                .text_size(px(9.0))
-                                                .font_weight(gpui::FontWeight::BOLD)
+                                                .text_size(px(10.0))
+                                                .font_weight(gpui::FontWeight::SEMIBOLD)
                                                 .text_color(method_color)
                                                 .child(method)
                                         )
@@ -498,6 +1013,7 @@ impl ExplorerPanel {
                                 .child(
                                     div()
                                         .flex_1()
+                                        .min_w(px(0.0))
                                         .overflow_hidden()
                                         .text_size(px(12.0))
                                         .text_color(theme.colors.text_primary)
@@ -507,7 +1023,7 @@ impl ExplorerPanel {
                                 .when_some(status_color, |el, color| {
                                     el.child(
                                         div()
-                                            .size(px(6.0))
+                                            .size(px(7.0))
                                             .rounded_full()
                                             .bg(color)
                                     )
@@ -524,6 +1040,10 @@ impl ExplorerPanel {
             .unwrap_or_else(|| "No Environment".to_string());
         let env_dropdown_open = self.env_dropdown_open;
         let env_editor_open = self.env_editor_open;
+        let has_active_env = self.env_state.active_index.is_some();
+        let var_count = self.env_state.active()
+            .map(|e| e.variables.len())
+            .unwrap_or(0);
 
         div()
             .w_full()
@@ -531,45 +1051,117 @@ impl ExplorerPanel {
             .flex_col()
             .border_t_1()
             .border_color(theme.colors.border)
-            // Environment selector header
+            .bg(theme.colors.bg_tertiary.opacity(0.3))
+            // Section header
             .child(
                 div()
-                    .h(px(36.0))
+                    .h(px(32.0))
                     .w_full()
                     .flex()
                     .items_center()
                     .justify_between()
                     .px(px(12.0))
-                    // Left: env selector dropdown
+                    .border_b_1()
+                    .border_color(theme.colors.border.opacity(0.5))
                     .child(
                         div()
-                            .id("env-selector")
                             .flex()
                             .items_center()
                             .gap(px(6.0))
+                            .child(
+                                div()
+                                    .text_size(px(12.0))
+                                    .text_color(theme.colors.text_muted)
+                                    .child("⚙")
+                            )
+                            .child(
+                                div()
+                                    .text_size(px(11.0))
+                                    .font_weight(gpui::FontWeight::SEMIBOLD)
+                                    .text_color(theme.colors.text_secondary)
+                                    .child("ENVIRONMENT")
+                            )
+                    )
+                    // Variable count badge
+                    .when(var_count > 0, |el| {
+                        el.child(
+                            div()
+                                .px(px(6.0))
+                                .py(px(2.0))
+                                .rounded(px(8.0))
+                                .bg(theme.colors.status_success.opacity(0.12))
+                                .text_size(px(9.0))
+                                .font_weight(gpui::FontWeight::MEDIUM)
+                                .text_color(theme.colors.status_success)
+                                .child(format!("{} vars", var_count))
+                        )
+                    })
+            )
+            // Environment selector row
+            .child(
+                div()
+                    .h(px(40.0))
+                    .w_full()
+                    .flex()
+                    .items_center()
+                    .justify_between()
+                    .px(px(12.0))
+                    // Left: env selector dropdown button
+                    .child(
+                        div()
+                            .id("env-selector")
+                            .flex_1()
+                            .h(px(28.0))
+                            .flex()
+                            .items_center()
+                            .justify_between()
+                            .px(px(10.0))
+                            .rounded(px(6.0))
                             .cursor_pointer()
+                            .bg(theme.colors.bg_primary)
+                            .border_1()
+                            .border_color(if env_dropdown_open {
+                                theme.colors.accent
+                            } else {
+                                theme.colors.border
+                            })
+                            .hover(|s| s.border_color(theme.colors.text_muted))
                             .on_click(cx.listener(|this, _, _, cx| {
                                 this.toggle_env_dropdown(cx);
                             }))
                             .child(
                                 div()
-                                    .size(px(8.0))
-                                    .rounded_full()
-                                    .bg(if self.env_state.active_index.is_some() {
-                                        theme.colors.status_success
-                                    } else {
-                                        theme.colors.text_muted
-                                    })
+                                    .flex()
+                                    .items_center()
+                                    .gap(px(8.0))
+                                    // Status indicator
+                                    .child(
+                                        div()
+                                            .size(px(6.0))
+                                            .rounded_full()
+                                            .bg(if has_active_env {
+                                                theme.colors.status_success
+                                            } else {
+                                                theme.colors.text_muted.opacity(0.5)
+                                            })
+                                    )
+                                    // Env name
+                                    .child(
+                                        div()
+                                            .text_size(px(11.0))
+                                            .font_weight(gpui::FontWeight::MEDIUM)
+                                            .text_color(if has_active_env {
+                                                theme.colors.text_primary
+                                            } else {
+                                                theme.colors.text_muted
+                                            })
+                                            .child(active_env_name.clone())
+                                    )
                             )
+                            // Chevron
                             .child(
                                 div()
-                                    .text_size(px(12.0))
-                                    .text_color(theme.colors.text_primary)
-                                    .child(active_env_name.clone())
-                            )
-                            .child(
-                                div()
-                                    .text_size(px(10.0))
+                                    .text_size(px(9.0))
                                     .text_color(theme.colors.text_muted)
                                     .child(if env_dropdown_open { "▲" } else { "▼" })
                             )
@@ -578,21 +1170,26 @@ impl ExplorerPanel {
                     .child(
                         div()
                             .id("env-edit-btn")
-                            .px(px(8.0))
-                            .py(px(4.0))
-                            .rounded(px(4.0))
+                            .ml(px(8.0))
+                            .size(px(28.0))
+                            .rounded(px(6.0))
+                            .flex()
+                            .items_center()
+                            .justify_center()
                             .cursor_pointer()
-                            .text_size(px(11.0))
-                            .text_color(if env_editor_open {
-                                theme.colors.accent
-                            } else {
-                                theme.colors.text_secondary
+                            .text_size(px(12.0))
+                            .when(env_editor_open, |el| {
+                                el.bg(theme.colors.accent.opacity(0.12))
+                                    .text_color(theme.colors.accent)
                             })
-                            .hover(|s| s.bg(theme.colors.bg_tertiary))
+                            .when(!env_editor_open, |el| {
+                                el.text_color(theme.colors.text_muted)
+                                    .hover(|s| s.bg(theme.colors.bg_tertiary).text_color(theme.colors.text_primary))
+                            })
                             .on_click(cx.listener(|this, _, _, cx| {
                                 this.toggle_env_editor(cx);
                             }))
-                            .child(if env_editor_open { "Close" } else { "Edit" })
+                            .child("✎")
                     )
             )
             // Dropdown menu
@@ -608,88 +1205,146 @@ impl ExplorerPanel {
     fn render_env_dropdown(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = theme::current(cx);
         let active_index = self.env_state.active_index;
-        let envs: Vec<(usize, String)> = self.env_state.environments
+        let envs: Vec<(usize, String, usize)> = self.env_state.environments
             .iter()
             .enumerate()
-            .map(|(i, e)| (i, e.name.clone()))
+            .map(|(i, e)| (i, e.name.clone(), e.variables.len()))
             .collect();
 
         div()
             .id("env-dropdown")
-            .w_full()
             .max_h(px(200.0))
             .overflow_scroll()
-            .px(px(8.0))
-            .pb(px(8.0))
+            .mx(px(12.0))
+            .mb(px(8.0))
+            .rounded(px(8.0))
+            .border_1()
+            .border_color(theme.colors.border)
+            .bg(theme.colors.bg_primary)
+            .overflow_hidden()
             .flex()
             .flex_col()
-            .gap(px(2.0))
             // "No Environment" option
             .child(
                 div()
                     .id("env-option-none")
                     .w_full()
-                    .px(px(8.0))
-                    .py(px(6.0))
-                    .rounded(px(4.0))
+                    .px(px(12.0))
+                    .py(px(8.0))
                     .cursor_pointer()
-                    .text_size(px(12.0))
+                    .flex()
+                    .items_center()
+                    .gap(px(8.0))
+                    .border_b_1()
+                    .border_color(theme.colors.border.opacity(0.5))
                     .when(active_index.is_none(), |el| {
-                        el.bg(theme.colors.bg_tertiary)
-                            .text_color(theme.colors.text_primary)
+                        el.bg(theme.colors.accent.opacity(0.08))
                     })
                     .when(active_index.is_some(), |el| {
-                        el.text_color(theme.colors.text_secondary)
-                            .hover(|s| s.bg(theme.colors.bg_tertiary))
+                        el.hover(|s| s.bg(theme.colors.bg_tertiary))
                     })
                     .on_click(cx.listener(|this, _, _, cx| {
                         this.select_environment(None, cx);
                     }))
-                    .child("No Environment")
+                    // Icon
+                    .child(
+                        div()
+                            .size(px(6.0))
+                            .rounded_full()
+                            .bg(theme.colors.text_muted.opacity(0.4))
+                    )
+                    .child(
+                        div()
+                            .text_size(px(11.0))
+                            .text_color(theme.colors.text_muted)
+                            .child("No Environment")
+                    )
             )
             // Environment options
-            .children(envs.into_iter().map(|(i, name)| {
+            .children(envs.into_iter().enumerate().map(|(idx, (i, name, var_count))| {
                 let is_active = active_index == Some(i);
+                let is_last = idx == self.env_state.environments.len() - 1;
                 div()
                     .id(SharedString::from(format!("env-option-{}", i)))
                     .w_full()
-                    .px(px(8.0))
-                    .py(px(6.0))
-                    .rounded(px(4.0))
+                    .px(px(12.0))
+                    .py(px(8.0))
                     .cursor_pointer()
-                    .text_size(px(12.0))
+                    .flex()
+                    .items_center()
+                    .justify_between()
+                    .when(!is_last, |el| el.border_b_1().border_color(theme.colors.border.opacity(0.5)))
                     .when(is_active, |el| {
-                        el.bg(theme.colors.bg_tertiary)
-                            .text_color(theme.colors.text_primary)
+                        el.bg(theme.colors.accent.opacity(0.08))
                     })
                     .when(!is_active, |el| {
-                        el.text_color(theme.colors.text_secondary)
-                            .hover(|s| s.bg(theme.colors.bg_tertiary))
+                        el.hover(|s| s.bg(theme.colors.bg_tertiary))
                     })
                     .on_click(cx.listener(move |this, _, _, cx| {
                         this.select_environment(Some(i), cx);
                     }))
-                    .child(name)
+                    // Left: icon + name
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap(px(8.0))
+                            .child(
+                                div()
+                                    .size(px(6.0))
+                                    .rounded_full()
+                                    .bg(theme.colors.status_success)
+                            )
+                            .child(
+                                div()
+                                    .text_size(px(11.0))
+                                    .font_weight(if is_active { gpui::FontWeight::MEDIUM } else { gpui::FontWeight::NORMAL })
+                                    .text_color(if is_active { theme.colors.text_primary } else { theme.colors.text_secondary })
+                                    .child(name)
+                            )
+                    )
+                    // Right: var count
+                    .when(var_count > 0, |el| {
+                        el.child(
+                            div()
+                                .text_size(px(10.0))
+                                .text_color(theme.colors.text_muted)
+                                .child(format!("{} vars", var_count))
+                        )
+                    })
             }))
             // Add new environment button
             .child(
                 div()
                     .id("env-add-btn")
                     .w_full()
-                    .px(px(8.0))
-                    .py(px(6.0))
-                    .mt(px(4.0))
-                    .rounded(px(4.0))
+                    .px(px(12.0))
+                    .py(px(8.0))
                     .cursor_pointer()
-                    .text_size(px(12.0))
-                    .text_color(theme.colors.accent)
+                    .flex()
+                    .items_center()
+                    .gap(px(6.0))
+                    .border_t_1()
+                    .border_color(theme.colors.border)
+                    .bg(theme.colors.bg_tertiary.opacity(0.3))
                     .hover(|s| s.bg(theme.colors.bg_tertiary))
                     .on_click(cx.listener(|this, _, _, cx| {
                         this.env_dropdown_open = false;
                         this.env_editor_open = true;
                         this.start_new_env(cx);
                     }))
-                    .child("+ New Environment")
+                    .child(
+                        div()
+                            .text_size(px(11.0))
+                            .text_color(theme.colors.accent)
+                            .child("+")
+                    )
+                    .child(
+                        div()
+                            .text_size(px(11.0))
+                            .text_color(theme.colors.accent)
+                            .child("New Environment")
+                    )
             )
     }
 
@@ -716,8 +1371,8 @@ impl ExplorerPanel {
             .w_full()
             .max_h(px(300.0))
             .overflow_scroll()
-            .px(px(8.0))
-            .pb(px(8.0))
+            .px(px(12.0))
+            .pb(px(12.0))
             .flex()
             .flex_col()
             .gap(px(8.0))
@@ -726,193 +1381,320 @@ impl ExplorerPanel {
                 el.child(
                     div()
                         .w_full()
+                        .p(px(10.0))
+                        .rounded(px(8.0))
+                        .bg(theme.colors.bg_primary)
+                        .border_1()
+                        .border_color(theme.colors.accent.opacity(0.3))
                         .flex()
-                        .items_center()
-                        .gap(px(4.0))
-                        .child(
-                            self.render_text_input(
-                                "new-env-name",
-                                EnvEditTarget::NewEnvName,
-                                &new_env_name,
-                                "Environment name",
-                                is_editing_new_env,
-                                if is_editing_new_env { edit_selection.clone() } else { 0..0 },
-                                cx,
-                            )
-                        )
+                        .flex_col()
+                        .gap(px(8.0))
                         .child(
                             div()
-                                .id("create-env-btn")
-                                .px(px(8.0))
-                                .py(px(4.0))
-                                .rounded(px(4.0))
-                                .cursor_pointer()
                                 .text_size(px(11.0))
-                                .bg(theme.colors.accent)
-                                .text_color(gpui::white())
-                                .on_click(cx.listener(|this, _, _, cx| {
-                                    this.create_new_env(cx);
-                                }))
-                                .child("Create")
-                        )
-                        .child(
-                            div()
-                                .id("cancel-env-btn")
-                                .px(px(8.0))
-                                .py(px(4.0))
-                                .rounded(px(4.0))
-                                .cursor_pointer()
-                                .text_size(px(11.0))
+                                .font_weight(gpui::FontWeight::MEDIUM)
                                 .text_color(theme.colors.text_secondary)
-                                .hover(|s| s.bg(theme.colors.bg_tertiary))
-                                .on_click(cx.listener(|this, _, _, cx| {
-                                    this.cancel_new_env(cx);
-                                }))
-                                .child("Cancel")
+                                .child("Create New Environment")
+                        )
+                        .child(
+                            div()
+                                .w_full()
+                                .flex()
+                                .items_center()
+                                .gap(px(6.0))
+                                .child(
+                                    self.render_text_input(
+                                        "new-env-name",
+                                        EnvEditTarget::NewEnvName,
+                                        &new_env_name,
+                                        "Environment name",
+                                        is_editing_new_env,
+                                        if is_editing_new_env { edit_selection.clone() } else { 0..0 },
+                                        cx,
+                                    )
+                                )
+                                .child(
+                                    div()
+                                        .id("create-env-btn")
+                                        .px(px(10.0))
+                                        .py(px(5.0))
+                                        .rounded(px(6.0))
+                                        .cursor_pointer()
+                                        .text_size(px(11.0))
+                                        .font_weight(gpui::FontWeight::MEDIUM)
+                                        .bg(theme.colors.accent)
+                                        .text_color(gpui::white())
+                                        .hover(|s| s.bg(theme.colors.accent.opacity(0.9)))
+                                        .on_click(cx.listener(|this, _, _, cx| {
+                                            this.create_new_env(cx);
+                                        }))
+                                        .child("Create")
+                                )
+                                .child(
+                                    div()
+                                        .id("cancel-env-btn")
+                                        .px(px(10.0))
+                                        .py(px(5.0))
+                                        .rounded(px(6.0))
+                                        .cursor_pointer()
+                                        .text_size(px(11.0))
+                                        .text_color(theme.colors.text_secondary)
+                                        .border_1()
+                                        .border_color(theme.colors.border)
+                                        .hover(|s| s.bg(theme.colors.bg_tertiary))
+                                        .on_click(cx.listener(|this, _, _, cx| {
+                                            this.cancel_new_env(cx);
+                                        }))
+                                        .child("Cancel")
+                                )
                         )
                 )
             })
-            // Variables header
+            // Variables section card
             .when(self.env_state.active_index.is_some(), |el| {
                 el.child(
                     div()
                         .w_full()
-                        .flex()
-                        .items_center()
-                        .justify_between()
+                        .rounded(px(8.0))
+                        .bg(theme.colors.bg_primary)
+                        .border_1()
+                        .border_color(theme.colors.border)
+                        .overflow_hidden()
+                        // Variables header
                         .child(
                             div()
-                                .text_size(px(11.0))
-                                .font_weight(gpui::FontWeight::SEMIBOLD)
-                                .text_color(theme.colors.text_secondary)
-                                .child("VARIABLES")
-                        )
-                        .child(
-                            div()
+                                .w_full()
+                                .h(px(32.0))
                                 .flex()
                                 .items_center()
-                                .gap(px(8.0))
+                                .justify_between()
+                                .px(px(10.0))
+                                .bg(theme.colors.bg_tertiary.opacity(0.3))
+                                .border_b_1()
+                                .border_color(theme.colors.border.opacity(0.5))
+                                // Table headers
                                 .child(
                                     div()
-                                        .id("add-var-btn")
-                                        .px(px(6.0))
-                                        .py(px(2.0))
-                                        .rounded(px(4.0))
-                                        .cursor_pointer()
-                                        .text_size(px(11.0))
-                                        .text_color(theme.colors.accent)
-                                        .hover(|s| s.bg(theme.colors.bg_tertiary))
-                                        .on_click(cx.listener(|this, _, _, cx| {
-                                            this.add_variable(cx);
-                                        }))
-                                        .child("+ Add")
+                                        .flex()
+                                        .items_center()
+                                        .gap(px(4.0))
+                                        .child(
+                                            div()
+                                                .w(px(90.0))
+                                                .text_size(px(9.0))
+                                                .font_weight(gpui::FontWeight::SEMIBOLD)
+                                                .text_color(theme.colors.text_muted)
+                                                .child("KEY")
+                                        )
+                                        .child(
+                                            div()
+                                                .flex_1()
+                                                .text_size(px(9.0))
+                                                .font_weight(gpui::FontWeight::SEMIBOLD)
+                                                .text_color(theme.colors.text_muted)
+                                                .child("VALUE")
+                                        )
                                 )
-                                // Delete environment button
-                                .when(env_count > 1 && active_index.is_some(), |el| {
-                                    let idx = active_index.unwrap();
-                                    el.child(
+                                .child(
+                                    div()
+                                        .flex()
+                                        .items_center()
+                                        .gap(px(6.0))
+                                        .child(
+                                            div()
+                                                .id("add-var-btn")
+                                                .px(px(8.0))
+                                                .py(px(3.0))
+                                                .rounded(px(4.0))
+                                                .cursor_pointer()
+                                                .text_size(px(10.0))
+                                                .text_color(theme.colors.accent)
+                                                .hover(|s| s.bg(theme.colors.bg_tertiary))
+                                                .on_click(cx.listener(|this, _, _, cx| {
+                                                    this.add_variable(cx);
+                                                }))
+                                                .child("+ Add")
+                                        )
+                                        // Delete environment button
+                                        .when(env_count > 1 && active_index.is_some(), |el| {
+                                            let idx = active_index.unwrap();
+                                            el.child(
+                                                div()
+                                                    .id("delete-env-btn")
+                                                    .px(px(8.0))
+                                                    .py(px(3.0))
+                                                    .rounded(px(4.0))
+                                                    .cursor_pointer()
+                                                    .text_size(px(10.0))
+                                                    .text_color(theme.colors.status_client_error.opacity(0.8))
+                                                    .hover(|s| s.bg(theme.colors.status_client_error.opacity(0.1)).text_color(theme.colors.status_client_error))
+                                                    .on_click(cx.listener(move |this, _, _, cx| {
+                                                        this.delete_environment(idx, cx);
+                                                    }))
+                                                    .child("Delete")
+                                            )
+                                        })
+                                )
+                        )
+                        // Variables list
+                        .children(vars.into_iter().enumerate().map(|(idx, (i, key, value))| {
+                            let is_editing_key = self.active_edit == Some(EnvEditTarget::VarKey(i));
+                            let is_editing_value = self.active_edit == Some(EnvEditTarget::VarValue(i));
+                            let key_for_remove = key.clone();
+
+                            div()
+                                .w_full()
+                                .flex()
+                                .items_center()
+                                .gap(px(4.0))
+                                .px(px(10.0))
+                                .py(px(6.0))
+                                .when(idx % 2 == 0, |el| el.bg(theme.colors.bg_tertiary.opacity(0.2)))
+                                // Key input
+                                .child(
+                                    self.render_text_input(
+                                        format!("var-key-{}", i),
+                                        EnvEditTarget::VarKey(i),
+                                        &key,
+                                        "Key",
+                                        is_editing_key,
+                                        if is_editing_key { edit_selection.clone() } else { 0..0 },
+                                        cx,
+                                    )
+                                )
+                                // Value input
+                                .child(
+                                    self.render_text_input(
+                                        format!("var-value-{}", i),
+                                        EnvEditTarget::VarValue(i),
+                                        &value,
+                                        "Value",
+                                        is_editing_value,
+                                        if is_editing_value { edit_selection.clone() } else { 0..0 },
+                                        cx,
+                                    )
+                                )
+                                // Remove button
+                                .child(
+                                    div()
+                                        .id(SharedString::from(format!("var-remove-{}", i)))
+                                        .size(px(20.0))
+                                        .rounded(px(4.0))
+                                        .flex()
+                                        .items_center()
+                                        .justify_center()
+                                        .cursor_pointer()
+                                        .text_size(px(12.0))
+                                        .text_color(theme.colors.text_muted.opacity(0.5))
+                                        .hover(|s| s.bg(theme.colors.status_client_error.opacity(0.1)).text_color(theme.colors.status_client_error))
+                                        .on_click(cx.listener(move |this, _, _, cx| {
+                                            this.remove_variable(&key_for_remove, cx);
+                                        }))
+                                        .child("×")
+                                )
+                        }))
+                        // Empty state inside card
+                        .when(!has_vars, |el| {
+                            el.child(
+                                div()
+                                    .w_full()
+                                    .py(px(16.0))
+                                    .flex()
+                                    .flex_col()
+                                    .items_center()
+                                    .gap(px(6.0))
+                                    .child(
                                         div()
-                                            .id("delete-env-btn")
-                                            .px(px(6.0))
-                                            .py(px(2.0))
+                                            .text_size(px(18.0))
+                                            .text_color(theme.colors.text_muted.opacity(0.5))
+                                            .child("{ }")
+                                    )
+                                    .child(
+                                        div()
+                                            .text_size(px(11.0))
+                                            .text_color(theme.colors.text_muted)
+                                            .child("No variables defined")
+                                    )
+                                    .child(
+                                        div()
+                                            .id("add-first-var-btn")
+                                            .mt(px(4.0))
+                                            .px(px(10.0))
+                                            .py(px(4.0))
                                             .rounded(px(4.0))
                                             .cursor_pointer()
                                             .text_size(px(11.0))
-                                            .text_color(theme.colors.status_client_error)
-                                            .hover(|s| s.bg(theme.colors.bg_tertiary))
-                                            .on_click(cx.listener(move |this, _, _, cx| {
-                                                this.delete_environment(idx, cx);
+                                            .text_color(theme.colors.accent)
+                                            .border_1()
+                                            .border_color(theme.colors.accent.opacity(0.3))
+                                            .hover(|s| s.bg(theme.colors.accent.opacity(0.1)))
+                                            .on_click(cx.listener(|this, _, _, cx| {
+                                                this.add_variable(cx);
                                             }))
-                                            .child("Delete Env")
+                                            .child("+ Add Variable")
                                     )
-                                })
-                        )
+                            )
+                        })
                 )
             })
-            // Variables list
-            .children(vars.into_iter().map(|(i, key, value)| {
-                let is_editing_key = self.active_edit == Some(EnvEditTarget::VarKey(i));
-                let is_editing_value = self.active_edit == Some(EnvEditTarget::VarValue(i));
-                let key_for_remove = key.clone();
-
-                div()
-                    .w_full()
-                    .flex()
-                    .items_center()
-                    .gap(px(4.0))
-                    // Key input
-                    .child(
-                        self.render_text_input(
-                            format!("var-key-{}", i),
-                            EnvEditTarget::VarKey(i),
-                            &key,
-                            "Key",
-                            is_editing_key,
-                            if is_editing_key { edit_selection.clone() } else { 0..0 },
-                            cx,
-                        )
-                    )
-                    // Value input
-                    .child(
-                        self.render_text_input(
-                            format!("var-value-{}", i),
-                            EnvEditTarget::VarValue(i),
-                            &value,
-                            "Value",
-                            is_editing_value,
-                            if is_editing_value { edit_selection.clone() } else { 0..0 },
-                            cx,
-                        )
-                    )
-                    // Remove button
-                    .child(
-                        div()
-                            .id(SharedString::from(format!("var-remove-{}", i)))
-                            .size(px(20.0))
-                            .rounded(px(4.0))
-                            .flex()
-                            .items_center()
-                            .justify_center()
-                            .cursor_pointer()
-                            .text_size(px(12.0))
-                            .text_color(theme.colors.text_muted)
-                            .hover(|s| s.bg(theme.colors.bg_tertiary).text_color(theme.colors.status_client_error))
-                            .on_click(cx.listener(move |this, _, _, cx| {
-                                this.remove_variable(&key_for_remove, cx);
-                            }))
-                            .child("×")
-                    )
-            }))
-            // Empty state
-            .when(!has_vars && self.env_state.active_index.is_some(), |el| {
+            // No environment selected state
+            .when(self.env_state.active_index.is_none() && !show_new_env_input, |el| {
                 el.child(
                     div()
                         .w_full()
-                        .py(px(8.0))
-                        .text_size(px(12.0))
-                        .text_color(theme.colors.text_muted)
-                        .child("No variables. Click '+ Add' to create one.")
-                )
-            })
-            // No environment selected
-            .when(self.env_state.active_index.is_none(), |el| {
-                el.child(
-                    div()
-                        .w_full()
-                        .py(px(8.0))
-                        .text_size(px(12.0))
-                        .text_color(theme.colors.text_muted)
-                        .child("Select an environment to edit variables.")
+                        .py(px(16.0))
+                        .flex()
+                        .flex_col()
+                        .items_center()
+                        .gap(px(8.0))
+                        .child(
+                            div()
+                                .size(px(36.0))
+                                .rounded(px(8.0))
+                                .bg(theme.colors.bg_tertiary)
+                                .flex()
+                                .items_center()
+                                .justify_center()
+                                .child(
+                                    div()
+                                        .text_size(px(16.0))
+                                        .text_color(theme.colors.text_muted)
+                                        .child("⚙")
+                                )
+                        )
+                        .child(
+                            div()
+                                .text_size(px(11.0))
+                                .text_color(theme.colors.text_muted)
+                                .child("Select an environment to edit")
+                        )
                 )
             })
             // Usage hint
             .child(
                 div()
                     .w_full()
-                    .pt(px(8.0))
-                    .text_size(px(11.0))
-                    .text_color(theme.colors.text_muted)
-                    .child("Use {{variable_name}} syntax in URL, headers, body, or auth fields.")
+                    .mt(px(4.0))
+                    .px(px(8.0))
+                    .py(px(6.0))
+                    .rounded(px(6.0))
+                    .bg(theme.colors.bg_tertiary.opacity(0.5))
+                    .flex()
+                    .items_start()
+                    .gap(px(6.0))
+                    .child(
+                        div()
+                            .text_size(px(10.0))
+                            .text_color(theme.colors.text_muted)
+                            .child("💡")
+                    )
+                    .child(
+                        div()
+                            .flex_1()
+                            .text_size(px(10.0))
+                            .text_color(theme.colors.text_muted)
+                            .child("Use {{var}} in URL, headers, body, or auth")
+                    )
             )
     }
 
@@ -985,6 +1767,7 @@ impl Render for ExplorerPanel {
             .size_full()
             .flex()
             .flex_col()
+            .bg(theme.colors.bg_secondary)
             .track_focus(&self.edit_focus)
             .on_key_down(cx.listener(|this, event: &KeyDownEvent, _, cx| {
                 this.handle_edit_key(event, cx);
@@ -992,28 +1775,61 @@ impl Render for ExplorerPanel {
             // Header
             .child(
                 div()
-                    .h(px(32.0))
+                    .h(px(40.0))
                     .w_full()
                     .flex()
                     .items_center()
-                    .px(px(12.0))
+                    .justify_between()
+                    .px(px(14.0))
                     .border_b_1()
                     .border_color(theme.colors.border)
                     .child(
                         div()
-                            .text_size(px(11.0))
-                            .font_weight(gpui::FontWeight::SEMIBOLD)
-                            .text_color(theme.colors.text_secondary)
-                            .child("EXPLORER")
+                            .flex()
+                            .items_center()
+                            .gap(px(8.0))
+                            .child(
+                                div()
+                                    .text_size(px(14.0))
+                                    .text_color(theme.colors.text_muted)
+                                    .child("☰")
+                            )
+                            .child(
+                                div()
+                                    .text_size(px(12.0))
+                                    .font_weight(gpui::FontWeight::SEMIBOLD)
+                                    .text_color(theme.colors.text_primary)
+                                    .child("Explorer")
+                            )
+                    )
+                    // New request button
+                    .child(
+                        div()
+                            .id("new-request-btn")
+                            .size(px(24.0))
+                            .rounded(px(4.0))
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .cursor_pointer()
+                            .text_size(px(14.0))
+                            .text_color(theme.colors.text_muted)
+                            .hover(|s| s.bg(theme.colors.bg_tertiary).text_color(theme.colors.text_primary))
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.create_new_request(cx);
+                            }))
+                            .child("+")
                     )
             )
-            // Content - History section
+            // Content
             .child(
                 div()
                     .id("explorer-content")
                     .flex_1()
                     .overflow_scroll()
-                    .py(px(4.0))
+                    // Collections section
+                    .child(self.render_collections_section(cx))
+                    // History section
                     .child(self.render_history_section(cx))
             )
             // Environment section

@@ -82,19 +82,23 @@ impl Render for MainWindow {
                             .flex()
                             .flex_col()
                             .overflow_hidden()
-                            // Request panel (top)
+                            // Request panel (top) - 45% of space
                             .child(
                                 div()
-                                    .h(px(350.0))
+                                    .flex()
+                                    .flex_col()
+                                    .min_h(px(200.0))
+                                    .h(gpui::relative(0.45))
                                     .w_full()
                                     .border_b_1()
                                     .border_color(theme.colors.border)
                                     .child(self.request_panel.clone())
                             )
-                            // Response panel (bottom)
+                            // Response panel (bottom) - 55% of space
                             .child(
                                 div()
                                     .flex_1()
+                                    .min_h(px(150.0))
                                     .w_full()
                                     .overflow_hidden()
                                     .child(self.response_panel.clone())
@@ -110,12 +114,12 @@ impl MainWindow {
 
         div()
             .id("titlebar")
-            .h(px(40.0))
+            .h(px(38.0))
             .w_full()
             .flex()
             .items_center()
             .justify_between()
-            .bg(theme.colors.bg_secondary)
+            .bg(theme.colors.bg_primary)
             .border_b_1()
             .border_color(theme.colors.border)
             // Left side - Logo and title (draggable area)
@@ -126,7 +130,7 @@ impl MainWindow {
                     .h_full()
                     .flex()
                     .items_center()
-                    .px(px(16.0))
+                    .px(px(12.0))
                     .cursor_pointer()
                     .on_mouse_down(gpui::MouseButton::Left, |_, window, _cx: &mut App| {
                         window.start_window_move();
@@ -135,19 +139,30 @@ impl MainWindow {
                         div()
                             .flex()
                             .items_center()
-                            .gap(px(8.0))
-                            // Logo
+                            .gap(px(10.0))
+                            // Logo - gradient-style badge
                             .child(
                                 div()
-                                    .size(px(24.0))
-                                    .rounded(px(4.0))
+                                    .size(px(22.0))
+                                    .rounded(px(6.0))
                                     .bg(theme.colors.accent)
+                                    .flex()
+                                    .items_center()
+                                    .justify_center()
+                                    .child(
+                                        div()
+                                            .text_size(px(11.0))
+                                            .font_weight(gpui::FontWeight::BOLD)
+                                            .text_color(gpui::white())
+                                            .child("A")
+                                    )
                             )
                             // Title
                             .child(
                                 div()
-                                    .text_size(px(14.0))
+                                    .text_size(px(13.0))
                                     .font_weight(gpui::FontWeight::SEMIBOLD)
+                                    .text_color(theme.colors.text_primary)
                                     .child("API Dash")
                             )
                     )
@@ -158,17 +173,19 @@ impl MainWindow {
                     .flex()
                     .items_center()
                     .h_full()
+                    .gap(px(1.0))
                     // Minimize button
                     .child(
                         div()
                             .id("btn-minimize")
-                            .w(px(46.0))
+                            .w(px(44.0))
                             .h_full()
                             .flex()
                             .items_center()
                             .justify_center()
                             .cursor_pointer()
                             .hover(|s| s.bg(theme.colors.bg_tertiary))
+                            .active(|s| s.bg(theme.colors.bg_elevated))
                             .on_click(|_, window, _cx: &mut App| {
                                 window.minimize_window();
                             })
@@ -176,49 +193,51 @@ impl MainWindow {
                                 div()
                                     .w(px(10.0))
                                     .h(px(1.0))
-                                    .bg(theme.colors.text_secondary)
+                                    .bg(theme.colors.text_muted)
                             )
                     )
                     // Maximize button
                     .child(
                         div()
                             .id("btn-maximize")
-                            .w(px(46.0))
+                            .w(px(44.0))
                             .h_full()
                             .flex()
                             .items_center()
                             .justify_center()
                             .cursor_pointer()
                             .hover(|s| s.bg(theme.colors.bg_tertiary))
+                            .active(|s| s.bg(theme.colors.bg_elevated))
                             .on_click(|_, window, _cx: &mut App| {
                                 window.toggle_fullscreen();
                             })
                             .child(
                                 div()
-                                    .size(px(10.0))
+                                    .size(px(9.0))
                                     .border_1()
-                                    .border_color(theme.colors.text_secondary)
+                                    .border_color(theme.colors.text_muted)
+                                    .rounded(px(1.0))
                             )
                     )
                     // Close button
                     .child(
                         div()
                             .id("btn-close")
-                            .w(px(46.0))
+                            .w(px(44.0))
                             .h_full()
                             .flex()
                             .items_center()
                             .justify_center()
                             .cursor_pointer()
-                            .hover(|s| s.bg(gpui::rgb(0xe81123)))
+                            .text_color(theme.colors.text_muted)
+                            .hover(|s| s.bg(gpui::rgb(0xc42b1c)).text_color(gpui::white()))
                             .on_click(|_, _window, cx: &mut App| {
                                 cx.quit();
                             })
                             .child(
                                 div()
-                                    .text_size(px(16.0))
-                                    .text_color(theme.colors.text_secondary)
-                                    .child("×")
+                                    .text_size(px(14.0))
+                                    .child("✕")
                             )
                     )
             )

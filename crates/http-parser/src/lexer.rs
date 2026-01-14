@@ -46,6 +46,8 @@ pub struct Lexer<'a> {
     current_line: usize,
     in_script: Option<ScriptType>,
     in_body: bool,
+    /// Pending token to return on next call (used when method and URL are on same line)
+    pending_token: Option<Token>,
 }
 
 impl<'a> Lexer<'a> {
@@ -57,6 +59,7 @@ impl<'a> Lexer<'a> {
             current_line: 0,
             in_script: None,
             in_body: false,
+            pending_token: None,
         }
     }
 
@@ -73,12 +76,18 @@ impl<'a> Lexer<'a> {
             current_line: self.current_line,
             in_script: self.in_script,
             in_body: self.in_body,
+            pending_token: self.pending_token.clone(),
         };
         clone.next_token()
     }
 
     /// Get the next token
     pub fn next_token(&mut self) -> Token {
+        // Check for pending token first
+        if let Some(token) = self.pending_token.take() {
+            return token;
+        }
+
         if self.current_line >= self.lines.len() {
             return Token::Eof;
         }
@@ -140,19 +149,27 @@ impl<'a> Lexer<'a> {
         if let Some(method) = parts.first() {
             let method_upper = method.to_uppercase();
             if is_http_method(&method_upper) {
-                let _url = parts.get(1).map(|s| s.trim()).unwrap_or("");
+                // If there's a URL on the same line, store it as pending token
+                if let Some(url) = parts.get(1).map(|s| s.trim()) {
+                    if !url.is_empty() {
+                        self.pending_token = Some(Token::Url(url.to_string()));
+                    }
+                }
                 return Token::Method(method_upper);
             }
         }
 
         // Check for header (Key: Value)
-        if let Some(colon_pos) = trimmed.find(':') {
-            let key = trimmed[..colon_pos].trim();
-            let value = trimmed[colon_pos + 1..].trim();
+        // Headers must not start with { or [ (which would be JSON body)
+        if !trimmed.starts_with('{') && !trimmed.starts_with('[') {
+            if let Some(colon_pos) = trimmed.find(':') {
+                let key = trimmed[..colon_pos].trim();
+                let value = trimmed[colon_pos + 1..].trim();
 
-            // Headers can't have spaces in the key
-            if !key.contains(' ') && !key.is_empty() {
-                return Token::Header(key.to_string(), value.to_string());
+                // Headers can't have spaces in the key and must be alphanumeric with dashes
+                if !key.contains(' ') && !key.is_empty() && key.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_') {
+                    return Token::Header(key.to_string(), value.to_string());
+                }
             }
         }
 
@@ -250,6 +267,7 @@ Content-Type: application/json"#;
 
         let mut lexer = Lexer::new(content);
         assert!(matches!(lexer.next_token(), Token::Method(_)));
+        assert!(matches!(lexer.next_token(), Token::Url(_)));
         assert!(matches!(lexer.next_token(), Token::Header(k, _) if k == "Authorization"));
         assert!(matches!(lexer.next_token(), Token::Header(k, _) if k == "Content-Type"));
     }

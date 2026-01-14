@@ -174,6 +174,8 @@ pub struct RequestPanel {
     edit_undo_stack: Vec<(EditTarget, String, Range<usize>)>,
     /// Redo stack for edit fields
     edit_redo_stack: Vec<(EditTarget, String, Range<usize>)>,
+    /// Flag to prevent parent click handler from clearing focus when input is clicked
+    skip_blur: bool,
     /// Focus handle for editable fields
     edit_focus: FocusHandle,
     /// Reference to explorer panel for environment variable substitution
@@ -221,6 +223,7 @@ impl RequestPanel {
             url_redo_stack: Vec::new(),
             edit_undo_stack: Vec::new(),
             edit_redo_stack: Vec::new(),
+            skip_blur: false,
             edit_focus: cx.focus_handle(),
             explorer_panel: None,
         }
@@ -1309,6 +1312,11 @@ impl RequestPanel {
         // Handle Ctrl shortcuts
         if ctrl {
             match key {
+                "enter" => {
+                    // Ctrl+Enter = Send request
+                    self.send_request(cx);
+                    return;
+                }
                 "a" => {
                     self.select_all(cx);
                     return;
@@ -1437,10 +1445,27 @@ impl RequestPanel {
 
 impl Render for RequestPanel {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        // Reset skip_blur flag at start of each render
+        self.skip_blur = false;
+
         div()
+            .id("request-panel")
             .size_full()
             .flex()
             .flex_col()
+            .relative()
+            .on_mouse_down(gpui::MouseButton::Left, cx.listener(|this, _, _, cx| {
+                // Only clear focus if an input wasn't clicked
+                if !this.skip_blur && this.active_edit.is_some() {
+                    this.active_edit = None;
+                    cx.notify();
+                }
+                // Close dropdown when clicking outside
+                if this.method_dropdown_open {
+                    this.method_dropdown_open = false;
+                    cx.notify();
+                }
+            }))
             // URL bar
             .child(self.render_url_bar(window, cx))
             // Tabs
@@ -1448,11 +1473,16 @@ impl Render for RequestPanel {
             // Tab content
             .child(
                 div()
+                    .id("tab-content")
                     .flex_1()
                     .p(px(12.0))
-                    .overflow_hidden()
+                    .overflow_scroll()
                     .child(self.render_tab_content(cx)),
             )
+            // Floating dropdown overlay (rendered last to be on top)
+            .when(self.method_dropdown_open, |el| {
+                el.child(self.render_method_dropdown_overlay(cx))
+            })
     }
 }
 
@@ -1463,67 +1493,117 @@ impl RequestPanel {
         let method_color = theme.method_color(method.as_str());
         let is_url_focused = self.url_focus.is_focused(window);
 
+        // Detect protocol
+        let is_https = self.url.starts_with("https://");
+        let is_http = self.url.starts_with("http://");
+        let protocol_color = if is_https {
+            theme.colors.status_success
+        } else if is_http {
+            theme.colors.method_patch // orange/yellow for http
+        } else {
+            theme.colors.text_muted
+        };
+
         // Calculate approximate left offset of URL input
         // Sidebar: 250px + method area + padding
         self.url_input_left = 293.0;
 
         div()
-            .h(px(48.0))
             .w_full()
+            .h(px(56.0))
             .flex()
             .items_center()
-            .gap(px(8.0))
-            .px(px(12.0))
+            .gap(px(10.0))
+            .px(px(16.0))
+            .bg(theme.colors.bg_secondary)
             .border_b_1()
             .border_color(theme.colors.border)
-            // Method selector with dropdown
+            // Method selector button (dropdown rendered separately as overlay)
             .child(
                 div()
-                    .relative()
+                    .id("method-selector")
+                    .min_w(px(72.0))
+                    .px(px(12.0))
+                    .py(px(8.0))
+                    .rounded(px(6.0))
+                    .bg(method_color.opacity(0.1))
+                    .border_1()
+                    .border_color(method_color.opacity(0.2))
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .gap(px(4.0))
+                    .text_size(px(12.0))
+                    .font_weight(gpui::FontWeight::BOLD)
+                    .text_color(method_color)
+                    .cursor_pointer()
+                    .hover(|s| s.bg(method_color.opacity(0.15)))
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.skip_blur = true;
+                        this.toggle_method_dropdown(cx);
+                    }))
+                    .child(method.as_str())
                     .child(
                         div()
-                            .id("method-selector")
-                            .px(px(12.0))
-                            .py(px(6.0))
-                            .rounded(px(4.0))
-                            .bg(theme.colors.bg_tertiary)
-                            .text_size(px(13.0))
-                            .font_weight(gpui::FontWeight::SEMIBOLD)
-                            .text_color(method_color)
-                            .cursor_pointer()
-                            .hover(|s| s.bg(theme.colors.bg_elevated))
-                            .on_click(cx.listener(|this, _, _, cx| {
-                                this.toggle_method_dropdown(cx);
-                            }))
-                            .child(method.as_str()),
+                            .text_size(px(8.0))
+                            .text_color(method_color.opacity(0.7))
+                            .child("▼")
                     )
-                    .when(self.method_dropdown_open, |el| {
-                        el.child(self.render_method_dropdown(cx))
-                    }),
             )
+            // Protocol indicator
+            .when(is_https || is_http, |el| {
+                el.child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap(px(4.0))
+                        .px(px(8.0))
+                        .py(px(4.0))
+                        .rounded(px(4.0))
+                        .bg(protocol_color.opacity(0.1))
+                        .child(
+                            div()
+                                .text_size(px(11.0))
+                                .when(is_https, |el| el.child("🔒"))
+                                .when(is_http, |el| el.child("⚠"))
+                        )
+                        .child(
+                            div()
+                                .text_size(px(10.0))
+                                .font_weight(gpui::FontWeight::SEMIBOLD)
+                                .text_color(protocol_color)
+                                .when(is_https, |el| el.child("HTTPS"))
+                                .when(is_http, |el| el.child("HTTP"))
+                        )
+                )
+            })
             // URL input with selection support
             .child(
                 div()
                     .id("url-input")
                     .flex_1()
                     .min_w(px(0.0))
-                    .h(px(32.0))
-                    .px(px(12.0))
+                    .h(px(36.0))
+                    .px(px(14.0))
                     .flex()
                     .items_center()
                     .overflow_hidden()
-                    .rounded(px(4.0))
+                    .rounded(px(6.0))
                     .border_1()
                     .when(is_url_focused, |el| {
-                        el.border_color(theme.colors.border_focused)
+                        el.border_color(theme.colors.accent)
+                            .bg(theme.colors.bg_primary)
                     })
-                    .when(!is_url_focused, |el| el.border_color(theme.colors.border))
-                    .bg(theme.colors.bg_tertiary)
+                    .when(!is_url_focused, |el| {
+                        el.border_color(theme.colors.border)
+                            .bg(theme.colors.bg_tertiary)
+                    })
                     .cursor_text()
                     .track_focus(&self.url_focus)
                     .on_mouse_down(
                         gpui::MouseButton::Left,
                         cx.listener(|this, event: &MouseDownEvent, window, cx| {
+                            this.skip_blur = true;
                             this.focus_url(window, cx);
                             this.handle_url_mouse_down(event, cx);
                         }),
@@ -1548,32 +1628,69 @@ impl RequestPanel {
                     }))
                     .child(self.render_url_text(is_url_focused, cx)),
             )
-            // Send button
-            .child({
-                let is_loading = self.loading;
+            // Send button with shortcut hint
+            .child(
                 div()
-                    .id("send-button")
-                    .px(px(16.0))
-                    .py(px(8.0))
-                    .rounded(px(4.0))
-                    .text_size(px(13.0))
-                    .font_weight(gpui::FontWeight::SEMIBOLD)
-                    .text_color(gpui::white())
-                    .when(is_loading, |el| {
-                        el.bg(theme.colors.text_muted)
-                            .cursor_default()
+                    .flex()
+                    .items_center()
+                    .gap(px(8.0))
+                    .child({
+                        let is_loading = self.loading;
+                        div()
+                            .id("send-button")
+                            .h(px(36.0))
+                            .px(px(16.0))
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .gap(px(6.0))
+                            .rounded(px(6.0))
+                            .text_size(px(13.0))
+                            .font_weight(gpui::FontWeight::SEMIBOLD)
+                            .text_color(gpui::white())
+                            .when(is_loading, |el| {
+                                el.bg(theme.colors.accent.opacity(0.7))
+                                    .cursor_default()
+                                    // Spinner
+                                    .child(
+                                        div()
+                                            .size(px(14.0))
+                                            .rounded_full()
+                                            .border_2()
+                                            .border_color(gpui::white().opacity(0.3))
+                                            .border_t_2()
+                                            .border_color(gpui::white())
+                                    )
+                                    .child("Sending...")
+                            })
+                            .when(!is_loading, |el| {
+                                el.bg(theme.colors.accent)
+                                    .cursor_pointer()
+                                    .hover(|style| style.bg(theme.colors.accent_hover))
+                                    .active(|style| style.opacity(0.9))
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        this.send_request(cx);
+                                    }))
+                                    .child(
+                                        div()
+                                            .text_size(px(10.0))
+                                            .child("▶")
+                                    )
+                                    .child("Send")
+                            })
                     })
-                    .when(!is_loading, |el| {
-                        el.bg(theme.colors.accent)
-                            .cursor_pointer()
-                            .hover(|style| style.bg(theme.colors.accent_hover))
-                            .active(|style| style.opacity(0.8))
-                            .on_click(cx.listener(|this, _, _, cx| {
-                                this.send_request(cx);
-                            }))
-                    })
-                    .child(if is_loading { "Sending..." } else { "Send" })
-            })
+                    // Keyboard shortcut hint
+                    .child(
+                        div()
+                            .px(px(6.0))
+                            .py(px(4.0))
+                            .rounded(px(4.0))
+                            .bg(theme.colors.bg_tertiary)
+                            .text_size(px(10.0))
+                            .text_color(theme.colors.text_muted)
+                            .child("⌘↵")
+                    )
+            )
     }
 
     fn render_url_text(&self, is_focused: bool, cx: &Context<Self>) -> gpui::AnyElement {
@@ -1589,76 +1706,160 @@ impl RequestPanel {
         )
     }
 
-    fn render_method_dropdown(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render_method_dropdown_overlay(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = theme::current(cx);
 
+        // Positioned at top-left of panel, below the URL bar
         div()
+            .id("method-dropdown-overlay")
             .absolute()
-            .top(px(36.0))
-            .left_0()
+            .top(px(46.0))  // Below URL bar
+            .left(px(16.0)) // Same padding as URL bar
             .min_w(px(100.0))
-            .py(px(4.0))
-            .rounded(px(4.0))
+            .py(px(6.0))
+            .rounded(px(8.0))
             .bg(theme.colors.bg_elevated)
             .border_1()
             .border_color(theme.colors.border)
             .shadow_lg()
+            .on_mouse_down(gpui::MouseButton::Left, cx.listener(|this, _, _, cx| {
+                this.skip_blur = true;
+                cx.stop_propagation();
+            }))
             .children(HttpMethod::all().iter().map(|&m| {
                 let method_color = theme.method_color(m.as_str());
                 let is_selected = m == self.method;
 
                 div()
                     .id(SharedString::from(format!("method-{}", m.as_str())))
+                    .mx(px(4.0))
                     .px(px(12.0))
-                    .py(px(6.0))
-                    .text_size(px(13.0))
-                    .font_weight(gpui::FontWeight::SEMIBOLD)
-                    .text_color(method_color)
+                    .py(px(8.0))
+                    .rounded(px(4.0))
+                    .flex()
+                    .items_center()
+                    .gap(px(8.0))
                     .cursor_pointer()
-                    .when(is_selected, |el| el.bg(theme.colors.bg_tertiary))
-                    .hover(|s| s.bg(theme.colors.bg_tertiary))
+                    .when(is_selected, |el| {
+                        el.bg(method_color.opacity(0.1))
+                            .child(
+                                div()
+                                    .size(px(6.0))
+                                    .rounded_full()
+                                    .bg(method_color)
+                            )
+                    })
+                    .when(!is_selected, |el| {
+                        el.hover(|s| s.bg(theme.colors.bg_tertiary))
+                            .child(div().size(px(6.0)))
+                    })
+                    .child(
+                        div()
+                            .text_size(px(12.0))
+                            .font_weight(gpui::FontWeight::BOLD)
+                            .text_color(method_color)
+                            .child(m.as_str())
+                    )
                     .on_click(cx.listener(move |this, _, _, cx| {
                         this.select_method(m, cx);
                     }))
-                    .child(m.as_str())
             }))
     }
 
     fn render_tabs(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = theme::current(cx);
-        let tabs = ["Params", "Headers", "Body", "Auth"];
+        let tabs = [("Params", "?"), ("Headers", "H"), ("Body", "{ }"), ("Auth", "🔒")];
         let active_tab = self.active_tab;
 
+        // Get counts for badges
+        let param_count = self.params.iter().filter(|p| p.enabled && !p.key.is_empty()).count();
+        let header_count = self.headers.iter().filter(|h| h.enabled && !h.key.is_empty()).count();
+
         div()
-            .h(px(36.0))
+            .h(px(40.0))
             .w_full()
             .flex()
             .items_center()
             .px(px(12.0))
-            .gap(px(4.0))
+            .gap(px(2.0))
             .border_b_1()
             .border_color(theme.colors.border)
-            .children(tabs.iter().enumerate().map(|(i, tab)| {
+            .bg(theme.colors.bg_secondary)
+            .children(tabs.iter().enumerate().map(|(i, (tab, icon))| {
                 let is_active = i == active_tab;
+                let count = match i {
+                    0 => param_count,
+                    1 => header_count,
+                    _ => 0,
+                };
+
                 div()
                     .id(SharedString::from(format!("tab-{}", i)))
-                    .px(px(12.0))
+                    .px(px(14.0))
                     .py(px(8.0))
-                    .text_size(px(13.0))
+                    .flex()
+                    .items_center()
+                    .gap(px(6.0))
+                    .rounded_t(px(6.0))
                     .cursor_pointer()
                     .when(is_active, |el| {
-                        el.text_color(theme.colors.text_primary)
-                            .border_b_2()
-                            .border_color(theme.colors.accent)
+                        el.bg(theme.colors.bg_tertiary)
+                            .child(
+                                div()
+                                    .text_size(px(11.0))
+                                    .text_color(theme.colors.accent)
+                                    .child(*icon)
+                            )
+                            .child(
+                                div()
+                                    .text_size(px(12.0))
+                                    .font_weight(gpui::FontWeight::MEDIUM)
+                                    .text_color(theme.colors.text_primary)
+                                    .child(*tab)
+                            )
+                            .when(count > 0, |el| {
+                                el.child(
+                                    div()
+                                        .px(px(5.0))
+                                        .py(px(1.0))
+                                        .rounded(px(8.0))
+                                        .bg(theme.colors.accent.opacity(0.15))
+                                        .text_size(px(10.0))
+                                        .text_color(theme.colors.accent)
+                                        .child(format!("{}", count))
+                                )
+                            })
                     })
                     .when(!is_active, |el| {
-                        el.text_color(theme.colors.text_secondary)
-                            .hover(|style| style.text_color(theme.colors.text_primary))
+                        el.hover(|s| s.bg(theme.colors.bg_tertiary.opacity(0.5)))
+                            .child(
+                                div()
+                                    .text_size(px(11.0))
+                                    .text_color(theme.colors.text_muted)
+                                    .child(*icon)
+                            )
+                            .child(
+                                div()
+                                    .text_size(px(12.0))
+                                    .text_color(theme.colors.text_secondary)
+                                    .child(*tab)
+                            )
+                            .when(count > 0, |el| {
+                                el.child(
+                                    div()
+                                        .px(px(5.0))
+                                        .py(px(1.0))
+                                        .rounded(px(8.0))
+                                        .bg(theme.colors.bg_tertiary)
+                                        .text_size(px(10.0))
+                                        .text_color(theme.colors.text_muted)
+                                        .child(format!("{}", count))
+                                )
+                            })
                     })
                     .on_click(cx.listener(move |this, _, _, cx| {
                         this.set_tab(i, cx);
                     }))
-                    .child(*tab)
             }))
     }
 
@@ -1677,6 +1878,7 @@ impl RequestPanel {
         let params_len = self.params.len();
         let active_edit = self.active_edit;
         let edit_selection = self.edit_selection.clone();
+        let enabled_count = self.params.iter().filter(|p| p.enabled && !p.key.is_empty()).count();
 
         // Collect param data first to avoid borrow issues
         let params_data: Vec<_> = self.params.iter().enumerate().map(|(i, param)| {
@@ -1687,34 +1889,98 @@ impl RequestPanel {
             .w_full()
             .flex()
             .flex_col()
-            .gap(px(8.0))
+            .gap(px(2.0))
             .track_focus(&self.edit_focus)
             .on_key_down(cx.listener(|this, event: &KeyDownEvent, _, cx| {
                 this.handle_edit_key(event, cx);
             }));
+
+        // Table header
+        container = container.child(
+            div()
+                .w_full()
+                .flex()
+                .items_center()
+                .gap(px(8.0))
+                .pb(px(8.0))
+                .border_b_1()
+                .border_color(theme.colors.border.opacity(0.5))
+                .mb(px(4.0))
+                // Checkbox spacer
+                .child(div().size(px(16.0)))
+                // Key column header
+                .child(
+                    div()
+                        .w(px(150.0))
+                        .text_size(px(10.0))
+                        .font_weight(gpui::FontWeight::SEMIBOLD)
+                        .text_color(theme.colors.text_muted)
+                        .child("KEY")
+                )
+                // Value column header
+                .child(
+                    div()
+                        .flex_1()
+                        .flex()
+                        .items_center()
+                        .justify_between()
+                        .child(
+                            div()
+                                .text_size(px(10.0))
+                                .font_weight(gpui::FontWeight::SEMIBOLD)
+                                .text_color(theme.colors.text_muted)
+                                .child("VALUE")
+                        )
+                        .child(
+                            div()
+                                .px(px(6.0))
+                                .py(px(2.0))
+                                .rounded(px(8.0))
+                                .bg(theme.colors.accent.opacity(0.12))
+                                .text_size(px(10.0))
+                                .font_weight(gpui::FontWeight::MEDIUM)
+                                .text_color(theme.colors.accent)
+                                .child(format!("{} active", enabled_count))
+                        )
+                )
+                // Action spacer
+                .child(div().size(px(24.0)))
+        );
 
         // Params list
         for (i, is_enabled, key, value) in params_data {
             let can_remove = params_len > 1;
             let is_editing_key = active_edit == Some(EditTarget::ParamKey(i));
             let is_editing_value = active_edit == Some(EditTarget::ParamValue(i));
+            let is_row_editing = is_editing_key || is_editing_value;
 
             container = container.child(
                 div()
+                    .id(SharedString::from(format!("param-row-{}", i)))
                     .w_full()
                     .flex()
                     .items_center()
                     .gap(px(8.0))
+                    .py(px(4.0))
+                    .px(px(2.0))
+                    .rounded(px(4.0))
+                    .when(!is_row_editing, |el| el.hover(|s| s.bg(theme.colors.bg_tertiary.opacity(0.3))))
                     // Checkbox
                     .child(
                         div()
                             .id(SharedString::from(format!("param-checkbox-{}", i)))
                             .size(px(16.0))
-                            .rounded(px(3.0))
+                            .rounded(px(4.0))
                             .border_1()
-                            .border_color(theme.colors.border)
                             .cursor_pointer()
-                            .when(is_enabled, |el| el.bg(theme.colors.accent))
+                            .when(is_enabled, |el| {
+                                el.bg(theme.colors.accent)
+                                    .border_color(theme.colors.accent)
+                            })
+                            .when(!is_enabled, |el| {
+                                el.border_color(theme.colors.border)
+                                    .hover(|s| s.border_color(theme.colors.text_muted))
+                            })
                             .flex()
                             .items_center()
                             .justify_center()
@@ -1765,9 +2031,10 @@ impl RequestPanel {
                             .items_center()
                             .justify_center()
                             .cursor_pointer()
+                            .text_size(px(14.0))
                             .when(can_remove, |el| {
-                                el.hover(|s| s.bg(theme.colors.bg_tertiary))
-                                    .text_color(theme.colors.text_muted)
+                                el.text_color(theme.colors.text_muted)
+                                    .hover(|s| s.bg(theme.colors.status_client_error.opacity(0.1)).text_color(theme.colors.status_client_error))
                                     .on_click(cx.listener(move |this, _, _, cx| {
                                         this.remove_param(i, cx);
                                     }))
@@ -1782,18 +2049,27 @@ impl RequestPanel {
         container = container.child(
             div()
                 .id("add-param-btn")
-                .pt(px(4.0))
+                .mt(px(8.0))
+                .px(px(10.0))
+                .py(px(6.0))
+                .rounded(px(6.0))
                 .flex()
                 .items_center()
-                .gap(px(4.0))
+                .gap(px(6.0))
                 .cursor_pointer()
                 .text_size(px(12.0))
                 .text_color(theme.colors.accent)
-                .hover(|s| s.text_color(theme.colors.text_primary))
+                .border_1()
+                .border_color(theme.colors.accent.opacity(0.3))
+                .hover(|s| s.bg(theme.colors.accent.opacity(0.08)).border_color(theme.colors.accent.opacity(0.5)))
                 .on_click(cx.listener(|this, _, _, cx| {
                     this.add_param(cx);
                 }))
-                .child("+")
+                .child(
+                    div()
+                        .text_size(px(14.0))
+                        .child("+")
+                )
                 .child("Add Parameter")
         );
 
@@ -1805,6 +2081,7 @@ impl RequestPanel {
         let headers_len = self.headers.len();
         let active_edit = self.active_edit;
         let edit_selection = self.edit_selection.clone();
+        let enabled_count = self.headers.iter().filter(|h| h.enabled && !h.key.is_empty()).count();
 
         // Collect header data first to avoid borrow issues
         let headers_data: Vec<_> = self.headers.iter().enumerate().map(|(i, header)| {
@@ -1815,34 +2092,98 @@ impl RequestPanel {
             .w_full()
             .flex()
             .flex_col()
-            .gap(px(8.0))
+            .gap(px(2.0))
             .track_focus(&self.edit_focus)
             .on_key_down(cx.listener(|this, event: &KeyDownEvent, _, cx| {
                 this.handle_edit_key(event, cx);
             }));
+
+        // Table header
+        container = container.child(
+            div()
+                .w_full()
+                .flex()
+                .items_center()
+                .gap(px(8.0))
+                .pb(px(8.0))
+                .border_b_1()
+                .border_color(theme.colors.border.opacity(0.5))
+                .mb(px(4.0))
+                // Checkbox spacer
+                .child(div().size(px(16.0)))
+                // Key column header
+                .child(
+                    div()
+                        .w(px(150.0))
+                        .text_size(px(10.0))
+                        .font_weight(gpui::FontWeight::SEMIBOLD)
+                        .text_color(theme.colors.text_muted)
+                        .child("HEADER")
+                )
+                // Value column header
+                .child(
+                    div()
+                        .flex_1()
+                        .flex()
+                        .items_center()
+                        .justify_between()
+                        .child(
+                            div()
+                                .text_size(px(10.0))
+                                .font_weight(gpui::FontWeight::SEMIBOLD)
+                                .text_color(theme.colors.text_muted)
+                                .child("VALUE")
+                        )
+                        .child(
+                            div()
+                                .px(px(6.0))
+                                .py(px(2.0))
+                                .rounded(px(8.0))
+                                .bg(theme.colors.accent.opacity(0.12))
+                                .text_size(px(10.0))
+                                .font_weight(gpui::FontWeight::MEDIUM)
+                                .text_color(theme.colors.accent)
+                                .child(format!("{} active", enabled_count))
+                        )
+                )
+                // Action spacer
+                .child(div().size(px(24.0)))
+        );
 
         // Headers list
         for (i, is_enabled, key, value) in headers_data {
             let can_remove = headers_len > 1;
             let is_editing_key = active_edit == Some(EditTarget::HeaderKey(i));
             let is_editing_value = active_edit == Some(EditTarget::HeaderValue(i));
+            let is_row_editing = is_editing_key || is_editing_value;
 
             container = container.child(
                 div()
+                    .id(SharedString::from(format!("header-row-{}", i)))
                     .w_full()
                     .flex()
                     .items_center()
                     .gap(px(8.0))
+                    .py(px(4.0))
+                    .px(px(2.0))
+                    .rounded(px(4.0))
+                    .when(!is_row_editing, |el| el.hover(|s| s.bg(theme.colors.bg_tertiary.opacity(0.3))))
                     // Checkbox
                     .child(
                         div()
                             .id(SharedString::from(format!("header-checkbox-{}", i)))
                             .size(px(16.0))
-                            .rounded(px(3.0))
+                            .rounded(px(4.0))
                             .border_1()
-                            .border_color(theme.colors.border)
                             .cursor_pointer()
-                            .when(is_enabled, |el| el.bg(theme.colors.accent))
+                            .when(is_enabled, |el| {
+                                el.bg(theme.colors.accent)
+                                    .border_color(theme.colors.accent)
+                            })
+                            .when(!is_enabled, |el| {
+                                el.border_color(theme.colors.border)
+                                    .hover(|s| s.border_color(theme.colors.text_muted))
+                            })
                             .flex()
                             .items_center()
                             .justify_center()
@@ -1864,7 +2205,7 @@ impl RequestPanel {
                             format!("header-key-{}", i),
                             EditTarget::HeaderKey(i),
                             &key,
-                            "Key",
+                            "Header name",
                             is_editing_key,
                             if is_editing_key { edit_selection.clone() } else { 0..0 },
                             px(150.0),
@@ -1893,9 +2234,10 @@ impl RequestPanel {
                             .items_center()
                             .justify_center()
                             .cursor_pointer()
+                            .text_size(px(14.0))
                             .when(can_remove, |el| {
-                                el.hover(|s| s.bg(theme.colors.bg_tertiary))
-                                    .text_color(theme.colors.text_muted)
+                                el.text_color(theme.colors.text_muted)
+                                    .hover(|s| s.bg(theme.colors.status_client_error.opacity(0.1)).text_color(theme.colors.status_client_error))
                                     .on_click(cx.listener(move |this, _, _, cx| {
                                         this.remove_header(i, cx);
                                     }))
@@ -1910,18 +2252,27 @@ impl RequestPanel {
         container = container.child(
             div()
                 .id("add-header-btn")
-                .pt(px(4.0))
+                .mt(px(8.0))
+                .px(px(10.0))
+                .py(px(6.0))
+                .rounded(px(6.0))
                 .flex()
                 .items_center()
-                .gap(px(4.0))
+                .gap(px(6.0))
                 .cursor_pointer()
                 .text_size(px(12.0))
                 .text_color(theme.colors.accent)
-                .hover(|s| s.text_color(theme.colors.text_primary))
+                .border_1()
+                .border_color(theme.colors.accent.opacity(0.3))
+                .hover(|s| s.bg(theme.colors.accent.opacity(0.08)).border_color(theme.colors.accent.opacity(0.5)))
                 .on_click(cx.listener(|this, _, _, cx| {
                     this.add_header(cx);
                 }))
-                .child("+")
+                .child(
+                    div()
+                        .text_size(px(14.0))
+                        .child("+")
+                )
                 .child("Add Header")
         );
 
@@ -1933,6 +2284,10 @@ impl RequestPanel {
         let is_editing_body = self.active_edit == Some(EditTarget::Body);
         let edit_selection = self.edit_selection.clone();
         let body = self.body.clone();
+        let line_count = body.lines().count();
+
+        // Check if valid JSON
+        let is_valid_json = serde_json::from_str::<serde_json::Value>(&body).is_ok();
 
         div()
             .w_full()
@@ -1940,75 +2295,174 @@ impl RequestPanel {
             .flex()
             .flex_col()
             .gap(px(8.0))
-            // Body type selector
+            // Toolbar row
             .child(
                 div()
+                    .w_full()
                     .flex()
                     .items_center()
-                    .gap(px(8.0))
+                    .justify_between()
+                    // Left: Body type selector
                     .child(
                         div()
-                            .px(px(12.0))
-                            .py(px(4.0))
-                            .rounded(px(4.0))
-                            .bg(theme.colors.accent)
-                            .text_size(px(12.0))
-                            .text_color(gpui::white())
-                            .child("JSON")
+                            .flex()
+                            .items_center()
+                            .gap(px(4.0))
+                            .p(px(3.0))
+                            .rounded(px(6.0))
+                            .bg(theme.colors.bg_tertiary)
+                            .child(
+                                div()
+                                    .id("body-type-json")
+                                    .px(px(10.0))
+                                    .py(px(5.0))
+                                    .rounded(px(4.0))
+                                    .cursor_pointer()
+                                    .bg(theme.colors.bg_primary)
+                                    .text_size(px(11.0))
+                                    .font_weight(gpui::FontWeight::MEDIUM)
+                                    .text_color(theme.colors.text_primary)
+                                    .child("JSON")
+                            )
+                            .child(
+                                div()
+                                    .id("body-type-raw")
+                                    .px(px(10.0))
+                                    .py(px(5.0))
+                                    .rounded(px(4.0))
+                                    .cursor_pointer()
+                                    .text_size(px(11.0))
+                                    .text_color(theme.colors.text_muted)
+                                    .hover(|s| s.text_color(theme.colors.text_secondary))
+                                    .child("Raw")
+                            )
+                            .child(
+                                div()
+                                    .id("body-type-form")
+                                    .px(px(10.0))
+                                    .py(px(5.0))
+                                    .rounded(px(4.0))
+                                    .cursor_pointer()
+                                    .text_size(px(11.0))
+                                    .text_color(theme.colors.text_muted)
+                                    .hover(|s| s.text_color(theme.colors.text_secondary))
+                                    .child("Form")
+                            )
                     )
+                    // Right: Status and info
                     .child(
                         div()
-                            .px(px(12.0))
-                            .py(px(4.0))
-                            .rounded(px(4.0))
-                            .text_size(px(12.0))
-                            .text_color(theme.colors.text_secondary)
-                            .child("Raw")
-                    )
-                    .child(
-                        div()
-                            .px(px(12.0))
-                            .py(px(4.0))
-                            .rounded(px(4.0))
-                            .text_size(px(12.0))
-                            .text_color(theme.colors.text_secondary)
-                            .child("Form")
+                            .flex()
+                            .items_center()
+                            .gap(px(8.0))
+                            // Validation status
+                            .when(is_valid_json && !body.is_empty(), |el| {
+                                el.child(
+                                    div()
+                                        .px(px(8.0))
+                                        .py(px(3.0))
+                                        .rounded(px(4.0))
+                                        .bg(theme.colors.status_success.opacity(0.12))
+                                        .text_size(px(10.0))
+                                        .font_weight(gpui::FontWeight::MEDIUM)
+                                        .text_color(theme.colors.status_success)
+                                        .child("Valid JSON")
+                                )
+                            })
+                            .when(!is_valid_json && !body.is_empty(), |el| {
+                                el.child(
+                                    div()
+                                        .px(px(8.0))
+                                        .py(px(3.0))
+                                        .rounded(px(4.0))
+                                        .bg(theme.colors.status_client_error.opacity(0.12))
+                                        .text_size(px(10.0))
+                                        .font_weight(gpui::FontWeight::MEDIUM)
+                                        .text_color(theme.colors.status_client_error)
+                                        .child("Invalid JSON")
+                                )
+                            })
+                            // Line count
+                            .child(
+                                div()
+                                    .text_size(px(11.0))
+                                    .text_color(theme.colors.text_muted)
+                                    .child(format!("{} lines", line_count))
+                            )
                     )
             )
-            // Body editor
+            // Body editor with code viewer style
             .child(
                 div()
-                    .id("body-editor")
                     .flex_1()
                     .w_full()
-                    .p(px(12.0))
-                    .rounded(px(4.0))
+                    .rounded(px(8.0))
                     .border_1()
-                    .cursor_text()
-                    .track_focus(&self.edit_focus)
-                    .on_key_down(cx.listener(|this, event: &KeyDownEvent, _, cx| {
-                        this.handle_edit_key(event, cx);
-                    }))
-                    .on_mouse_down(
-                        gpui::MouseButton::Left,
-                        cx.listener(|this, event: &MouseDownEvent, window, cx| {
-                            this.start_editing(EditTarget::Body, window, cx);
-                            this.handle_edit_mouse_down(event, 12.0, 7.2, cx);
-                        }),
-                    )
-                    .on_mouse_move(cx.listener(|this, event: &MouseMoveEvent, _, cx| {
-                        this.handle_edit_mouse_move(event, 7.2, cx);
-                    }))
-                    .on_mouse_up(
-                        gpui::MouseButton::Left,
-                        cx.listener(|this, event: &MouseUpEvent, _, cx| {
-                            this.handle_edit_mouse_up(event, cx);
-                        }),
-                    )
+                    .overflow_hidden()
                     .when(is_editing_body, |el| el.border_color(theme.colors.accent))
                     .when(!is_editing_body, |el| el.border_color(theme.colors.border))
-                    .bg(theme.colors.bg_tertiary)
-                    .child(self.render_body_text(&body, is_editing_body, edit_selection, cx))
+                    // Code header bar (macOS style)
+                    .child(
+                        div()
+                            .w_full()
+                            .h(px(28.0))
+                            .flex()
+                            .items_center()
+                            .justify_between()
+                            .px(px(12.0))
+                            .border_b_1()
+                            .border_color(theme.colors.border.opacity(0.5))
+                            .bg(theme.colors.bg_secondary.opacity(0.5))
+                            .child(
+                                div()
+                                    .flex()
+                                    .items_center()
+                                    .gap(px(6.0))
+                                    .children((0..3).map(|_| {
+                                        div()
+                                            .size(px(8.0))
+                                            .rounded_full()
+                                            .bg(theme.colors.text_muted.opacity(0.3))
+                                    }))
+                            )
+                            .child(
+                                div()
+                                    .text_size(px(10.0))
+                                    .text_color(theme.colors.text_muted)
+                                    .child("request body")
+                            )
+                    )
+                    // Editor content
+                    .child(
+                        div()
+                            .id("body-editor")
+                            .flex_1()
+                            .w_full()
+                            .p(px(12.0))
+                            .cursor_text()
+                            .bg(theme.colors.bg_tertiary)
+                            .track_focus(&self.edit_focus)
+                            .on_key_down(cx.listener(|this, event: &KeyDownEvent, _, cx| {
+                                this.handle_edit_key(event, cx);
+                            }))
+                            .on_mouse_down(
+                                gpui::MouseButton::Left,
+                                cx.listener(|this, event: &MouseDownEvent, window, cx| {
+                                    this.start_editing(EditTarget::Body, window, cx);
+                                    this.handle_edit_mouse_down(event, 12.0, 7.2, cx);
+                                }),
+                            )
+                            .on_mouse_move(cx.listener(|this, event: &MouseMoveEvent, _, cx| {
+                                this.handle_edit_mouse_move(event, 7.2, cx);
+                            }))
+                            .on_mouse_up(
+                                gpui::MouseButton::Left,
+                                cx.listener(|this, event: &MouseUpEvent, _, cx| {
+                                    this.handle_edit_mouse_up(event, cx);
+                                }),
+                            )
+                            .child(self.render_body_text(&body, is_editing_body, edit_selection, cx))
+                    )
             )
             .into_any_element()
     }
@@ -2056,11 +2510,12 @@ impl RequestPanel {
             .id(SharedString::from(id))
             .w(width)
             .min_w(px(0.0))
-            .h(px(28.0))
+            // Dynamic height: fixed when unfocused, expands when focused
+            .when(!is_editing, |el| el.h(px(28.0)).overflow_hidden())
+            .when(is_editing, |el| el.min_h(px(28.0)).py(px(4.0)))
             .px(px(8.0))
             .flex()
-            .items_center()
-            .overflow_hidden()
+            .when(!is_editing, |el| el.items_center())
             .rounded(px(4.0))
             .border_1()
             .cursor_text()
@@ -2071,6 +2526,7 @@ impl RequestPanel {
             .on_mouse_down(
                 gpui::MouseButton::Left,
                 cx.listener(move |this, event: &MouseDownEvent, window, cx| {
+                    this.skip_blur = true;
                     this.start_editing(target, window, cx);
                     this.handle_edit_mouse_down(event, 8.0, 7.2, cx);
                 }),
@@ -2106,11 +2562,12 @@ impl RequestPanel {
             .id(SharedString::from(id))
             .flex_1()
             .min_w(px(0.0))
-            .h(px(28.0))
+            // Dynamic height: fixed when unfocused, expands when focused
+            .when(!is_editing, |el| el.h(px(28.0)).overflow_hidden())
+            .when(is_editing, |el| el.min_h(px(28.0)).py(px(4.0)))
             .px(px(8.0))
             .flex()
-            .items_center()
-            .overflow_hidden()
+            .when(!is_editing, |el| el.items_center())
             .rounded(px(4.0))
             .border_1()
             .cursor_text()
@@ -2121,6 +2578,7 @@ impl RequestPanel {
             .on_mouse_down(
                 gpui::MouseButton::Left,
                 cx.listener(move |this, event: &MouseDownEvent, window, cx| {
+                    this.skip_blur = true;
                     this.start_editing(target, window, cx);
                     this.handle_edit_mouse_down(event, 8.0, 7.2, cx);
                 }),
@@ -2168,10 +2626,10 @@ impl RequestPanel {
         let edit_selection = self.edit_selection.clone();
 
         let auth_types = [
-            (AuthType::None, "None"),
-            (AuthType::Bearer, "Bearer Token"),
-            (AuthType::Basic, "Basic Auth"),
-            (AuthType::ApiKey, "API Key"),
+            (AuthType::None, "None", "○"),
+            (AuthType::Bearer, "Bearer", "🎫"),
+            (AuthType::Basic, "Basic", "👤"),
+            (AuthType::ApiKey, "API Key", "🔑"),
         ];
 
         div()
@@ -2183,31 +2641,41 @@ impl RequestPanel {
             .on_key_down(cx.listener(|this, event: &KeyDownEvent, _, cx| {
                 this.handle_edit_key(event, cx);
             }))
-            // Auth type selector
+            // Auth type selector with pill style
             .child(
                 div()
                     .flex()
                     .items_center()
-                    .gap(px(8.0))
-                    .children(auth_types.iter().map(|(at, label)| {
+                    .gap(px(4.0))
+                    .p(px(3.0))
+                    .rounded(px(8.0))
+                    .bg(theme.colors.bg_tertiary)
+                    .children(auth_types.iter().map(|(at, label, icon)| {
                         let is_selected = *at == auth_type;
                         let at = *at;
                         div()
                             .id(SharedString::from(format!("auth-type-{:?}", at)))
+                            .flex()
+                            .items_center()
+                            .gap(px(6.0))
                             .px(px(12.0))
                             .py(px(6.0))
-                            .rounded(px(4.0))
+                            .rounded(px(6.0))
                             .cursor_pointer()
                             .text_size(px(12.0))
                             .when(is_selected, |el| {
-                                el.bg(theme.colors.bg_tertiary)
-                                    .border_1()
-                                    .border_color(theme.colors.accent)
+                                el.bg(theme.colors.bg_primary)
+                                    .font_weight(gpui::FontWeight::MEDIUM)
                                     .text_color(theme.colors.text_primary)
+                                    .child(
+                                        div()
+                                            .text_size(px(11.0))
+                                            .child(*icon)
+                                    )
                             })
                             .when(!is_selected, |el| {
-                                el.text_color(theme.colors.text_secondary)
-                                    .hover(|s| s.text_color(theme.colors.text_primary))
+                                el.text_color(theme.colors.text_muted)
+                                    .hover(|s| s.text_color(theme.colors.text_secondary).bg(theme.colors.bg_secondary.opacity(0.5)))
                             })
                             .on_click(cx.listener(move |this, _, _, cx| {
                                 this.set_auth_type(at, cx);
@@ -2232,10 +2700,46 @@ impl RequestPanel {
         match auth_type {
             AuthType::None => {
                 div()
-                    .pt(px(8.0))
-                    .text_size(px(12.0))
-                    .text_color(theme.colors.text_muted)
-                    .child("No authentication. The request will be sent without any auth headers.")
+                    .w_full()
+                    .p(px(16.0))
+                    .rounded(px(8.0))
+                    .bg(theme.colors.bg_tertiary.opacity(0.5))
+                    .border_1()
+                    .border_color(theme.colors.border.opacity(0.5))
+                    .flex()
+                    .items_center()
+                    .gap(px(12.0))
+                    .child(
+                        div()
+                            .size(px(32.0))
+                            .rounded(px(6.0))
+                            .bg(theme.colors.text_muted.opacity(0.1))
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .text_size(px(16.0))
+                            .text_color(theme.colors.text_muted)
+                            .child("○")
+                    )
+                    .child(
+                        div()
+                            .flex()
+                            .flex_col()
+                            .gap(px(2.0))
+                            .child(
+                                div()
+                                    .text_size(px(12.0))
+                                    .font_weight(gpui::FontWeight::MEDIUM)
+                                    .text_color(theme.colors.text_secondary)
+                                    .child("No Authentication")
+                            )
+                            .child(
+                                div()
+                                    .text_size(px(11.0))
+                                    .text_color(theme.colors.text_muted)
+                                    .child("Request will be sent without auth headers")
+                            )
+                    )
                     .into_any_element()
             }
             AuthType::Bearer => {
@@ -2243,32 +2747,75 @@ impl RequestPanel {
                 let is_editing = active_edit == Some(EditTarget::BearerToken);
 
                 div()
+                    .w_full()
+                    .p(px(16.0))
+                    .rounded(px(8.0))
+                    .bg(theme.colors.bg_tertiary.opacity(0.5))
+                    .border_1()
+                    .border_color(theme.colors.border.opacity(0.5))
                     .flex()
                     .flex_col()
-                    .gap(px(8.0))
+                    .gap(px(12.0))
+                    // Header
                     .child(
                         div()
-                            .text_size(px(12.0))
-                            .text_color(theme.colors.text_secondary)
-                            .child("Token")
+                            .flex()
+                            .items_center()
+                            .gap(px(10.0))
+                            .child(
+                                div()
+                                    .size(px(32.0))
+                                    .rounded(px(6.0))
+                                    .bg(theme.colors.accent.opacity(0.1))
+                                    .flex()
+                                    .items_center()
+                                    .justify_center()
+                                    .text_size(px(14.0))
+                                    .child("🎫")
+                            )
+                            .child(
+                                div()
+                                    .flex()
+                                    .flex_col()
+                                    .child(
+                                        div()
+                                            .text_size(px(12.0))
+                                            .font_weight(gpui::FontWeight::MEDIUM)
+                                            .text_color(theme.colors.text_primary)
+                                            .child("Bearer Token")
+                                    )
+                                    .child(
+                                        div()
+                                            .text_size(px(10.0))
+                                            .text_color(theme.colors.text_muted)
+                                            .child("Authorization: Bearer <token>")
+                                    )
+                            )
                     )
-                    .child(
-                        self.render_auth_input(
-                            "bearer-token",
-                            EditTarget::BearerToken,
-                            &token,
-                            "Enter bearer token...",
-                            is_editing,
-                            if is_editing { edit_selection } else { 0..0 },
-                            cx,
-                        )
-                    )
+                    // Token input
                     .child(
                         div()
-                            .pt(px(4.0))
-                            .text_size(px(11.0))
-                            .text_color(theme.colors.text_muted)
-                            .child("The token will be sent as: Authorization: Bearer <token>")
+                            .flex()
+                            .flex_col()
+                            .gap(px(6.0))
+                            .child(
+                                div()
+                                    .text_size(px(11.0))
+                                    .font_weight(gpui::FontWeight::MEDIUM)
+                                    .text_color(theme.colors.text_secondary)
+                                    .child("TOKEN")
+                            )
+                            .child(
+                                self.render_auth_input(
+                                    "bearer-token",
+                                    EditTarget::BearerToken,
+                                    &token,
+                                    "Enter bearer token...",
+                                    is_editing,
+                                    if is_editing { edit_selection } else { 0..0 },
+                                    cx,
+                                )
+                            )
                     )
                     .into_any_element()
             }
@@ -2279,63 +2826,108 @@ impl RequestPanel {
                 let is_editing_pass = active_edit == Some(EditTarget::BasicPassword);
 
                 div()
+                    .w_full()
+                    .p(px(16.0))
+                    .rounded(px(8.0))
+                    .bg(theme.colors.bg_tertiary.opacity(0.5))
+                    .border_1()
+                    .border_color(theme.colors.border.opacity(0.5))
                     .flex()
                     .flex_col()
                     .gap(px(12.0))
-                    // Username field
+                    // Header
                     .child(
                         div()
                             .flex()
-                            .flex_col()
-                            .gap(px(4.0))
+                            .items_center()
+                            .gap(px(10.0))
                             .child(
                                 div()
-                                    .text_size(px(12.0))
-                                    .text_color(theme.colors.text_secondary)
-                                    .child("Username")
+                                    .size(px(32.0))
+                                    .rounded(px(6.0))
+                                    .bg(theme.colors.accent.opacity(0.1))
+                                    .flex()
+                                    .items_center()
+                                    .justify_center()
+                                    .text_size(px(14.0))
+                                    .child("👤")
                             )
                             .child(
-                                self.render_auth_input(
-                                    "basic-username",
-                                    EditTarget::BasicUsername,
-                                    &username,
-                                    "Enter username...",
-                                    is_editing_user,
-                                    if is_editing_user { edit_selection.clone() } else { 0..0 },
-                                    cx,
-                                )
+                                div()
+                                    .flex()
+                                    .flex_col()
+                                    .child(
+                                        div()
+                                            .text_size(px(12.0))
+                                            .font_weight(gpui::FontWeight::MEDIUM)
+                                            .text_color(theme.colors.text_primary)
+                                            .child("Basic Authentication")
+                                    )
+                                    .child(
+                                        div()
+                                            .text_size(px(10.0))
+                                            .text_color(theme.colors.text_muted)
+                                            .child("Authorization: Basic <base64>")
+                                    )
                             )
                     )
-                    // Password field
+                    // Fields in a row
                     .child(
                         div()
                             .flex()
-                            .flex_col()
-                            .gap(px(4.0))
+                            .gap(px(12.0))
+                            // Username
                             .child(
                                 div()
-                                    .text_size(px(12.0))
-                                    .text_color(theme.colors.text_secondary)
-                                    .child("Password")
+                                    .flex_1()
+                                    .flex()
+                                    .flex_col()
+                                    .gap(px(6.0))
+                                    .child(
+                                        div()
+                                            .text_size(px(11.0))
+                                            .font_weight(gpui::FontWeight::MEDIUM)
+                                            .text_color(theme.colors.text_secondary)
+                                            .child("USERNAME")
+                                    )
+                                    .child(
+                                        self.render_auth_input(
+                                            "basic-username",
+                                            EditTarget::BasicUsername,
+                                            &username,
+                                            "Enter username...",
+                                            is_editing_user,
+                                            if is_editing_user { edit_selection.clone() } else { 0..0 },
+                                            cx,
+                                        )
+                                    )
                             )
+                            // Password
                             .child(
-                                self.render_auth_input(
-                                    "basic-password",
-                                    EditTarget::BasicPassword,
-                                    &password,
-                                    "Enter password...",
-                                    is_editing_pass,
-                                    if is_editing_pass { edit_selection } else { 0..0 },
-                                    cx,
-                                )
+                                div()
+                                    .flex_1()
+                                    .flex()
+                                    .flex_col()
+                                    .gap(px(6.0))
+                                    .child(
+                                        div()
+                                            .text_size(px(11.0))
+                                            .font_weight(gpui::FontWeight::MEDIUM)
+                                            .text_color(theme.colors.text_secondary)
+                                            .child("PASSWORD")
+                                    )
+                                    .child(
+                                        self.render_auth_input(
+                                            "basic-password",
+                                            EditTarget::BasicPassword,
+                                            &password,
+                                            "Enter password...",
+                                            is_editing_pass,
+                                            if is_editing_pass { edit_selection } else { 0..0 },
+                                            cx,
+                                        )
+                                    )
                             )
-                    )
-                    .child(
-                        div()
-                            .pt(px(4.0))
-                            .text_size(px(11.0))
-                            .text_color(theme.colors.text_muted)
-                            .child("Credentials will be Base64 encoded and sent as: Authorization: Basic <encoded>")
                     )
                     .into_any_element()
             }
@@ -2347,55 +2939,112 @@ impl RequestPanel {
                 let is_editing_value = active_edit == Some(EditTarget::ApiKeyValue);
 
                 div()
+                    .w_full()
+                    .p(px(16.0))
+                    .rounded(px(8.0))
+                    .bg(theme.colors.bg_tertiary.opacity(0.5))
+                    .border_1()
+                    .border_color(theme.colors.border.opacity(0.5))
                     .flex()
                     .flex_col()
                     .gap(px(12.0))
-                    // Key name field
+                    // Header
                     .child(
                         div()
                             .flex()
-                            .flex_col()
-                            .gap(px(4.0))
+                            .items_center()
+                            .gap(px(10.0))
                             .child(
                                 div()
-                                    .text_size(px(12.0))
-                                    .text_color(theme.colors.text_secondary)
-                                    .child("Key Name")
+                                    .size(px(32.0))
+                                    .rounded(px(6.0))
+                                    .bg(theme.colors.accent.opacity(0.1))
+                                    .flex()
+                                    .items_center()
+                                    .justify_center()
+                                    .text_size(px(14.0))
+                                    .child("🔑")
                             )
                             .child(
-                                self.render_auth_input(
-                                    "api-key-name",
-                                    EditTarget::ApiKeyName,
-                                    &key_name,
-                                    "e.g., X-API-Key",
-                                    is_editing_name,
-                                    if is_editing_name { edit_selection.clone() } else { 0..0 },
-                                    cx,
-                                )
+                                div()
+                                    .flex()
+                                    .flex_col()
+                                    .child(
+                                        div()
+                                            .text_size(px(12.0))
+                                            .font_weight(gpui::FontWeight::MEDIUM)
+                                            .text_color(theme.colors.text_primary)
+                                            .child("API Key")
+                                    )
+                                    .child(
+                                        div()
+                                            .text_size(px(10.0))
+                                            .text_color(theme.colors.text_muted)
+                                            .when(location == ApiKeyLocation::Header, |el| {
+                                                el.child("Sent as request header")
+                                            })
+                                            .when(location == ApiKeyLocation::QueryParam, |el| {
+                                                el.child("Sent as query parameter")
+                                            })
+                                    )
                             )
                     )
-                    // Key value field
+                    // Fields in a row
                     .child(
                         div()
                             .flex()
-                            .flex_col()
-                            .gap(px(4.0))
+                            .gap(px(12.0))
+                            // Key name
                             .child(
                                 div()
-                                    .text_size(px(12.0))
-                                    .text_color(theme.colors.text_secondary)
-                                    .child("Key Value")
+                                    .flex_1()
+                                    .flex()
+                                    .flex_col()
+                                    .gap(px(6.0))
+                                    .child(
+                                        div()
+                                            .text_size(px(11.0))
+                                            .font_weight(gpui::FontWeight::MEDIUM)
+                                            .text_color(theme.colors.text_secondary)
+                                            .child("KEY NAME")
+                                    )
+                                    .child(
+                                        self.render_auth_input(
+                                            "api-key-name",
+                                            EditTarget::ApiKeyName,
+                                            &key_name,
+                                            "e.g., X-API-Key",
+                                            is_editing_name,
+                                            if is_editing_name { edit_selection.clone() } else { 0..0 },
+                                            cx,
+                                        )
+                                    )
                             )
+                            // Key value
                             .child(
-                                self.render_auth_input(
-                                    "api-key-value",
-                                    EditTarget::ApiKeyValue,
-                                    &key_value,
-                                    "Enter API key value...",
-                                    is_editing_value,
-                                    if is_editing_value { edit_selection } else { 0..0 },
-                                    cx,
-                                )
+                                div()
+                                    .flex_1()
+                                    .flex()
+                                    .flex_col()
+                                    .gap(px(6.0))
+                                    .child(
+                                        div()
+                                            .text_size(px(11.0))
+                                            .font_weight(gpui::FontWeight::MEDIUM)
+                                            .text_color(theme.colors.text_secondary)
+                                            .child("VALUE")
+                                    )
+                                    .child(
+                                        self.render_auth_input(
+                                            "api-key-value",
+                                            EditTarget::ApiKeyValue,
+                                            &key_value,
+                                            "Enter API key...",
+                                            is_editing_value,
+                                            if is_editing_value { edit_selection } else { 0..0 },
+                                            cx,
+                                        )
+                                    )
                             )
                     )
                     // Location selector
@@ -2403,35 +3052,42 @@ impl RequestPanel {
                         div()
                             .flex()
                             .flex_col()
-                            .gap(px(4.0))
+                            .gap(px(6.0))
                             .child(
                                 div()
-                                    .text_size(px(12.0))
+                                    .text_size(px(11.0))
+                                    .font_weight(gpui::FontWeight::MEDIUM)
                                     .text_color(theme.colors.text_secondary)
-                                    .child("Add to")
+                                    .child("ADD TO")
                             )
                             .child(
                                 div()
                                     .flex()
                                     .items_center()
-                                    .gap(px(8.0))
+                                    .gap(px(4.0))
+                                    .p(px(3.0))
+                                    .rounded(px(6.0))
+                                    .bg(theme.colors.bg_primary)
                                     .child(
                                         div()
                                             .id("api-key-header")
-                                            .px(px(12.0))
-                                            .py(px(6.0))
+                                            .flex()
+                                            .items_center()
+                                            .gap(px(6.0))
+                                            .px(px(10.0))
+                                            .py(px(5.0))
                                             .rounded(px(4.0))
                                             .cursor_pointer()
-                                            .text_size(px(12.0))
+                                            .text_size(px(11.0))
                                             .when(location == ApiKeyLocation::Header, |el| {
                                                 el.bg(theme.colors.bg_tertiary)
-                                                    .border_1()
-                                                    .border_color(theme.colors.accent)
+                                                    .font_weight(gpui::FontWeight::MEDIUM)
                                                     .text_color(theme.colors.text_primary)
+                                                    .child("H")
                                             })
                                             .when(location != ApiKeyLocation::Header, |el| {
-                                                el.text_color(theme.colors.text_secondary)
-                                                    .hover(|s| s.text_color(theme.colors.text_primary))
+                                                el.text_color(theme.colors.text_muted)
+                                                    .hover(|s| s.text_color(theme.colors.text_secondary))
                                             })
                                             .on_click(cx.listener(|this, _, _, cx| {
                                                 if this.api_key_location != ApiKeyLocation::Header {
@@ -2443,20 +3099,23 @@ impl RequestPanel {
                                     .child(
                                         div()
                                             .id("api-key-query")
-                                            .px(px(12.0))
-                                            .py(px(6.0))
+                                            .flex()
+                                            .items_center()
+                                            .gap(px(6.0))
+                                            .px(px(10.0))
+                                            .py(px(5.0))
                                             .rounded(px(4.0))
                                             .cursor_pointer()
-                                            .text_size(px(12.0))
+                                            .text_size(px(11.0))
                                             .when(location == ApiKeyLocation::QueryParam, |el| {
                                                 el.bg(theme.colors.bg_tertiary)
-                                                    .border_1()
-                                                    .border_color(theme.colors.accent)
+                                                    .font_weight(gpui::FontWeight::MEDIUM)
                                                     .text_color(theme.colors.text_primary)
+                                                    .child("?")
                                             })
                                             .when(location != ApiKeyLocation::QueryParam, |el| {
-                                                el.text_color(theme.colors.text_secondary)
-                                                    .hover(|s| s.text_color(theme.colors.text_primary))
+                                                el.text_color(theme.colors.text_muted)
+                                                    .hover(|s| s.text_color(theme.colors.text_secondary))
                                             })
                                             .on_click(cx.listener(|this, _, _, cx| {
                                                 if this.api_key_location != ApiKeyLocation::QueryParam {
@@ -2490,11 +3149,12 @@ impl RequestPanel {
             .w_full()
             .max_w(px(400.0))
             .min_w(px(0.0))
-            .h(px(32.0))
+            // Dynamic height: fixed when unfocused, expands when focused
+            .when(!is_editing, |el| el.h(px(32.0)).overflow_hidden())
+            .when(is_editing, |el| el.min_h(px(32.0)).py(px(6.0)))
             .px(px(12.0))
             .flex()
-            .items_center()
-            .overflow_hidden()
+            .when(!is_editing, |el| el.items_center())
             .rounded(px(4.0))
             .border_1()
             .cursor_text()
@@ -2505,6 +3165,7 @@ impl RequestPanel {
             .on_mouse_down(
                 gpui::MouseButton::Left,
                 cx.listener(move |this, event: &MouseDownEvent, window, cx| {
+                    this.skip_blur = true;
                     this.start_editing(target, window, cx);
                     this.handle_edit_mouse_down(event, 12.0, 7.2, cx);
                 }),
@@ -2631,6 +3292,7 @@ fn base64_encode(data: &[u8]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ui::components::is_word_char;
 
     // ===== Unit Tests for HTTP Methods =====
 

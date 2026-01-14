@@ -730,6 +730,7 @@ pub fn render_text_view(
 }
 
 /// Render text with optional max character limit for truncation
+/// When focused, expands to multiple lines if chars_per_line is provided
 pub fn render_text_view_with_max(
     text: &str,
     selection: &std::ops::Range<usize>,
@@ -739,6 +740,35 @@ pub fn render_text_view_with_max(
     placeholder: Option<&str>,
     placeholder_color: Hsla,
     max_chars: Option<usize>,
+) -> gpui::AnyElement {
+    // Use default chars_per_line based on max_chars for multi-line when focused
+    let chars_per_line = max_chars.map(|m| m.max(10));
+    render_text_view_multiline(
+        text,
+        selection,
+        is_focused,
+        font_size,
+        text_color,
+        placeholder,
+        placeholder_color,
+        max_chars,
+        chars_per_line,
+    )
+}
+
+/// Render text with multi-line support when focused
+/// - `max_chars`: truncation limit when unfocused
+/// - `chars_per_line`: characters per line when focused (enables multi-line wrapping)
+pub fn render_text_view_multiline(
+    text: &str,
+    selection: &std::ops::Range<usize>,
+    is_focused: bool,
+    font_size: f32,
+    text_color: Hsla,
+    placeholder: Option<&str>,
+    placeholder_color: Hsla,
+    max_chars: Option<usize>,
+    chars_per_line: Option<usize>,
 ) -> gpui::AnyElement {
     use gpui::IntoElement;
 
@@ -771,7 +801,7 @@ pub fn render_text_view_with_max(
             .into_any_element();
     }
 
-    // Unfocused: show truncated text with ellipsis
+    // Unfocused: show truncated text with ellipsis (single line)
     if !is_focused {
         let display_text = if let Some(max) = max_chars {
             if text.chars().count() > max {
@@ -793,45 +823,151 @@ pub fn render_text_view_with_max(
             .into_any_element();
     }
 
-    // Focused: show with selection and cursor
+    // Focused: show full text with multi-line wrapping
     let sel_start = selection.start.min(selection.end).min(text.len());
     let sel_end = selection.start.max(selection.end).min(text.len());
     let has_sel = sel_start != sel_end;
+    let cursor_pos = sel_end;
 
-    let before = &text[..sel_start];
-    let selected = &text[sel_start..sel_end];
-    let after = &text[sel_end..];
+    // If no chars_per_line specified, render single line
+    let cpl = match chars_per_line {
+        Some(c) if c > 0 => c,
+        _ => {
+            // Single line fallback
+            let before = &text[..sel_start];
+            let selected = &text[sel_start..sel_end];
+            let after = &text[sel_end..];
+
+            return div()
+                .flex()
+                .items_center()
+                .text_size(px(font_size))
+                .text_color(text_color)
+                .child(before.to_string())
+                .when(has_sel, |el| {
+                    el.child(
+                        div()
+                            .bg(gpui::rgba(0x3366ff40))
+                            .child(selected.to_string()),
+                    )
+                })
+                .when(!has_sel, |el| {
+                    el.child(
+                        div()
+                            .w(px(1.0))
+                            .h(px(font_size + 2.0))
+                            .bg(text_color),
+                    )
+                })
+                .child(after.to_string())
+                .when(has_sel, |el| {
+                    el.child(
+                        div()
+                            .w(px(1.0))
+                            .h(px(font_size + 2.0))
+                            .bg(text_color),
+                    )
+                })
+                .into_any_element();
+        }
+    };
+
+    // Break text into lines
+    let chars: Vec<char> = text.chars().collect();
+    let mut lines: Vec<String> = Vec::new();
+    let mut current_line = String::new();
+
+    for ch in &chars {
+        current_line.push(*ch);
+        if current_line.chars().count() >= cpl {
+            lines.push(current_line);
+            current_line = String::new();
+        }
+    }
+    if !current_line.is_empty() {
+        lines.push(current_line);
+    }
+    if lines.is_empty() {
+        lines.push(String::new());
+    }
+
+    // Calculate cursor line and position within line (for future use)
+    let _cursor_line = cursor_pos / cpl;
+    let _cursor_col = cursor_pos % cpl;
+
+    // Build multi-line display
+    let line_height = font_size + 4.0;
 
     div()
         .flex()
-        .items_center()
+        .flex_col()
+        .w_full()
         .text_size(px(font_size))
         .text_color(text_color)
-        .child(before.to_string())
-        .when(has_sel, |el| {
-            el.child(
-                div()
-                    .bg(gpui::rgba(0x3366ff40))
-                    .child(selected.to_string()),
-            )
-        })
-        .when(!has_sel, |el| {
-            el.child(
-                div()
-                    .w(px(1.0))
-                    .h(px(font_size + 2.0))
-                    .bg(text_color),
-            )
-        })
-        .child(after.to_string())
-        .when(has_sel, |el| {
-            el.child(
-                div()
-                    .w(px(1.0))
-                    .h(px(font_size + 2.0))
-                    .bg(text_color),
-            )
-        })
+        .children(lines.iter().enumerate().map(|(line_idx, line_text)| {
+            let line_start = line_idx * cpl;
+            let line_end = line_start + line_text.chars().count();
+
+            // Check if cursor/selection is on this line
+            let cursor_on_line = !has_sel && cursor_pos >= line_start && cursor_pos <= line_end;
+            let sel_intersects = has_sel && sel_start < line_end && sel_end > line_start;
+
+            div()
+                .h(px(line_height))
+                .flex()
+                .items_center()
+                .child(if sel_intersects {
+                    // Selection spans this line
+                    let local_sel_start = sel_start.saturating_sub(line_start).min(line_text.len());
+                    let local_sel_end = sel_end.saturating_sub(line_start).min(line_text.len());
+
+                    let before: String = line_text.chars().take(local_sel_start).collect();
+                    let selected: String = line_text.chars().skip(local_sel_start).take(local_sel_end - local_sel_start).collect();
+                    let after: String = line_text.chars().skip(local_sel_end).collect();
+
+                    div()
+                        .flex()
+                        .child(before)
+                        .child(
+                            div()
+                                .bg(gpui::rgba(0x3366ff40))
+                                .child(selected)
+                        )
+                        .child(after)
+                        // Show cursor at end of selection if on this line
+                        .when(sel_end >= line_start && sel_end <= line_end, |el| {
+                            el.child(
+                                div()
+                                    .w(px(1.0))
+                                    .h(px(font_size + 2.0))
+                                    .bg(text_color)
+                            )
+                        })
+                        .into_any_element()
+                } else if cursor_on_line {
+                    // Cursor on this line, no selection
+                    let local_cursor = cursor_pos - line_start;
+                    let before: String = line_text.chars().take(local_cursor).collect();
+                    let after: String = line_text.chars().skip(local_cursor).collect();
+
+                    div()
+                        .flex()
+                        .child(before)
+                        .child(
+                            div()
+                                .w(px(1.0))
+                                .h(px(font_size + 2.0))
+                                .bg(text_color)
+                        )
+                        .child(after)
+                        .into_any_element()
+                } else {
+                    // No cursor or selection on this line
+                    div()
+                        .child(line_text.clone())
+                        .into_any_element()
+                })
+        }))
         .into_any_element()
 }
 

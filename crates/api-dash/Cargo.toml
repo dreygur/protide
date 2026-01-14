@@ -38,6 +38,7 @@ uuid = { workspace = true }
 chrono = { workspace = true }
 dirs = { workspace = true }
 notify = { workspace = true }
+rfd = "0.17"
 
 [dev-dependencies]
 # Standard unit tests - no additional dependencies needed
