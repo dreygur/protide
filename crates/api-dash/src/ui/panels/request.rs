@@ -98,6 +98,51 @@ impl HttpMethod {
     }
 }
 
+/// Check if character is a word character (alphanumeric or underscore)
+fn is_word_char(c: char) -> bool {
+    c.is_alphanumeric() || c == '_'
+}
+
+/// Find the start of a word at the given position
+fn find_word_start(text: &str, pos: usize) -> usize {
+    if text.is_empty() || pos == 0 {
+        return 0;
+    }
+    let chars: Vec<char> = text.chars().collect();
+    let mut start = pos.min(chars.len().saturating_sub(1));
+
+    // If we're past the end or on whitespace, move back to find a word
+    while start > 0 && !is_word_char(chars[start]) {
+        start -= 1;
+    }
+
+    // Now find the start of this word
+    while start > 0 && is_word_char(chars[start - 1]) {
+        start -= 1;
+    }
+    start
+}
+
+/// Find the end of a word at the given position
+fn find_word_end(text: &str, pos: usize) -> usize {
+    if text.is_empty() {
+        return 0;
+    }
+    let chars: Vec<char> = text.chars().collect();
+    let mut end = pos.min(chars.len().saturating_sub(1));
+
+    // If we're on whitespace, move forward to find a word
+    while end < chars.len() && !is_word_char(chars[end]) {
+        end += 1;
+    }
+
+    // Now find the end of this word
+    while end < chars.len() && is_word_char(chars[end]) {
+        end += 1;
+    }
+    end
+}
+
 /// Request editor panel
 pub struct RequestPanel {
     /// Active tab index for params/headers/body/auth
@@ -624,10 +669,32 @@ impl RequestPanel {
         let click_x = f32::from(event.position.x) - input_left;
         let index = self.edit_index_for_x(click_x, char_width);
 
-        if event.modifiers.shift {
-            self.edit_select_to(index, cx);
-        } else {
-            self.edit_move_to(index, cx);
+        // Cycle: 1=cursor, 2=word, 3=all, 4+=cursor
+        let effective_click = if event.click_count >= 4 { 1 } else { event.click_count };
+
+        match effective_click {
+            2 => {
+                // Double-click: select word
+                if let Some(target) = self.active_edit {
+                    let text = self.get_edit_text(target);
+                    let start = find_word_start(&text, index);
+                    let end = find_word_end(&text, index);
+                    self.edit_selection = start..end;
+                    cx.notify();
+                }
+            }
+            3 => {
+                // Triple-click: select all
+                self.edit_select_all(cx);
+            }
+            _ => {
+                // Single click (or 4th+ click to deselect)
+                if event.modifiers.shift {
+                    self.edit_select_to(index, cx);
+                } else {
+                    self.edit_move_to(index, cx);
+                }
+            }
         }
     }
 
@@ -1100,10 +1167,29 @@ impl RequestPanel {
         let click_x = f32::from(event.position.x) - self.url_input_left;
         let index = self.index_for_x(click_x);
 
-        if event.modifiers.shift {
-            self.select_to(index, cx);
-        } else {
-            self.move_to(index, cx);
+        // Cycle: 1=cursor, 2=word, 3=all, 4+=cursor
+        let effective_click = if event.click_count >= 4 { 1 } else { event.click_count };
+
+        match effective_click {
+            2 => {
+                // Double-click: select word
+                let start = find_word_start(&self.url, index);
+                let end = find_word_end(&self.url, index);
+                self.url_selection = start..end;
+                cx.notify();
+            }
+            3 => {
+                // Triple-click: select all
+                self.select_all(cx);
+            }
+            _ => {
+                // Single click (or 4th+ click to deselect)
+                if event.modifiers.shift {
+                    self.select_to(index, cx);
+                } else {
+                    self.move_to(index, cx);
+                }
+            }
         }
     }
 
@@ -2536,6 +2622,79 @@ mod tests {
         assert!(methods.contains(&HttpMethod::Put));
         assert!(methods.contains(&HttpMethod::Patch));
         assert!(methods.contains(&HttpMethod::Delete));
+    }
+
+    // ===== Unit Tests for Word Boundary Functions =====
+
+    #[test]
+    fn test_is_word_char() {
+        assert!(is_word_char('a'));
+        assert!(is_word_char('Z'));
+        assert!(is_word_char('5'));
+        assert!(is_word_char('_'));
+        assert!(!is_word_char(' '));
+        assert!(!is_word_char('.'));
+        assert!(!is_word_char('/'));
+        assert!(!is_word_char(':'));
+    }
+
+    #[test]
+    fn test_find_word_start_simple() {
+        let text = "hello world";
+        assert_eq!(find_word_start(text, 0), 0);
+        assert_eq!(find_word_start(text, 3), 0);
+        assert_eq!(find_word_start(text, 5), 0); // end of "hello"
+        assert_eq!(find_word_start(text, 6), 6); // space -> finds "world"
+        assert_eq!(find_word_start(text, 8), 6); // middle of "world"
+    }
+
+    #[test]
+    fn test_find_word_end_simple() {
+        let text = "hello world";
+        assert_eq!(find_word_end(text, 0), 5);
+        assert_eq!(find_word_end(text, 3), 5);
+        assert_eq!(find_word_end(text, 5), 11); // at space, skips to next word end
+        assert_eq!(find_word_end(text, 6), 11);
+        assert_eq!(find_word_end(text, 8), 11);
+    }
+
+    #[test]
+    fn test_find_word_boundaries_url() {
+        let text = "https://api.example.com/users";
+        // "https" is a word
+        assert_eq!(find_word_start(text, 2), 0);
+        assert_eq!(find_word_end(text, 2), 5);
+        // "api" is a word
+        assert_eq!(find_word_start(text, 9), 8);
+        assert_eq!(find_word_end(text, 9), 11);
+        // "users" is a word
+        assert_eq!(find_word_start(text, 27), 24);
+        assert_eq!(find_word_end(text, 27), 29);
+    }
+
+    #[test]
+    fn test_find_word_boundaries_empty() {
+        assert_eq!(find_word_start("", 0), 0);
+        assert_eq!(find_word_end("", 0), 0);
+    }
+
+    #[test]
+    fn test_find_word_boundaries_single_word() {
+        let text = "hello";
+        assert_eq!(find_word_start(text, 0), 0);
+        assert_eq!(find_word_start(text, 2), 0);
+        assert_eq!(find_word_start(text, 5), 0);
+        assert_eq!(find_word_end(text, 0), 5);
+        assert_eq!(find_word_end(text, 2), 5);
+        assert_eq!(find_word_end(text, 5), 5);
+    }
+
+    #[test]
+    fn test_find_word_with_underscore() {
+        let text = "hello_world test";
+        // "hello_world" is treated as one word (underscore is word char)
+        assert_eq!(find_word_start(text, 5), 0);
+        assert_eq!(find_word_end(text, 5), 11);
     }
 
     // ===== Unit Tests for URL Encoding/Decoding =====
