@@ -114,6 +114,15 @@ impl HttpMethod {
 
 // Word boundary functions imported from crate::ui::components
 
+/// Body content type
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum BodyType {
+    #[default]
+    Json,
+    Raw,
+    Form,
+}
+
 /// Request editor panel
 pub struct RequestPanel {
     /// Active tab index for params/headers/body/auth
@@ -142,6 +151,8 @@ pub struct RequestPanel {
     params: Vec<KeyValuePair>,
     /// Request body (JSON/raw text)
     body: String,
+    /// Body content type
+    body_type: BodyType,
     /// Flag to prevent infinite URL<->params sync loops
     syncing_params: bool,
     /// Authentication type
@@ -207,6 +218,7 @@ impl RequestPanel {
             ],
             params: vec![KeyValuePair::default()],
             body: "{\n  \"name\": \"API Dash\",\n  \"version\": \"0.1.0\"\n}".to_string(),
+            body_type: BodyType::Json,
             syncing_params: false,
             auth_type: AuthType::None,
             bearer_token: String::new(),
@@ -301,6 +313,27 @@ impl RequestPanel {
     fn select_method(&mut self, method: HttpMethod, cx: &mut Context<Self>) {
         self.method = method;
         self.method_dropdown_open = false;
+        cx.notify();
+    }
+
+    fn set_body_type(&mut self, body_type: BodyType, cx: &mut Context<Self>) {
+        self.body_type = body_type;
+        // Update Content-Type header based on body type
+        let content_type = match body_type {
+            BodyType::Json => "application/json",
+            BodyType::Form => "application/x-www-form-urlencoded",
+            BodyType::Raw => "text/plain",
+        };
+        // Update existing Content-Type header or add one
+        if let Some(header) = self.headers.iter_mut().find(|h| h.key.eq_ignore_ascii_case("content-type")) {
+            header.value = content_type.to_string();
+        } else {
+            self.headers.insert(0, KeyValuePair {
+                key: "Content-Type".to_string(),
+                value: content_type.to_string(),
+                enabled: true,
+            });
+        }
         cx.notify();
     }
 
@@ -2318,10 +2351,19 @@ impl RequestPanel {
                                     .py(px(5.0))
                                     .rounded(px(4.0))
                                     .cursor_pointer()
-                                    .bg(theme.colors.bg_primary)
+                                    .when(self.body_type == BodyType::Json, |el| {
+                                        el.bg(theme.colors.bg_primary)
+                                            .font_weight(gpui::FontWeight::MEDIUM)
+                                            .text_color(theme.colors.text_primary)
+                                    })
+                                    .when(self.body_type != BodyType::Json, |el| {
+                                        el.text_color(theme.colors.text_muted)
+                                            .hover(|s| s.text_color(theme.colors.text_secondary))
+                                    })
                                     .text_size(px(11.0))
-                                    .font_weight(gpui::FontWeight::MEDIUM)
-                                    .text_color(theme.colors.text_primary)
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        this.set_body_type(BodyType::Json, cx);
+                                    }))
                                     .child("JSON")
                             )
                             .child(
@@ -2331,9 +2373,19 @@ impl RequestPanel {
                                     .py(px(5.0))
                                     .rounded(px(4.0))
                                     .cursor_pointer()
+                                    .when(self.body_type == BodyType::Raw, |el| {
+                                        el.bg(theme.colors.bg_primary)
+                                            .font_weight(gpui::FontWeight::MEDIUM)
+                                            .text_color(theme.colors.text_primary)
+                                    })
+                                    .when(self.body_type != BodyType::Raw, |el| {
+                                        el.text_color(theme.colors.text_muted)
+                                            .hover(|s| s.text_color(theme.colors.text_secondary))
+                                    })
                                     .text_size(px(11.0))
-                                    .text_color(theme.colors.text_muted)
-                                    .hover(|s| s.text_color(theme.colors.text_secondary))
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        this.set_body_type(BodyType::Raw, cx);
+                                    }))
                                     .child("Raw")
                             )
                             .child(
@@ -2343,9 +2395,19 @@ impl RequestPanel {
                                     .py(px(5.0))
                                     .rounded(px(4.0))
                                     .cursor_pointer()
+                                    .when(self.body_type == BodyType::Form, |el| {
+                                        el.bg(theme.colors.bg_primary)
+                                            .font_weight(gpui::FontWeight::MEDIUM)
+                                            .text_color(theme.colors.text_primary)
+                                    })
+                                    .when(self.body_type != BodyType::Form, |el| {
+                                        el.text_color(theme.colors.text_muted)
+                                            .hover(|s| s.text_color(theme.colors.text_secondary))
+                                    })
                                     .text_size(px(11.0))
-                                    .text_color(theme.colors.text_muted)
-                                    .hover(|s| s.text_color(theme.colors.text_secondary))
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        this.set_body_type(BodyType::Form, cx);
+                                    }))
                                     .child("Form")
                             )
                     )

@@ -575,7 +575,8 @@ impl ResponsePanel {
                             )
                     )
                     // Right: Copy button
-                    .child(
+                    .child({
+                        let body_to_copy = body.to_string();
                         div()
                             .id("copy-body-btn")
                             .flex()
@@ -590,13 +591,16 @@ impl ResponsePanel {
                             .border_1()
                             .border_color(theme.colors.border)
                             .hover(|s| s.bg(theme.colors.bg_tertiary).border_color(theme.colors.text_muted))
+                            .on_click(cx.listener(move |_, _, _, cx| {
+                                cx.write_to_clipboard(gpui::ClipboardItem::new_string(body_to_copy.clone()));
+                            }))
                             .child(
                                 div()
                                     .text_size(px(12.0))
                                     .child("⎘")
                             )
                             .child("Copy")
-                    )
+                    })
             )
             // Body content with line numbers style
             .child(
@@ -703,7 +707,12 @@ impl ResponsePanel {
                             )
                     )
                     // Copy headers button
-                    .child(
+                    .child({
+                        let headers_text: String = response.headers
+                            .iter()
+                            .map(|(k, v)| format!("{}: {}", k, v))
+                            .collect::<Vec<_>>()
+                            .join("\n");
                         div()
                             .id("copy-headers-btn")
                             .flex()
@@ -718,13 +727,16 @@ impl ResponsePanel {
                             .border_1()
                             .border_color(theme.colors.border)
                             .hover(|s| s.bg(theme.colors.bg_tertiary).border_color(theme.colors.text_muted))
+                            .on_click(cx.listener(move |_, _, _, cx| {
+                                cx.write_to_clipboard(gpui::ClipboardItem::new_string(headers_text.clone()));
+                            }))
                             .child(
                                 div()
                                     .text_size(px(12.0))
                                     .child("⎘")
                             )
                             .child("Copy")
-                    )
+                    })
             )
             // Headers table
             .child(
