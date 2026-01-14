@@ -730,8 +730,12 @@ pub fn render_text_view(
         if let Some(ph) = placeholder {
             if !is_focused {
                 return div()
+                    .w_full()
+                    .min_w(px(0.0))
                     .flex()
                     .items_center()
+                    .overflow_hidden()
+                    .text_ellipsis()
                     .text_size(px(font_size))
                     .text_color(placeholder_color)
                     .child(ph.to_string())
@@ -755,6 +759,21 @@ pub fn render_text_view(
             .into_any_element();
     }
 
+    // Unfocused: show truncated text with ellipsis
+    if !is_focused {
+        return div()
+            .w_full()
+            .min_w(px(0.0))
+            .overflow_hidden()
+            .text_ellipsis()
+            .whitespace_nowrap()
+            .text_size(px(font_size))
+            .text_color(text_color)
+            .child(text.to_string())
+            .into_any_element();
+    }
+
+    // Focused: show with selection and cursor
     let sel_start = selection.start.min(selection.end).min(text.len());
     let sel_end = selection.start.max(selection.end).min(text.len());
     let has_sel = sel_start != sel_end;
@@ -776,7 +795,7 @@ pub fn render_text_view(
                     .child(selected.to_string()),
             )
         })
-        .when(!has_sel && is_focused, |el| {
+        .when(!has_sel, |el| {
             el.child(
                 div()
                     .w(px(1.0))
@@ -785,7 +804,7 @@ pub fn render_text_view(
             )
         })
         .child(after.to_string())
-        .when(has_sel && is_focused, |el| {
+        .when(has_sel, |el| {
             el.child(
                 div()
                     .w(px(1.0))
