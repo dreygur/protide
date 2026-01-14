@@ -8,7 +8,7 @@ use std::ops::Range;
 
 use crate::models::{Environment, EnvironmentState};
 use crate::theme;
-use crate::ui::components::render_text_view;
+use crate::ui::components::render_text_view_with_max;
 use super::history::{HistoryEntry, RequestHistory};
 use super::request::RequestPanel;
 
@@ -963,7 +963,8 @@ impl ExplorerPanel {
         cx: &Context<Self>,
     ) -> gpui::AnyElement {
         let theme = theme::current(cx);
-        render_text_view(
+        // ~15 chars for narrow env variable inputs
+        render_text_view_with_max(
             text,
             &selection,
             is_focused,
@@ -971,6 +972,7 @@ impl ExplorerPanel {
             theme.colors.text_primary,
             Some(placeholder),
             theme.colors.text_muted,
+            Some(15),
         )
     }
 }

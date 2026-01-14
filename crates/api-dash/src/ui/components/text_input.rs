@@ -715,6 +715,8 @@ impl Render for TextInput {
 ///
 /// Use this for inline text rendering in parent components that manage their own state.
 /// Returns an AnyElement that can be composed into parent UI.
+///
+/// `max_chars` - optional max characters before truncation (only when unfocused)
 pub fn render_text_view(
     text: &str,
     selection: &std::ops::Range<usize>,
@@ -724,18 +726,28 @@ pub fn render_text_view(
     placeholder: Option<&str>,
     placeholder_color: Hsla,
 ) -> gpui::AnyElement {
+    render_text_view_with_max(text, selection, is_focused, font_size, text_color, placeholder, placeholder_color, None)
+}
+
+/// Render text with optional max character limit for truncation
+pub fn render_text_view_with_max(
+    text: &str,
+    selection: &std::ops::Range<usize>,
+    is_focused: bool,
+    font_size: f32,
+    text_color: Hsla,
+    placeholder: Option<&str>,
+    placeholder_color: Hsla,
+    max_chars: Option<usize>,
+) -> gpui::AnyElement {
     use gpui::IntoElement;
 
     if text.is_empty() {
         if let Some(ph) = placeholder {
             if !is_focused {
                 return div()
-                    .w_full()
-                    .min_w(px(0.0))
                     .flex()
                     .items_center()
-                    .overflow_hidden()
-                    .text_ellipsis()
                     .text_size(px(font_size))
                     .text_color(placeholder_color)
                     .child(ph.to_string())
@@ -761,15 +773,23 @@ pub fn render_text_view(
 
     // Unfocused: show truncated text with ellipsis
     if !is_focused {
+        let display_text = if let Some(max) = max_chars {
+            if text.chars().count() > max {
+                let truncated: String = text.chars().take(max.saturating_sub(1)).collect();
+                format!("{}…", truncated)
+            } else {
+                text.to_string()
+            }
+        } else {
+            text.to_string()
+        };
+
         return div()
-            .w_full()
-            .min_w(px(0.0))
-            .overflow_hidden()
-            .text_ellipsis()
-            .whitespace_nowrap()
+            .flex()
+            .items_center()
             .text_size(px(font_size))
             .text_color(text_color)
-            .child(text.to_string())
+            .child(display_text)
             .into_any_element();
     }
 

@@ -9,7 +9,20 @@ use gpui::{
 };
 
 use crate::theme;
-use crate::ui::components::{render_text_view, find_word_start, find_word_end};
+use crate::ui::components::{render_text_view_with_max, find_word_start, find_word_end};
+
+// Alias for cleaner code
+fn render_text_view(
+    text: &str,
+    selection: &std::ops::Range<usize>,
+    is_focused: bool,
+    font_size: f32,
+    text_color: gpui::Hsla,
+    placeholder: Option<&str>,
+    placeholder_color: gpui::Hsla,
+) -> gpui::AnyElement {
+    render_text_view_with_max(text, selection, is_focused, font_size, text_color, placeholder, placeholder_color, None)
+}
 use super::explorer::ExplorerPanel;
 use super::response::{ResponseData, ResponsePanel};
 
@@ -2071,7 +2084,8 @@ impl RequestPanel {
                     this.handle_edit_mouse_up(event, cx);
                 }),
             )
-            .child(self.render_kv_text(&text, placeholder, is_editing, selection, cx))
+            // ~18 chars for 150px width (accounting for padding)
+            .child(self.render_kv_text(&text, placeholder, is_editing, selection, Some(18), cx))
     }
 
     /// Render a key-value input field with flex width
@@ -2120,7 +2134,8 @@ impl RequestPanel {
                     this.handle_edit_mouse_up(event, cx);
                 }),
             )
-            .child(self.render_kv_text(&text, placeholder, is_editing, selection, cx))
+            // ~35 chars for flex width (reasonable default)
+            .child(self.render_kv_text(&text, placeholder, is_editing, selection, Some(35), cx))
     }
 
     /// Render text with cursor/selection for kv inputs
@@ -2130,10 +2145,11 @@ impl RequestPanel {
         placeholder: &'static str,
         is_focused: bool,
         selection: Range<usize>,
+        max_chars: Option<usize>,
         cx: &Context<Self>,
     ) -> gpui::AnyElement {
         let theme = theme::current(cx);
-        render_text_view(
+        render_text_view_with_max(
             text,
             &selection,
             is_focused,
@@ -2141,6 +2157,7 @@ impl RequestPanel {
             theme.colors.text_primary,
             Some(placeholder),
             theme.colors.text_muted,
+            max_chars,
         )
     }
 
@@ -2501,7 +2518,8 @@ impl RequestPanel {
                     this.handle_edit_mouse_up(event, cx);
                 }),
             )
-            .child(self.render_kv_text(&text, placeholder, is_editing, selection, cx))
+            // ~50 chars for 400px max width
+            .child(self.render_kv_text(&text, placeholder, is_editing, selection, Some(50), cx))
     }
 }
 
