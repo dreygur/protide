@@ -1,0 +1,41 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/http-parser",
+    "crates/api-dash",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+repository = "https://github.com/user/api-dash"
+authors = ["API Dash Contributors"]
+
+[workspace.dependencies]
+# Parser crate
+http-parser = { path = "crates/http-parser" }
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Error handling
+anyhow = "1"
+thiserror = "2"
+
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+
+# HTTP client
+reqwest = { version = "0.12", features = ["json", "rustls-tls", "blocking"] }
+
+# Utils
+uuid = { version = "1", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+
+# File watching
+notify = "7"
+
+# Paths
+dirs = "6"

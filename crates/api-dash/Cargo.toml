@@ -1,0 +1,43 @@
+[package]
+name = "api-dash"
+description = "Free and open-source API testing application"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "api-dash"
+path = "src/main.rs"
+
+[dependencies]
+# Internal crates
+http-parser = { workspace = true }
+
+# UI Framework - using git for latest Linux fixes
+gpui = { git = "https://github.com/zed-industries/zed", branch = "main" }
+
+# OAuth
+oauth2 = "5"
+
+# Async runtime
+tokio = { workspace = true }
+
+# HTTP client
+reqwest = { workspace = true }
+
+# Serialization
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# Error handling
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+
+# Utils
+uuid = { workspace = true }
+chrono = { workspace = true }
+dirs = { workspace = true }
+notify = { workspace = true }
+
+[dev-dependencies]
+# Standard unit tests - no additional dependencies needed
