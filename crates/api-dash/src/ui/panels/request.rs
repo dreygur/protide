@@ -9,6 +9,7 @@ use gpui::{
 };
 
 use crate::theme;
+use crate::ui::components::{render_text_view, find_word_start, find_word_end, is_word_char};
 use super::explorer::ExplorerPanel;
 use super::response::{ResponseData, ResponsePanel};
 
@@ -98,50 +99,7 @@ impl HttpMethod {
     }
 }
 
-/// Check if character is a word character (alphanumeric or underscore)
-fn is_word_char(c: char) -> bool {
-    c.is_alphanumeric() || c == '_'
-}
-
-/// Find the start of a word at the given position
-fn find_word_start(text: &str, pos: usize) -> usize {
-    if text.is_empty() || pos == 0 {
-        return 0;
-    }
-    let chars: Vec<char> = text.chars().collect();
-    let mut start = pos.min(chars.len().saturating_sub(1));
-
-    // If we're past the end or on whitespace, move back to find a word
-    while start > 0 && !is_word_char(chars[start]) {
-        start -= 1;
-    }
-
-    // Now find the start of this word
-    while start > 0 && is_word_char(chars[start - 1]) {
-        start -= 1;
-    }
-    start
-}
-
-/// Find the end of a word at the given position
-fn find_word_end(text: &str, pos: usize) -> usize {
-    if text.is_empty() {
-        return 0;
-    }
-    let chars: Vec<char> = text.chars().collect();
-    let mut end = pos.min(chars.len().saturating_sub(1));
-
-    // If we're on whitespace, move forward to find a word
-    while end < chars.len() && !is_word_char(chars[end]) {
-        end += 1;
-    }
-
-    // Now find the end of this word
-    while end < chars.len() && is_word_char(chars[end]) {
-        end += 1;
-    }
-    end
-}
+// Word boundary functions imported from crate::ui::components
 
 /// Request editor panel
 pub struct RequestPanel {
@@ -1462,48 +1420,17 @@ impl RequestPanel {
             })
     }
 
-    fn render_url_text(&self, is_focused: bool, cx: &Context<Self>) -> impl IntoElement {
+    fn render_url_text(&self, is_focused: bool, cx: &Context<Self>) -> gpui::AnyElement {
         let theme = theme::current(cx);
-
-        if self.url.is_empty() && !is_focused {
-            // Show placeholder
-            div()
-                .text_size(px(13.0))
-                .text_color(theme.colors.text_muted)
-                .child("Enter request URL...")
-        } else {
-            let sel_start = self.url_selection.start.min(self.url_selection.end);
-            let sel_end = self.url_selection.start.max(self.url_selection.end);
-            let cursor_pos = self.url_selection.end;
-
-            let before_sel = &self.url[..sel_start];
-            let selected = &self.url[sel_start..sel_end];
-            let after_sel = &self.url[sel_end..];
-
-            div()
-                .flex()
-                .items_center()
-                .text_size(px(13.0))
-                .text_color(theme.colors.text_primary)
-                .child(before_sel.to_string())
-                .when(self.has_selection(), |el| {
-                    // Show selection highlight
-                    el.child(
-                        div()
-                            .bg(gpui::rgba(0x3366ff40))
-                            .child(selected.to_string()),
-                    )
-                })
-                .when(!self.has_selection() && is_focused, |el| {
-                    // Show cursor
-                    el.child(div().w(px(1.0)).h(px(16.0)).bg(theme.colors.text_primary))
-                })
-                .child(after_sel.to_string())
-                .when(self.has_selection() && is_focused && cursor_pos == sel_end, |el| {
-                    // Show cursor at end of selection
-                    el.child(div().w(px(1.0)).h(px(16.0)).bg(theme.colors.text_primary))
-                })
-        }
+        render_text_view(
+            &self.url,
+            &self.url_selection,
+            is_focused,
+            13.0,
+            theme.colors.text_primary,
+            Some("Enter request URL..."),
+            theme.colors.text_muted,
+        )
     }
 
     fn render_method_dropdown(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
@@ -1937,46 +1864,20 @@ impl RequestPanel {
         is_focused: bool,
         selection: Range<usize>,
         cx: &Context<Self>,
-    ) -> impl IntoElement {
+    ) -> gpui::AnyElement {
         let theme = theme::current(cx);
-
-        if text.is_empty() && !is_focused {
-            return div()
-                .text_size(px(12.0))
-                .font_family("monospace")
-                .text_color(theme.colors.text_muted)
-                .child("Enter request body...")
-                .into_any_element();
-        }
-
-        let sel_start = selection.start.min(selection.end).min(text.len());
-        let sel_end = selection.start.max(selection.end).min(text.len());
-        let has_sel = sel_start != sel_end;
-
-        let before_sel = &text[..sel_start];
-        let selected = &text[sel_start..sel_end];
-        let after_sel = &text[sel_end..];
-
+        // Use shared render helper, wrapped in monospace font
         div()
-            .flex()
-            .text_size(px(12.0))
             .font_family("monospace")
-            .text_color(theme.colors.text_primary)
-            .child(before_sel.to_string())
-            .when(has_sel, |el| {
-                el.child(
-                    div()
-                        .bg(gpui::rgba(0x3366ff40))
-                        .child(selected.to_string()),
-                )
-            })
-            .when(!has_sel && is_focused, |el| {
-                el.child(div().w(px(1.0)).h(px(14.0)).bg(theme.colors.text_primary))
-            })
-            .child(after_sel.to_string())
-            .when(has_sel && is_focused, |el| {
-                el.child(div().w(px(1.0)).h(px(14.0)).bg(theme.colors.text_primary))
-            })
+            .child(render_text_view(
+                text,
+                &selection,
+                is_focused,
+                12.0,
+                theme.colors.text_primary,
+                Some("Enter request body..."),
+                theme.colors.text_muted,
+            ))
             .into_any_element()
     }
 
@@ -2083,44 +1984,17 @@ impl RequestPanel {
         is_focused: bool,
         selection: Range<usize>,
         cx: &Context<Self>,
-    ) -> impl IntoElement {
+    ) -> gpui::AnyElement {
         let theme = theme::current(cx);
-
-        if text.is_empty() && !is_focused {
-            return div()
-                .text_color(theme.colors.text_muted)
-                .child(placeholder)
-                .into_any_element();
-        }
-
-        let sel_start = selection.start.min(selection.end).min(text.len());
-        let sel_end = selection.start.max(selection.end).min(text.len());
-        let has_sel = sel_start != sel_end;
-
-        let before_sel = &text[..sel_start];
-        let selected = &text[sel_start..sel_end];
-        let after_sel = &text[sel_end..];
-
-        div()
-            .flex()
-            .items_center()
-            .text_color(theme.colors.text_primary)
-            .child(before_sel.to_string())
-            .when(has_sel, |el| {
-                el.child(
-                    div()
-                        .bg(gpui::rgba(0x3366ff40))
-                        .child(selected.to_string()),
-                )
-            })
-            .when(!has_sel && is_focused, |el| {
-                el.child(div().w(px(1.0)).h(px(14.0)).bg(theme.colors.text_primary))
-            })
-            .child(after_sel.to_string())
-            .when(has_sel && is_focused, |el| {
-                el.child(div().w(px(1.0)).h(px(14.0)).bg(theme.colors.text_primary))
-            })
-            .into_any_element()
+        render_text_view(
+            text,
+            &selection,
+            is_focused,
+            12.0,
+            theme.colors.text_primary,
+            Some(placeholder),
+            theme.colors.text_muted,
+        )
     }
 
     fn render_auth_tab(&mut self, cx: &mut Context<Self>) -> gpui::AnyElement {

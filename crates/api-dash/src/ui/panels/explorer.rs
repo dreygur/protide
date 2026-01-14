@@ -8,6 +8,7 @@ use std::ops::Range;
 
 use crate::models::{Environment, EnvironmentState};
 use crate::theme;
+use crate::ui::components::render_text_view;
 use super::history::{HistoryEntry, RequestHistory};
 use super::request::RequestPanel;
 
@@ -906,44 +907,17 @@ impl ExplorerPanel {
         is_focused: bool,
         selection: Range<usize>,
         cx: &Context<Self>,
-    ) -> impl IntoElement {
+    ) -> gpui::AnyElement {
         let theme = theme::current(cx);
-
-        if text.is_empty() && !is_focused {
-            return div()
-                .text_color(theme.colors.text_muted)
-                .child(placeholder)
-                .into_any_element();
-        }
-
-        let sel_start = selection.start.min(selection.end).min(text.len());
-        let sel_end = selection.start.max(selection.end).min(text.len());
-        let has_sel = sel_start != sel_end;
-
-        let before_sel = &text[..sel_start];
-        let selected = &text[sel_start..sel_end];
-        let after_sel = &text[sel_end..];
-
-        div()
-            .flex()
-            .items_center()
-            .text_color(theme.colors.text_primary)
-            .child(before_sel.to_string())
-            .when(has_sel, |el| {
-                el.child(
-                    div()
-                        .bg(gpui::rgba(0x3366ff40))
-                        .child(selected.to_string()),
-                )
-            })
-            .when(!has_sel && is_focused, |el| {
-                el.child(div().w(px(1.0)).h(px(12.0)).bg(theme.colors.text_primary))
-            })
-            .child(after_sel.to_string())
-            .when(has_sel && is_focused, |el| {
-                el.child(div().w(px(1.0)).h(px(12.0)).bg(theme.colors.text_primary))
-            })
-            .into_any_element()
+        render_text_view(
+            text,
+            &selection,
+            is_focused,
+            11.0,
+            theme.colors.text_primary,
+            Some(placeholder),
+            theme.colors.text_muted,
+        )
     }
 }
 

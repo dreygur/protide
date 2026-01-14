@@ -22,12 +22,12 @@ use gpui::{
 use crate::theme;
 
 /// Check if character is a word character (alphanumeric or underscore)
-fn is_word_char(c: char) -> bool {
+pub fn is_word_char(c: char) -> bool {
     c.is_alphanumeric() || c == '_'
 }
 
 /// Find the start of a word at the given position
-fn find_word_start(text: &str, pos: usize) -> usize {
+pub fn find_word_start(text: &str, pos: usize) -> usize {
     if text.is_empty() || pos == 0 {
         return 0;
     }
@@ -47,7 +47,7 @@ fn find_word_start(text: &str, pos: usize) -> usize {
 }
 
 /// Find the end of a word at the given position
-fn find_word_end(text: &str, pos: usize) -> usize {
+pub fn find_word_end(text: &str, pos: usize) -> usize {
     if text.is_empty() {
         return 0;
     }
@@ -610,6 +610,110 @@ impl Render for TextInput {
                     }),
             )
     }
+}
+
+// ============================================================================
+// Standalone helper functions for use by parent components
+// ============================================================================
+
+/// Render text with selection highlighting and cursor
+///
+/// Use this for inline text rendering in parent components that manage their own state.
+/// Returns an AnyElement that can be composed into parent UI.
+pub fn render_text_view(
+    text: &str,
+    selection: &std::ops::Range<usize>,
+    is_focused: bool,
+    font_size: f32,
+    text_color: Hsla,
+    placeholder: Option<&str>,
+    placeholder_color: Hsla,
+) -> gpui::AnyElement {
+    use gpui::IntoElement;
+
+    if text.is_empty() {
+        if let Some(ph) = placeholder {
+            if !is_focused {
+                return div()
+                    .flex()
+                    .items_center()
+                    .text_size(px(font_size))
+                    .text_color(placeholder_color)
+                    .child(ph.to_string())
+                    .into_any_element();
+            }
+        }
+        // Empty but focused - show cursor
+        return div()
+            .flex()
+            .items_center()
+            .text_size(px(font_size))
+            .text_color(text_color)
+            .when(is_focused, |el| {
+                el.child(
+                    div()
+                        .w(px(1.0))
+                        .h(px(font_size + 2.0))
+                        .bg(text_color),
+                )
+            })
+            .into_any_element();
+    }
+
+    let sel_start = selection.start.min(selection.end).min(text.len());
+    let sel_end = selection.start.max(selection.end).min(text.len());
+    let has_sel = sel_start != sel_end;
+
+    let before = &text[..sel_start];
+    let selected = &text[sel_start..sel_end];
+    let after = &text[sel_end..];
+
+    div()
+        .flex()
+        .items_center()
+        .text_size(px(font_size))
+        .text_color(text_color)
+        .child(before.to_string())
+        .when(has_sel, |el| {
+            el.child(
+                div()
+                    .bg(gpui::rgba(0x3366ff40))
+                    .child(selected.to_string()),
+            )
+        })
+        .when(!has_sel && is_focused, |el| {
+            el.child(
+                div()
+                    .w(px(1.0))
+                    .h(px(font_size + 2.0))
+                    .bg(text_color),
+            )
+        })
+        .child(after.to_string())
+        .when(has_sel && is_focused, |el| {
+            el.child(
+                div()
+                    .w(px(1.0))
+                    .h(px(font_size + 2.0))
+                    .bg(text_color),
+            )
+        })
+        .into_any_element()
+}
+
+/// Calculate character index from x position
+pub fn index_for_x(x: f32, text_len: usize, char_width: f32) -> usize {
+    if x <= 0.0 {
+        0
+    } else {
+        let approx_char = (x / char_width) as usize;
+        approx_char.min(text_len)
+    }
+}
+
+/// Handle click count for selection cycling: 1=cursor, 2=word, 3=all, 4+=cursor
+pub fn effective_click_count(click_count: usize) -> usize {
+    if click_count >= 4 { 1 } else { click_count }
 }
 
 #[cfg(test)]
