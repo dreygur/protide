@@ -2979,7 +2979,7 @@ impl RequestPanel {
                                             .child("PASSWORD")
                                     )
                                     .child(
-                                        self.render_auth_input(
+                                        self.render_auth_input_masked(
                                             "basic-password",
                                             EditTarget::BasicPassword,
                                             &password,
@@ -3097,7 +3097,7 @@ impl RequestPanel {
                                             .child("VALUE")
                                     )
                                     .child(
-                                        self.render_auth_input(
+                                        self.render_auth_input_masked(
                                             "api-key-value",
                                             EditTarget::ApiKeyValue,
                                             &key_value,
@@ -3203,8 +3203,39 @@ impl RequestPanel {
         selection: Range<usize>,
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
+        self.render_auth_input_impl(id, target, text, placeholder, is_editing, selection, false, cx)
+    }
+
+    fn render_auth_input_masked(
+        &mut self,
+        id: &str,
+        target: EditTarget,
+        text: &str,
+        placeholder: &'static str,
+        is_editing: bool,
+        selection: Range<usize>,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
+        self.render_auth_input_impl(id, target, text, placeholder, is_editing, selection, true, cx)
+    }
+
+    fn render_auth_input_impl(
+        &mut self,
+        id: &str,
+        target: EditTarget,
+        text: &str,
+        placeholder: &'static str,
+        is_editing: bool,
+        selection: Range<usize>,
+        masked: bool,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
         let theme = theme::current(cx);
-        let text = text.to_string();
+        let display_text = if masked && !text.is_empty() {
+            "●".repeat(text.len())
+        } else {
+            text.to_string()
+        };
 
         div()
             .id(SharedString::from(id.to_string()))
@@ -3242,7 +3273,7 @@ impl RequestPanel {
                 }),
             )
             // ~50 chars for 400px max width
-            .child(self.render_kv_text(&text, placeholder, is_editing, selection, Some(50), cx))
+            .child(self.render_kv_text(&display_text, placeholder, is_editing, selection, Some(50), cx))
     }
 }
 

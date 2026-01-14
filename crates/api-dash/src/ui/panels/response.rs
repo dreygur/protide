@@ -32,6 +32,13 @@ impl ResponseData {
     }
 }
 
+/// Copy feedback type
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum CopyFeedback {
+    Body,
+    Headers,
+}
+
 /// Response viewer panel
 pub struct ResponsePanel {
     /// Active tab index for body/headers/cookies
@@ -42,6 +49,8 @@ pub struct ResponsePanel {
     loading: bool,
     /// Error message
     error: Option<String>,
+    /// Copy feedback state (shows "Copied!" briefly)
+    copy_feedback: Option<CopyFeedback>,
 }
 
 impl ResponsePanel {
@@ -51,7 +60,22 @@ impl ResponsePanel {
             response: None,
             loading: false,
             error: None,
+            copy_feedback: None,
         }
+    }
+
+    fn show_copy_feedback(&mut self, feedback: CopyFeedback, cx: &mut Context<Self>) {
+        self.copy_feedback = Some(feedback);
+        cx.notify();
+
+        // Clear feedback after 1.5 seconds
+        cx.spawn(async move |this, cx| {
+            cx.background_executor().timer(std::time::Duration::from_millis(1500)).await;
+            this.update(cx, |this, cx| {
+                this.copy_feedback = None;
+                cx.notify();
+            }).ok();
+        }).detach();
     }
 
     pub fn set_loading(&mut self, cx: &mut Context<Self>) {
@@ -507,16 +531,37 @@ impl ResponsePanel {
     fn render_body_tab(&self, response: &ResponseData, cx: &Context<Self>) -> gpui::AnyElement {
         let theme = theme::current(cx);
 
-        // Detect content type and format
-        let (body, format_label, format_color) = if let Ok(json) = serde_json::from_str::<serde_json::Value>(&response.body) {
-            let formatted = serde_json::to_string_pretty(&json).unwrap_or_else(|_| response.body.clone());
-            (formatted, "JSON", theme.colors.status_success)
-        } else if response.body.trim().starts_with("<!DOCTYPE") || response.body.trim().starts_with("<html") {
-            (response.body.clone(), "HTML", theme.colors.method_patch)
-        } else if response.body.trim().starts_with("<?xml") || response.body.trim().starts_with("<") {
-            (response.body.clone(), "XML", theme.colors.method_put)
+        // Get Content-Type header if available
+        let content_type = response.headers.iter()
+            .find(|(k, _)| k.eq_ignore_ascii_case("content-type"))
+            .map(|(_, v)| v.to_lowercase());
+
+        // Detect content type and format - prioritize Content-Type header
+        let (body, format_label, format_color) = if let Some(ct) = &content_type {
+            if ct.contains("application/json") || ct.contains("+json") {
+                if let Ok(json) = serde_json::from_str::<serde_json::Value>(&response.body) {
+                    let formatted = serde_json::to_string_pretty(&json).unwrap_or_else(|_| response.body.clone());
+                    (formatted, "JSON", theme.colors.status_success)
+                } else {
+                    (response.body.clone(), "JSON", theme.colors.status_success)
+                }
+            } else if ct.contains("text/html") {
+                (response.body.clone(), "HTML", theme.colors.method_patch)
+            } else if ct.contains("application/xml") || ct.contains("text/xml") || ct.contains("+xml") {
+                (response.body.clone(), "XML", theme.colors.method_put)
+            } else if ct.contains("text/css") {
+                (response.body.clone(), "CSS", theme.colors.method_delete)
+            } else if ct.contains("javascript") || ct.contains("text/js") {
+                (response.body.clone(), "JS", theme.colors.accent)
+            } else if ct.contains("text/plain") {
+                (response.body.clone(), "Text", theme.colors.text_muted)
+            } else {
+                // Fallback to content detection for unknown types
+                self.detect_body_format(response, &theme)
+            }
         } else {
-            (response.body.clone(), "Text", theme.colors.text_muted)
+            // No Content-Type header - detect from body content
+            self.detect_body_format(response, &theme)
         };
 
         let is_empty = body.trim().is_empty();
@@ -577,6 +622,7 @@ impl ResponsePanel {
                     // Right: Copy button
                     .child({
                         let body_to_copy = body.to_string();
+                        let is_copied = self.copy_feedback == Some(CopyFeedback::Body);
                         div()
                             .id("copy-body-btn")
                             .flex()
@@ -586,20 +632,21 @@ impl ResponsePanel {
                             .py(px(5.0))
                             .rounded(px(6.0))
                             .text_size(px(11.0))
-                            .text_color(theme.colors.text_secondary)
+                            .when(is_copied, |el| el.text_color(theme.colors.status_success).border_color(theme.colors.status_success))
+                            .when(!is_copied, |el| el.text_color(theme.colors.text_secondary).border_color(theme.colors.border))
                             .cursor_pointer()
                             .border_1()
-                            .border_color(theme.colors.border)
                             .hover(|s| s.bg(theme.colors.bg_tertiary).border_color(theme.colors.text_muted))
-                            .on_click(cx.listener(move |_, _, _, cx| {
+                            .on_click(cx.listener(move |this, _, _, cx| {
                                 cx.write_to_clipboard(gpui::ClipboardItem::new_string(body_to_copy.clone()));
+                                this.show_copy_feedback(CopyFeedback::Body, cx);
                             }))
                             .child(
                                 div()
                                     .text_size(px(12.0))
-                                    .child("⎘")
+                                    .child(if is_copied { "✓" } else { "⎘" })
                             )
-                            .child("Copy")
+                            .child(if is_copied { "Copied!" } else { "Copy" })
                     })
             )
             // Body content with line numbers style
@@ -635,10 +682,13 @@ impl ResponsePanel {
                                     }))
                             )
                     )
-                    // Code content
+                    // Code content with scroll
                     .child(
                         div()
+                            .id("body-content-scroll")
                             .w_full()
+                            .max_h(px(500.0))
+                            .overflow_scroll()
                             .p(px(12.0))
                             .child(
                                 div()
@@ -713,6 +763,7 @@ impl ResponsePanel {
                             .map(|(k, v)| format!("{}: {}", k, v))
                             .collect::<Vec<_>>()
                             .join("\n");
+                        let is_copied = self.copy_feedback == Some(CopyFeedback::Headers);
                         div()
                             .id("copy-headers-btn")
                             .flex()
@@ -722,20 +773,21 @@ impl ResponsePanel {
                             .py(px(5.0))
                             .rounded(px(6.0))
                             .text_size(px(11.0))
-                            .text_color(theme.colors.text_secondary)
+                            .when(is_copied, |el| el.text_color(theme.colors.status_success).border_color(theme.colors.status_success))
+                            .when(!is_copied, |el| el.text_color(theme.colors.text_secondary).border_color(theme.colors.border))
                             .cursor_pointer()
                             .border_1()
-                            .border_color(theme.colors.border)
                             .hover(|s| s.bg(theme.colors.bg_tertiary).border_color(theme.colors.text_muted))
-                            .on_click(cx.listener(move |_, _, _, cx| {
+                            .on_click(cx.listener(move |this, _, _, cx| {
                                 cx.write_to_clipboard(gpui::ClipboardItem::new_string(headers_text.clone()));
+                                this.show_copy_feedback(CopyFeedback::Headers, cx);
                             }))
                             .child(
                                 div()
                                     .text_size(px(12.0))
-                                    .child("⎘")
+                                    .child(if is_copied { "✓" } else { "⎘" })
                             )
-                            .child("Copy")
+                            .child(if is_copied { "Copied!" } else { "Copy" })
                     })
             )
             // Headers table
@@ -812,6 +864,33 @@ impl ResponsePanel {
                     }))
             )
             .into_any_element()
+    }
+
+    /// Detect body format from content when Content-Type header is unavailable
+    fn detect_body_format(&self, response: &ResponseData, theme: &theme::Theme) -> (String, &'static str, gpui::Hsla) {
+        let trimmed = response.body.trim();
+
+        // Try JSON first
+        if let Ok(json) = serde_json::from_str::<serde_json::Value>(&response.body) {
+            let formatted = serde_json::to_string_pretty(&json).unwrap_or_else(|_| response.body.clone());
+            return (formatted, "JSON", theme.colors.status_success);
+        }
+
+        // Check for HTML
+        if trimmed.starts_with("<!DOCTYPE") ||
+           trimmed.starts_with("<!doctype") ||
+           trimmed.to_lowercase().starts_with("<html") {
+            return (response.body.clone(), "HTML", theme.colors.method_patch);
+        }
+
+        // Check for XML (but not HTML)
+        if trimmed.starts_with("<?xml") ||
+           (trimmed.starts_with("<") && !trimmed.to_lowercase().starts_with("<html") && trimmed.contains("</")) {
+            return (response.body.clone(), "XML", theme.colors.method_put);
+        }
+
+        // Default to plain text
+        (response.body.clone(), "Text", theme.colors.text_muted)
     }
 }
 

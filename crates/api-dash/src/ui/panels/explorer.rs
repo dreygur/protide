@@ -370,6 +370,14 @@ impl ExplorerPanel {
         cx.notify();
     }
 
+    /// Refresh collections by rescanning the workspace directory
+    fn refresh_collections(&mut self, cx: &mut Context<Self>) {
+        if let Some(workspace) = &self.workspace_path {
+            self.collection_items = self.scan_directory(workspace);
+            cx.notify();
+        }
+    }
+
     /// Load a .http file into the request panel
     fn load_request_file(&mut self, path: PathBuf, cx: &mut Context<Self>) {
         if let Ok(content) = fs::read_to_string(&path) {
@@ -693,6 +701,24 @@ impl ExplorerPanel {
                                     .text_color(theme.colors.text_secondary)
                                     .child(workspace_name)
                             )
+                    )
+                    // Refresh button
+                    .child(
+                        div()
+                            .id("refresh-collections-btn")
+                            .size(px(22.0))
+                            .rounded(px(4.0))
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .cursor_pointer()
+                            .text_size(px(11.0))
+                            .text_color(theme.colors.text_muted)
+                            .hover(|s| s.bg(theme.colors.bg_tertiary).text_color(theme.colors.text_primary))
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.refresh_collections(cx);
+                            }))
+                            .child("↻")
                     )
                     // Open folder button
                     .child(
