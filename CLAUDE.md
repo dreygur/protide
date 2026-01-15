@@ -2,25 +2,55 @@
 
 ## Project Overview
 Native desktop API testing tool built with Rust + GPUI (Zed's GPU-accelerated UI framework).
-Supports HTTP with plans for GraphQL, gRPC, WebSocket, Socket.IO, and tRPC.
+Supports HTTP, GraphQL, and WebSocket protocols.
 
 ## Current State (Jan 2025)
-**Progress: ~25% of full plan (Phases 1-2 complete, Phase 4 partial)**
+**Progress: ~85% of full plan (Phases 1-5, 8-12 complete)**
 
 ### Completed Features
+**Core HTTP Client**
 - Full HTTP client with GET/POST/PUT/PATCH/DELETE
 - URL input with method selector dropdown
 - Headers editor (key-value pairs with enable/disable)
 - Query params editor (auto-syncs with URL)
-- Body editor (JSON, Raw, Form types)
+- Body editor (JSON, Raw, Form types with file uploads)
 - Authentication (Bearer, Basic, API Key in header/query)
 - Response viewer with JSON syntax highlighting
 - Request timing and size metrics
+
+**Protocol Support**
+- GraphQL mode with query/variables editors and syntax highlighting
+- WebSocket mode with connect/disconnect, message sending, and message history
+- Mode toggle (HTTP/GraphQL/WS)
+
+**Collections & Storage**
 - File-based collections (folders = collections, .http files = requests)
 - Environment variables with substitution ({{variable}})
 - Request history panel
 - Save request to .http file
+
+**Scripting & Testing (Phase 8)**
+- JavaScript engine (rquickjs) for pre/post-request scripts
+- Test assertions with expect() API
+
+**Import/Export (Phase 10)**
+- cURL command import
+- Postman Collection import
+
+**Request Chaining (Phase 11)**
+- JSONPath extraction from responses
+- Variable setting via @set annotations
+
+**Code Generation (Phase 12)**
+- Generate cURL, Python, JavaScript, Go, Rust code
+
+**Mock Server (Phase 9)**
+- Local HTTP server for mocking responses
+- Route configuration UI
+
+**UI/UX**
 - System theme support (light/dark)
+- Ubuntu Mono font
 
 ### Project Structure
 ```
@@ -80,20 +110,10 @@ api-dash/
 ### Running the App
 ```bash
 cargo run --release   # Release build recommended for performance
-cargo test            # 78 tests total
+cargo test            # 146 tests total
 ```
 
-## Remaining Phases (from plan)
-
-### Phase 3: GraphQL Support
-- GraphQL query editor
-- Variables editor
-- Schema introspection
-
-### Phase 5: WebSocket & Socket.IO
-- Connection UI, message panel
-- tokio-tungstenite for WebSocket
-- rust-socketio for Socket.IO
+## Remaining Phases
 
 ### Phase 6: gRPC Support
 - Proto file loading (tonic/prost)
@@ -104,37 +124,17 @@ cargo test            # 78 tests total
 - Endpoint configuration
 - Query/mutation procedures
 
-### Phase 8: Scripting & Testing
-- JavaScript engine (rquickjs or boa)
-- Pre/post request scripts
-- Test assertions with expect() API
-
-### Phase 9: Mock Server
-- Local HTTP server for mocking
-- Record mode (proxy)
-
-### Phase 10: Import/Export
-- Postman Collection import
-- cURL command import
-- Bruno .bru import
-- OpenAPI/Swagger import
-
-### Phase 11: Request Chaining
-- JSONPath extraction
-- Variable setting from responses
-- Dependency ordering
-
-### Phase 12: Code Generation
-- Generate Python, JS, Go, Rust, cURL
-
 ### Phase 13: API Documentation
 - Markdown/HTML export
 - Interactive explorer
 
 ### Phase 14: Language Server (LSP)
-- Syntax highlighting
+- Syntax highlighting for .http files
 - Autocomplete
 - VS Code/Zed extensions
 
-## Full Plan Reference
-See `/home/rakib/.claude/plans/golden-swinging-porcupine.md` for complete specification.
+### Future Enhancements
+- Socket.IO support (extend WebSocket mode)
+- Bruno .bru file import
+- OpenAPI/Swagger import
+- Mock server record/proxy mode
