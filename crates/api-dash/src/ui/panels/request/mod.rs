@@ -143,6 +143,8 @@ pub struct RequestPanel {
     pub(super) ws_message_input: String,
     /// WebSocket message editor
     pub(super) ws_message_editor: Entity<CodeEditor>,
+    /// Channel to send messages to WebSocket thread
+    ws_send_tx: Option<std::sync::mpsc::Sender<String>>,
 }
 
 impl RequestPanel {
@@ -254,6 +256,7 @@ impl RequestPanel {
             ws_messages: Vec::new(),
             ws_message_input: String::new(),
             ws_message_editor,
+            ws_send_tx: None,
         }
     }
 
@@ -295,6 +298,10 @@ impl RequestPanel {
 
         self.ws_state = WsConnectionState::Connecting;
         self.ws_messages.clear();
+
+        // Create channel for sending messages to WebSocket thread
+        let (send_tx, send_rx) = std::sync::mpsc::channel::<String>();
+        self.ws_send_tx = Some(send_tx);
         cx.notify();
 
         let url = self.url.clone();
@@ -303,33 +310,54 @@ impl RequestPanel {
         cx.spawn(async move |this: gpui::WeakEntity<Self>, cx: &mut gpui::AsyncApp| {
             // Run blocking WebSocket in a thread
             let (result_tx, result_rx) = std::sync::mpsc::channel::<WsEvent>();
-            let result_tx_clone = result_tx.clone();
 
             std::thread::spawn(move || {
                 let rt = tokio::runtime::Runtime::new().unwrap();
                 rt.block_on(async {
                     use tokio_tungstenite::connect_async;
-                    use futures_util::StreamExt;
+                    use futures_util::{SinkExt, StreamExt};
 
                     match connect_async(&url).await {
                         Ok((ws_stream, _)) => {
                             let _ = result_tx.send(WsEvent::Connected);
 
-                            let (_write, mut read) = ws_stream.split();
+                            let (mut write, mut read) = ws_stream.split();
 
-                            // Listen for incoming messages
-                            while let Some(msg) = read.next().await {
-                                match msg {
-                                    Ok(tokio_tungstenite::tungstenite::Message::Text(text)) => {
+                            // Process incoming and outgoing messages
+                            loop {
+                                // Check for outgoing messages (non-blocking)
+                                match send_rx.try_recv() {
+                                    Ok(msg) => {
+                                        let ws_msg = tokio_tungstenite::tungstenite::Message::Text(msg.into());
+                                        if write.send(ws_msg).await.is_err() {
+                                            break;
+                                        }
+                                    }
+                                    Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                                        break;
+                                    }
+                                    Err(std::sync::mpsc::TryRecvError::Empty) => {}
+                                }
+
+                                // Check for incoming messages with timeout
+                                match tokio::time::timeout(
+                                    std::time::Duration::from_millis(50),
+                                    read.next()
+                                ).await {
+                                    Ok(Some(Ok(tokio_tungstenite::tungstenite::Message::Text(text)))) => {
                                         let _ = result_tx.send(WsEvent::Message(text.to_string()));
                                     }
-                                    Ok(tokio_tungstenite::tungstenite::Message::Close(_)) => {
+                                    Ok(Some(Ok(tokio_tungstenite::tungstenite::Message::Close(_)))) => {
                                         break;
                                     }
-                                    Err(_) => {
+                                    Ok(Some(Err(_))) => {
                                         break;
                                     }
-                                    _ => {}
+                                    Ok(None) => {
+                                        break; // Stream ended
+                                    }
+                                    Ok(Some(Ok(_))) => {} // Ignore other message types
+                                    Err(_) => {} // Timeout, continue loop
                                 }
                             }
 
@@ -369,6 +397,7 @@ impl RequestPanel {
                         let _ = cx.update(|cx| {
                             let _ = this.update(cx, |this, cx| {
                                 this.ws_state = WsConnectionState::Disconnected;
+                                this.ws_send_tx = None;
                                 cx.notify();
                             });
                         });
@@ -378,6 +407,7 @@ impl RequestPanel {
                         let _ = cx.update(|cx| {
                             let _ = this.update(cx, |this, cx| {
                                 this.ws_state = WsConnectionState::Disconnected;
+                                this.ws_send_tx = None;
                                 this.ws_messages.push(WsMessage {
                                     direction: WsMessageDirection::Received,
                                     content: format!("Connection failed: {}", e),
@@ -408,23 +438,23 @@ impl RequestPanel {
                 }
             }
 
-            // Ensure we mark as disconnected
+            // Ensure we mark as disconnected and clear channel
             let _ = cx.update(|cx| {
                 let _ = this.update(cx, |this, cx| {
                     if this.ws_state != WsConnectionState::Disconnected {
                         this.ws_state = WsConnectionState::Disconnected;
+                        this.ws_send_tx = None;
                         cx.notify();
                     }
                 });
             });
-
-            drop(result_tx_clone); // Silence unused variable warning
         }).detach();
     }
 
     /// Disconnect from WebSocket server
     pub(super) fn disconnect_websocket(&mut self, cx: &mut Context<Self>) {
         self.ws_state = WsConnectionState::Disconnected;
+        self.ws_send_tx = None; // Dropping sender will signal thread to stop
         cx.notify();
     }
 
@@ -440,17 +470,18 @@ impl RequestPanel {
             return;
         }
 
-        // Add to local history
-        self.ws_messages.push(WsMessage {
-            direction: WsMessageDirection::Sent,
-            content: message.to_string(),
-            timestamp: chrono::Local::now(),
-        });
-        cx.notify();
-
-        // Note: For a full bidirectional WebSocket implementation, we'd need to
-        // store the write sink and use it here. This simplified version shows
-        // the message in the local history.
+        // Send message over the WebSocket channel
+        if let Some(tx) = &self.ws_send_tx {
+            if tx.send(message.to_string()).is_ok() {
+                // Add to local history
+                self.ws_messages.push(WsMessage {
+                    direction: WsMessageDirection::Sent,
+                    content: message.to_string(),
+                    timestamp: chrono::Local::now(),
+                });
+                cx.notify();
+            }
+        }
     }
 
     fn cursor(&self) -> usize {
