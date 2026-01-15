@@ -2,11 +2,31 @@
 //!
 //! Contains shared types used by the request panel.
 
+use std::path::PathBuf;
+
 /// Key-value pair for headers, params, etc.
 #[derive(Clone, Default)]
 pub struct KeyValuePair {
     pub key: String,
     pub value: String,
+    pub enabled: bool,
+}
+
+/// Form field type (text or file)
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub enum FormFieldType {
+    #[default]
+    Text,
+    File,
+}
+
+/// Form field that can be text or file
+#[derive(Clone, Default)]
+pub struct FormField {
+    pub key: String,
+    pub value: String,           // Text value or display name for file
+    pub field_type: FormFieldType,
+    pub file_path: Option<PathBuf>, // Path to file when field_type is File
     pub enabled: bool,
 }
 
@@ -25,6 +45,8 @@ pub enum EditTarget {
     BasicPassword,
     ApiKeyName,
     ApiKeyValue,
+    FormKey(usize),
+    FormValue(usize),
 }
 
 /// Authentication type

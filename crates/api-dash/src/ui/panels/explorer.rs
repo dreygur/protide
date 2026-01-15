@@ -2,7 +2,7 @@
 
 use gpui::{
     div, prelude::*, px, ClipboardItem, Context, Entity, FocusHandle, IntoElement, KeyDownEvent,
-    MouseDownEvent, ParentElement, Render, SharedString, Styled, Window,
+    MouseButton, MouseDownEvent, ParentElement, Point, Pixels, Render, SharedString, Styled, Window,
 };
 use std::fs;
 use std::ops::Range;
@@ -71,6 +71,14 @@ pub struct ExplorerPanel {
     edit_undo_stack: Vec<(EnvEditTarget, String, Range<usize>)>,
     /// Redo stack for edit fields
     edit_redo_stack: Vec<(EnvEditTarget, String, Range<usize>)>,
+    /// Currently selected collection item path
+    selected_item: Option<PathBuf>,
+    /// Context menu state (path, position)
+    context_menu: Option<(PathBuf, Point<Pixels>)>,
+    /// Item being renamed
+    renaming_item: Option<PathBuf>,
+    /// Rename input text
+    rename_text: String,
 }
 
 impl ExplorerPanel {
@@ -91,6 +99,10 @@ impl ExplorerPanel {
             show_new_env_input: false,
             edit_undo_stack: Vec::new(),
             edit_redo_stack: Vec::new(),
+            selected_item: None,
+            context_menu: None,
+            renaming_item: None,
+            rename_text: String::new(),
         }
     }
 
@@ -402,6 +414,167 @@ impl ExplorerPanel {
         }
     }
 
+    /// Delete a collection item (file or folder) with confirmation
+    fn delete_collection_item(&mut self, path: PathBuf, cx: &mut Context<Self>) {
+        let filename = path.file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_default();
+
+        let is_folder = path.is_dir();
+        let message = if is_folder {
+            format!("Delete folder '{}' and all its contents?", filename)
+        } else {
+            format!("Delete '{}'?", filename)
+        };
+
+        let confirmed = rfd::MessageDialog::new()
+            .set_title("Confirm Delete")
+            .set_description(&message)
+            .set_buttons(rfd::MessageButtons::YesNo)
+            .show() == rfd::MessageDialogResult::Yes;
+
+        if confirmed {
+            let result = if is_folder {
+                fs::remove_dir_all(&path)
+            } else {
+                fs::remove_file(&path)
+            };
+
+            if result.is_ok() {
+                self.refresh_collections(cx);
+            }
+        }
+
+        self.context_menu = None;
+        cx.notify();
+    }
+
+    /// Start renaming a collection item
+    fn start_rename_item(&mut self, path: PathBuf, cx: &mut Context<Self>) {
+        self.rename_text = path.file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_default();
+        self.renaming_item = Some(path);
+        self.context_menu = None;
+        cx.notify();
+    }
+
+    /// Complete the rename operation
+    fn complete_rename(&mut self, cx: &mut Context<Self>) {
+        if let Some(old_path) = self.renaming_item.take() {
+            let new_name = self.rename_text.trim();
+            if !new_name.is_empty() {
+                let old_name = old_path.file_name()
+                    .map(|n| n.to_string_lossy().to_string())
+                    .unwrap_or_default();
+                if new_name != old_name {
+                    if let Some(parent) = old_path.parent() {
+                        let new_path = parent.join(new_name);
+                        if fs::rename(&old_path, &new_path).is_ok() {
+                            self.refresh_collections(cx);
+                        }
+                    }
+                }
+            }
+        }
+        self.rename_text.clear();
+        cx.notify();
+    }
+
+    /// Cancel the rename operation
+    fn cancel_rename(&mut self, cx: &mut Context<Self>) {
+        self.renaming_item = None;
+        self.rename_text.clear();
+        cx.notify();
+    }
+
+    /// Close context menu
+    fn close_context_menu(&mut self, cx: &mut Context<Self>) {
+        self.context_menu = None;
+        cx.notify();
+    }
+
+    /// Render context menu for collection item
+    fn render_context_menu(&self, path: PathBuf, position: Point<Pixels>, cx: &Context<Self>) -> impl IntoElement {
+        let theme = theme::current(cx);
+        let path_for_rename = path.clone();
+        let path_for_delete = path.clone();
+        let is_folder = path.is_dir();
+
+        div()
+            .absolute()
+            .left(position.x)
+            .top(position.y)
+            .w(px(120.0))
+            .bg(theme.colors.bg_secondary)
+            .border_1()
+            .border_color(theme.colors.border)
+            .rounded(px(6.0))
+            .shadow_lg()
+            .overflow_hidden()
+            .child(
+                div()
+                    .flex()
+                    .flex_col()
+                    // Rename option
+                    .child(
+                        div()
+                            .id("context-menu-rename")
+                            .w_full()
+                            .h(px(28.0))
+                            .flex()
+                            .items_center()
+                            .px(px(12.0))
+                            .gap(px(8.0))
+                            .cursor_pointer()
+                            .hover(|s| s.bg(theme.colors.bg_tertiary))
+                            .on_click(cx.listener(move |this, _, _, cx| {
+                                this.start_rename_item(path_for_rename.clone(), cx);
+                            }))
+                            .child(
+                                div()
+                                    .text_size(px(12.0))
+                                    .text_color(theme.colors.text_muted)
+                                    .child("✏️")
+                            )
+                            .child(
+                                div()
+                                    .text_size(px(12.0))
+                                    .text_color(theme.colors.text_primary)
+                                    .child("Rename")
+                            )
+                    )
+                    // Delete option
+                    .child(
+                        div()
+                            .id("context-menu-delete")
+                            .w_full()
+                            .h(px(28.0))
+                            .flex()
+                            .items_center()
+                            .px(px(12.0))
+                            .gap(px(8.0))
+                            .cursor_pointer()
+                            .hover(|s| s.bg(theme.colors.status_client_error.opacity(0.1)))
+                            .on_click(cx.listener(move |this, _, _, cx| {
+                                this.delete_collection_item(path_for_delete.clone(), cx);
+                            }))
+                            .child(
+                                div()
+                                    .text_size(px(12.0))
+                                    .text_color(theme.colors.status_client_error)
+                                    .child("🗑️")
+                            )
+                            .child(
+                                div()
+                                    .text_size(px(12.0))
+                                    .text_color(theme.colors.status_client_error)
+                                    .child(if is_folder { "Delete Folder" } else { "Delete" })
+                            )
+                    )
+            )
+    }
+
     fn delete_environment(&mut self, index: usize, cx: &mut Context<Self>) {
         if self.env_state.environments.len() > 1 {
             self.env_state.remove_environment(index);
@@ -497,6 +670,32 @@ impl ExplorerPanel {
     }
 
     fn handle_edit_key(&mut self, event: &KeyDownEvent, cx: &mut Context<Self>) {
+        // Handle rename mode first
+        if self.renaming_item.is_some() {
+            let key = event.keystroke.key.as_str();
+            match key {
+                "escape" => {
+                    self.cancel_rename(cx);
+                    return;
+                }
+                "enter" => {
+                    self.complete_rename(cx);
+                    return;
+                }
+                "backspace" => {
+                    self.rename_text.pop();
+                    cx.notify();
+                    return;
+                }
+                _ if key.len() == 1 && !event.keystroke.modifiers.control => {
+                    self.rename_text.push_str(key);
+                    cx.notify();
+                    return;
+                }
+                _ => return,
+            }
+        }
+
         let Some(target) = self.active_edit else {
             return;
         };
@@ -814,10 +1013,14 @@ impl ExplorerPanel {
         let theme = theme::current(cx);
         let indent = px((depth * 16 + 8) as f32);
         let path = item.path.clone();
+        let path_for_right_click = item.path.clone();
+        let path_for_select = item.path.clone();
         let is_folder = item.is_folder;
         let is_expanded = item.expanded;
         let display_name = item.name.trim_end_matches(".http").to_string();
         let method = item.method.clone();
+        let is_selected = self.selected_item.as_ref() == Some(&item.path);
+        let is_renaming = self.renaming_item.as_ref() == Some(&item.path);
 
         div()
             .id(SharedString::from(format!("collection-item-{}", idx)))
@@ -830,14 +1033,25 @@ impl ExplorerPanel {
             .gap(px(6.0))
             .cursor_pointer()
             .rounded(px(4.0))
-            .hover(|s| s.bg(theme.colors.bg_tertiary))
+            .when(is_selected, |el| el.bg(theme.colors.accent.opacity(0.1)))
+            .when(!is_selected, |el| el.hover(|s| s.bg(theme.colors.bg_tertiary)))
+            // Left click - select and load/toggle
             .on_click({
                 cx.listener(move |this, _, _, cx| {
+                    this.selected_item = Some(path_for_select.clone());
                     if is_folder {
                         this.toggle_collection_folder(path.clone(), cx);
                     } else {
                         this.load_request_file(path.clone(), cx);
                     }
+                })
+            })
+            // Right click - show context menu
+            .on_mouse_down(MouseButton::Right, {
+                cx.listener(move |this, event: &MouseDownEvent, _, cx| {
+                    this.selected_item = Some(path_for_right_click.clone());
+                    this.context_menu = Some((path_for_right_click.clone(), event.position));
+                    cx.notify();
                 })
             })
             // Expand/collapse icon for folders
@@ -882,16 +1096,38 @@ impl ExplorerPanel {
                         )
                 )
             })
-            // Name
-            .child(
-                div()
-                    .flex_1()
-                    .min_w(px(0.0))
-                    .overflow_hidden()
-                    .text_size(px(12.0))
-                    .text_color(theme.colors.text_primary)
-                    .child(display_name)
-            )
+            // Name (or rename input)
+            .when(!is_renaming, |el| {
+                el.child(
+                    div()
+                        .flex_1()
+                        .min_w(px(0.0))
+                        .overflow_hidden()
+                        .text_size(px(12.0))
+                        .text_color(theme.colors.text_primary)
+                        .child(display_name)
+                )
+            })
+            .when(is_renaming, |el| {
+                let rename_text = self.rename_text.clone();
+                el.child(
+                    div()
+                        .flex_1()
+                        .min_w(px(0.0))
+                        .h(px(20.0))
+                        .px(px(4.0))
+                        .flex()
+                        .items_center()
+                        .bg(theme.colors.bg_tertiary)
+                        .border_1()
+                        .border_color(theme.colors.accent)
+                        .rounded(px(3.0))
+                        .overflow_hidden()
+                        .text_size(px(12.0))
+                        .text_color(theme.colors.text_primary)
+                        .child(rename_text)
+                )
+            })
     }
 
     fn render_history_section(&self, cx: &Context<Self>) -> impl IntoElement {
@@ -1860,6 +2096,23 @@ impl Render for ExplorerPanel {
             )
             // Environment section
             .child(self.render_environment_section(cx))
+            // Context menu overlay
+            .when_some(self.context_menu.clone(), |el, (path, position)| {
+                el.child(
+                    // Backdrop to catch clicks outside
+                    div()
+                        .id("context-menu-backdrop")
+                        .absolute()
+                        .inset_0()
+                        .on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| {
+                            this.close_context_menu(cx);
+                        }))
+                        .on_mouse_down(MouseButton::Right, cx.listener(|this, _, _, cx| {
+                            this.close_context_menu(cx);
+                        }))
+                )
+                .child(self.render_context_menu(path, position, cx))
+            })
     }
 }
 

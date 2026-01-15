@@ -3,11 +3,12 @@
 use std::time::Duration;
 
 use gpui::{
-    div, prelude::*, px, Context, Hsla, IntoElement, ParentElement, Render, SharedString, Styled,
+    div, prelude::*, px, Context, Entity, IntoElement, ParentElement, Render, SharedString, Styled,
     Window,
 };
 
 use crate::theme;
+use crate::ui::components::code_editor::{CodeEditor, Language};
 
 /// Response data from an HTTP request
 #[derive(Clone, Default)]
@@ -32,11 +33,66 @@ impl ResponseData {
     }
 }
 
+/// Parsed cookie from Set-Cookie header
+#[derive(Clone, Debug)]
+pub struct ParsedCookie {
+    pub name: String,
+    pub value: String,
+    pub path: Option<String>,
+    pub domain: Option<String>,
+    pub expires: Option<String>,
+    pub secure: bool,
+    pub http_only: bool,
+}
+
+impl ParsedCookie {
+    /// Parse a Set-Cookie header value
+    pub fn parse(header_value: &str) -> Option<Self> {
+        let mut parts = header_value.split(';');
+        let name_value = parts.next()?.trim();
+        let mut split = name_value.splitn(2, '=');
+        let name = split.next()?.trim().to_string();
+        let value = split.next().unwrap_or("").trim().to_string();
+
+        if name.is_empty() {
+            return None;
+        }
+
+        let mut cookie = ParsedCookie {
+            name,
+            value,
+            path: None,
+            domain: None,
+            expires: None,
+            secure: false,
+            http_only: false,
+        };
+
+        for part in parts {
+            let part = part.trim();
+            let lower = part.to_lowercase();
+            if lower == "secure" {
+                cookie.secure = true;
+            } else if lower == "httponly" {
+                cookie.http_only = true;
+            } else if let Some(val) = part.strip_prefix("Path=").or_else(|| part.strip_prefix("path=")) {
+                cookie.path = Some(val.to_string());
+            } else if let Some(val) = part.strip_prefix("Domain=").or_else(|| part.strip_prefix("domain=")) {
+                cookie.domain = Some(val.to_string());
+            } else if let Some(val) = part.strip_prefix("Expires=").or_else(|| part.strip_prefix("expires=")) {
+                cookie.expires = Some(val.to_string());
+            }
+        }
+        Some(cookie)
+    }
+}
+
 /// Copy feedback type
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum CopyFeedback {
     Body,
     Headers,
+    Cookies,
 }
 
 /// Response viewer panel
@@ -51,16 +107,24 @@ pub struct ResponsePanel {
     error: Option<String>,
     /// Copy feedback state (shows "Copied!" briefly)
     copy_feedback: Option<CopyFeedback>,
+    /// CodeEditor for viewing response body
+    body_viewer: Entity<CodeEditor>,
 }
 
 impl ResponsePanel {
-    pub fn new(_cx: &mut Context<Self>) -> Self {
+    pub fn new(cx: &mut Context<Self>) -> Self {
+        let body_viewer = cx.new(|cx| {
+            CodeEditor::new(cx)
+                .with_read_only(true)
+                .with_line_numbers(true)
+        });
         Self {
             active_tab: 0,
             response: None,
             loading: false,
             error: None,
             copy_feedback: None,
+            body_viewer,
         }
     }
 
@@ -85,10 +149,63 @@ impl ResponsePanel {
     }
 
     pub fn set_response(&mut self, response: ResponseData, cx: &mut Context<Self>) {
+        // Detect language from Content-Type header
+        let content_type = response.headers.iter()
+            .find(|(k, _)| k.eq_ignore_ascii_case("content-type"))
+            .map(|(_, v)| v.to_lowercase());
+
+        let (body_text, language) = if let Some(ct) = &content_type {
+            if ct.contains("application/json") || ct.contains("+json") {
+                // Try to pretty-print JSON
+                if let Ok(json) = serde_json::from_str::<serde_json::Value>(&response.body) {
+                    let formatted = serde_json::to_string_pretty(&json).unwrap_or_else(|_| response.body.clone());
+                    (formatted, Language::Json)
+                } else {
+                    (response.body.clone(), Language::Json)
+                }
+            } else if ct.contains("text/html") {
+                (response.body.clone(), Language::Html)
+            } else if ct.contains("application/xml") || ct.contains("text/xml") || ct.contains("+xml") {
+                (response.body.clone(), Language::Xml)
+            } else {
+                // Detect from content
+                self.detect_language_from_content(&response.body)
+            }
+        } else {
+            // No Content-Type - detect from content
+            self.detect_language_from_content(&response.body)
+        };
+
+        // Update body viewer with content and language
+        self.body_viewer.update(cx, |editor, cx| {
+            editor.set_content(&body_text, cx);
+            editor.set_language(language, cx);
+        });
+
         self.response = Some(response);
         self.loading = false;
         self.error = None;
         cx.notify();
+    }
+
+    fn detect_language_from_content(&self, body: &str) -> (String, Language) {
+        let trimmed = body.trim();
+        if trimmed.starts_with('{') || trimmed.starts_with('[') {
+            if let Ok(json) = serde_json::from_str::<serde_json::Value>(body) {
+                let formatted = serde_json::to_string_pretty(&json).unwrap_or_else(|_| body.to_string());
+                (formatted, Language::Json)
+            } else {
+                (body.to_string(), Language::Plain)
+            }
+        } else if trimmed.starts_with('<') {
+            if trimmed.contains("<!DOCTYPE html") || trimmed.contains("<html") {
+                (body.to_string(), Language::Html)
+            } else {
+                (body.to_string(), Language::Xml)
+            }
+        } else {
+            (body.to_string(), Language::Plain)
+        }
     }
 
     pub fn set_error(&mut self, error: String, cx: &mut Context<Self>) {
@@ -276,7 +393,7 @@ impl ResponsePanel {
 
     fn render_tabs(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = theme::current(cx);
-        let tabs = [("Body", "{ }"), ("Headers", "≡")];
+        let tabs = [("Body", "{ }"), ("Headers", "≡"), ("Cookies", "🍪")];
         let active_tab = self.active_tab;
 
         div()
@@ -408,6 +525,7 @@ impl ResponsePanel {
             match self.active_tab {
                 0 => self.render_body_tab(response, cx),
                 1 => self.render_headers_tab(response, cx),
+                2 => self.render_cookies_tab(response, cx),
                 _ => div().into_any_element(),
             }
         } else {
@@ -531,43 +649,39 @@ impl ResponsePanel {
     fn render_body_tab(&self, response: &ResponseData, cx: &Context<Self>) -> gpui::AnyElement {
         let theme = theme::current(cx);
 
-        // Get Content-Type header if available
+        // Get Content-Type header for format label
         let content_type = response.headers.iter()
             .find(|(k, _)| k.eq_ignore_ascii_case("content-type"))
             .map(|(_, v)| v.to_lowercase());
 
-        // Detect content type and format - prioritize Content-Type header
-        // Returns (body, format_label, format_color, is_json)
-        let (body, format_label, format_color, is_json) = if let Some(ct) = &content_type {
+        // Determine format label and color
+        let (format_label, format_color) = if let Some(ct) = &content_type {
             if ct.contains("application/json") || ct.contains("+json") {
-                if let Ok(json) = serde_json::from_str::<serde_json::Value>(&response.body) {
-                    let formatted = serde_json::to_string_pretty(&json).unwrap_or_else(|_| response.body.clone());
-                    (formatted, "JSON", theme.colors.status_success, true)
-                } else {
-                    (response.body.clone(), "JSON", theme.colors.status_success, false)
-                }
+                ("JSON", theme.colors.status_success)
             } else if ct.contains("text/html") {
-                (response.body.clone(), "HTML", theme.colors.method_patch, false)
+                ("HTML", theme.colors.method_patch)
             } else if ct.contains("application/xml") || ct.contains("text/xml") || ct.contains("+xml") {
-                (response.body.clone(), "XML", theme.colors.method_put, false)
+                ("XML", theme.colors.method_put)
             } else if ct.contains("text/css") {
-                (response.body.clone(), "CSS", theme.colors.method_delete, false)
+                ("CSS", theme.colors.method_delete)
             } else if ct.contains("javascript") || ct.contains("text/js") {
-                (response.body.clone(), "JS", theme.colors.accent, false)
-            } else if ct.contains("text/plain") {
-                (response.body.clone(), "Text", theme.colors.text_muted, false)
+                ("JS", theme.colors.accent)
             } else {
-                // Fallback to content detection for unknown types
-                self.detect_body_format_with_json(response, &theme)
+                ("Text", theme.colors.text_muted)
             }
         } else {
-            // No Content-Type header - detect from body content
-            self.detect_body_format_with_json(response, &theme)
+            // Detect from content
+            let trimmed = response.body.trim();
+            if trimmed.starts_with('{') || trimmed.starts_with('[') {
+                ("JSON", theme.colors.status_success)
+            } else if trimmed.starts_with('<') {
+                ("XML", theme.colors.method_put)
+            } else {
+                ("Text", theme.colors.text_muted)
+            }
         };
 
-        let is_empty = body.trim().is_empty();
-
-        if is_empty {
+        if response.body.trim().is_empty() {
             return div()
                 .size_full()
                 .flex()
@@ -582,10 +696,11 @@ impl ResponsePanel {
                 .into_any_element();
         }
 
-        let line_count = body.lines().count();
+        let line_count = self.body_viewer.read(cx).content().lines().count();
 
         div()
             .w_full()
+            .h_full()
             .flex()
             .flex_col()
             .gap(px(8.0))
@@ -622,7 +737,6 @@ impl ResponsePanel {
                     )
                     // Right: Copy button
                     .child({
-                        let body_to_copy = body.to_string();
                         let is_copied = self.copy_feedback == Some(CopyFeedback::Body);
                         div()
                             .id("copy-body-btn")
@@ -639,7 +753,8 @@ impl ResponsePanel {
                             .border_1()
                             .hover(|s| s.bg(theme.colors.bg_tertiary).border_color(theme.colors.text_muted))
                             .on_click(cx.listener(move |this, _, _, cx| {
-                                cx.write_to_clipboard(gpui::ClipboardItem::new_string(body_to_copy.clone()));
+                                let content = this.body_viewer.read(cx).content().to_string();
+                                cx.write_to_clipboard(gpui::ClipboardItem::new_string(content));
                                 this.show_copy_feedback(CopyFeedback::Body, cx);
                             }))
                             .child(
@@ -650,55 +765,13 @@ impl ResponsePanel {
                             .child(if is_copied { "Copied!" } else { "Copy" })
                     })
             )
-            // Body content with line numbers style
+            // Body content using CodeEditor
             .child(
                 div()
+                    .flex_1()
                     .w_full()
-                    .rounded(px(8.0))
-                    .bg(theme.colors.bg_tertiary)
-                    .border_1()
-                    .border_color(theme.colors.border)
                     .overflow_hidden()
-                    // Code header bar
-                    .child(
-                        div()
-                            .w_full()
-                            .h(px(28.0))
-                            .flex()
-                            .items_center()
-                            .px(px(12.0))
-                            .border_b_1()
-                            .border_color(theme.colors.border.opacity(0.5))
-                            .bg(theme.colors.bg_secondary.opacity(0.5))
-                            .child(
-                                div()
-                                    .flex()
-                                    .items_center()
-                                    .gap(px(6.0))
-                                    .children((0..3).map(|_| {
-                                        div()
-                                            .size(px(8.0))
-                                            .rounded_full()
-                                            .bg(theme.colors.text_muted.opacity(0.3))
-                                    }))
-                            )
-                    )
-                    // Code content with scroll
-                    .child(
-                        div()
-                            .id("body-content-scroll")
-                            .w_full()
-                            .max_h(px(500.0))
-                            .overflow_scroll()
-                            .p(px(12.0))
-                            .child(
-                                div()
-                                    .text_size(px(12.0))
-                                    .font_family("monospace")
-                                    .when(is_json, |el| el.child(self.render_json_highlighted(&body, cx)))
-                                    .when(!is_json, |el| el.text_color(theme.colors.text_primary).child(body.clone()))
-                            )
-                    )
+                    .child(self.body_viewer.clone())
             )
             .into_any_element()
     }
@@ -867,167 +940,209 @@ impl ResponsePanel {
             .into_any_element()
     }
 
-    /// Detect body format from content when Content-Type header is unavailable
-    fn detect_body_format_with_json(&self, response: &ResponseData, theme: &theme::Theme) -> (String, &'static str, gpui::Hsla, bool) {
-        let trimmed = response.body.trim();
-
-        // Try JSON first
-        if let Ok(json) = serde_json::from_str::<serde_json::Value>(&response.body) {
-            let formatted = serde_json::to_string_pretty(&json).unwrap_or_else(|_| response.body.clone());
-            return (formatted, "JSON", theme.colors.status_success, true);
-        }
-
-        // Check for HTML
-        if trimmed.starts_with("<!DOCTYPE") ||
-           trimmed.starts_with("<!doctype") ||
-           trimmed.to_lowercase().starts_with("<html") {
-            return (response.body.clone(), "HTML", theme.colors.method_patch, false);
-        }
-
-        // Check for XML (but not HTML)
-        if trimmed.starts_with("<?xml") ||
-           (trimmed.starts_with("<") && !trimmed.to_lowercase().starts_with("<html") && trimmed.contains("</")) {
-            return (response.body.clone(), "XML", theme.colors.method_put, false);
-        }
-
-        // Default to plain text
-        (response.body.clone(), "Text", theme.colors.text_muted, false)
-    }
-
-    /// Render JSON with syntax highlighting
-    fn render_json_highlighted(&self, json: &str, cx: &Context<Self>) -> impl IntoElement {
+    fn render_cookies_tab(&self, response: &ResponseData, cx: &Context<Self>) -> gpui::AnyElement {
         let theme = theme::current(cx);
 
-        // Colors for different token types
-        let key_color = theme.colors.accent;
-        let string_color = theme.colors.status_success;
-        let number_color = theme.colors.method_patch;
-        let bool_color = theme.colors.method_delete;
-        let null_color = theme.colors.method_put;
-        let punct_color = theme.colors.text_muted;
+        // Parse cookies from Set-Cookie headers
+        let cookies: Vec<ParsedCookie> = response
+            .headers
+            .iter()
+            .filter(|(k, _)| k.eq_ignore_ascii_case("set-cookie"))
+            .filter_map(|(_, v)| ParsedCookie::parse(v))
+            .collect();
+
+        let cookie_count = cookies.len();
+
+        if cookie_count == 0 {
+            return div()
+                .size_full()
+                .flex()
+                .items_center()
+                .justify_center()
+                .child(
+                    div()
+                        .flex()
+                        .flex_col()
+                        .items_center()
+                        .gap(px(8.0))
+                        .child(
+                            div()
+                                .text_size(px(24.0))
+                                .text_color(theme.colors.text_muted.opacity(0.5))
+                                .child("🍪")
+                        )
+                        .child(
+                            div()
+                                .text_size(px(12.0))
+                                .text_color(theme.colors.text_muted)
+                                .child("No cookies in response")
+                        )
+                )
+                .into_any_element();
+        }
 
         div()
+            .size_full()
             .flex()
             .flex_col()
-            .children(json.lines().map(|line| {
-                let tokens = tokenize_json_line(line, key_color, string_color, number_color, bool_color, null_color, punct_color);
+            // Toolbar
+            .child(
                 div()
+                    .w_full()
                     .flex()
-                    .children(tokens.into_iter().map(|(text, color)| {
+                    .items_center()
+                    .justify_between()
+                    .pb(px(12.0))
+                    .child(
                         div()
-                            .text_color(color)
-                            .child(text)
+                            .flex()
+                            .items_center()
+                            .gap(px(8.0))
+                            .child(
+                                div()
+                                    .px(px(8.0))
+                                    .py(px(4.0))
+                                    .rounded(px(6.0))
+                                    .bg(theme.colors.accent.opacity(0.12))
+                                    .text_size(px(11.0))
+                                    .font_weight(gpui::FontWeight::MEDIUM)
+                                    .text_color(theme.colors.accent)
+                                    .child(format!("{} cookies", cookie_count))
+                            )
+                    )
+            )
+            // Cookie table
+            .child(
+                div()
+                    .flex_1()
+                    .w_full()
+                    .rounded(px(8.0))
+                    .border_1()
+                    .border_color(theme.colors.border)
+                    .bg(theme.colors.bg_tertiary)
+                    .overflow_hidden()
+                    // Header row
+                    .child(
+                        div()
+                            .w_full()
+                            .flex()
+                            .border_b_1()
+                            .border_color(theme.colors.border)
+                            .bg(theme.colors.bg_secondary.opacity(0.5))
+                            .child(
+                                div()
+                                    .w(px(150.0))
+                                    .px(px(12.0))
+                                    .py(px(10.0))
+                                    .text_size(px(10.0))
+                                    .font_weight(gpui::FontWeight::SEMIBOLD)
+                                    .text_color(theme.colors.text_muted)
+                                    .child("NAME")
+                            )
+                            .child(
+                                div()
+                                    .flex_1()
+                                    .px(px(12.0))
+                                    .py(px(10.0))
+                                    .text_size(px(10.0))
+                                    .font_weight(gpui::FontWeight::SEMIBOLD)
+                                    .text_color(theme.colors.text_muted)
+                                    .child("VALUE")
+                            )
+                            .child(
+                                div()
+                                    .w(px(100.0))
+                                    .px(px(12.0))
+                                    .py(px(10.0))
+                                    .text_size(px(10.0))
+                                    .font_weight(gpui::FontWeight::SEMIBOLD)
+                                    .text_color(theme.colors.text_muted)
+                                    .child("PATH")
+                            )
+                            .child(
+                                div()
+                                    .w(px(80.0))
+                                    .px(px(12.0))
+                                    .py(px(10.0))
+                                    .text_size(px(10.0))
+                                    .font_weight(gpui::FontWeight::SEMIBOLD)
+                                    .text_color(theme.colors.text_muted)
+                                    .child("FLAGS")
+                            )
+                    )
+                    // Cookie rows
+                    .children(cookies.into_iter().enumerate().map(|(i, cookie)| {
+                        let has_border = i > 0;
+                        let mut flags = Vec::new();
+                        if cookie.secure {
+                            flags.push("Secure");
+                        }
+                        if cookie.http_only {
+                            flags.push("HttpOnly");
+                        }
+                        let flags_str = flags.join(", ");
+
+                        div()
+                            .w_full()
+                            .flex()
+                            .when(has_border, |el| {
+                                el.border_t_1().border_color(theme.colors.border.opacity(0.5))
+                            })
+                            .hover(|s| s.bg(theme.colors.bg_secondary.opacity(0.3)))
+                            // Name
+                            .child(
+                                div()
+                                    .w(px(150.0))
+                                    .px(px(12.0))
+                                    .py(px(8.0))
+                                    .text_size(px(12.0))
+                                    .font_weight(gpui::FontWeight::MEDIUM)
+                                    .text_color(theme.colors.accent)
+                                    .overflow_hidden()
+                                    .child(cookie.name)
+                            )
+                            // Value
+                            .child(
+                                div()
+                                    .flex_1()
+                                    .px(px(12.0))
+                                    .py(px(8.0))
+                                    .text_size(px(12.0))
+                                    .font_family("monospace")
+                                    .text_color(theme.colors.text_primary)
+                                    .overflow_hidden()
+                                    .child(cookie.value)
+                            )
+                            // Path
+                            .child(
+                                div()
+                                    .w(px(100.0))
+                                    .px(px(12.0))
+                                    .py(px(8.0))
+                                    .text_size(px(11.0))
+                                    .text_color(theme.colors.text_muted)
+                                    .overflow_hidden()
+                                    .child(cookie.path.unwrap_or_else(|| "/".to_string()))
+                            )
+                            // Flags
+                            .child(
+                                div()
+                                    .w(px(80.0))
+                                    .px(px(12.0))
+                                    .py(px(8.0))
+                                    .text_size(px(10.0))
+                                    .text_color(if flags_str.is_empty() {
+                                        theme.colors.text_muted.opacity(0.5)
+                                    } else {
+                                        theme.colors.status_success
+                                    })
+                                    .child(if flags_str.is_empty() { "-".to_string() } else { flags_str })
+                            )
                     }))
-            }))
-    }
-}
-
-/// Tokenize a single line of JSON for syntax highlighting
-fn tokenize_json_line(line: &str, key_color: Hsla, string_color: Hsla, number_color: Hsla, bool_color: Hsla, null_color: Hsla, punct_color: Hsla) -> Vec<(String, Hsla)> {
-    let mut tokens = Vec::new();
-    let mut chars = line.chars().peekable();
-    let mut current = String::new();
-    let mut in_string = false;
-    let mut is_key = false;
-    let mut after_colon = false;
-
-    while let Some(c) = chars.next() {
-        match c {
-            '"' => {
-                if in_string {
-                    current.push(c);
-                    let color = if is_key { key_color } else { string_color };
-                    tokens.push((current.clone(), color));
-                    current.clear();
-                    in_string = false;
-                    is_key = false;
-                } else {
-                    if !current.is_empty() {
-                        tokens.push((current.clone(), punct_color));
-                        current.clear();
-                    }
-                    current.push(c);
-                    in_string = true;
-                    is_key = !after_colon;
-                }
-            }
-            ':' if !in_string => {
-                if !current.is_empty() {
-                    tokens.push((current.clone(), punct_color));
-                    current.clear();
-                }
-                tokens.push((":".to_string(), punct_color));
-                after_colon = true;
-            }
-            ',' if !in_string => {
-                if !current.is_empty() {
-                    // Check for number, bool, or null
-                    let trimmed = current.trim();
-                    let color = if trimmed.parse::<f64>().is_ok() {
-                        number_color
-                    } else if trimmed == "true" || trimmed == "false" {
-                        bool_color
-                    } else if trimmed == "null" {
-                        null_color
-                    } else {
-                        punct_color
-                    };
-                    tokens.push((current.clone(), color));
-                    current.clear();
-                }
-                tokens.push((",".to_string(), punct_color));
-                after_colon = false;
-            }
-            '{' | '}' | '[' | ']' if !in_string => {
-                if !current.is_empty() {
-                    let trimmed = current.trim();
-                    let color = if trimmed.parse::<f64>().is_ok() {
-                        number_color
-                    } else if trimmed == "true" || trimmed == "false" {
-                        bool_color
-                    } else if trimmed == "null" {
-                        null_color
-                    } else {
-                        punct_color
-                    };
-                    tokens.push((current.clone(), color));
-                    current.clear();
-                }
-                tokens.push((c.to_string(), punct_color));
-                if c == '{' || c == '[' {
-                    after_colon = false;
-                }
-            }
-            '\\' if in_string => {
-                current.push(c);
-                if let Some(next) = chars.next() {
-                    current.push(next);
-                }
-            }
-            _ => {
-                current.push(c);
-            }
-        }
+            )
+            .into_any_element()
     }
 
-    // Handle remaining content
-    if !current.is_empty() {
-        let trimmed = current.trim();
-        let color = if in_string {
-            if is_key { key_color } else { string_color }
-        } else if trimmed.parse::<f64>().is_ok() {
-            number_color
-        } else if trimmed == "true" || trimmed == "false" {
-            bool_color
-        } else if trimmed == "null" {
-            null_color
-        } else {
-            punct_color
-        };
-        tokens.push((current, color));
-    }
-
-    tokens
 }
 
 fn format_size(bytes: usize) -> String {

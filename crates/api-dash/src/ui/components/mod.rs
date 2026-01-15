@@ -1,5 +1,6 @@
 //! Shared UI components
 
+pub mod code_editor;
 mod text_input;
 
 #[allow(unused_imports)]

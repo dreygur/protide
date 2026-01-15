@@ -9,7 +9,7 @@ use gpui::{
 
 use crate::theme;
 use crate::ui::components::render_text_view_with_max;
-use super::super::request_types::{ApiKeyLocation, AuthType, BodyType, EditTarget, HttpMethod};
+use super::super::request_types::{ApiKeyLocation, AuthType, BodyType, EditTarget, FormFieldType, HttpMethod};
 use super::{render_text_view, RequestPanel};
 
 impl RequestPanel {
@@ -30,9 +30,10 @@ impl RequestPanel {
             theme.colors.text_muted
         };
 
-        // Calculate approximate left offset of URL input
-        // Sidebar: 250px + method area + padding
-        self.url_input_left = 293.0;
+        // Calculate URL input text position from window left edge
+        let base_offset = 360.0;
+        let protocol_offset = if is_https || is_http { 70.0 } else { 0.0 };
+        self.url_input_left = base_offset + protocol_offset;
 
         div()
             .w_full()
@@ -828,15 +829,370 @@ impl RequestPanel {
         container.into_any_element()
     }
 
-    fn render_body_tab(&mut self, cx: &mut Context<Self>) -> gpui::AnyElement {
+    fn render_form_body(&mut self, cx: &mut Context<Self>) -> gpui::AnyElement {
         let theme = theme::current(cx);
-        let is_editing_body = self.active_edit == Some(EditTarget::Body);
+        let form_len = self.form_data.len();
+        let active_edit = self.active_edit;
         let edit_selection = self.edit_selection.clone();
-        let body = self.body.clone();
-        let line_count = body.lines().count();
+        let enabled_count = self.form_data.iter().filter(|f| f.enabled && !f.key.is_empty()).count();
 
-        // Check if valid JSON
-        let is_valid_json = serde_json::from_str::<serde_json::Value>(&body).is_ok();
+        let form_data: Vec<_> = self.form_data.iter().enumerate().map(|(i, field)| {
+            (i, field.enabled, field.key.clone(), field.value.clone(), field.field_type.clone(), field.file_path.is_some())
+        }).collect();
+
+        let mut container = div()
+            .w_full()
+            .flex()
+            .flex_col()
+            .gap(px(2.0))
+            .track_focus(&self.edit_focus)
+            .on_key_down(cx.listener(|this, event: &KeyDownEvent, _, cx| {
+                this.handle_edit_key(event, cx);
+            }));
+
+        // Toolbar row with body type buttons
+        container = container.child(
+            div()
+                .w_full()
+                .flex()
+                .items_center()
+                .justify_between()
+                .mb(px(8.0))
+                .child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap(px(4.0))
+                        .p(px(3.0))
+                        .rounded(px(6.0))
+                        .bg(theme.colors.bg_tertiary)
+                        .child(
+                            div()
+                                .id("body-type-json-form")
+                                .px(px(10.0))
+                                .py(px(5.0))
+                                .rounded(px(4.0))
+                                .cursor_pointer()
+                                .text_color(theme.colors.text_muted)
+                                .hover(|s| s.text_color(theme.colors.text_secondary))
+                                .text_size(px(11.0))
+                                .on_click(cx.listener(|this, _, _, cx| {
+                                    this.set_body_type(BodyType::Json, cx);
+                                }))
+                                .child("JSON")
+                        )
+                        .child(
+                            div()
+                                .id("body-type-raw-form")
+                                .px(px(10.0))
+                                .py(px(5.0))
+                                .rounded(px(4.0))
+                                .cursor_pointer()
+                                .text_color(theme.colors.text_muted)
+                                .hover(|s| s.text_color(theme.colors.text_secondary))
+                                .text_size(px(11.0))
+                                .on_click(cx.listener(|this, _, _, cx| {
+                                    this.set_body_type(BodyType::Raw, cx);
+                                }))
+                                .child("Raw")
+                        )
+                        .child(
+                            div()
+                                .id("body-type-form-form")
+                                .px(px(10.0))
+                                .py(px(5.0))
+                                .rounded(px(4.0))
+                                .cursor_pointer()
+                                .bg(theme.colors.bg_primary)
+                                .font_weight(gpui::FontWeight::MEDIUM)
+                                .text_color(theme.colors.text_primary)
+                                .text_size(px(11.0))
+                                .child("Form")
+                        )
+                )
+                .child(
+                    div()
+                        .px(px(6.0))
+                        .py(px(2.0))
+                        .rounded(px(8.0))
+                        .bg(theme.colors.accent.opacity(0.12))
+                        .text_size(px(10.0))
+                        .font_weight(gpui::FontWeight::MEDIUM)
+                        .text_color(theme.colors.accent)
+                        .child(format!("{} fields", enabled_count))
+                )
+        );
+
+        // Table header
+        container = container.child(
+            div()
+                .w_full()
+                .flex()
+                .items_center()
+                .gap(px(8.0))
+                .pb(px(8.0))
+                .border_b_1()
+                .border_color(theme.colors.border.opacity(0.5))
+                .mb(px(4.0))
+                .child(div().size(px(16.0)))
+                .child(
+                    div()
+                        .w(px(130.0))
+                        .text_size(px(10.0))
+                        .font_weight(gpui::FontWeight::SEMIBOLD)
+                        .text_color(theme.colors.text_muted)
+                        .child("KEY")
+                )
+                .child(
+                    div()
+                        .w(px(50.0))
+                        .text_size(px(10.0))
+                        .font_weight(gpui::FontWeight::SEMIBOLD)
+                        .text_color(theme.colors.text_muted)
+                        .child("TYPE")
+                )
+                .child(
+                    div()
+                        .flex_1()
+                        .text_size(px(10.0))
+                        .font_weight(gpui::FontWeight::SEMIBOLD)
+                        .text_color(theme.colors.text_muted)
+                        .child("VALUE")
+                )
+                .child(div().size(px(24.0)))
+        );
+
+        // Form fields list
+        for (i, is_enabled, key, value, field_type, has_file) in form_data {
+            let can_remove = form_len > 1;
+            let is_file_type = field_type == FormFieldType::File;
+            let is_editing_key = active_edit == Some(EditTarget::FormKey(i));
+            let is_editing_value = active_edit == Some(EditTarget::FormValue(i));
+            let is_row_editing = is_editing_key || is_editing_value;
+
+            container = container.child(
+                div()
+                    .id(SharedString::from(format!("form-row-{}", i)))
+                    .w_full()
+                    .flex()
+                    .items_center()
+                    .gap(px(8.0))
+                    .py(px(4.0))
+                    .px(px(2.0))
+                    .rounded(px(4.0))
+                    .when(!is_row_editing, |el| el.hover(|s| s.bg(theme.colors.bg_tertiary.opacity(0.3))))
+                    // Checkbox
+                    .child(
+                        div()
+                            .id(SharedString::from(format!("form-checkbox-{}", i)))
+                            .size(px(16.0))
+                            .rounded(px(4.0))
+                            .border_1()
+                            .cursor_pointer()
+                            .when(is_enabled, |el| {
+                                el.bg(theme.colors.accent)
+                                    .border_color(theme.colors.accent)
+                                    .child(
+                                        div()
+                                            .size_full()
+                                            .flex()
+                                            .items_center()
+                                            .justify_center()
+                                            .text_color(gpui::white())
+                                            .text_size(px(10.0))
+                                            .font_weight(gpui::FontWeight::BOLD)
+                                            .child("✓")
+                                    )
+                            })
+                            .when(!is_enabled, |el| {
+                                el.border_color(theme.colors.border)
+                                    .hover(|s| s.border_color(theme.colors.text_muted))
+                            })
+                            .on_click({
+                                let idx = i;
+                                cx.listener(move |this, _, _, cx| {
+                                    this.toggle_form_field(idx, cx);
+                                })
+                            })
+                    )
+                    // Key input
+                    .child(
+                        self.render_kv_input(
+                            format!("form-key-{}", i),
+                            EditTarget::FormKey(i),
+                            &key,
+                            "key",
+                            is_editing_key,
+                            edit_selection.clone(),
+                            px(130.0),
+                            cx,
+                        )
+                    )
+                    // Type selector
+                    .child(
+                        div()
+                            .id(SharedString::from(format!("form-type-{}", i)))
+                            .w(px(50.0))
+                            .h(px(24.0))
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .rounded(px(4.0))
+                            .cursor_pointer()
+                            .border_1()
+                            .border_color(theme.colors.border)
+                            .bg(theme.colors.bg_tertiary)
+                            .hover(|s| s.border_color(theme.colors.text_muted))
+                            .text_size(px(10.0))
+                            .text_color(if is_file_type { theme.colors.accent } else { theme.colors.text_muted })
+                            .on_click({
+                                let idx = i;
+                                cx.listener(move |this, _, _, cx| {
+                                    this.toggle_form_field_type(idx, cx);
+                                })
+                            })
+                            .child(if is_file_type { "File" } else { "Text" })
+                    )
+                    // Value input or file picker
+                    .when(!is_file_type, |el| {
+                        el.child(
+                            self.render_kv_input_flex(
+                                format!("form-value-{}", i),
+                                EditTarget::FormValue(i),
+                                &value,
+                                "value",
+                                is_editing_value,
+                                edit_selection.clone(),
+                                cx,
+                            )
+                        )
+                    })
+                    .when(is_file_type, |el| {
+                        el.child(
+                            div()
+                                .id(SharedString::from(format!("form-file-{}", i)))
+                                .flex_1()
+                                .h(px(24.0))
+                                .flex()
+                                .items_center()
+                                .gap(px(8.0))
+                                .child(
+                                    div()
+                                        .id(SharedString::from(format!("form-file-btn-{}", i)))
+                                        .px(px(10.0))
+                                        .h(px(24.0))
+                                        .flex()
+                                        .items_center()
+                                        .justify_center()
+                                        .rounded(px(4.0))
+                                        .cursor_pointer()
+                                        .bg(theme.colors.bg_tertiary)
+                                        .border_1()
+                                        .border_color(theme.colors.border)
+                                        .hover(|s| s.border_color(theme.colors.accent))
+                                        .text_size(px(11.0))
+                                        .text_color(theme.colors.text_secondary)
+                                        .on_click({
+                                            let idx = i;
+                                            cx.listener(move |this, _, _, cx| {
+                                                this.select_form_file(idx, cx);
+                                            })
+                                        })
+                                        .child("Choose File")
+                                )
+                                .when(has_file, |el| {
+                                    el.child(
+                                        div()
+                                            .flex_1()
+                                            .min_w(px(0.0))
+                                            .overflow_hidden()
+                                            .text_size(px(11.0))
+                                            .text_color(theme.colors.text_primary)
+                                            .child(value.clone())
+                                    )
+                                })
+                                .when(!has_file, |el| {
+                                    el.child(
+                                        div()
+                                            .text_size(px(11.0))
+                                            .text_color(theme.colors.text_muted)
+                                            .child("No file selected")
+                                    )
+                                })
+                        )
+                    })
+                    // Remove button
+                    .child(
+                        div()
+                            .id(SharedString::from(format!("form-remove-{}", i)))
+                            .size(px(24.0))
+                            .rounded(px(4.0))
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .cursor_pointer()
+                            .when(can_remove, |el| {
+                                el.text_color(theme.colors.text_muted)
+                                    .hover(|s| s.bg(theme.colors.status_client_error.opacity(0.1)).text_color(theme.colors.status_client_error))
+                                    .on_click({
+                                        let idx = i;
+                                        cx.listener(move |this, _, _, cx| {
+                                            this.remove_form_field(idx, cx);
+                                        })
+                                    })
+                            })
+                            .when(!can_remove, |el| {
+                                el.text_color(theme.colors.text_muted.opacity(0.3))
+                            })
+                            .text_size(px(14.0))
+                            .child("×")
+                    )
+            );
+        }
+
+        // Add field button
+        container = container.child(
+            div()
+                .w_full()
+                .pt(px(8.0))
+                .child(
+                    div()
+                        .id("add-form-field-btn")
+                        .w_full()
+                        .py(px(8.0))
+                        .rounded(px(6.0))
+                        .border_1()
+                        .border_color(theme.colors.border.opacity(0.5))
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .gap(px(6.0))
+                        .cursor_pointer()
+                        .text_size(px(12.0))
+                        .text_color(theme.colors.text_muted)
+                        .hover(|s| {
+                            s.bg(theme.colors.bg_tertiary)
+                                .border_color(theme.colors.border)
+                                .text_color(theme.colors.text_secondary)
+                        })
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            this.add_form_field(cx);
+                        }))
+                        .child("+")
+                        .child("Add Field")
+                )
+        );
+
+        container.into_any_element()
+    }
+
+    fn render_body_tab(&mut self, cx: &mut Context<Self>) -> gpui::AnyElement {
+        // For Form type, render KV editor instead of text editor
+        if self.body_type == BodyType::Form {
+            return self.render_form_body(cx);
+        }
+
+        let theme = theme::current(cx);
 
         div()
             .w_full()
@@ -927,145 +1283,22 @@ impl RequestPanel {
                                     .child("Form")
                             )
                     )
-                    // Right: Status and info
+                    // Right: Info label
                     .child(
                         div()
-                            .flex()
-                            .items_center()
-                            .gap(px(8.0))
-                            // Validation status
-                            .when(is_valid_json && !body.is_empty(), |el| {
-                                el.child(
-                                    div()
-                                        .px(px(8.0))
-                                        .py(px(3.0))
-                                        .rounded(px(4.0))
-                                        .bg(theme.colors.status_success.opacity(0.12))
-                                        .text_size(px(10.0))
-                                        .font_weight(gpui::FontWeight::MEDIUM)
-                                        .text_color(theme.colors.status_success)
-                                        .child("Valid JSON")
-                                )
-                            })
-                            .when(!is_valid_json && !body.is_empty(), |el| {
-                                el.child(
-                                    div()
-                                        .px(px(8.0))
-                                        .py(px(3.0))
-                                        .rounded(px(4.0))
-                                        .bg(theme.colors.status_client_error.opacity(0.12))
-                                        .text_size(px(10.0))
-                                        .font_weight(gpui::FontWeight::MEDIUM)
-                                        .text_color(theme.colors.status_client_error)
-                                        .child("Invalid JSON")
-                                )
-                            })
-                            // Line count
-                            .child(
-                                div()
-                                    .text_size(px(11.0))
-                                    .text_color(theme.colors.text_muted)
-                                    .child(format!("{} lines", line_count))
-                            )
+                            .text_size(px(10.0))
+                            .text_color(theme.colors.text_muted)
+                            .child("request body")
                     )
             )
-            // Body editor with code viewer style
+            // Body editor using CodeEditor component
             .child(
                 div()
                     .flex_1()
                     .w_full()
-                    .rounded(px(8.0))
-                    .border_1()
                     .overflow_hidden()
-                    .when(is_editing_body, |el| el.border_color(theme.colors.accent))
-                    .when(!is_editing_body, |el| el.border_color(theme.colors.border))
-                    // Code header bar (macOS style)
-                    .child(
-                        div()
-                            .w_full()
-                            .h(px(28.0))
-                            .flex()
-                            .items_center()
-                            .justify_between()
-                            .px(px(12.0))
-                            .border_b_1()
-                            .border_color(theme.colors.border.opacity(0.5))
-                            .bg(theme.colors.bg_secondary.opacity(0.5))
-                            .child(
-                                div()
-                                    .flex()
-                                    .items_center()
-                                    .gap(px(6.0))
-                                    .children((0..3).map(|_| {
-                                        div()
-                                            .size(px(8.0))
-                                            .rounded_full()
-                                            .bg(theme.colors.text_muted.opacity(0.3))
-                                    }))
-                            )
-                            .child(
-                                div()
-                                    .text_size(px(10.0))
-                                    .text_color(theme.colors.text_muted)
-                                    .child("request body")
-                            )
-                    )
-                    // Editor content
-                    .child(
-                        div()
-                            .id("body-editor")
-                            .flex_1()
-                            .w_full()
-                            .p(px(12.0))
-                            .cursor_text()
-                            .bg(theme.colors.bg_tertiary)
-                            .track_focus(&self.edit_focus)
-                            .on_key_down(cx.listener(|this, event: &KeyDownEvent, _, cx| {
-                                this.handle_edit_key(event, cx);
-                            }))
-                            .on_mouse_down(
-                                gpui::MouseButton::Left,
-                                cx.listener(|this, event: &MouseDownEvent, window, cx| {
-                                    this.start_editing(EditTarget::Body, window, cx);
-                                    this.handle_edit_mouse_down(event, 12.0, 7.2, cx);
-                                }),
-                            )
-                            .on_mouse_move(cx.listener(|this, event: &MouseMoveEvent, _, cx| {
-                                this.handle_edit_mouse_move(event, 7.2, cx);
-                            }))
-                            .on_mouse_up(
-                                gpui::MouseButton::Left,
-                                cx.listener(|this, event: &MouseUpEvent, _, cx| {
-                                    this.handle_edit_mouse_up(event, cx);
-                                }),
-                            )
-                            .child(self.render_body_text(&body, is_editing_body, edit_selection, cx))
-                    )
+                    .child(self.body_editor.clone())
             )
-            .into_any_element()
-    }
-
-    /// Render text with cursor/selection for body editor
-    fn render_body_text(
-        &self,
-        text: &str,
-        is_focused: bool,
-        selection: Range<usize>,
-        cx: &Context<Self>,
-    ) -> gpui::AnyElement {
-        let theme = theme::current(cx);
-        // Use shared render helper, wrapped in monospace font
-        div()
-            .font_family("monospace")
-            .child(render_text_view(
-                text,
-                &selection,
-                is_focused,
-                12.0,
-                theme.colors.text_primary,
-                Some("Enter request body..."),
-                theme.colors.text_muted,
-            ))
             .into_any_element()
     }
 

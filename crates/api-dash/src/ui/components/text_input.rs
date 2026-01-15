@@ -584,52 +584,78 @@ impl TextInput {
     fn render_text_with_selection(&self, is_focused: bool, cx: &Context<Self>) -> gpui::AnyElement {
         let theme = theme::current(cx);
         let text_color = self.style.text_color.unwrap_or(theme.colors.text_primary);
+        let char_width = self.char_width();
+        let font_size = self.style.font_size;
 
         if self.text.is_empty() {
+            // Empty text - show cursor if focused
             return div()
                 .flex()
                 .items_center()
-                .text_color(text_color)
+                .h_full()
+                .relative()
+                .when(is_focused, |el| {
+                    el.child(
+                        div()
+                            .w(px(2.0))
+                            .h(px(font_size + 2.0))
+                            .bg(text_color),
+                    )
+                })
                 .into_any_element();
         }
 
         let sel_start = self.selection.start.min(self.selection.end).min(self.text.len());
         let sel_end = self.selection.start.max(self.selection.end).min(self.text.len());
         let has_sel = sel_start != sel_end;
+        let cursor_pos = self.selection.end.min(self.text.len());
 
-        let before = &self.text[..sel_start];
-        let selected = &self.text[sel_start..sel_end];
-        let after = &self.text[sel_end..];
-
+        // Render each character in a fixed-width container for consistent positioning
         div()
             .flex()
             .items_center()
-            .text_color(text_color)
-            .child(before.to_string())
+            .h_full()
+            .relative()
+            // Selection highlight (absolute positioned)
             .when(has_sel, |el| {
+                let sel_x = sel_start as f32 * char_width;
+                let sel_width = (sel_end - sel_start) as f32 * char_width;
                 el.child(
                     div()
+                        .absolute()
+                        .top_0()
+                        .bottom_0()
+                        .left(px(sel_x))
+                        .w(px(sel_width))
                         .bg(gpui::rgba(0x3366ff40))
-                        .child(selected.to_string()),
                 )
             })
-            .when(!has_sel && is_focused, |el| {
+            // Cursor (absolute positioned)
+            .when(is_focused, |el| {
+                let cursor_x = cursor_pos as f32 * char_width;
                 el.child(
                     div()
-                        .w(px(1.0))
-                        .h(px(self.style.font_size + 2.0))
-                        .bg(text_color),
+                        .absolute()
+                        .top(px(2.0))
+                        .left(px(cursor_x))
+                        .w(px(2.0))
+                        .h(px(font_size + 2.0))
+                        .bg(text_color)
                 )
             })
-            .child(after.to_string())
-            .when(has_sel && is_focused, |el| {
-                el.child(
-                    div()
-                        .w(px(1.0))
-                        .h(px(self.style.font_size + 2.0))
-                        .bg(text_color),
-                )
-            })
+            // Characters in fixed-width containers
+            .child(
+                div()
+                    .flex()
+                    .text_size(px(font_size))
+                    .font_family("monospace")
+                    .text_color(text_color)
+                    .children(self.text.chars().map(|c| {
+                        div()
+                            .w(px(char_width))
+                            .child(c.to_string())
+                    }))
+            )
             .into_any_element()
     }
 }
@@ -829,45 +855,57 @@ pub fn render_text_view_multiline(
     let has_sel = sel_start != sel_end;
     let cursor_pos = sel_end;
 
-    // If no chars_per_line specified, render single line
+    // Character width for fixed-width rendering
+    let char_width = font_size * 0.6;
+
+    // If no chars_per_line specified, render single line with fixed-width chars
     let cpl = match chars_per_line {
         Some(c) if c > 0 => c,
         _ => {
-            // Single line fallback
-            let before = &text[..sel_start];
-            let selected = &text[sel_start..sel_end];
-            let after = &text[sel_end..];
-
+            // Single line with fixed-width character rendering
             return div()
                 .flex()
                 .items_center()
-                .text_size(px(font_size))
-                .text_color(text_color)
-                .child(before.to_string())
+                .h_full()
+                .relative()
+                // Selection highlight (absolute positioned)
                 .when(has_sel, |el| {
+                    let sel_x = sel_start as f32 * char_width;
+                    let sel_width = (sel_end - sel_start) as f32 * char_width;
                     el.child(
                         div()
+                            .absolute()
+                            .top_0()
+                            .bottom_0()
+                            .left(px(sel_x))
+                            .w(px(sel_width))
                             .bg(gpui::rgba(0x3366ff40))
-                            .child(selected.to_string()),
                     )
                 })
-                .when(!has_sel, |el| {
-                    el.child(
-                        div()
-                            .w(px(1.0))
-                            .h(px(font_size + 2.0))
-                            .bg(text_color),
-                    )
-                })
-                .child(after.to_string())
-                .when(has_sel, |el| {
-                    el.child(
-                        div()
-                            .w(px(1.0))
-                            .h(px(font_size + 2.0))
-                            .bg(text_color),
-                    )
-                })
+                // Cursor (absolute positioned, centered vertically)
+                .child(
+                    div()
+                        .absolute()
+                        .top_1()
+                        .bottom_1()
+                        .left(px(cursor_pos as f32 * char_width))
+                        .w(px(2.0))
+                        .bg(text_color)
+                )
+                // Characters in fixed-width containers (no monospace font)
+                .child(
+                    div()
+                        .flex()
+                        .text_size(px(font_size))
+                        .text_color(text_color)
+                        .children(text.chars().map(|c| {
+                            div()
+                                .w(px(char_width))
+                                .flex()
+                                .justify_center()
+                                .child(c.to_string())
+                        }))
+                )
                 .into_any_element();
         }
     };
@@ -891,11 +929,7 @@ pub fn render_text_view_multiline(
         lines.push(String::new());
     }
 
-    // Calculate cursor line and position within line (for future use)
-    let _cursor_line = cursor_pos / cpl;
-    let _cursor_col = cursor_pos % cpl;
-
-    // Build multi-line display
+    // Build multi-line display with fixed-width character rendering
     let line_height = font_size + 4.0;
 
     div()
@@ -912,61 +946,53 @@ pub fn render_text_view_multiline(
             let cursor_on_line = !has_sel && cursor_pos >= line_start && cursor_pos <= line_end;
             let sel_intersects = has_sel && sel_start < line_end && sel_end > line_start;
 
+            // Calculate local positions
+            let local_sel_start = sel_start.saturating_sub(line_start).min(line_text.chars().count());
+            let local_sel_end = sel_end.saturating_sub(line_start).min(line_text.chars().count());
+            let local_cursor = cursor_pos.saturating_sub(line_start).min(line_text.chars().count());
+
             div()
                 .h(px(line_height))
                 .flex()
                 .items_center()
-                .child(if sel_intersects {
-                    // Selection spans this line
-                    let local_sel_start = sel_start.saturating_sub(line_start).min(line_text.len());
-                    let local_sel_end = sel_end.saturating_sub(line_start).min(line_text.len());
-
-                    let before: String = line_text.chars().take(local_sel_start).collect();
-                    let selected: String = line_text.chars().skip(local_sel_start).take(local_sel_end - local_sel_start).collect();
-                    let after: String = line_text.chars().skip(local_sel_end).collect();
-
-                    div()
-                        .flex()
-                        .child(before)
-                        .child(
-                            div()
-                                .bg(gpui::rgba(0x3366ff40))
-                                .child(selected)
-                        )
-                        .child(after)
-                        // Show cursor at end of selection if on this line
-                        .when(sel_end >= line_start && sel_end <= line_end, |el| {
-                            el.child(
-                                div()
-                                    .w(px(1.0))
-                                    .h(px(font_size + 2.0))
-                                    .bg(text_color)
-                            )
-                        })
-                        .into_any_element()
-                } else if cursor_on_line {
-                    // Cursor on this line, no selection
-                    let local_cursor = cursor_pos - line_start;
-                    let before: String = line_text.chars().take(local_cursor).collect();
-                    let after: String = line_text.chars().skip(local_cursor).collect();
-
-                    div()
-                        .flex()
-                        .child(before)
-                        .child(
-                            div()
-                                .w(px(1.0))
-                                .h(px(font_size + 2.0))
-                                .bg(text_color)
-                        )
-                        .child(after)
-                        .into_any_element()
-                } else {
-                    // No cursor or selection on this line
-                    div()
-                        .child(line_text.clone())
-                        .into_any_element()
+                .relative()
+                // Selection highlight (absolute positioned)
+                .when(sel_intersects, |el| {
+                    let sel_x = local_sel_start as f32 * char_width;
+                    let sel_width = (local_sel_end - local_sel_start) as f32 * char_width;
+                    el.child(
+                        div()
+                            .absolute()
+                            .top_0()
+                            .bottom_0()
+                            .left(px(sel_x))
+                            .w(px(sel_width.max(2.0)))
+                            .bg(gpui::rgba(0x3366ff40))
+                    )
                 })
+                // Cursor (absolute positioned)
+                .when(cursor_on_line || (sel_intersects && sel_end >= line_start && sel_end <= line_end), |el| {
+                    let cursor_x = if cursor_on_line { local_cursor } else { local_sel_end };
+                    el.child(
+                        div()
+                            .absolute()
+                            .top(px(2.0))
+                            .left(px(cursor_x as f32 * char_width))
+                            .w(px(2.0))
+                            .h(px(font_size + 2.0))
+                            .bg(text_color)
+                    )
+                })
+                // Characters in fixed-width containers
+                .child(
+                    div()
+                        .flex()
+                        .children(line_text.chars().map(|c| {
+                            div()
+                                .w(px(char_width))
+                                .child(c.to_string())
+                        }))
+                )
         }))
         .into_any_element()
 }

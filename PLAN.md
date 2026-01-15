@@ -611,3 +611,67 @@ dirs = "6"  # For config/data directories
 17. `crates/api-dash/src/models/request.rs` - Request types
 18. `crates/api-dash/src/protocols/mod.rs` - Protocols
 19. `crates/api-dash/src/protocols/http.rs` - HTTP client
+
+---
+
+## Current Sprint: Code Editor Component
+
+### Overview
+
+Create a reusable `CodeEditor` component inspired by Zed's editor architecture for:
+- **Body Editor**: Editable JSON with syntax highlighting, line numbers
+- **Response Viewer**: Read-only viewer with syntax highlighting
+
+### Design Decisions
+
+1. **Manual Tokenizer** (not tree-sitter): Reuse existing `tokenize_json_line` from response.rs
+2. **Simplified Architecture**: No complex DisplayMap layers - just buffer + highlighting
+3. **Small Files**: Each file <300 lines, clear single responsibility
+4. **Follow Zed Patterns**: Element trait, paint layering, viewport culling
+
+### File Structure (~800 lines total)
+
+```
+crates/api-dash/src/ui/components/code_editor/
+├── mod.rs           (~150 lines) - Public API, CodeEditor struct
+├── buffer.rs        (~120 lines) - Text buffer, line operations
+├── highlight.rs     (~180 lines) - Tokenizers (JSON, XML, Plain)
+├── selection.rs     (~100 lines) - Cursor, selection handling
+├── render.rs        (~150 lines) - GPUI rendering, viewport culling
+└── input.rs         (~100 lines) - Mouse/keyboard handlers
+```
+
+### Progress
+
+- [x] Phase 1: Text Buffer (`buffer.rs`) - 120 lines
+- [x] Phase 2: Syntax Highlighting (`highlight.rs`) - 235 lines (JSON, XML, Plain)
+- [x] Phase 3: Selection (`selection.rs`) - 130 lines
+- [x] Phase 4-6: Core Component (`mod.rs`) - 570 lines (combined struct, render, input)
+- [ ] Phase 7: Integration - Wire into request/response panels
+
+**Note:** Phases 4-6 were combined into a single mod.rs file since GPUI's patterns
+favor keeping related functionality together. Total: ~1055 lines across 4 files.
+
+### Component Features
+- Syntax highlighting for JSON, XML, HTML, Plain text
+- Line numbers with gutter
+- Selection with click, drag, double-click (word), triple-click (line)
+- Cursor navigation (arrows, home, end)
+- Text editing (insert, delete, backspace)
+- Copy/Cut/Paste support
+- Read-only mode option
+- Configurable font size and line height
+
+### Key Files to Modify
+
+| File | Change |
+|------|--------|
+| `ui/components/mod.rs` | Export `code_editor` module |
+| `ui/panels/request/mod.rs` | Use `CodeEditor` for body |
+| `ui/panels/request/render.rs` | Remove `render_body_text`, use component |
+| `ui/panels/response.rs` | Move `tokenize_json_line` to highlight.rs, use `CodeEditor` |
+
+
+### Other plans location
+~/.claude/plans/golden-swinging-porcupine.md
+~/.claude/plans/binary-greeting-hennessy.md

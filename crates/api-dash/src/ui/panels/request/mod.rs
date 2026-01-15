@@ -17,9 +17,10 @@ use gpui::{
 };
 
 use crate::ui::components::{render_text_view_with_max, find_word_start, find_word_end};
+use crate::ui::components::code_editor::{CodeEditor, Language};
 
 use super::explorer::ExplorerPanel;
-use super::request_types::{ApiKeyLocation, AuthType, BodyType, EditTarget, HttpMethod, KeyValuePair};
+use super::request_types::{ApiKeyLocation, AuthType, BodyType, EditTarget, FormField, FormFieldType, HttpMethod, KeyValuePair};
 use super::request_utils::{base64_encode, status_text, url_decode, url_encode};
 use super::response::{ResponseData, ResponsePanel};
 
@@ -36,6 +37,21 @@ fn render_text_view(
     render_text_view_with_max(text, selection, is_focused, font_size, text_color, placeholder, placeholder_color, None)
 }
 
+/// Convert character index to byte offset in a string
+fn char_to_byte_offset(text: &str, char_idx: usize) -> usize {
+    text.char_indices()
+        .nth(char_idx)
+        .map(|(byte_offset, _)| byte_offset)
+        .unwrap_or(text.len())
+}
+
+/// Convert byte offset to character index in a string
+fn byte_to_char_offset(text: &str, byte_offset: usize) -> usize {
+    text[..byte_offset.min(text.len())]
+        .chars()
+        .count()
+}
+
 /// Request editor panel
 pub struct RequestPanel {
     pub(super) active_tab: usize,
@@ -50,6 +66,7 @@ pub struct RequestPanel {
     pub(super) loading: bool,
     pub(super) headers: Vec<KeyValuePair>,
     pub(super) params: Vec<KeyValuePair>,
+    pub(super) form_data: Vec<FormField>,
     pub(super) body: String,
     pub(super) body_type: BodyType,
     pub(super) syncing_params: bool,
@@ -70,13 +87,23 @@ pub struct RequestPanel {
     pub(super) edit_redo_stack: Vec<(EditTarget, String, Range<usize>)>,
     pub(super) skip_blur: bool,
     pub(super) edit_focus: FocusHandle,
+    pub(super) body_focus: FocusHandle,
     pub(super) explorer_panel: Option<Entity<ExplorerPanel>>,
+    // CodeEditor for JSON/Raw body
+    pub(super) body_editor: Entity<CodeEditor>,
 }
 
 impl RequestPanel {
     pub fn new(cx: &mut Context<Self>, response_panel: Entity<ResponsePanel>) -> Self {
         let url = "https://httpbin.org/post".to_string();
         let url_len = url.len();
+        let initial_body = "{\n  \"name\": \"API Dash\",\n  \"version\": \"0.1.0\"\n}";
+        let body_editor = cx.new(|cx| {
+            CodeEditor::new(cx)
+                .with_content(initial_body)
+                .with_language(Language::Json)
+                .with_line_numbers(true)
+        });
         Self {
             active_tab: 0,
             method: HttpMethod::Post,
@@ -97,7 +124,8 @@ impl RequestPanel {
                 KeyValuePair::default(),
             ],
             params: vec![KeyValuePair::default()],
-            body: "{\n  \"name\": \"API Dash\",\n  \"version\": \"0.1.0\"\n}".to_string(),
+            form_data: vec![FormField::default()],
+            body: initial_body.to_string(),
             body_type: BodyType::Json,
             syncing_params: false,
             auth_type: AuthType::None,
@@ -117,7 +145,9 @@ impl RequestPanel {
             edit_redo_stack: Vec::new(),
             skip_blur: false,
             edit_focus: cx.focus_handle(),
+            body_focus: cx.focus_handle(),
             explorer_panel: None,
+            body_editor,
         }
     }
 
@@ -129,6 +159,14 @@ impl RequestPanel {
 
     fn cursor(&self) -> usize {
         self.url_selection.end
+    }
+
+    /// Set body content in the CodeEditor
+    pub fn set_body_content(&mut self, content: &str, cx: &mut Context<Self>) {
+        self.body_editor.update(cx, |editor, cx| {
+            editor.set_content(content, cx);
+        });
+        self.body = content.to_string();
     }
 
     /// Load request data from a history entry
@@ -147,7 +185,8 @@ impl RequestPanel {
 
         // Set URL
         self.url = url;
-        self.url_selection = self.url.len()..self.url.len();
+        let char_count = self.url.chars().count();
+        self.url_selection = char_count..char_count;
 
         // Set headers
         self.headers = headers
@@ -167,7 +206,7 @@ impl RequestPanel {
 
         // Set body
         if let Some(b) = body {
-            self.body = b;
+            self.set_body_content(&b, cx);
         }
 
         // Sync params from URL
@@ -284,6 +323,67 @@ impl RequestPanel {
                 }
             }
             self.sync_url_from_params(cx);
+            cx.notify();
+        }
+    }
+
+    fn toggle_form_field(&mut self, index: usize, cx: &mut Context<Self>) {
+        if let Some(field) = self.form_data.get_mut(index) {
+            field.enabled = !field.enabled;
+            cx.notify();
+        }
+    }
+
+    fn add_form_field(&mut self, cx: &mut Context<Self>) {
+        self.form_data.push(FormField::default());
+        cx.notify();
+    }
+
+    fn toggle_form_field_type(&mut self, index: usize, cx: &mut Context<Self>) {
+        if let Some(field) = self.form_data.get_mut(index) {
+            field.field_type = match field.field_type {
+                FormFieldType::Text => FormFieldType::File,
+                FormFieldType::File => FormFieldType::Text,
+            };
+            // Clear file path when switching to text
+            if field.field_type == FormFieldType::Text {
+                field.file_path = None;
+                field.value.clear();
+            }
+            cx.notify();
+        }
+    }
+
+    fn select_form_file(&mut self, index: usize, cx: &mut Context<Self>) {
+        if let Some(path) = rfd::FileDialog::new().pick_file() {
+            if let Some(field) = self.form_data.get_mut(index) {
+                field.value = path.file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("file")
+                    .to_string();
+                field.file_path = Some(path);
+                cx.notify();
+            }
+        }
+    }
+
+    fn remove_form_field(&mut self, index: usize, cx: &mut Context<Self>) {
+        if index < self.form_data.len() && self.form_data.len() > 1 {
+            self.form_data.remove(index);
+            if let Some(target) = self.active_edit {
+                match target {
+                    EditTarget::FormKey(i) | EditTarget::FormValue(i) if i == index => {
+                        self.active_edit = None;
+                    }
+                    EditTarget::FormKey(i) if i > index => {
+                        self.active_edit = Some(EditTarget::FormKey(i - 1));
+                    }
+                    EditTarget::FormValue(i) if i > index => {
+                        self.active_edit = Some(EditTarget::FormValue(i - 1));
+                    }
+                    _ => {}
+                }
+            }
             cx.notify();
         }
     }
@@ -406,6 +506,8 @@ impl RequestPanel {
             EditTarget::HeaderValue(i) => self.headers.get(i).map(|h| h.value.as_str()).unwrap_or(""),
             EditTarget::ParamKey(i) => self.params.get(i).map(|p| p.key.as_str()).unwrap_or(""),
             EditTarget::ParamValue(i) => self.params.get(i).map(|p| p.value.as_str()).unwrap_or(""),
+            EditTarget::FormKey(i) => self.form_data.get(i).map(|f| f.key.as_str()).unwrap_or(""),
+            EditTarget::FormValue(i) => self.form_data.get(i).map(|f| f.value.as_str()).unwrap_or(""),
             EditTarget::Body => &self.body,
             EditTarget::BearerToken => &self.bearer_token,
             EditTarget::BasicUsername => &self.basic_username,
@@ -423,6 +525,8 @@ impl RequestPanel {
             EditTarget::HeaderValue(i) => self.headers.get_mut(i).map(|h| &mut h.value),
             EditTarget::ParamKey(i) => self.params.get_mut(i).map(|p| &mut p.key),
             EditTarget::ParamValue(i) => self.params.get_mut(i).map(|p| &mut p.value),
+            EditTarget::FormKey(i) => self.form_data.get_mut(i).map(|f| &mut f.key),
+            EditTarget::FormValue(i) => self.form_data.get_mut(i).map(|f| &mut f.value),
             EditTarget::Body => Some(&mut self.body),
             EditTarget::BearerToken => Some(&mut self.bearer_token),
             EditTarget::BasicUsername => Some(&mut self.basic_username),
@@ -438,7 +542,12 @@ impl RequestPanel {
         self.active_edit = Some(target);
         self.edit_selection = text_len..text_len; // Cursor at end
         self.edit_is_selecting = false;
-        self.edit_focus.focus(window, cx);
+        // Use body_focus for body editor, edit_focus for other fields
+        if matches!(target, EditTarget::Body) {
+            self.body_focus.focus(window, cx);
+        } else {
+            self.edit_focus.focus(window, cx);
+        }
         cx.notify();
     }
 
@@ -472,21 +581,21 @@ impl RequestPanel {
         }
     }
 
-    /// Move cursor to position in current edit
+    /// Move cursor to position in current edit (position is char index)
     fn edit_move_to(&mut self, offset: usize, cx: &mut Context<Self>) {
         if let Some(target) = self.active_edit {
-            let text_len = self.get_edit_text(target).len();
-            let offset = offset.min(text_len);
+            let char_count = self.get_edit_text(target).chars().count();
+            let offset = offset.min(char_count);
             self.edit_selection = offset..offset;
             cx.notify();
         }
     }
 
-    /// Extend selection to position
+    /// Extend selection to position (position is char index)
     fn edit_select_to(&mut self, offset: usize, cx: &mut Context<Self>) {
         if let Some(target) = self.active_edit {
-            let text_len = self.get_edit_text(target).len();
-            self.edit_selection.end = offset.min(text_len);
+            let char_count = self.get_edit_text(target).chars().count();
+            self.edit_selection.end = offset.min(char_count);
             cx.notify();
         }
     }
@@ -494,8 +603,8 @@ impl RequestPanel {
     /// Select all text in current edit
     fn edit_select_all(&mut self, cx: &mut Context<Self>) {
         if let Some(target) = self.active_edit {
-            let text_len = self.get_edit_text(target).len();
-            self.edit_selection = 0..text_len;
+            let char_count = self.get_edit_text(target).chars().count();
+            self.edit_selection = 0..char_count;
             cx.notify();
         }
     }
@@ -512,11 +621,14 @@ impl RequestPanel {
     fn edit_delete_selection_no_save(&mut self, cx: &mut Context<Self>) {
         if let Some(target) = self.active_edit {
             if self.edit_has_selection() {
-                let start = self.edit_selection.start.min(self.edit_selection.end);
-                let end = self.edit_selection.start.max(self.edit_selection.end);
+                let char_start = self.edit_selection.start.min(self.edit_selection.end);
+                let char_end = self.edit_selection.start.max(self.edit_selection.end);
                 if let Some(text) = self.get_edit_text_mut(target) {
-                    text.replace_range(start..end, "");
-                    self.edit_selection = start..start;
+                    // Convert character indices to byte offsets
+                    let byte_start = char_to_byte_offset(text, char_start);
+                    let byte_end = char_to_byte_offset(text, char_end);
+                    text.replace_range(byte_start..byte_end, "");
+                    self.edit_selection = char_start..char_start;
                     // Sync URL <-> params
                     self.sync_after_edit(target, cx);
                     cx.notify();
@@ -576,11 +688,14 @@ impl RequestPanel {
         if let Some(target) = self.active_edit {
             self.save_edit_state();
             self.edit_delete_selection_no_save(cx);
-            let pos = self.edit_selection.start;
+            let char_pos = self.edit_selection.start;
             if let Some(text) = self.get_edit_text_mut(target) {
-                text.insert_str(pos, insert);
-                let new_pos = pos + insert.len();
-                self.edit_selection = new_pos..new_pos;
+                // Convert character index to byte offset for string operation
+                let byte_pos = char_to_byte_offset(text, char_pos);
+                text.insert_str(byte_pos, insert);
+                // New position is after the inserted text (in character indices)
+                let new_char_pos = char_pos + insert.chars().count();
+                self.edit_selection = new_char_pos..new_char_pos;
                 // Sync URL <-> params
                 self.sync_after_edit(target, cx);
                 cx.notify();
@@ -601,22 +716,23 @@ impl RequestPanel {
         }
     }
 
-    /// Calculate character index from x position
+    /// Calculate character index from x position (for single-line fields)
+    /// Returns a character index (not byte offset)
     fn edit_index_for_x(&self, x: f32, char_width: f32) -> usize {
         if let Some(target) = self.active_edit {
-            let text_len = self.get_edit_text(target).len();
+            let char_count = self.get_edit_text(target).chars().count();
             if x <= 0.0 {
                 0
             } else {
                 let approx_char = (x / char_width) as usize;
-                approx_char.min(text_len)
+                approx_char.min(char_count)
             }
         } else {
             0
         }
     }
 
-    /// Handle mouse down for edit fields
+    /// Handle mouse down for single-line edit fields
     fn handle_edit_mouse_down(&mut self, event: &MouseDownEvent, input_left: f32, char_width: f32, cx: &mut Context<Self>) {
         self.edit_is_selecting = true;
         self.edit_input_left = input_left;
@@ -652,7 +768,69 @@ impl RequestPanel {
         }
     }
 
-    /// Handle mouse move for edit fields
+    /// Calculate cursor position after moving up one line
+    fn body_cursor_up(&self) -> usize {
+        let text = &self.body;
+        let cursor = self.edit_cursor();
+
+        if text.is_empty() || cursor == 0 {
+            return 0;
+        }
+
+        // Find current line start
+        let current_line_start = text[..cursor].rfind('\n').map(|i| i + 1).unwrap_or(0);
+
+        // If already on first line, go to start
+        if current_line_start == 0 {
+            return 0;
+        }
+
+        // Column in current line
+        let col = cursor - current_line_start;
+
+        // Find previous line start (line before current)
+        let prev_line_end = current_line_start - 1; // newline char position
+        let prev_line_start = text[..prev_line_end].rfind('\n').map(|i| i + 1).unwrap_or(0);
+        let prev_line_len = prev_line_end - prev_line_start;
+
+        // Move to same column in previous line (or end of line if shorter)
+        prev_line_start + col.min(prev_line_len)
+    }
+
+    /// Calculate cursor position after moving down one line
+    fn body_cursor_down(&self) -> usize {
+        let text = &self.body;
+        let cursor = self.edit_cursor();
+
+        if text.is_empty() {
+            return 0;
+        }
+
+        // Find current line start
+        let current_line_start = text[..cursor].rfind('\n').map(|i| i + 1).unwrap_or(0);
+
+        // Column in current line
+        let col = cursor - current_line_start;
+
+        // Find next line start
+        let Some(newline_pos) = text[cursor..].find('\n') else {
+            // No more lines, go to end
+            return text.len();
+        };
+
+        let next_line_start = cursor + newline_pos + 1;
+
+        // Find next line end
+        let next_line_end = text[next_line_start..].find('\n')
+            .map(|i| next_line_start + i)
+            .unwrap_or(text.len());
+        let next_line_len = next_line_end - next_line_start;
+
+        // Move to same column in next line (or end of line if shorter)
+        next_line_start + col.min(next_line_len)
+    }
+
+    /// Handle mouse move for single-line edit fields
     fn handle_edit_mouse_move(&mut self, event: &MouseMoveEvent, char_width: f32, cx: &mut Context<Self>) {
         if self.edit_is_selecting {
             let click_x = f32::from(event.position.x) - self.edit_input_left;
@@ -745,16 +923,16 @@ impl RequestPanel {
                 }
             }
             "right" => {
-                let text_len = self.get_edit_text(target).len();
+                let char_count = self.get_edit_text(target).chars().count();
                 if shift {
-                    if self.edit_selection.end < text_len {
+                    if self.edit_selection.end < char_count {
                         self.edit_selection.end += 1;
                         cx.notify();
                     }
                 } else if self.edit_has_selection() {
                     let end = self.edit_selection.start.max(self.edit_selection.end);
                     self.edit_move_to(end, cx);
-                } else if self.edit_cursor() < text_len {
+                } else if self.edit_cursor() < char_count {
                     self.edit_move_to(self.edit_cursor() + 1, cx);
                 }
             }
@@ -767,12 +945,34 @@ impl RequestPanel {
                 }
             }
             "end" => {
-                let text_len = self.get_edit_text(target).len();
+                let char_count = self.get_edit_text(target).chars().count();
                 if shift {
-                    self.edit_selection.end = text_len;
+                    self.edit_selection.end = char_count;
                     cx.notify();
                 } else {
-                    self.edit_move_to(text_len, cx);
+                    self.edit_move_to(char_count, cx);
+                }
+            }
+            "up" => {
+                if is_body {
+                    let new_pos = self.body_cursor_up();
+                    if shift {
+                        self.edit_selection.end = new_pos;
+                        cx.notify();
+                    } else {
+                        self.edit_move_to(new_pos, cx);
+                    }
+                }
+            }
+            "down" => {
+                if is_body {
+                    let new_pos = self.body_cursor_down();
+                    if shift {
+                        self.edit_selection.end = new_pos;
+                        cx.notify();
+                    } else {
+                        self.edit_move_to(new_pos, cx);
+                    }
                 }
             }
             "backspace" => {
@@ -780,25 +980,31 @@ impl RequestPanel {
                     self.edit_delete_selection(cx);
                 } else if self.edit_cursor() > 0 {
                     self.save_edit_state();
-                    let pos = self.edit_cursor() - 1;
+                    let char_pos = self.edit_cursor() - 1;
                     if let Some(text) = self.get_edit_text_mut(target) {
-                        text.remove(pos);
-                        self.edit_selection = pos..pos;
+                        // Convert char position to byte offset and remove that char
+                        let byte_pos = char_to_byte_offset(text, char_pos);
+                        let next_byte_pos = char_to_byte_offset(text, char_pos + 1);
+                        text.replace_range(byte_pos..next_byte_pos, "");
+                        self.edit_selection = char_pos..char_pos;
                         self.sync_after_edit(target, cx);
                         cx.notify();
                     }
                 }
             }
             "delete" => {
-                let text_len = self.get_edit_text(target).len();
+                let char_count = self.get_edit_text(target).chars().count();
                 if self.edit_has_selection() {
                     self.edit_delete_selection(cx);
                 } else {
                     let cursor = self.edit_cursor();
-                    if cursor < text_len {
+                    if cursor < char_count {
                         self.save_edit_state();
                         if let Some(text) = self.get_edit_text_mut(target) {
-                            text.remove(cursor);
+                            // Convert char position to byte offset and remove that char
+                            let byte_pos = char_to_byte_offset(text, cursor);
+                            let next_byte_pos = char_to_byte_offset(text, cursor + 1);
+                            text.replace_range(byte_pos..next_byte_pos, "");
                             self.sync_after_edit(target, cx);
                             cx.notify();
                         }
@@ -855,6 +1061,14 @@ impl RequestPanel {
                     None
                 }
             }
+            EditTarget::FormKey(i) => Some(EditTarget::FormValue(i)),
+            EditTarget::FormValue(i) => {
+                if i + 1 < self.form_data.len() {
+                    Some(EditTarget::FormKey(i + 1))
+                } else {
+                    None
+                }
+            }
             _ => None,
         };
 
@@ -869,9 +1083,9 @@ impl RequestPanel {
     }
 
     /// Save the current request to a .http file
-    fn save_request(&mut self, _cx: &mut Context<Self>) {
+    fn save_request(&mut self, cx: &mut Context<Self>) {
         // Generate .http file content
-        let content = self.generate_http_content();
+        let content = self.generate_http_content(cx);
 
         // Open save dialog
         let default_name = if self.url.is_empty() {
@@ -909,7 +1123,7 @@ impl RequestPanel {
     }
 
     /// Generate .http file content from current request state
-    fn generate_http_content(&self) -> String {
+    fn generate_http_content(&self, cx: &Context<Self>) -> String {
         let mut lines = Vec::new();
 
         // Request name comment
@@ -958,10 +1172,11 @@ impl RequestPanel {
             }
         }
 
-        // Body
-        if !self.body.is_empty() {
+        // Body - get from CodeEditor
+        let body_content = self.body_editor.read(cx).content().to_string();
+        if !body_content.is_empty() {
             lines.push(String::new());
-            lines.push(self.body.clone());
+            lines.push(body_content);
         }
 
         lines.join("\n")
@@ -974,6 +1189,9 @@ impl RequestPanel {
 
         self.loading = true;
         cx.notify();
+
+        // Get body content from CodeEditor
+        let body_content = self.body_editor.read(cx).content().to_string();
 
         // Set response panel to loading
         self.response_panel.update(cx, |panel, cx| {
@@ -1040,9 +1258,43 @@ impl RequestPanel {
             }
         }
 
-        // Substitute variables in body
+        // Substitute variables in body and collect form data
+        let has_files = self.body_type == BodyType::Form
+            && self.form_data.iter().any(|f| f.enabled && f.field_type == FormFieldType::File && f.file_path.is_some());
+
+        // Collect form fields for multipart (must be done before thread spawn)
+        let form_fields: Vec<(String, String, Option<std::path::PathBuf>, bool)> = if self.body_type == BodyType::Form {
+            self.form_data
+                .iter()
+                .filter(|f| f.enabled && !f.key.is_empty())
+                .map(|f| (
+                    substitute(&f.key),
+                    substitute(&f.value),
+                    f.file_path.clone(),
+                    f.field_type == FormFieldType::File,
+                ))
+                .collect()
+        } else {
+            Vec::new()
+        };
+
         let body = if matches!(method, HttpMethod::Post | HttpMethod::Put | HttpMethod::Patch) {
-            Some(substitute(&self.body))
+            match self.body_type {
+                BodyType::Form if !has_files => {
+                    // URL-encode form data (no files)
+                    let form_body: String = form_fields
+                        .iter()
+                        .filter(|(_, _, _, is_file)| !is_file)
+                        .map(|(key, value, _, _)| {
+                            format!("{}={}", url_encode(key), url_encode(value))
+                        })
+                        .collect::<Vec<_>>()
+                        .join("&");
+                    if form_body.is_empty() { None } else { Some(form_body) }
+                }
+                BodyType::Form => None, // Will use multipart
+                _ => Some(substitute(&body_content)),
+            }
         } else {
             None
         };
@@ -1089,13 +1341,31 @@ impl RequestPanel {
 
                 let mut req_builder = client.request(req_method, &final_url);
 
-                // Add headers
+                // Add headers (skip Content-Type for multipart - reqwest sets it)
                 for (key, value) in headers {
+                    if has_files && key.eq_ignore_ascii_case("content-type") {
+                        continue; // Let reqwest set multipart Content-Type with boundary
+                    }
                     req_builder = req_builder.header(&key, &value);
                 }
 
                 // Add body for POST/PUT/PATCH
-                if let Some(body_content) = body {
+                if has_files && !form_fields.is_empty() {
+                    // Build multipart form
+                    let mut form = reqwest::blocking::multipart::Form::new();
+                    for (key, value, file_path, is_file) in form_fields {
+                        if is_file {
+                            if let Some(path) = file_path {
+                                if let Ok(part) = reqwest::blocking::multipart::Part::file(&path) {
+                                    form = form.part(key, part);
+                                }
+                            }
+                        } else {
+                            form = form.text(key, value);
+                        }
+                    }
+                    req_builder = req_builder.multipart(form);
+                } else if let Some(body_content) = body {
                     req_builder = req_builder.body(body_content);
                 }
 
@@ -1172,13 +1442,15 @@ impl RequestPanel {
     }
 
     fn move_to(&mut self, offset: usize, cx: &mut Context<Self>) {
-        let offset = offset.min(self.url.len());
+        let char_count = self.url.chars().count();
+        let offset = offset.min(char_count);
         self.url_selection = offset..offset;
         cx.notify();
     }
 
     fn select_to(&mut self, offset: usize, cx: &mut Context<Self>) {
-        let offset = offset.min(self.url.len());
+        let char_count = self.url.chars().count();
+        let offset = offset.min(char_count);
         self.url_selection.end = offset;
         // Normalize range
         if self.url_selection.end < self.url_selection.start {
@@ -1188,7 +1460,7 @@ impl RequestPanel {
     }
 
     fn select_all(&mut self, cx: &mut Context<Self>) {
-        self.url_selection = 0..self.url.len();
+        self.url_selection = 0..self.url.chars().count();
         cx.notify();
     }
 
@@ -1196,8 +1468,10 @@ impl RequestPanel {
         self.url_selection.start != self.url_selection.end
     }
 
-    fn selected_text(&self) -> &str {
-        &self.url[self.url_selection.clone()]
+    fn selected_text(&self) -> String {
+        let byte_start = char_to_byte_offset(&self.url, self.url_selection.start);
+        let byte_end = char_to_byte_offset(&self.url, self.url_selection.end);
+        self.url[byte_start..byte_end].to_string()
     }
 
     fn delete_selection(&mut self, cx: &mut Context<Self>) {
@@ -1210,9 +1484,13 @@ impl RequestPanel {
     /// Delete selection without saving to undo (used internally)
     fn delete_selection_no_save(&mut self, cx: &mut Context<Self>) {
         if self.has_selection() {
-            let start = self.url_selection.start;
-            self.url.replace_range(self.url_selection.clone(), "");
-            self.url_selection = start..start;
+            let char_start = self.url_selection.start.min(self.url_selection.end);
+            let char_end = self.url_selection.start.max(self.url_selection.end);
+            // Convert character indices to byte offsets
+            let byte_start = char_to_byte_offset(&self.url, char_start);
+            let byte_end = char_to_byte_offset(&self.url, char_end);
+            self.url.replace_range(byte_start..byte_end, "");
+            self.url_selection = char_start..char_start;
             self.sync_params_from_url(cx);
             cx.notify();
         }
@@ -1252,10 +1530,13 @@ impl RequestPanel {
     fn insert_text(&mut self, text: &str, cx: &mut Context<Self>) {
         self.save_url_state();
         self.delete_selection_no_save(cx);
-        let pos = self.url_selection.start;
-        self.url.insert_str(pos, text);
-        let new_pos = pos + text.len();
-        self.url_selection = new_pos..new_pos;
+        let char_pos = self.url_selection.start;
+        // Convert character index to byte offset for string operation
+        let byte_pos = char_to_byte_offset(&self.url, char_pos);
+        self.url.insert_str(byte_pos, text);
+        // New position is after the inserted text (in character indices)
+        let new_char_pos = char_pos + text.chars().count();
+        self.url_selection = new_char_pos..new_char_pos;
         self.sync_params_from_url(cx);
         cx.notify();
     }
@@ -1268,7 +1549,7 @@ impl RequestPanel {
             0
         } else {
             let approx_char = (x / char_width) as usize;
-            approx_char.min(self.url.len())
+            approx_char.min(self.url.chars().count())
         }
     }
 
@@ -1307,7 +1588,7 @@ impl RequestPanel {
         if self.is_selecting {
             let click_x = f32::from(event.position.x) - self.url_input_left;
             let index = self.index_for_x(click_x);
-            self.url_selection.end = index.min(self.url.len());
+            self.url_selection.end = index.min(self.url.chars().count());
             cx.notify();
         }
     }
@@ -1392,15 +1673,16 @@ impl RequestPanel {
                 }
             }
             "right" => {
+                let char_count = self.url.chars().count();
                 if shift {
-                    if self.url_selection.end < self.url.len() {
+                    if self.url_selection.end < char_count {
                         self.url_selection.end += 1;
                         cx.notify();
                     }
                 } else if self.has_selection() {
                     let end = self.url_selection.start.max(self.url_selection.end);
                     self.move_to(end, cx);
-                } else if self.cursor() < self.url.len() {
+                } else if self.cursor() < char_count {
                     self.move_to(self.cursor() + 1, cx);
                 }
             }
@@ -1413,11 +1695,12 @@ impl RequestPanel {
                 }
             }
             "end" => {
+                let char_count = self.url.chars().count();
                 if shift {
-                    self.url_selection.end = self.url.len();
+                    self.url_selection.end = char_count;
                     cx.notify();
                 } else {
-                    self.move_to(self.url.len(), cx);
+                    self.move_to(char_count, cx);
                 }
             }
             "backspace" => {
@@ -1425,19 +1708,27 @@ impl RequestPanel {
                     self.delete_selection(cx);
                 } else if self.cursor() > 0 {
                     self.save_url_state();
-                    let pos = self.cursor() - 1;
-                    self.url.remove(pos);
-                    self.url_selection = pos..pos;
+                    let char_pos = self.cursor() - 1;
+                    // Convert char position to byte offset and remove that char
+                    let byte_pos = char_to_byte_offset(&self.url, char_pos);
+                    let next_byte_pos = char_to_byte_offset(&self.url, char_pos + 1);
+                    self.url.replace_range(byte_pos..next_byte_pos, "");
+                    self.url_selection = char_pos..char_pos;
                     self.sync_params_from_url(cx);
                     cx.notify();
                 }
             }
             "delete" => {
+                let char_count = self.url.chars().count();
                 if self.has_selection() {
                     self.delete_selection(cx);
-                } else if self.cursor() < self.url.len() {
+                } else if self.cursor() < char_count {
                     self.save_url_state();
-                    self.url.remove(self.cursor());
+                    let cursor = self.cursor();
+                    // Convert char position to byte offset and remove that char
+                    let byte_pos = char_to_byte_offset(&self.url, cursor);
+                    let next_byte_pos = char_to_byte_offset(&self.url, cursor + 1);
+                    self.url.replace_range(byte_pos..next_byte_pos, "");
                     self.sync_params_from_url(cx);
                     cx.notify();
                 }
@@ -1466,6 +1757,13 @@ impl Render for RequestPanel {
             .flex()
             .flex_col()
             .relative()
+            .track_focus(&self.body_focus)
+            .capture_key_down(cx.listener(|this, event: &KeyDownEvent, _, cx| {
+                // Route key events based on active_edit
+                if this.active_edit.is_some() {
+                    this.handle_edit_key(event, cx);
+                }
+            }))
             .on_mouse_down(gpui::MouseButton::Left, cx.listener(|this, _, _, cx| {
                 // Only clear focus if an input wasn't clicked
                 if !this.skip_blur && this.active_edit.is_some() {

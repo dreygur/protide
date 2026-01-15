@@ -1,7 +1,7 @@
 //! Main application window
 
 use gpui::{
-    div, prelude::*, px, Entity, FocusHandle, InteractiveElement,
+    div, prelude::*, px, Entity, InteractiveElement,
     IntoElement, ParentElement, Render, Styled, Window, Context, App,
 };
 
@@ -10,7 +10,6 @@ use super::panels::{ExplorerPanel, RequestPanel, ResponsePanel};
 
 /// Main window containing the application layout
 pub struct MainWindow {
-    focus_handle: FocusHandle,
     explorer: Entity<ExplorerPanel>,
     request_panel: Entity<RequestPanel>,
     response_panel: Entity<ResponsePanel>,
@@ -18,8 +17,6 @@ pub struct MainWindow {
 
 impl MainWindow {
     pub fn build(_window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let focus_handle = cx.focus_handle();
-
         let explorer = cx.new(|cx| ExplorerPanel::new(cx));
         let response_panel = cx.new(|cx| ResponsePanel::new(cx));
         let response_panel_clone = response_panel.clone();
@@ -38,7 +35,6 @@ impl MainWindow {
         });
 
         Self {
-            focus_handle,
             explorer,
             request_panel,
             response_panel,
@@ -56,7 +52,7 @@ impl Render for MainWindow {
             .flex_col()
             .bg(theme.colors.bg_primary)
             .text_color(theme.colors.text_primary)
-            .track_focus(&self.focus_handle)
+            // Removed track_focus to allow child panels to receive key events
             // Title bar with window controls
             .child(self.render_title_bar(cx))
             // Main content
