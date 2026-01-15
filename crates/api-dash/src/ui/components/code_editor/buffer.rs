@@ -26,6 +26,7 @@ impl TextBuffer {
         self.content.len()
     }
 
+    #[allow(dead_code)]
     pub fn is_empty(&self) -> bool {
         self.content.is_empty()
     }
@@ -62,6 +63,7 @@ impl TextBuffer {
         }
     }
 
+    #[allow(dead_code)]
     pub fn replace(&mut self, range: Range<usize>, text: &str) {
         let start = range.start.min(self.content.len());
         let end = range.end.min(self.content.len());

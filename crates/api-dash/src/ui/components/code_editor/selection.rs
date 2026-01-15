@@ -58,6 +58,7 @@ impl Selection {
     }
 
     /// Collapse selection to cursor at start
+    #[allow(dead_code)]
     pub fn collapse_to_start(&mut self) {
         let start = self.start();
         self.anchor = start;
@@ -65,6 +66,7 @@ impl Selection {
     }
 
     /// Collapse selection to cursor at end
+    #[allow(dead_code)]
     pub fn collapse_to_end(&mut self) {
         let end = self.end();
         self.anchor = end;
@@ -72,6 +74,7 @@ impl Selection {
     }
 
     /// Check if offset is within selection
+    #[allow(dead_code)]
     pub fn contains(&self, offset: usize) -> bool {
         let range = self.range();
         offset >= range.start && offset < range.end
@@ -88,6 +91,7 @@ impl Selection {
     }
 
     /// Adjust selection after text deletion
+    #[allow(dead_code)]
     pub fn adjust_for_delete(&mut self, range: Range<usize>) {
         let len = range.end - range.start;
 

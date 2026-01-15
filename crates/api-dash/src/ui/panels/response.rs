@@ -89,6 +89,7 @@ impl ParsedCookie {
 
 /// Copy feedback type
 #[derive(Clone, Copy, PartialEq, Eq)]
+#[allow(dead_code)]
 enum CopyFeedback {
     Body,
     Headers,

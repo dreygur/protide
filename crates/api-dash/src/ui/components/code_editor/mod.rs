@@ -116,6 +116,7 @@ impl CodeEditor {
     }
 
     /// Set font size
+    #[allow(dead_code)]
     pub fn with_font_size(mut self, size: f32) -> Self {
         self.config.font_size = size;
         self.config.line_height = size * 1.5;
@@ -136,6 +137,7 @@ impl CodeEditor {
     }
 
     /// Auto-detect language from content
+    #[allow(dead_code)]
     pub fn detect_language(&mut self, cx: &mut Context<Self>) {
         let lang = Language::detect(self.buffer.content());
         if lang != self.language {
@@ -156,6 +158,7 @@ impl CodeEditor {
     }
 
     /// Get focus handle
+    #[allow(dead_code)]
     pub fn focus_handle(&self) -> &FocusHandle {
         &self.focus_handle
     }
@@ -232,6 +235,7 @@ impl CodeEditor {
     }
 
     /// Fold all regions
+    #[allow(dead_code)]
     pub fn fold_all(&mut self, cx: &mut Context<Self>) {
         for (&start, &end) in &self.fold_ranges.clone() {
             for l in (start + 1)..=end {
@@ -242,6 +246,7 @@ impl CodeEditor {
     }
 
     /// Unfold all regions
+    #[allow(dead_code)]
     pub fn unfold_all(&mut self, cx: &mut Context<Self>) {
         self.folded_lines.clear();
         cx.notify();

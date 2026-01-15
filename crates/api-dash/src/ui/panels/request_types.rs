@@ -39,6 +39,7 @@ pub enum EditTarget {
     ParamValue(usize),
     HeaderKey(usize),
     HeaderValue(usize),
+    #[allow(dead_code)]
     Body,
     BearerToken,
     BasicUsername,

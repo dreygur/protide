@@ -4,6 +4,7 @@ use gpui::Hsla;
 use crate::theme::Colors;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
+#[allow(dead_code)]
 pub enum TokenKind {
     Key,
     String,
@@ -218,6 +219,7 @@ impl Language {
         }
     }
 
+    #[allow(dead_code)]
     pub fn detect(content: &str) -> Self {
         let trimmed = content.trim();
         if trimmed.starts_with('{') || trimmed.starts_with('[') {

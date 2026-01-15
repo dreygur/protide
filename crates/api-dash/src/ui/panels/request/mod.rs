@@ -46,6 +46,7 @@ fn char_to_byte_offset(text: &str, char_idx: usize) -> usize {
 }
 
 /// Convert byte offset to character index in a string
+#[allow(dead_code)]
 fn byte_to_char_offset(text: &str, byte_offset: usize) -> usize {
     text[..byte_offset.min(text.len())]
         .chars()
