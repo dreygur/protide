@@ -10,7 +10,7 @@ use gpui::{
 use crate::theme;
 use crate::codegen::Language as CodegenLanguage;
 use crate::ui::components::render_text_view_with_max;
-use super::super::request_types::{ApiKeyLocation, AuthType, BodyType, EditTarget, FormFieldType, HttpMethod};
+use super::super::request_types::{ApiKeyLocation, AuthType, BodyType, EditTarget, FormFieldType, HttpMethod, RequestMode};
 use super::{render_text_view, RequestPanel};
 
 impl RequestPanel {
@@ -36,6 +36,8 @@ impl RequestPanel {
         let protocol_offset = if is_https || is_http { 70.0 } else { 0.0 };
         self.url_input_left = base_offset + protocol_offset;
 
+        let is_graphql = self.request_mode == RequestMode::GraphQL;
+
         div()
             .w_full()
             .h(px(56.0))
@@ -46,38 +48,103 @@ impl RequestPanel {
             .bg(theme.colors.bg_secondary)
             .border_b_1()
             .border_color(theme.colors.border)
-            // Method selector button (dropdown rendered separately as overlay)
+            // Mode toggle (HTTP/GraphQL)
             .child(
                 div()
-                    .id("method-selector")
-                    .min_w(px(72.0))
-                    .px(px(12.0))
-                    .py(px(8.0))
-                    .rounded(px(6.0))
-                    .bg(method_color.opacity(0.1))
-                    .border_1()
-                    .border_color(method_color.opacity(0.2))
+                    .id("mode-toggle")
                     .flex()
                     .items_center()
-                    .justify_center()
-                    .gap(px(4.0))
-                    .text_size(px(12.0))
-                    .font_weight(gpui::FontWeight::BOLD)
-                    .text_color(method_color)
-                    .cursor_pointer()
-                    .hover(|s| s.bg(method_color.opacity(0.15)))
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        this.skip_blur = true;
-                        this.toggle_method_dropdown(cx);
-                    }))
-                    .child(method.as_str())
+                    .h(px(32.0))
+                    .rounded(px(6.0))
+                    .bg(theme.colors.bg_tertiary)
+                    .border_1()
+                    .border_color(theme.colors.border)
+                    .overflow_hidden()
                     .child(
                         div()
-                            .text_size(px(8.0))
-                            .text_color(method_color.opacity(0.7))
-                            .child("▼")
+                            .id("mode-http")
+                            .px(px(10.0))
+                            .h_full()
+                            .flex()
+                            .items_center()
+                            .text_size(px(11.0))
+                            .font_weight(gpui::FontWeight::MEDIUM)
+                            .cursor_pointer()
+                            .when(!is_graphql, |el| {
+                                el.bg(theme.colors.accent.opacity(0.15))
+                                    .text_color(theme.colors.accent)
+                            })
+                            .when(is_graphql, |el| {
+                                el.text_color(theme.colors.text_secondary)
+                                    .hover(|s| s.bg(theme.colors.bg_secondary))
+                            })
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                if this.request_mode == RequestMode::GraphQL {
+                                    this.toggle_request_mode(cx);
+                                }
+                            }))
+                            .child("HTTP")
+                    )
+                    .child(
+                        div()
+                            .id("mode-graphql")
+                            .px(px(10.0))
+                            .h_full()
+                            .flex()
+                            .items_center()
+                            .text_size(px(11.0))
+                            .font_weight(gpui::FontWeight::MEDIUM)
+                            .cursor_pointer()
+                            .when(is_graphql, |el| {
+                                el.bg(theme.colors.method_delete.opacity(0.15))
+                                    .text_color(theme.colors.method_delete)
+                            })
+                            .when(!is_graphql, |el| {
+                                el.text_color(theme.colors.text_secondary)
+                                    .hover(|s| s.bg(theme.colors.bg_secondary))
+                            })
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                if this.request_mode == RequestMode::Http {
+                                    this.toggle_request_mode(cx);
+                                }
+                            }))
+                            .child("GraphQL")
                     )
             )
+            // Method selector button (dropdown rendered separately as overlay) - only show for HTTP mode
+            .when(!is_graphql, |el| {
+                el.child(
+                    div()
+                        .id("method-selector")
+                        .min_w(px(72.0))
+                        .px(px(12.0))
+                        .py(px(8.0))
+                        .rounded(px(6.0))
+                        .bg(method_color.opacity(0.1))
+                        .border_1()
+                        .border_color(method_color.opacity(0.2))
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .gap(px(4.0))
+                        .text_size(px(12.0))
+                        .font_weight(gpui::FontWeight::BOLD)
+                        .text_color(method_color)
+                        .cursor_pointer()
+                        .hover(|s| s.bg(method_color.opacity(0.15)))
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            this.skip_blur = true;
+                            this.toggle_method_dropdown(cx);
+                        }))
+                        .child(method.as_str())
+                        .child(
+                            div()
+                                .text_size(px(8.0))
+                                .text_color(method_color.opacity(0.7))
+                                .child("▼")
+                        )
+                )
+            })
             // Protocol indicator
             .when(is_https || is_http, |el| {
                 el.child(
@@ -363,7 +430,12 @@ impl RequestPanel {
 
     pub(super) fn render_tabs(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = theme::current(cx);
-        let tabs = [("Params", "?"), ("Headers", "H"), ("Body", "{ }"), ("Auth", "🔒"), ("Scripts", "ƒ")];
+        let is_graphql = self.request_mode == RequestMode::GraphQL;
+        let tabs: &[(&str, &str)] = if is_graphql {
+            &[("Query", "◇"), ("Variables", "{ }"), ("Headers", "H"), ("Auth", "🔒")]
+        } else {
+            &[("Params", "?"), ("Headers", "H"), ("Body", "{ }"), ("Auth", "🔒"), ("Scripts", "ƒ")]
+        };
         let active_tab = self.active_tab;
 
         // Get counts for badges
@@ -382,10 +454,17 @@ impl RequestPanel {
             .bg(theme.colors.bg_secondary)
             .children(tabs.iter().enumerate().map(|(i, (tab, icon))| {
                 let is_active = i == active_tab;
-                let count = match i {
-                    0 => param_count,
-                    1 => header_count,
-                    _ => 0,
+                let count = if is_graphql {
+                    match i {
+                        2 => header_count, // Headers is at index 2 for GraphQL
+                        _ => 0,
+                    }
+                } else {
+                    match i {
+                        0 => param_count,
+                        1 => header_count,
+                        _ => 0,
+                    }
                 };
 
                 div()
@@ -459,13 +538,25 @@ impl RequestPanel {
     }
 
     pub(super) fn render_tab_content(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
-        match self.active_tab {
-            0 => self.render_params_tab(cx),
-            1 => self.render_headers_tab(cx),
-            2 => self.render_body_tab(cx),
-            3 => self.render_auth_tab(cx),
-            4 => self.render_scripts_tab(cx),
-            _ => div().into_any_element(),
+        if self.request_mode == RequestMode::GraphQL {
+            // GraphQL tabs: Query, Variables, Headers, Auth
+            match self.active_tab {
+                0 => self.render_graphql_query_tab(cx),
+                1 => self.render_graphql_variables_tab(cx),
+                2 => self.render_headers_tab(cx),
+                3 => self.render_auth_tab(cx),
+                _ => div().into_any_element(),
+            }
+        } else {
+            // HTTP tabs: Params, Headers, Body, Auth, Scripts
+            match self.active_tab {
+                0 => self.render_params_tab(cx),
+                1 => self.render_headers_tab(cx),
+                2 => self.render_body_tab(cx),
+                3 => self.render_auth_tab(cx),
+                4 => self.render_scripts_tab(cx),
+                _ => div().into_any_element(),
+            }
         }
     }
 
@@ -2225,6 +2316,124 @@ impl RequestPanel {
                             .overflow_hidden()
                             .child(self.tests_editor.clone())
                     )
+            )
+            .into_any_element()
+    }
+
+    /// Render GraphQL query editor tab
+    fn render_graphql_query_tab(&mut self, cx: &mut Context<Self>) -> gpui::AnyElement {
+        let theme = theme::current(cx);
+
+        div()
+            .id("graphql-query-tab")
+            .w_full()
+            .h_full()
+            .flex()
+            .flex_col()
+            .gap(px(8.0))
+            // Header with info
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap(px(8.0))
+                    .px(px(4.0))
+                    .child(
+                        div()
+                            .size(px(20.0))
+                            .rounded(px(4.0))
+                            .bg(theme.colors.method_delete.opacity(0.15))
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .text_size(px(10.0))
+                            .text_color(theme.colors.method_delete)
+                            .child("◇")
+                    )
+                    .child(
+                        div()
+                            .text_size(px(12.0))
+                            .font_weight(gpui::FontWeight::SEMIBOLD)
+                            .text_color(theme.colors.text_primary)
+                            .child("GraphQL Query")
+                    )
+                    .child(
+                        div()
+                            .text_size(px(10.0))
+                            .text_color(theme.colors.text_muted)
+                            .child("Write your query, mutation, or subscription")
+                    )
+            )
+            // Query editor
+            .child(
+                div()
+                    .flex_1()
+                    .w_full()
+                    .min_h(px(200.0))
+                    .border_1()
+                    .border_color(theme.colors.border)
+                    .rounded(px(6.0))
+                    .overflow_hidden()
+                    .child(self.graphql_query_editor.clone())
+            )
+            .into_any_element()
+    }
+
+    /// Render GraphQL variables editor tab
+    fn render_graphql_variables_tab(&mut self, cx: &mut Context<Self>) -> gpui::AnyElement {
+        let theme = theme::current(cx);
+
+        div()
+            .id("graphql-variables-tab")
+            .w_full()
+            .h_full()
+            .flex()
+            .flex_col()
+            .gap(px(8.0))
+            // Header with info
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap(px(8.0))
+                    .px(px(4.0))
+                    .child(
+                        div()
+                            .size(px(20.0))
+                            .rounded(px(4.0))
+                            .bg(theme.colors.accent.opacity(0.15))
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .text_size(px(10.0))
+                            .text_color(theme.colors.accent)
+                            .child("{ }")
+                    )
+                    .child(
+                        div()
+                            .text_size(px(12.0))
+                            .font_weight(gpui::FontWeight::SEMIBOLD)
+                            .text_color(theme.colors.text_primary)
+                            .child("Variables")
+                    )
+                    .child(
+                        div()
+                            .text_size(px(10.0))
+                            .text_color(theme.colors.text_muted)
+                            .child("JSON object with query variables")
+                    )
+            )
+            // Variables editor
+            .child(
+                div()
+                    .flex_1()
+                    .w_full()
+                    .min_h(px(150.0))
+                    .border_1()
+                    .border_color(theme.colors.border)
+                    .rounded(px(6.0))
+                    .overflow_hidden()
+                    .child(self.graphql_variables_editor.clone())
             )
             .into_any_element()
     }

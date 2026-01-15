@@ -21,7 +21,7 @@ use crate::ui::components::code_editor::{CodeEditor, Language};
 use crate::scripting::{ScriptEngine, ScriptContext, RequestData as ScriptRequestData, ResponseData as ScriptResponseData};
 
 use super::explorer::ExplorerPanel;
-use super::request_types::{ApiKeyLocation, AuthType, BodyType, EditTarget, FormField, FormFieldType, HttpMethod, KeyValuePair};
+use super::request_types::{ApiKeyLocation, AuthType, BodyType, EditTarget, FormField, FormFieldType, HttpMethod, KeyValuePair, RequestMode};
 use super::request_utils::{base64_encode, status_text, url_decode, url_encode};
 use super::response::{ResponseData, ResponsePanel};
 
@@ -119,6 +119,14 @@ pub struct RequestPanel {
     pub(super) import_text: String,
     /// Import error message
     pub(super) import_error: Option<String>,
+    /// Request mode (HTTP or GraphQL)
+    pub(super) request_mode: RequestMode,
+    /// GraphQL query editor
+    pub(super) graphql_query_editor: Entity<CodeEditor>,
+    /// GraphQL variables editor
+    pub(super) graphql_variables_editor: Entity<CodeEditor>,
+    /// GraphQL operation name (optional)
+    pub(super) graphql_operation_name: String,
 }
 
 impl RequestPanel {
@@ -145,6 +153,18 @@ impl RequestPanel {
         let tests_editor = cx.new(|cx| {
             CodeEditor::new(cx)
                 .with_language(Language::JavaScript)
+                .with_line_numbers(true)
+        });
+        let graphql_query_editor = cx.new(|cx| {
+            CodeEditor::new(cx)
+                .with_content("query {\n  \n}")
+                .with_language(Language::GraphQL)
+                .with_line_numbers(true)
+        });
+        let graphql_variables_editor = cx.new(|cx| {
+            CodeEditor::new(cx)
+                .with_content("{}")
+                .with_language(Language::Json)
                 .with_line_numbers(true)
         });
         Self {
@@ -204,12 +224,33 @@ impl RequestPanel {
             import_modal_open: false,
             import_text: String::new(),
             import_error: None,
+            request_mode: RequestMode::Http,
+            graphql_query_editor,
+            graphql_variables_editor,
+            graphql_operation_name: String::new(),
         }
     }
 
     /// Set the explorer panel reference for environment variable substitution
     pub fn set_explorer_panel(&mut self, explorer_panel: Entity<ExplorerPanel>, cx: &mut Context<Self>) {
         self.explorer_panel = Some(explorer_panel);
+        cx.notify();
+    }
+
+    /// Toggle between HTTP and GraphQL mode
+    pub(super) fn toggle_request_mode(&mut self, cx: &mut Context<Self>) {
+        self.request_mode = match self.request_mode {
+            RequestMode::Http => {
+                // Switch to GraphQL - set method to POST
+                self.method = HttpMethod::Post;
+                self.active_tab = 0; // Reset to first tab
+                RequestMode::GraphQL
+            }
+            RequestMode::GraphQL => {
+                self.active_tab = 0;
+                RequestMode::Http
+            }
+        };
         cx.notify();
     }
 
@@ -1476,6 +1517,19 @@ impl RequestPanel {
         // Get body content from CodeEditor
         let body_content = self.body_editor.read(cx).content().to_string();
 
+        // Get GraphQL content if in GraphQL mode
+        let is_graphql_mode = self.request_mode == RequestMode::GraphQL;
+        let graphql_query = if is_graphql_mode {
+            self.graphql_query_editor.read(cx).content().to_string()
+        } else {
+            String::new()
+        };
+        let graphql_variables = if is_graphql_mode {
+            self.graphql_variables_editor.read(cx).content().to_string()
+        } else {
+            String::new()
+        };
+
         // Get script content from editors
         let pre_script = self.pre_script_editor.read(cx).content().to_string();
         let post_script = self.post_script_editor.read(cx).content().to_string();
@@ -1568,7 +1622,27 @@ impl RequestPanel {
             Vec::new()
         };
 
-        let body = if matches!(method, HttpMethod::Post | HttpMethod::Put | HttpMethod::Patch) {
+        let body = if is_graphql_mode {
+            // GraphQL mode - always POST with JSON body
+            let query = substitute(&graphql_query);
+            let variables_str = substitute(&graphql_variables);
+
+            // Parse variables as JSON, default to empty object
+            let variables: serde_json::Value = serde_json::from_str(&variables_str)
+                .unwrap_or(serde_json::json!({}));
+
+            let graphql_body = serde_json::json!({
+                "query": query,
+                "variables": variables
+            });
+
+            // Ensure Content-Type is set to application/json
+            if !headers.iter().any(|(k, _)| k.eq_ignore_ascii_case("content-type")) {
+                headers.push(("Content-Type".to_string(), "application/json".to_string()));
+            }
+
+            Some(graphql_body.to_string())
+        } else if matches!(method, HttpMethod::Post | HttpMethod::Put | HttpMethod::Patch) {
             match self.body_type {
                 BodyType::Form if !has_files => {
                     // URL-encode form data (no files)

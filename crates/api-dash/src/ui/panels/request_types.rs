@@ -120,3 +120,11 @@ pub enum BodyType {
     Raw,
     Form,
 }
+
+/// Request mode (HTTP or GraphQL)
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum RequestMode {
+    #[default]
+    Http,
+    GraphQL,
+}

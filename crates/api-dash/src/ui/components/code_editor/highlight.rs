@@ -50,6 +50,7 @@ pub trait Highlighter: Send + Sync {
 
 pub struct JsonHighlighter;
 pub struct XmlHighlighter;
+pub struct GraphQLHighlighter;
 pub struct PlainHighlighter;
 
 impl Highlighter for JsonHighlighter {
@@ -201,6 +202,101 @@ impl Highlighter for XmlHighlighter {
     }
 }
 
+impl Highlighter for GraphQLHighlighter {
+    fn tokenize_line(&self, line: &str) -> Vec<Token> {
+        let mut tokens = Vec::new();
+        let mut chars = line.chars().peekable();
+        let mut current = String::new();
+
+        // GraphQL keywords
+        let keywords = [
+            "query", "mutation", "subscription", "fragment", "on", "type",
+            "input", "enum", "scalar", "interface", "union", "implements",
+            "extend", "schema", "directive", "repeatable",
+        ];
+        let builtins = ["String", "Int", "Float", "Boolean", "ID", "true", "false", "null"];
+
+        let flush_word = |current: &mut String, tokens: &mut Vec<Token>| {
+            if current.is_empty() { return; }
+            let kind = if keywords.contains(&current.as_str()) {
+                TokenKind::Keyword
+            } else if builtins.contains(&current.as_str()) {
+                TokenKind::Boolean
+            } else if current.starts_with('$') {
+                TokenKind::Property
+            } else if current.chars().next().map(|c| c.is_uppercase()).unwrap_or(false) {
+                TokenKind::Tag // Type names
+            } else {
+                TokenKind::Key // Field names
+            };
+            tokens.push(Token { text: current.clone(), kind });
+            current.clear();
+        };
+
+        while let Some(c) = chars.next() {
+            match c {
+                '#' => {
+                    flush_word(&mut current, &mut tokens);
+                    let mut comment = c.to_string();
+                    comment.extend(chars.by_ref());
+                    tokens.push(Token { text: comment, kind: TokenKind::Comment });
+                    break;
+                }
+                '"' => {
+                    flush_word(&mut current, &mut tokens);
+                    let mut s = c.to_string();
+                    // Handle triple quotes
+                    if chars.peek() == Some(&'"') {
+                        s.push(chars.next().unwrap());
+                        if chars.peek() == Some(&'"') {
+                            s.push(chars.next().unwrap());
+                            // Read until closing """
+                            while let Some(ch) = chars.next() {
+                                s.push(ch);
+                                if ch == '"' && chars.peek() == Some(&'"') {
+                                    s.push(chars.next().unwrap());
+                                    if chars.peek() == Some(&'"') {
+                                        s.push(chars.next().unwrap());
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        while let Some(ch) = chars.next() {
+                            s.push(ch);
+                            if ch == '"' { break; }
+                            if ch == '\\' { if let Some(esc) = chars.next() { s.push(esc); } }
+                        }
+                    }
+                    tokens.push(Token { text: s, kind: TokenKind::String });
+                }
+                '{' | '}' | '(' | ')' | '[' | ']' | ':' | '!' | '@' | '=' | '|' | '&' | ',' => {
+                    flush_word(&mut current, &mut tokens);
+                    tokens.push(Token { text: c.to_string(), kind: TokenKind::Punctuation });
+                }
+                '$' => {
+                    flush_word(&mut current, &mut tokens);
+                    current.push(c);
+                }
+                _ if c.is_whitespace() => {
+                    flush_word(&mut current, &mut tokens);
+                    tokens.push(Token { text: c.to_string(), kind: TokenKind::Plain });
+                }
+                _ if c.is_alphanumeric() || c == '_' => {
+                    current.push(c);
+                }
+                _ => {
+                    flush_word(&mut current, &mut tokens);
+                    tokens.push(Token { text: c.to_string(), kind: TokenKind::Plain });
+                }
+            }
+        }
+        flush_word(&mut current, &mut tokens);
+        tokens
+    }
+}
+
 impl Highlighter for PlainHighlighter {
     fn tokenize_line(&self, line: &str) -> Vec<Token> {
         vec![Token { text: line.to_string(), kind: TokenKind::Plain }]
@@ -213,6 +309,7 @@ pub enum Language {
     Xml,
     Html,
     JavaScript,
+    GraphQL,
     Plain,
 }
 
@@ -222,6 +319,7 @@ impl Language {
             Language::Json => Box::new(JsonHighlighter),
             Language::Xml | Language::Html => Box::new(XmlHighlighter),
             Language::JavaScript => Box::new(JavaScriptHighlighter),
+            Language::GraphQL => Box::new(GraphQLHighlighter),
             Language::Plain => Box::new(PlainHighlighter),
         }
     }
