@@ -56,3 +56,7 @@ rquickjs = { version = "0.6", features = ["bindgen", "classes", "properties"] }
 axum = "0.8"
 hyper = { version = "1", features = ["full"] }
 tower = "0.5"
+
+# WebSocket client
+tokio-tungstenite = { version = "0.26", features = ["rustls-tls-native-roots"] }
+futures-util = "0.3"

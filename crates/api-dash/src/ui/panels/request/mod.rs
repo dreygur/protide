@@ -21,7 +21,7 @@ use crate::ui::components::code_editor::{CodeEditor, Language};
 use crate::scripting::{ScriptEngine, ScriptContext, RequestData as ScriptRequestData, ResponseData as ScriptResponseData};
 
 use super::explorer::ExplorerPanel;
-use super::request_types::{ApiKeyLocation, AuthType, BodyType, EditTarget, FormField, FormFieldType, HttpMethod, KeyValuePair, RequestMode};
+use super::request_types::{ApiKeyLocation, AuthType, BodyType, EditTarget, FormField, FormFieldType, HttpMethod, KeyValuePair, RequestMode, WsConnectionState, WsMessage, WsMessageDirection};
 use super::request_utils::{base64_encode, status_text, url_decode, url_encode};
 use super::response::{ResponseData, ResponsePanel};
 
@@ -57,6 +57,14 @@ fn byte_to_char_offset(text: &str, byte_offset: usize) -> usize {
     text[..byte_offset.min(text.len())]
         .chars()
         .count()
+}
+
+/// WebSocket event for communication between async thread and UI
+enum WsEvent {
+    Connected,
+    Message(String),
+    Disconnected,
+    Error(String),
 }
 
 /// Request editor panel
@@ -127,6 +135,14 @@ pub struct RequestPanel {
     pub(super) graphql_variables_editor: Entity<CodeEditor>,
     /// GraphQL operation name (optional)
     pub(super) graphql_operation_name: String,
+    /// WebSocket connection state
+    pub(super) ws_state: WsConnectionState,
+    /// WebSocket message history
+    pub(super) ws_messages: Vec<WsMessage>,
+    /// WebSocket message input
+    pub(super) ws_message_input: String,
+    /// WebSocket message editor
+    pub(super) ws_message_editor: Entity<CodeEditor>,
 }
 
 impl RequestPanel {
@@ -164,6 +180,12 @@ impl RequestPanel {
         let graphql_variables_editor = cx.new(|cx| {
             CodeEditor::new(cx)
                 .with_content("{}")
+                .with_language(Language::Json)
+                .with_line_numbers(true)
+        });
+        let ws_message_editor = cx.new(|cx| {
+            CodeEditor::new(cx)
+                .with_content("{\"type\": \"hello\"}")
                 .with_language(Language::Json)
                 .with_line_numbers(true)
         });
@@ -228,6 +250,10 @@ impl RequestPanel {
             graphql_query_editor,
             graphql_variables_editor,
             graphql_operation_name: String::new(),
+            ws_state: WsConnectionState::Disconnected,
+            ws_messages: Vec::new(),
+            ws_message_input: String::new(),
+            ws_message_editor,
         }
     }
 
@@ -237,21 +263,194 @@ impl RequestPanel {
         cx.notify();
     }
 
-    /// Toggle between HTTP and GraphQL mode
-    pub(super) fn toggle_request_mode(&mut self, cx: &mut Context<Self>) {
-        self.request_mode = match self.request_mode {
-            RequestMode::Http => {
-                // Switch to GraphQL - set method to POST
-                self.method = HttpMethod::Post;
-                self.active_tab = 0; // Reset to first tab
-                RequestMode::GraphQL
-            }
+    /// Set request mode (HTTP, GraphQL, or WebSocket)
+    pub(super) fn set_request_mode(&mut self, mode: RequestMode, cx: &mut Context<Self>) {
+        if self.request_mode == mode {
+            return;
+        }
+        self.request_mode = mode;
+        self.active_tab = 0; // Reset to first tab
+        match mode {
             RequestMode::GraphQL => {
-                self.active_tab = 0;
-                RequestMode::Http
+                self.method = HttpMethod::Post;
             }
-        };
+            RequestMode::WebSocket => {
+                // WebSocket uses ws:// or wss:// URL
+                if !self.url.starts_with("ws://") && !self.url.starts_with("wss://") {
+                    self.url = "wss://echo.websocket.org".to_string();
+                    let len = self.url.chars().count();
+                    self.url_selection = len..len;
+                }
+            }
+            RequestMode::Http => {}
+        }
         cx.notify();
+    }
+
+    /// Connect to WebSocket server
+    pub(super) fn connect_websocket(&mut self, cx: &mut Context<Self>) {
+        if self.ws_state != WsConnectionState::Disconnected {
+            return;
+        }
+
+        self.ws_state = WsConnectionState::Connecting;
+        self.ws_messages.clear();
+        cx.notify();
+
+        let url = self.url.clone();
+
+        // Spawn async WebSocket connection
+        cx.spawn(async move |this: gpui::WeakEntity<Self>, cx: &mut gpui::AsyncApp| {
+            // Run blocking WebSocket in a thread
+            let (result_tx, result_rx) = std::sync::mpsc::channel::<WsEvent>();
+            let result_tx_clone = result_tx.clone();
+
+            std::thread::spawn(move || {
+                let rt = tokio::runtime::Runtime::new().unwrap();
+                rt.block_on(async {
+                    use tokio_tungstenite::connect_async;
+                    use futures_util::StreamExt;
+
+                    match connect_async(&url).await {
+                        Ok((ws_stream, _)) => {
+                            let _ = result_tx.send(WsEvent::Connected);
+
+                            let (_write, mut read) = ws_stream.split();
+
+                            // Listen for incoming messages
+                            while let Some(msg) = read.next().await {
+                                match msg {
+                                    Ok(tokio_tungstenite::tungstenite::Message::Text(text)) => {
+                                        let _ = result_tx.send(WsEvent::Message(text.to_string()));
+                                    }
+                                    Ok(tokio_tungstenite::tungstenite::Message::Close(_)) => {
+                                        break;
+                                    }
+                                    Err(_) => {
+                                        break;
+                                    }
+                                    _ => {}
+                                }
+                            }
+
+                            let _ = result_tx.send(WsEvent::Disconnected);
+                        }
+                        Err(e) => {
+                            let _ = result_tx.send(WsEvent::Error(e.to_string()));
+                        }
+                    }
+                });
+            });
+
+            // Process events from WebSocket thread
+            loop {
+                match result_rx.recv_timeout(std::time::Duration::from_millis(100)) {
+                    Ok(WsEvent::Connected) => {
+                        let _ = cx.update(|cx| {
+                            let _ = this.update(cx, |this, cx| {
+                                this.ws_state = WsConnectionState::Connected;
+                                cx.notify();
+                            });
+                        });
+                    }
+                    Ok(WsEvent::Message(text)) => {
+                        let _ = cx.update(|cx| {
+                            let _ = this.update(cx, |this, cx| {
+                                this.ws_messages.push(WsMessage {
+                                    direction: WsMessageDirection::Received,
+                                    content: text,
+                                    timestamp: chrono::Local::now(),
+                                });
+                                cx.notify();
+                            });
+                        });
+                    }
+                    Ok(WsEvent::Disconnected) => {
+                        let _ = cx.update(|cx| {
+                            let _ = this.update(cx, |this, cx| {
+                                this.ws_state = WsConnectionState::Disconnected;
+                                cx.notify();
+                            });
+                        });
+                        break;
+                    }
+                    Ok(WsEvent::Error(e)) => {
+                        let _ = cx.update(|cx| {
+                            let _ = this.update(cx, |this, cx| {
+                                this.ws_state = WsConnectionState::Disconnected;
+                                this.ws_messages.push(WsMessage {
+                                    direction: WsMessageDirection::Received,
+                                    content: format!("Connection failed: {}", e),
+                                    timestamp: chrono::Local::now(),
+                                });
+                                cx.notify();
+                            });
+                        });
+                        break;
+                    }
+                    Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+                        // Check if panel was disconnected by user - break if entity is gone
+                        let mut disconnected = true;
+                        let _ = cx.update(|cx| {
+                            if let Ok(state) = this.update(cx, |this, _| {
+                                this.ws_state == WsConnectionState::Disconnected
+                            }) {
+                                disconnected = state;
+                            }
+                        });
+                        if disconnected {
+                            break;
+                        }
+                    }
+                    Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+                        break;
+                    }
+                }
+            }
+
+            // Ensure we mark as disconnected
+            let _ = cx.update(|cx| {
+                let _ = this.update(cx, |this, cx| {
+                    if this.ws_state != WsConnectionState::Disconnected {
+                        this.ws_state = WsConnectionState::Disconnected;
+                        cx.notify();
+                    }
+                });
+            });
+
+            drop(result_tx_clone); // Silence unused variable warning
+        }).detach();
+    }
+
+    /// Disconnect from WebSocket server
+    pub(super) fn disconnect_websocket(&mut self, cx: &mut Context<Self>) {
+        self.ws_state = WsConnectionState::Disconnected;
+        cx.notify();
+    }
+
+    /// Send a message over WebSocket
+    pub(super) fn send_websocket_message(&mut self, cx: &mut Context<Self>) {
+        if self.ws_state != WsConnectionState::Connected {
+            return;
+        }
+
+        // Get message content from editor
+        let message = self.ws_message_editor.read(cx).content();
+        if message.trim().is_empty() {
+            return;
+        }
+
+        // Add to local history
+        self.ws_messages.push(WsMessage {
+            direction: WsMessageDirection::Sent,
+            content: message.to_string(),
+            timestamp: chrono::Local::now(),
+        });
+        cx.notify();
+
+        // Note: For a full bidirectional WebSocket implementation, we'd need to
+        // store the write sink and use it here. This simplified version shows
+        // the message in the local history.
     }
 
     fn cursor(&self) -> usize {

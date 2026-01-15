@@ -121,10 +121,35 @@ pub enum BodyType {
     Form,
 }
 
-/// Request mode (HTTP or GraphQL)
+/// Request mode (HTTP, GraphQL, or WebSocket)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum RequestMode {
     #[default]
     Http,
     GraphQL,
+    WebSocket,
+}
+
+/// WebSocket connection state
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum WsConnectionState {
+    #[default]
+    Disconnected,
+    Connecting,
+    Connected,
+}
+
+/// WebSocket message direction
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WsMessageDirection {
+    Sent,
+    Received,
+}
+
+/// WebSocket message
+#[derive(Debug, Clone)]
+pub struct WsMessage {
+    pub direction: WsMessageDirection,
+    pub content: String,
+    pub timestamp: chrono::DateTime<chrono::Local>,
 }

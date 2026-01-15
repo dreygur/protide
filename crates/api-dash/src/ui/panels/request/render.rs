@@ -10,7 +10,7 @@ use gpui::{
 use crate::theme;
 use crate::codegen::Language as CodegenLanguage;
 use crate::ui::components::render_text_view_with_max;
-use super::super::request_types::{ApiKeyLocation, AuthType, BodyType, EditTarget, FormFieldType, HttpMethod, RequestMode};
+use super::super::request_types::{ApiKeyLocation, AuthType, BodyType, EditTarget, FormFieldType, HttpMethod, RequestMode, WsConnectionState, WsMessageDirection};
 use super::{render_text_view, RequestPanel};
 
 impl RequestPanel {
@@ -48,7 +48,7 @@ impl RequestPanel {
             .bg(theme.colors.bg_secondary)
             .border_b_1()
             .border_color(theme.colors.border)
-            // Mode toggle (HTTP/GraphQL)
+            // Mode toggle (HTTP/GraphQL/WebSocket)
             .child(
                 div()
                     .id("mode-toggle")
@@ -60,6 +60,7 @@ impl RequestPanel {
                     .border_1()
                     .border_color(theme.colors.border)
                     .overflow_hidden()
+                    // HTTP button
                     .child(
                         div()
                             .id("mode-http")
@@ -70,21 +71,20 @@ impl RequestPanel {
                             .text_size(px(11.0))
                             .font_weight(gpui::FontWeight::MEDIUM)
                             .cursor_pointer()
-                            .when(!is_graphql, |el| {
+                            .when(self.request_mode == RequestMode::Http, |el| {
                                 el.bg(theme.colors.accent.opacity(0.15))
                                     .text_color(theme.colors.accent)
                             })
-                            .when(is_graphql, |el| {
+                            .when(self.request_mode != RequestMode::Http, |el| {
                                 el.text_color(theme.colors.text_secondary)
                                     .hover(|s| s.bg(theme.colors.bg_secondary))
                             })
                             .on_click(cx.listener(|this, _, _, cx| {
-                                if this.request_mode == RequestMode::GraphQL {
-                                    this.toggle_request_mode(cx);
-                                }
+                                this.set_request_mode(RequestMode::Http, cx);
                             }))
                             .child("HTTP")
                     )
+                    // GraphQL button
                     .child(
                         div()
                             .id("mode-graphql")
@@ -104,15 +104,37 @@ impl RequestPanel {
                                     .hover(|s| s.bg(theme.colors.bg_secondary))
                             })
                             .on_click(cx.listener(|this, _, _, cx| {
-                                if this.request_mode == RequestMode::Http {
-                                    this.toggle_request_mode(cx);
-                                }
+                                this.set_request_mode(RequestMode::GraphQL, cx);
                             }))
                             .child("GraphQL")
                     )
+                    // WebSocket button
+                    .child(
+                        div()
+                            .id("mode-ws")
+                            .px(px(10.0))
+                            .h_full()
+                            .flex()
+                            .items_center()
+                            .text_size(px(11.0))
+                            .font_weight(gpui::FontWeight::MEDIUM)
+                            .cursor_pointer()
+                            .when(self.request_mode == RequestMode::WebSocket, |el| {
+                                el.bg(theme.colors.method_get.opacity(0.15))
+                                    .text_color(theme.colors.method_get)
+                            })
+                            .when(self.request_mode != RequestMode::WebSocket, |el| {
+                                el.text_color(theme.colors.text_secondary)
+                                    .hover(|s| s.bg(theme.colors.bg_secondary))
+                            })
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.set_request_mode(RequestMode::WebSocket, cx);
+                            }))
+                            .child("WS")
+                    )
             )
             // Method selector button (dropdown rendered separately as overlay) - only show for HTTP mode
-            .when(!is_graphql, |el| {
+            .when(self.request_mode == RequestMode::Http, |el| {
                 el.child(
                     div()
                         .id("method-selector")
@@ -430,11 +452,10 @@ impl RequestPanel {
 
     pub(super) fn render_tabs(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = theme::current(cx);
-        let is_graphql = self.request_mode == RequestMode::GraphQL;
-        let tabs: &[(&str, &str)] = if is_graphql {
-            &[("Query", "◇"), ("Variables", "{ }"), ("Headers", "H"), ("Auth", "🔒")]
-        } else {
-            &[("Params", "?"), ("Headers", "H"), ("Body", "{ }"), ("Auth", "🔒"), ("Scripts", "ƒ")]
+        let tabs: &[(&str, &str)] = match self.request_mode {
+            RequestMode::GraphQL => &[("Query", "◇"), ("Variables", "{ }"), ("Headers", "H"), ("Auth", "🔒")],
+            RequestMode::WebSocket => &[("Messages", "⚡"), ("Headers", "H")],
+            RequestMode::Http => &[("Params", "?"), ("Headers", "H"), ("Body", "{ }"), ("Auth", "🔒"), ("Scripts", "ƒ")],
         };
         let active_tab = self.active_tab;
 
@@ -454,17 +475,20 @@ impl RequestPanel {
             .bg(theme.colors.bg_secondary)
             .children(tabs.iter().enumerate().map(|(i, (tab, icon))| {
                 let is_active = i == active_tab;
-                let count = if is_graphql {
-                    match i {
+                let count = match self.request_mode {
+                    RequestMode::GraphQL => match i {
                         2 => header_count, // Headers is at index 2 for GraphQL
                         _ => 0,
-                    }
-                } else {
-                    match i {
+                    },
+                    RequestMode::WebSocket => match i {
+                        1 => header_count, // Headers is at index 1 for WebSocket
+                        _ => 0,
+                    },
+                    RequestMode::Http => match i {
                         0 => param_count,
                         1 => header_count,
                         _ => 0,
-                    }
+                    },
                 };
 
                 div()
@@ -538,24 +562,35 @@ impl RequestPanel {
     }
 
     pub(super) fn render_tab_content(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
-        if self.request_mode == RequestMode::GraphQL {
-            // GraphQL tabs: Query, Variables, Headers, Auth
-            match self.active_tab {
-                0 => self.render_graphql_query_tab(cx),
-                1 => self.render_graphql_variables_tab(cx),
-                2 => self.render_headers_tab(cx),
-                3 => self.render_auth_tab(cx),
-                _ => div().into_any_element(),
+        match self.request_mode {
+            RequestMode::GraphQL => {
+                // GraphQL tabs: Query, Variables, Headers, Auth
+                match self.active_tab {
+                    0 => self.render_graphql_query_tab(cx),
+                    1 => self.render_graphql_variables_tab(cx),
+                    2 => self.render_headers_tab(cx),
+                    3 => self.render_auth_tab(cx),
+                    _ => div().into_any_element(),
+                }
             }
-        } else {
-            // HTTP tabs: Params, Headers, Body, Auth, Scripts
-            match self.active_tab {
-                0 => self.render_params_tab(cx),
-                1 => self.render_headers_tab(cx),
-                2 => self.render_body_tab(cx),
-                3 => self.render_auth_tab(cx),
-                4 => self.render_scripts_tab(cx),
-                _ => div().into_any_element(),
+            RequestMode::WebSocket => {
+                // WebSocket tabs: Messages, Headers
+                match self.active_tab {
+                    0 => self.render_websocket_messages_tab(cx),
+                    1 => self.render_headers_tab(cx),
+                    _ => div().into_any_element(),
+                }
+            }
+            RequestMode::Http => {
+                // HTTP tabs: Params, Headers, Body, Auth, Scripts
+                match self.active_tab {
+                    0 => self.render_params_tab(cx),
+                    1 => self.render_headers_tab(cx),
+                    2 => self.render_body_tab(cx),
+                    3 => self.render_auth_tab(cx),
+                    4 => self.render_scripts_tab(cx),
+                    _ => div().into_any_element(),
+                }
             }
         }
     }
@@ -2434,6 +2469,260 @@ impl RequestPanel {
                     .rounded(px(6.0))
                     .overflow_hidden()
                     .child(self.graphql_variables_editor.clone())
+            )
+            .into_any_element()
+    }
+
+    /// Render WebSocket messages tab with connection controls and message history
+    fn render_websocket_messages_tab(&mut self, cx: &mut Context<Self>) -> gpui::AnyElement {
+        let theme = theme::current(cx);
+        let ws_state = self.ws_state;
+        let is_connected = ws_state == WsConnectionState::Connected;
+        let is_connecting = ws_state == WsConnectionState::Connecting;
+        let messages = self.ws_messages.clone();
+
+        div()
+            .id("websocket-messages-tab")
+            .w_full()
+            .h_full()
+            .flex()
+            .flex_col()
+            .gap(px(8.0))
+            // Connection status & controls
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .justify_between()
+                    .px(px(4.0))
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap(px(8.0))
+                            .child(
+                                div()
+                                    .size(px(20.0))
+                                    .rounded(px(4.0))
+                                    .bg(if is_connected {
+                                        theme.colors.method_get.opacity(0.15)
+                                    } else {
+                                        theme.colors.text_muted.opacity(0.15)
+                                    })
+                                    .flex()
+                                    .items_center()
+                                    .justify_center()
+                                    .text_size(px(10.0))
+                                    .text_color(if is_connected {
+                                        theme.colors.method_get
+                                    } else {
+                                        theme.colors.text_muted
+                                    })
+                                    .child("⚡")
+                            )
+                            .child(
+                                div()
+                                    .text_size(px(12.0))
+                                    .font_weight(gpui::FontWeight::SEMIBOLD)
+                                    .text_color(theme.colors.text_primary)
+                                    .child("WebSocket")
+                            )
+                            .child(
+                                div()
+                                    .px(px(8.0))
+                                    .py(px(2.0))
+                                    .rounded(px(4.0))
+                                    .bg(if is_connected {
+                                        theme.colors.method_get.opacity(0.15)
+                                    } else if is_connecting {
+                                        theme.colors.accent.opacity(0.15)
+                                    } else {
+                                        theme.colors.text_muted.opacity(0.15)
+                                    })
+                                    .text_size(px(10.0))
+                                    .text_color(if is_connected {
+                                        theme.colors.method_get
+                                    } else if is_connecting {
+                                        theme.colors.accent
+                                    } else {
+                                        theme.colors.text_muted
+                                    })
+                                    .child(match ws_state {
+                                        WsConnectionState::Connected => "Connected",
+                                        WsConnectionState::Connecting => "Connecting...",
+                                        WsConnectionState::Disconnected => "Disconnected",
+                                    })
+                            )
+                    )
+                    // Connect/Disconnect button
+                    .child(
+                        div()
+                            .id("ws-connect-btn")
+                            .px(px(12.0))
+                            .py(px(6.0))
+                            .rounded(px(6.0))
+                            .cursor_pointer()
+                            .when(is_connected, |el| {
+                                el.bg(theme.colors.method_delete.opacity(0.15))
+                                    .text_color(theme.colors.method_delete)
+                            })
+                            .when(!is_connected, |el| {
+                                el.bg(theme.colors.method_get.opacity(0.15))
+                                    .text_color(theme.colors.method_get)
+                            })
+                            .when(is_connecting, |el| {
+                                el.cursor(gpui::CursorStyle::Arrow)
+                                    .opacity(0.5)
+                            })
+                            .hover(|s| s.opacity(0.8))
+                            .text_size(px(11.0))
+                            .font_weight(gpui::FontWeight::MEDIUM)
+                            .on_click(cx.listener(move |this, _, _, cx| {
+                                if is_connecting {
+                                    return;
+                                }
+                                if is_connected {
+                                    this.disconnect_websocket(cx);
+                                } else {
+                                    this.connect_websocket(cx);
+                                }
+                            }))
+                            .child(if is_connected { "Disconnect" } else { "Connect" })
+                    )
+            )
+            // Message history
+            .child(
+                div()
+                    .id("ws-messages-container")
+                    .flex_1()
+                    .w_full()
+                    .min_h(px(100.0))
+                    .border_1()
+                    .border_color(theme.colors.border)
+                    .rounded(px(6.0))
+                    .bg(theme.colors.bg_primary)
+                    .overflow_scroll()
+                    .flex()
+                    .flex_col()
+                    .when(messages.is_empty(), |el| {
+                        el.items_center()
+                            .justify_center()
+                            .child(
+                                div()
+                                    .text_size(px(12.0))
+                                    .text_color(theme.colors.text_muted)
+                                    .child("No messages yet. Connect to start.")
+                            )
+                    })
+                    .when(!messages.is_empty(), |el| {
+                        el.p(px(8.0))
+                            .gap(px(4.0))
+                            .children(messages.iter().enumerate().map(|(i, msg)| {
+                                let is_sent = msg.direction == WsMessageDirection::Sent;
+                                let time_str = msg.timestamp.format("%H:%M:%S").to_string();
+                                div()
+                                    .id(SharedString::from(format!("ws-msg-{}", i)))
+                                    .w_full()
+                                    .p(px(8.0))
+                                    .rounded(px(4.0))
+                                    .bg(if is_sent {
+                                        theme.colors.accent.opacity(0.08)
+                                    } else {
+                                        theme.colors.bg_secondary
+                                    })
+                                    .flex()
+                                    .flex_col()
+                                    .gap(px(4.0))
+                                    .child(
+                                        div()
+                                            .flex()
+                                            .items_center()
+                                            .gap(px(6.0))
+                                            .child(
+                                                div()
+                                                    .text_size(px(10.0))
+                                                    .font_weight(gpui::FontWeight::MEDIUM)
+                                                    .text_color(if is_sent {
+                                                        theme.colors.accent
+                                                    } else {
+                                                        theme.colors.method_get
+                                                    })
+                                                    .child(if is_sent { "→ Sent" } else { "← Received" })
+                                            )
+                                            .child(
+                                                div()
+                                                    .text_size(px(9.0))
+                                                    .text_color(theme.colors.text_muted)
+                                                    .child(time_str)
+                                            )
+                                    )
+                                    .child(
+                                        div()
+                                            .text_size(px(11.0))
+                                            .text_color(theme.colors.text_primary)
+                                            .font_family("Ubuntu Mono")
+                                            .child(msg.content.clone())
+                                    )
+                            }))
+                    })
+            )
+            // Message input
+            .child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap(px(8.0))
+                    .child(
+                        div()
+                            .text_size(px(10.0))
+                            .font_weight(gpui::FontWeight::SEMIBOLD)
+                            .text_color(theme.colors.text_muted)
+                            .child("MESSAGE")
+                    )
+                    .child(
+                        div()
+                            .flex()
+                            .gap(px(8.0))
+                            .child(
+                                div()
+                                    .flex_1()
+                                    .h(px(80.0))
+                                    .border_1()
+                                    .border_color(theme.colors.border)
+                                    .rounded(px(6.0))
+                                    .overflow_hidden()
+                                    .child(self.ws_message_editor.clone())
+                            )
+                            .child(
+                                div()
+                                    .id("ws-send-btn")
+                                    .h(px(80.0))
+                                    .w(px(70.0))
+                                    .rounded(px(6.0))
+                                    .cursor_pointer()
+                                    .flex()
+                                    .items_center()
+                                    .justify_center()
+                                    .when(is_connected, |el| {
+                                        el.bg(theme.colors.accent)
+                                            .hover(|s| s.opacity(0.9))
+                                            .text_color(gpui::rgb(0xFFFFFF))
+                                    })
+                                    .when(!is_connected, |el| {
+                                        el.bg(theme.colors.text_muted.opacity(0.15))
+                                            .cursor(gpui::CursorStyle::Arrow)
+                                            .text_color(theme.colors.text_muted)
+                                    })
+                                    .text_size(px(11.0))
+                                    .font_weight(gpui::FontWeight::MEDIUM)
+                                    .on_click(cx.listener(move |this, _, _, cx| {
+                                        if is_connected {
+                                            this.send_websocket_message(cx);
+                                        }
+                                    }))
+                                    .child("Send")
+                            )
+                    )
             )
             .into_any_element()
     }

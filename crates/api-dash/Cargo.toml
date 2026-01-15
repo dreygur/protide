@@ -57,5 +57,9 @@ axum = { workspace = true }
 hyper = { workspace = true }
 tower = { workspace = true }
 
+# WebSocket client
+tokio-tungstenite = { workspace = true }
+futures-util = { workspace = true }
+
 [dev-dependencies]
 # Standard unit tests - no additional dependencies needed
