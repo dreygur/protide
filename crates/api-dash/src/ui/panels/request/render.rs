@@ -263,6 +263,28 @@ impl RequestPanel {
                             }))
                             .child("</> Code")
                     )
+                    // Import button
+                    .child(
+                        div()
+                            .id("import-button")
+                            .h(px(32.0))
+                            .px(px(10.0))
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .gap(px(4.0))
+                            .rounded(px(6.0))
+                            .text_size(px(11.0))
+                            .text_color(theme.colors.text_secondary)
+                            .cursor_pointer()
+                            .border_1()
+                            .border_color(theme.colors.border)
+                            .hover(|s| s.bg(theme.colors.bg_tertiary).border_color(theme.colors.text_muted))
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.open_import_modal(cx);
+                            }))
+                            .child("↓ Import")
+                    )
             )
     }
 
@@ -2394,6 +2416,220 @@ impl RequestPanel {
                                     .text_size(px(12.0))
                                     .text_color(theme.colors.text_primary)
                                     .child(code)
+                            )
+                    )
+            )
+    }
+
+    /// Render import modal
+    pub(super) fn render_import_modal(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
+        let theme = theme::current(cx);
+        let import_text = self.import_text.clone();
+        let import_error = self.import_error.clone();
+
+        // Full-screen overlay with centered modal
+        div()
+            .id("import-modal-overlay")
+            .absolute()
+            .inset_0()
+            .bg(gpui::black().opacity(0.5))
+            .flex()
+            .items_center()
+            .justify_center()
+            .on_click(cx.listener(|this, _, _, cx| {
+                this.close_import_modal(cx);
+            }))
+            .child(
+                div()
+                    .id("import-modal")
+                    .w(px(600.0))
+                    .bg(theme.colors.bg_primary)
+                    .border_1()
+                    .border_color(theme.colors.border)
+                    .rounded(px(12.0))
+                    .shadow_lg()
+                    .flex()
+                    .flex_col()
+                    .on_click(cx.listener(|_, _, _, cx| {
+                        cx.stop_propagation();
+                    }))
+                    // Header
+                    .child(
+                        div()
+                            .h(px(48.0))
+                            .px(px(16.0))
+                            .flex()
+                            .items_center()
+                            .justify_between()
+                            .border_b_1()
+                            .border_color(theme.colors.border)
+                            .child(
+                                div()
+                                    .text_size(px(14.0))
+                                    .font_weight(gpui::FontWeight::SEMIBOLD)
+                                    .text_color(theme.colors.text_primary)
+                                    .child("Import Request")
+                            )
+                            .child(
+                                div()
+                                    .id("close-import-modal")
+                                    .size(px(28.0))
+                                    .flex()
+                                    .items_center()
+                                    .justify_center()
+                                    .rounded(px(4.0))
+                                    .text_size(px(14.0))
+                                    .text_color(theme.colors.text_muted)
+                                    .cursor_pointer()
+                                    .hover(|s| s.bg(theme.colors.bg_tertiary))
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        this.close_import_modal(cx);
+                                    }))
+                                    .child("✕")
+                            )
+                    )
+                    // Content
+                    .child(
+                        div()
+                            .p(px(16.0))
+                            .flex()
+                            .flex_col()
+                            .gap(px(12.0))
+                            // Instructions with browse button
+                            .child(
+                                div()
+                                    .w_full()
+                                    .flex()
+                                    .items_center()
+                                    .justify_between()
+                                    .child(
+                                        div()
+                                            .text_size(px(12.0))
+                                            .text_color(theme.colors.text_secondary)
+                                            .child("Paste cURL command or Postman collection:")
+                                    )
+                                    .child(
+                                        div()
+                                            .id("browse-import")
+                                            .px(px(10.0))
+                                            .py(px(5.0))
+                                            .rounded(px(4.0))
+                                            .text_size(px(11.0))
+                                            .text_color(theme.colors.text_secondary)
+                                            .cursor_pointer()
+                                            .border_1()
+                                            .border_color(theme.colors.border)
+                                            .hover(|s| s.bg(theme.colors.bg_tertiary))
+                                            .on_click(cx.listener(|this, _, _, cx| {
+                                                this.browse_import_file(cx);
+                                            }))
+                                            .child("📁 Browse...")
+                                    )
+                            )
+                            // Text area
+                            .child(
+                                div()
+                                    .id("import-textarea")
+                                    .w_full()
+                                    .h(px(200.0))
+                                    .p(px(12.0))
+                                    .bg(theme.colors.bg_secondary)
+                                    .border_1()
+                                    .border_color(theme.colors.border)
+                                    .rounded(px(6.0))
+                                    .overflow_scroll()
+                                    .font_family("Ubuntu Mono")
+                                    .text_size(px(12.0))
+                                    .text_color(theme.colors.text_primary)
+                                    .child(
+                                        div()
+                                            .id("import-input")
+                                            .size_full()
+                                            .cursor_text()
+                                            .on_click(cx.listener(|this, _, window, cx| {
+                                                // Read from clipboard on click if empty
+                                                if this.import_text.is_empty() {
+                                                    if let Some(clipboard) = cx.read_from_clipboard() {
+                                                        if let Some(text) = clipboard.text() {
+                                                            this.set_import_text(text.to_string(), cx);
+                                                        }
+                                                    }
+                                                }
+                                            }))
+                                            .when(import_text.is_empty(), |el| {
+                                                el.child(
+                                                    div()
+                                                        .text_color(theme.colors.text_muted)
+                                                        .child("Click to paste from clipboard...")
+                                                )
+                                            })
+                                            .when(!import_text.is_empty(), |el| {
+                                                el.child(import_text.clone())
+                                            })
+                                    )
+                            )
+                            // Error message
+                            .when(import_error.is_some(), |el| {
+                                el.child(
+                                    div()
+                                        .px(px(10.0))
+                                        .py(px(8.0))
+                                        .bg(theme.colors.status_client_error.opacity(0.1))
+                                        .border_1()
+                                        .border_color(theme.colors.status_client_error.opacity(0.3))
+                                        .rounded(px(4.0))
+                                        .text_size(px(12.0))
+                                        .text_color(theme.colors.status_client_error)
+                                        .child(import_error.unwrap_or_default())
+                                )
+                            })
+                    )
+                    // Footer
+                    .child(
+                        div()
+                            .h(px(56.0))
+                            .px(px(16.0))
+                            .flex()
+                            .items_center()
+                            .justify_end()
+                            .gap(px(8.0))
+                            .border_t_1()
+                            .border_color(theme.colors.border)
+                            // Clear button
+                            .child(
+                                div()
+                                    .id("clear-import")
+                                    .px(px(14.0))
+                                    .py(px(8.0))
+                                    .rounded(px(6.0))
+                                    .text_size(px(12.0))
+                                    .text_color(theme.colors.text_secondary)
+                                    .cursor_pointer()
+                                    .border_1()
+                                    .border_color(theme.colors.border)
+                                    .hover(|s| s.bg(theme.colors.bg_tertiary))
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        this.set_import_text(String::new(), cx);
+                                    }))
+                                    .child("Clear")
+                            )
+                            // Import button
+                            .child(
+                                div()
+                                    .id("execute-import")
+                                    .px(px(14.0))
+                                    .py(px(8.0))
+                                    .rounded(px(6.0))
+                                    .text_size(px(12.0))
+                                    .font_weight(gpui::FontWeight::SEMIBOLD)
+                                    .text_color(gpui::white())
+                                    .bg(theme.colors.accent)
+                                    .cursor_pointer()
+                                    .hover(|s| s.bg(theme.colors.accent_hover))
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        this.execute_import(cx);
+                                    }))
+                                    .child("Import")
                             )
                     )
             )

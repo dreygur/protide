@@ -27,6 +27,7 @@ use super::response::{ResponseData, ResponsePanel};
 
 use crate::chaining;
 use crate::codegen::{self, CodegenRequest, Language as CodegenLanguage};
+use crate::import;
 use http_parser::VariableExtraction;
 
 /// Helper to render text with selection highlighting
@@ -112,6 +113,12 @@ pub struct RequestPanel {
     pub(super) codegen_content: Option<String>,
     /// Selected code generation language
     pub(super) codegen_language: CodegenLanguage,
+    /// Import modal open state
+    pub(super) import_modal_open: bool,
+    /// Import text input content
+    pub(super) import_text: String,
+    /// Import error message
+    pub(super) import_error: Option<String>,
 }
 
 impl RequestPanel {
@@ -194,6 +201,9 @@ impl RequestPanel {
             codegen_dropdown_open: false,
             codegen_content: None,
             codegen_language: CodegenLanguage::Curl,
+            import_modal_open: false,
+            import_text: String::new(),
+            import_error: None,
         }
     }
 
@@ -1340,6 +1350,121 @@ impl RequestPanel {
         }
     }
 
+    /// Open import modal
+    pub(super) fn open_import_modal(&mut self, cx: &mut Context<Self>) {
+        self.import_modal_open = true;
+        self.import_text.clear();
+        self.import_error = None;
+        cx.notify();
+    }
+
+    /// Close import modal
+    pub(super) fn close_import_modal(&mut self, cx: &mut Context<Self>) {
+        self.import_modal_open = false;
+        self.import_text.clear();
+        self.import_error = None;
+        cx.notify();
+    }
+
+    /// Update import text
+    pub(super) fn set_import_text(&mut self, text: String, cx: &mut Context<Self>) {
+        self.import_text = text;
+        self.import_error = None;
+        cx.notify();
+    }
+
+    /// Browse for a file to import (Postman collection, etc.)
+    pub(super) fn browse_import_file(&mut self, cx: &mut Context<Self>) {
+        let mut dialog = rfd::FileDialog::new()
+            .set_title("Import Collection")
+            .add_filter("Postman Collection", &["json"])
+            .add_filter("All Files", &["*"]);
+
+        if let Some(home) = dirs::home_dir() {
+            dialog = dialog.set_directory(home);
+        }
+
+        if let Some(path) = dialog.pick_file() {
+            match std::fs::read_to_string(&path) {
+                Ok(content) => {
+                    self.import_text = content;
+                    self.import_error = None;
+                }
+                Err(e) => {
+                    self.import_error = Some(format!("Failed to read file: {}", e));
+                }
+            }
+        }
+        cx.notify();
+    }
+
+    /// Execute import from the current import_text
+    pub(super) fn execute_import(&mut self, cx: &mut Context<Self>) {
+        if self.import_text.trim().is_empty() {
+            self.import_error = Some("Please paste a cURL command or request data".to_string());
+            cx.notify();
+            return;
+        }
+
+        match import::import(&self.import_text) {
+            Ok(result) => {
+                if let Some(request) = result.requests.into_iter().next() {
+                    // Convert http_parser::HttpMethod to our HttpMethod
+                    let method = match request.method {
+                        http_parser::HttpMethod::Get => HttpMethod::Get,
+                        http_parser::HttpMethod::Post => HttpMethod::Post,
+                        http_parser::HttpMethod::Put => HttpMethod::Put,
+                        http_parser::HttpMethod::Patch => HttpMethod::Patch,
+                        http_parser::HttpMethod::Delete => HttpMethod::Delete,
+                        // Map unsupported methods to GET
+                        _ => HttpMethod::Get,
+                    };
+
+                    // Load the imported request
+                    self.method = method;
+                    self.url = request.url;
+                    self.url_selection = self.url.len()..self.url.len();
+
+                    // Convert headers (preserve enabled state from import)
+                    self.headers = request.headers
+                        .into_iter()
+                        .map(|h| KeyValuePair {
+                            key: h.key,
+                            value: h.value,
+                            enabled: h.enabled,
+                        })
+                        .collect();
+                    // Add empty row for new headers
+                    self.headers.push(KeyValuePair::default());
+
+                    // Set body
+                    if let Some(body) = request.body {
+                        self.body = body.clone();
+                        self.body_editor.update(cx, |editor, cx| {
+                            editor.set_content(&body, cx);
+                        });
+                        // Detect body type from Content-Type header
+                        let is_json = self.headers.iter().any(|h| {
+                            h.key.eq_ignore_ascii_case("content-type") && h.value.contains("json")
+                        });
+                        self.body_type = if is_json { BodyType::Json } else { BodyType::Raw };
+                    }
+
+                    // Close modal on success
+                    self.import_modal_open = false;
+                    self.import_text.clear();
+                    self.import_error = None;
+                } else {
+                    self.import_error = Some("No request found in import data".to_string());
+                }
+            }
+            Err(e) => {
+                self.import_error = Some(e);
+            }
+        }
+        cx.notify();
+    }
+
     fn send_request(&mut self, cx: &mut Context<Self>) {
         if self.loading || self.url.is_empty() {
             return;
@@ -2102,6 +2227,10 @@ impl Render for RequestPanel {
             // Code generation modal
             .when(self.codegen_content.is_some(), |el| {
                 el.child(self.render_codegen_modal(cx))
+            })
+            // Import modal
+            .when(self.import_modal_open, |el| {
+                el.child(self.render_import_modal(cx))
             })
     }
 }
