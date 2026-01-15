@@ -2,7 +2,7 @@
 
 use gpui::{
     div, prelude::*, px, ClipboardItem, Context, Entity, FocusHandle, IntoElement, KeyDownEvent,
-    MouseButton, MouseDownEvent, ParentElement, Point, Pixels, Render, SharedString, Styled, Window,
+    MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement, Point, Pixels, Render, SharedString, Styled, Window,
 };
 use std::fs;
 use std::ops::Range;
@@ -71,6 +71,10 @@ pub struct ExplorerPanel {
     edit_undo_stack: Vec<(EnvEditTarget, String, Range<usize>)>,
     /// Redo stack for edit fields
     edit_redo_stack: Vec<(EnvEditTarget, String, Range<usize>)>,
+    /// Whether mouse is currently selecting text
+    edit_is_selecting: bool,
+    /// Input left position for click calculation
+    edit_input_left: f32,
     /// Currently selected collection item path
     selected_item: Option<PathBuf>,
     /// Context menu state (path, position)
@@ -99,6 +103,8 @@ impl ExplorerPanel {
             show_new_env_input: false,
             edit_undo_stack: Vec::new(),
             edit_redo_stack: Vec::new(),
+            edit_is_selecting: false,
+            edit_input_left: 0.0,
             selected_item: None,
             context_menu: None,
             renaming_item: None,
@@ -593,7 +599,75 @@ impl ExplorerPanel {
     fn stop_editing(&mut self, cx: &mut Context<Self>) {
         self.active_edit = None;
         self.edit_selection = 0..0;
+        self.edit_is_selecting = false;
         cx.notify();
+    }
+
+    /// Calculate character index from x position
+    fn edit_index_for_x(&self, x: f32, char_width: f32) -> usize {
+        if let Some(target) = self.active_edit {
+            let char_count = self.get_edit_text(target).chars().count();
+            if x <= 0.0 {
+                0
+            } else {
+                let approx_char = (x / char_width) as usize;
+                approx_char.min(char_count)
+            }
+        } else {
+            0
+        }
+    }
+
+    /// Handle mouse down for text input fields
+    fn handle_edit_mouse_down(&mut self, event: &MouseDownEvent, target: EnvEditTarget, char_width: f32, cx: &mut Context<Self>) {
+        self.edit_is_selecting = true;
+        // Environment inputs are in the sidebar (250px wide)
+        // Layout: sidebar padding (14px) + input padding (6px) = ~20px
+        // But position is element-local in GPUI, so we just use padding
+        let padding = 6.0;
+        self.edit_input_left = padding;
+        let click_x = f32::from(event.position.x) - padding;
+        let index = self.edit_index_for_x(click_x.max(0.0), char_width);
+
+        // Cycle: 1=cursor, 2=word, 3=all, 4+=cursor
+        let effective_click = if event.click_count >= 4 { 1 } else { event.click_count };
+
+        match effective_click {
+            2 => {
+                // Double-click: select word
+                let text = self.get_edit_text(target);
+                let start = crate::ui::components::find_word_start(&text, index);
+                let end = crate::ui::components::find_word_end(&text, index);
+                self.edit_selection = start..end;
+                cx.notify();
+            }
+            3 => {
+                // Triple-click: select all
+                let text_len = self.get_edit_text(target).chars().count();
+                self.edit_selection = 0..text_len;
+                cx.notify();
+            }
+            _ => {
+                // Single click
+                self.edit_selection = index..index;
+                cx.notify();
+            }
+        }
+    }
+
+    /// Handle mouse move for text selection
+    fn handle_edit_mouse_move(&mut self, event: &MouseMoveEvent, char_width: f32, cx: &mut Context<Self>) {
+        if self.edit_is_selecting {
+            let click_x = f32::from(event.position.x) - self.edit_input_left;
+            let index = self.edit_index_for_x(click_x.max(0.0), char_width);
+            self.edit_selection.end = index;
+            cx.notify();
+        }
+    }
+
+    /// Handle mouse up
+    fn handle_edit_mouse_up(&mut self, _event: &MouseUpEvent, _cx: &mut Context<Self>) {
+        self.edit_is_selecting = false;
     }
 
     fn get_edit_text(&self, target: EnvEditTarget) -> String {
@@ -1991,8 +2065,19 @@ impl ExplorerPanel {
             .text_size(px(11.0))
             .on_mouse_down(
                 gpui::MouseButton::Left,
-                cx.listener(move |this, _event: &MouseDownEvent, window, cx| {
+                cx.listener(move |this, event: &MouseDownEvent, window, cx| {
                     this.start_editing(target, window, cx);
+                    // char_width for 11px font size
+                    this.handle_edit_mouse_down(event, target, 6.6, cx);
+                }),
+            )
+            .on_mouse_move(cx.listener(|this, event: &MouseMoveEvent, _, cx| {
+                this.handle_edit_mouse_move(event, 6.6, cx);
+            }))
+            .on_mouse_up(
+                gpui::MouseButton::Left,
+                cx.listener(|this, event: &MouseUpEvent, _, cx| {
+                    this.handle_edit_mouse_up(event, cx);
                 }),
             )
             .child(self.render_text_content(&text, placeholder, is_editing, selection, cx))

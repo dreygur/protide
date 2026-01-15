@@ -630,16 +630,16 @@ impl TextInput {
                         .bg(gpui::rgba(0x3366ff40))
                 )
             })
-            // Cursor (absolute positioned)
+            // Cursor (absolute positioned, centered vertically)
             .when(is_focused, |el| {
                 let cursor_x = cursor_pos as f32 * char_width;
                 el.child(
                     div()
                         .absolute()
-                        .top(px(2.0))
+                        .top_1()
+                        .bottom_1()
                         .left(px(cursor_x))
                         .w(px(2.0))
-                        .h(px(font_size + 2.0))
                         .bg(text_color)
                 )
             })

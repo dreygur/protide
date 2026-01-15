@@ -559,6 +559,43 @@ impl RequestPanel {
         cx.notify();
     }
 
+    /// Calculate the window X position where text starts for a given edit target
+    /// Used for click position calculation since GPUI provides window coordinates
+    fn calc_input_left(&self, target: EditTarget) -> f32 {
+        // Layout constants (from main_window.rs and render.rs)
+        const SIDEBAR_WIDTH: f32 = 250.0;
+        const BORDER: f32 = 1.0;
+        const TAB_CONTENT_PADDING: f32 = 12.0;
+        const ROW_PADDING_X: f32 = 2.0;
+        const CHECKBOX_AND_GAP: f32 = 24.0; // 16px checkbox + 8px gap
+        const INPUT_PADDING: f32 = 8.0;
+        const KEY_INPUT_WIDTH: f32 = 150.0;
+        const GAP: f32 = 8.0;
+
+        // Base position for inputs in tab content (params, headers, form)
+        let tab_base = SIDEBAR_WIDTH + BORDER + TAB_CONTENT_PADDING + ROW_PADDING_X;
+        let key_input_left = tab_base + CHECKBOX_AND_GAP + INPUT_PADDING;
+        let value_input_left = key_input_left + KEY_INPUT_WIDTH + GAP + INPUT_PADDING;
+
+        // Auth tab has different layout
+        const AUTH_BASE: f32 = SIDEBAR_WIDTH + BORDER + TAB_CONTENT_PADDING + 16.0; // card padding
+        const AUTH_LABEL_WIDTH: f32 = 100.0; // approximate label width
+        let auth_input_left = AUTH_BASE + AUTH_LABEL_WIDTH + INPUT_PADDING;
+
+        match target {
+            EditTarget::ParamKey(_) | EditTarget::HeaderKey(_) | EditTarget::FormKey(_) => {
+                key_input_left
+            }
+            EditTarget::ParamValue(_) | EditTarget::HeaderValue(_) | EditTarget::FormValue(_) => {
+                value_input_left
+            }
+            EditTarget::BearerToken => auth_input_left,
+            EditTarget::BasicUsername | EditTarget::BasicPassword => auth_input_left + 50.0,
+            EditTarget::ApiKeyName | EditTarget::ApiKeyValue => auth_input_left + 50.0,
+            EditTarget::Url | EditTarget::Body => 0.0, // These use their own handling
+        }
+    }
+
     /// Get cursor position for current edit
     fn edit_cursor(&self) -> usize {
         self.edit_selection.end
@@ -733,11 +770,14 @@ impl RequestPanel {
     }
 
     /// Handle mouse down for single-line edit fields
-    fn handle_edit_mouse_down(&mut self, event: &MouseDownEvent, input_left: f32, char_width: f32, cx: &mut Context<Self>) {
+    /// Calculates click position based on the target's window position
+    fn handle_edit_mouse_down(&mut self, event: &MouseDownEvent, target: EditTarget, char_width: f32, cx: &mut Context<Self>) {
         self.edit_is_selecting = true;
+        // Calculate the input's text start position in window coordinates
+        let input_left = self.calc_input_left(target);
         self.edit_input_left = input_left;
         let click_x = f32::from(event.position.x) - input_left;
-        let index = self.edit_index_for_x(click_x, char_width);
+        let index = self.edit_index_for_x(click_x.max(0.0), char_width);
 
         // Cycle: 1=cursor, 2=word, 3=all, 4+=cursor
         let effective_click = if event.click_count >= 4 { 1 } else { event.click_count };

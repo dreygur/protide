@@ -1339,7 +1339,7 @@ impl RequestPanel {
                 cx.listener(move |this, event: &MouseDownEvent, window, cx| {
                     this.skip_blur = true;
                     this.start_editing(target, window, cx);
-                    this.handle_edit_mouse_down(event, 8.0, 7.2, cx);
+                    this.handle_edit_mouse_down(event, target, 7.2, cx);
                 }),
             )
             .on_mouse_move(cx.listener(|this, event: &MouseMoveEvent, _, cx| {
@@ -1391,7 +1391,7 @@ impl RequestPanel {
                 cx.listener(move |this, event: &MouseDownEvent, window, cx| {
                     this.skip_blur = true;
                     this.start_editing(target, window, cx);
-                    this.handle_edit_mouse_down(event, 8.0, 7.2, cx);
+                    this.handle_edit_mouse_down(event, target, 7.2, cx);
                 }),
             )
             .on_mouse_move(cx.listener(|this, event: &MouseMoveEvent, _, cx| {
@@ -2009,7 +2009,7 @@ impl RequestPanel {
                 cx.listener(move |this, event: &MouseDownEvent, window, cx| {
                     this.skip_blur = true;
                     this.start_editing(target, window, cx);
-                    this.handle_edit_mouse_down(event, 12.0, 7.2, cx);
+                    this.handle_edit_mouse_down(event, target, 7.2, cx);
                 }),
             )
             .on_mouse_move(cx.listener(|this, event: &MouseMoveEvent, _, cx| {
