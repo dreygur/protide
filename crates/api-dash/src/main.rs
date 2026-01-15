@@ -9,8 +9,13 @@
 //! - tRPC
 
 mod app;
+mod chaining;
+mod codegen;
+mod import;
+mod mock_server;
 mod models;
 mod protocols;
+mod scripting;
 mod theme;
 mod ui;
 mod workspace;

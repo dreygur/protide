@@ -29,6 +29,8 @@ pub struct Config {
     pub font_size: f32,
     pub line_height: f32,
     pub gutter_width: f32,
+    pub font_family: String,
+    pub char_width_ratio: f32,
 }
 
 impl Default for Config {
@@ -39,6 +41,8 @@ impl Default for Config {
             font_size: 13.0,
             line_height: 20.0,
             gutter_width: 55.0, // Includes fold marker space
+            font_family: "Ubuntu Mono".to_string(),
+            char_width_ratio: 0.602, // More precise ratio for monospace fonts
         }
     }
 }
@@ -482,7 +486,7 @@ impl CodeEditor {
     // === Position Calculation ===
 
     fn offset_at_position(&self, x: f32, y: f32) -> usize {
-        let char_width = self.config.font_size * 0.6;
+        let char_width = self.config.font_size * self.config.char_width_ratio;
         let line_height = self.config.line_height;
         let gutter = if self.config.show_line_numbers { self.config.gutter_width } else { 0.0 };
         let spacer = 8.0; // Left spacer width
@@ -679,7 +683,7 @@ impl CodeEditor {
                             .relative()
                             // Selection highlight
                             .when(has_selection && !self.selection.is_empty(), |el| {
-                                let char_width = font_size * 0.6;
+                                let char_width = font_size * self.config.char_width_ratio;
                                 let sel_x = sel_start_in_line as f32 * char_width;
                                 let sel_width = (sel_end_in_line - sel_start_in_line) as f32 * char_width;
                                 el.child(
@@ -694,7 +698,7 @@ impl CodeEditor {
                             })
                             // Cursor
                             .when(cursor_in_line && !self.config.read_only, |el| {
-                                let char_width = font_size * 0.6;
+                                let char_width = font_size * self.config.char_width_ratio;
                                 let cursor_x = cursor_col as f32 * char_width;
                                 el.child(
                                     div()
@@ -712,10 +716,10 @@ impl CodeEditor {
                                 div()
                                     .flex()
                                     .text_size(px(font_size))
-                                    .font_family("monospace")
+                                    .font_family(self.config.font_family.clone())
                                     .children(tokens.into_iter().flat_map(|token| {
                                         let color = token.kind.color(theme);
-                                        let char_width = font_size * 0.6;
+                                        let char_width = font_size * self.config.char_width_ratio;
                                         token.text.chars().map(move |c| {
                                             div()
                                                 .w(px(char_width))

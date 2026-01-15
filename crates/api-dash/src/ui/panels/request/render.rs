@@ -8,6 +8,7 @@ use gpui::{
 };
 
 use crate::theme;
+use crate::codegen::Language as CodegenLanguage;
 use crate::ui::components::render_text_view_with_max;
 use super::super::request_types::{ApiKeyLocation, AuthType, BodyType, EditTarget, FormFieldType, HttpMethod};
 use super::{render_text_view, RequestPanel};
@@ -240,6 +241,28 @@ impl RequestPanel {
                             .child("💾")
                             .child("Save")
                     )
+                    // Code generation button
+                    .child(
+                        div()
+                            .id("code-button")
+                            .h(px(32.0))
+                            .px(px(10.0))
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .gap(px(4.0))
+                            .rounded(px(6.0))
+                            .text_size(px(11.0))
+                            .text_color(theme.colors.text_secondary)
+                            .cursor_pointer()
+                            .border_1()
+                            .border_color(theme.colors.border)
+                            .hover(|s| s.bg(theme.colors.bg_tertiary).border_color(theme.colors.text_muted))
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.toggle_codegen_dropdown(cx);
+                            }))
+                            .child("</> Code")
+                    )
             )
     }
 
@@ -318,7 +341,7 @@ impl RequestPanel {
 
     pub(super) fn render_tabs(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = theme::current(cx);
-        let tabs = [("Params", "?"), ("Headers", "H"), ("Body", "{ }"), ("Auth", "🔒")];
+        let tabs = [("Params", "?"), ("Headers", "H"), ("Body", "{ }"), ("Auth", "🔒"), ("Scripts", "ƒ")];
         let active_tab = self.active_tab;
 
         // Get counts for badges
@@ -419,6 +442,7 @@ impl RequestPanel {
             1 => self.render_headers_tab(cx),
             2 => self.render_body_tab(cx),
             3 => self.render_auth_tab(cx),
+            4 => self.render_scripts_tab(cx),
             _ => div().into_any_element(),
         }
     }
@@ -2023,6 +2047,356 @@ impl RequestPanel {
             )
             // ~50 chars for 400px max width
             .child(self.render_kv_text(&display_text, placeholder, is_editing, selection, Some(50), cx))
+    }
+
+    fn render_scripts_tab(&mut self, cx: &mut Context<Self>) -> gpui::AnyElement {
+        let theme = theme::current(cx);
+
+        div()
+            .id("scripts-tab")
+            .w_full()
+            .h_full()
+            .flex()
+            .flex_col()
+            .gap(px(16.0))
+            .overflow_scroll()
+            // Pre-request Script section
+            .child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap(px(8.0))
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap(px(8.0))
+                            .child(
+                                div()
+                                    .size(px(20.0))
+                                    .rounded(px(4.0))
+                                    .bg(theme.colors.method_post.opacity(0.15))
+                                    .flex()
+                                    .items_center()
+                                    .justify_center()
+                                    .text_size(px(10.0))
+                                    .text_color(theme.colors.method_post)
+                                    .child("▶")
+                            )
+                            .child(
+                                div()
+                                    .text_size(px(12.0))
+                                    .font_weight(gpui::FontWeight::SEMIBOLD)
+                                    .text_color(theme.colors.text_primary)
+                                    .child("Pre-request Script")
+                            )
+                            .child(
+                                div()
+                                    .text_size(px(10.0))
+                                    .text_color(theme.colors.text_muted)
+                                    .child("Runs before sending the request")
+                            )
+                    )
+                    .child(
+                        div()
+                            .h(px(150.0))
+                            .w_full()
+                            .border_1()
+                            .border_color(theme.colors.border)
+                            .rounded(px(6.0))
+                            .overflow_hidden()
+                            .child(self.pre_script_editor.clone())
+                    )
+            )
+            // Post-response Script section
+            .child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap(px(8.0))
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap(px(8.0))
+                            .child(
+                                div()
+                                    .size(px(20.0))
+                                    .rounded(px(4.0))
+                                    .bg(theme.colors.status_success.opacity(0.15))
+                                    .flex()
+                                    .items_center()
+                                    .justify_center()
+                                    .text_size(px(10.0))
+                                    .text_color(theme.colors.status_success)
+                                    .child("◀")
+                            )
+                            .child(
+                                div()
+                                    .text_size(px(12.0))
+                                    .font_weight(gpui::FontWeight::SEMIBOLD)
+                                    .text_color(theme.colors.text_primary)
+                                    .child("Post-response Script")
+                            )
+                            .child(
+                                div()
+                                    .text_size(px(10.0))
+                                    .text_color(theme.colors.text_muted)
+                                    .child("Runs after receiving response")
+                            )
+                    )
+                    .child(
+                        div()
+                            .h(px(150.0))
+                            .w_full()
+                            .border_1()
+                            .border_color(theme.colors.border)
+                            .rounded(px(6.0))
+                            .overflow_hidden()
+                            .child(self.post_script_editor.clone())
+                    )
+            )
+            // Tests section
+            .child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap(px(8.0))
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap(px(8.0))
+                            .child(
+                                div()
+                                    .size(px(20.0))
+                                    .rounded(px(4.0))
+                                    .bg(theme.colors.accent.opacity(0.15))
+                                    .flex()
+                                    .items_center()
+                                    .justify_center()
+                                    .text_size(px(10.0))
+                                    .text_color(theme.colors.accent)
+                                    .child("✓")
+                            )
+                            .child(
+                                div()
+                                    .text_size(px(12.0))
+                                    .font_weight(gpui::FontWeight::SEMIBOLD)
+                                    .text_color(theme.colors.text_primary)
+                                    .child("Tests")
+                            )
+                            .child(
+                                div()
+                                    .text_size(px(10.0))
+                                    .text_color(theme.colors.text_muted)
+                                    .child("Test assertions using expect()")
+                            )
+                    )
+                    .child(
+                        div()
+                            .h(px(150.0))
+                            .w_full()
+                            .border_1()
+                            .border_color(theme.colors.border)
+                            .rounded(px(6.0))
+                            .overflow_hidden()
+                            .child(self.tests_editor.clone())
+                    )
+            )
+            .into_any_element()
+    }
+
+    /// Render code generation language dropdown overlay
+    pub(super) fn render_codegen_dropdown_overlay(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
+        let theme = theme::current(cx);
+
+        let languages = [
+            (CodegenLanguage::Curl, "cURL", "curl command"),
+            (CodegenLanguage::Python, "Python", "requests library"),
+            (CodegenLanguage::JavaScript, "JavaScript", "fetch API"),
+            (CodegenLanguage::Go, "Go", "net/http"),
+            (CodegenLanguage::Rust, "Rust", "reqwest"),
+        ];
+
+        // Position near the Code button (right side of URL bar)
+        div()
+            .id("codegen-dropdown-overlay")
+            .absolute()
+            .top(px(46.0))
+            .right(px(16.0))
+            .min_w(px(180.0))
+            .py(px(6.0))
+            .rounded(px(8.0))
+            .bg(theme.colors.bg_elevated)
+            .border_1()
+            .border_color(theme.colors.border)
+            .shadow_lg()
+            .on_mouse_down(gpui::MouseButton::Left, cx.listener(|this, _, _, cx| {
+                this.skip_blur = true;
+                cx.stop_propagation();
+            }))
+            .children(languages.iter().map(|&(lang, name, desc)| {
+                let is_selected = lang == self.codegen_language;
+
+                div()
+                    .id(SharedString::from(format!("codegen-{}", name)))
+                    .mx(px(4.0))
+                    .px(px(12.0))
+                    .py(px(8.0))
+                    .rounded(px(4.0))
+                    .flex()
+                    .flex_col()
+                    .cursor_pointer()
+                    .when(is_selected, |el| {
+                        el.bg(theme.colors.accent.opacity(0.1))
+                    })
+                    .when(!is_selected, |el| {
+                        el.hover(|s| s.bg(theme.colors.bg_tertiary))
+                    })
+                    .child(
+                        div()
+                            .text_size(px(12.0))
+                            .font_weight(gpui::FontWeight::SEMIBOLD)
+                            .text_color(theme.colors.text_primary)
+                            .child(name)
+                    )
+                    .child(
+                        div()
+                            .text_size(px(10.0))
+                            .text_color(theme.colors.text_muted)
+                            .child(desc)
+                    )
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        this.generate_code(lang, cx);
+                    }))
+            }))
+    }
+
+    /// Render code generation modal with generated code
+    pub(super) fn render_codegen_modal(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
+        let theme = theme::current(cx);
+        let code = self.codegen_content.clone().unwrap_or_default();
+        let lang_name = match self.codegen_language {
+            CodegenLanguage::Curl => "cURL",
+            CodegenLanguage::Python => "Python",
+            CodegenLanguage::JavaScript => "JavaScript",
+            CodegenLanguage::Go => "Go",
+            CodegenLanguage::Rust => "Rust",
+        };
+
+        // Full-screen overlay with centered modal
+        div()
+            .id("codegen-modal-overlay")
+            .absolute()
+            .inset_0()
+            .bg(gpui::black().opacity(0.5))
+            .flex()
+            .items_center()
+            .justify_center()
+            .on_click(cx.listener(|this, _, _, cx| {
+                this.close_codegen_modal(cx);
+            }))
+            .child(
+                div()
+                    .id("codegen-modal")
+                    .w(px(700.0))
+                    .max_h(px(500.0))
+                    .bg(theme.colors.bg_primary)
+                    .border_1()
+                    .border_color(theme.colors.border)
+                    .rounded(px(12.0))
+                    .shadow_lg()
+                    .flex()
+                    .flex_col()
+                    .on_click(cx.listener(|_, _, _, cx| {
+                        cx.stop_propagation();
+                    }))
+                    // Header
+                    .child(
+                        div()
+                            .h(px(48.0))
+                            .px(px(16.0))
+                            .flex()
+                            .items_center()
+                            .justify_between()
+                            .border_b_1()
+                            .border_color(theme.colors.border)
+                            .child(
+                                div()
+                                    .flex()
+                                    .items_center()
+                                    .gap(px(8.0))
+                                    .child(
+                                        div()
+                                            .text_size(px(14.0))
+                                            .font_weight(gpui::FontWeight::SEMIBOLD)
+                                            .text_color(theme.colors.text_primary)
+                                            .child(format!("Generated {} Code", lang_name))
+                                    )
+                            )
+                            .child(
+                                div()
+                                    .flex()
+                                    .items_center()
+                                    .gap(px(8.0))
+                                    // Copy button
+                                    .child(
+                                        div()
+                                            .id("copy-codegen")
+                                            .px(px(10.0))
+                                            .py(px(6.0))
+                                            .rounded(px(4.0))
+                                            .text_size(px(11.0))
+                                            .text_color(theme.colors.text_secondary)
+                                            .cursor_pointer()
+                                            .bg(theme.colors.bg_secondary)
+                                            .hover(|s| s.bg(theme.colors.bg_tertiary))
+                                            .on_click(cx.listener(|this, _, _, cx| {
+                                                this.copy_generated_code(cx);
+                                            }))
+                                            .child("📋 Copy")
+                                    )
+                                    // Close button
+                                    .child(
+                                        div()
+                                            .id("close-codegen-modal")
+                                            .size(px(28.0))
+                                            .flex()
+                                            .items_center()
+                                            .justify_center()
+                                            .rounded(px(4.0))
+                                            .text_size(px(14.0))
+                                            .text_color(theme.colors.text_muted)
+                                            .cursor_pointer()
+                                            .hover(|s| s.bg(theme.colors.bg_tertiary))
+                                            .on_click(cx.listener(|this, _, _, cx| {
+                                                this.close_codegen_modal(cx);
+                                            }))
+                                            .child("✕")
+                                    )
+                            )
+                    )
+                    // Code content
+                    .child(
+                        div()
+                            .id("codegen-content")
+                            .flex_1()
+                            .p(px(16.0))
+                            .overflow_scroll()
+                            .child(
+                                div()
+                                    .w_full()
+                                    .p(px(12.0))
+                                    .bg(theme.colors.bg_secondary)
+                                    .rounded(px(6.0))
+                                    .font_family("Ubuntu Mono")
+                                    .text_size(px(12.0))
+                                    .text_color(theme.colors.text_primary)
+                                    .child(code)
+                            )
+                    )
+            )
     }
 }
 

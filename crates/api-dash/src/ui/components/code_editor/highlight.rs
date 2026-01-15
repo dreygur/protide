@@ -14,6 +14,9 @@ pub enum TokenKind {
     Punctuation,
     Tag,
     Attribute,
+    Keyword,
+    Comment,
+    Property,
     Plain,
 }
 
@@ -23,11 +26,13 @@ impl TokenKind {
             TokenKind::Key => theme.accent,
             TokenKind::String => theme.status_success,
             TokenKind::Number => theme.method_patch,
-            TokenKind::Boolean => theme.method_delete,
+            TokenKind::Boolean | TokenKind::Keyword => theme.method_delete,
             TokenKind::Null => theme.method_put,
             TokenKind::Punctuation => theme.text_muted,
             TokenKind::Tag => theme.accent,
             TokenKind::Attribute => theme.accent,
+            TokenKind::Comment => theme.text_muted.opacity(0.7),
+            TokenKind::Property => theme.method_get,
             TokenKind::Plain => theme.text_primary,
         }
     }
@@ -207,6 +212,7 @@ pub enum Language {
     Json,
     Xml,
     Html,
+    JavaScript,
     Plain,
 }
 
@@ -215,6 +221,7 @@ impl Language {
         match self {
             Language::Json => Box::new(JsonHighlighter),
             Language::Xml | Language::Html => Box::new(XmlHighlighter),
+            Language::JavaScript => Box::new(JavaScriptHighlighter),
             Language::Plain => Box::new(PlainHighlighter),
         }
     }
@@ -233,5 +240,85 @@ impl Language {
         } else {
             Language::Plain
         }
+    }
+}
+
+/// JavaScript syntax highlighter
+pub struct JavaScriptHighlighter;
+
+impl Highlighter for JavaScriptHighlighter {
+    fn tokenize_line(&self, line: &str) -> Vec<Token> {
+        let mut tokens = Vec::new();
+        let mut chars = line.char_indices().peekable();
+
+        while let Some((i, c)) = chars.next() {
+            if c.is_whitespace() {
+                tokens.push(Token { text: c.to_string(), kind: TokenKind::Plain });
+            } else if c == '/' && chars.peek().map(|(_, c)| *c) == Some('/') {
+                // Line comment
+                tokens.push(Token { text: line[i..].to_string(), kind: TokenKind::Comment });
+                break;
+            } else if c == '"' || c == '\'' || c == '`' {
+                // String
+                let quote = c;
+                let start = i;
+                let mut end = i + 1;
+                while let Some((j, ch)) = chars.next() {
+                    end = j + ch.len_utf8();
+                    if ch == quote {
+                        break;
+                    }
+                    if ch == '\\' {
+                        if let Some((_, _)) = chars.next() {
+                            continue;
+                        }
+                    }
+                }
+                tokens.push(Token { text: line[start..end].to_string(), kind: TokenKind::String });
+            } else if c.is_ascii_digit() {
+                // Number
+                let start = i;
+                let mut end = i + 1;
+                while let Some(&(j, ch)) = chars.peek() {
+                    if ch.is_ascii_digit() || ch == '.' || ch == 'e' || ch == 'E' {
+                        end = j + ch.len_utf8();
+                        chars.next();
+                    } else {
+                        break;
+                    }
+                }
+                tokens.push(Token { text: line[start..end].to_string(), kind: TokenKind::Number });
+            } else if c.is_alphabetic() || c == '_' || c == '$' {
+                // Identifier or keyword
+                let start = i;
+                let mut end = i + c.len_utf8();
+                while let Some(&(j, ch)) = chars.peek() {
+                    if ch.is_alphanumeric() || ch == '_' || ch == '$' {
+                        end = j + ch.len_utf8();
+                        chars.next();
+                    } else {
+                        break;
+                    }
+                }
+                let word = &line[start..end];
+                let kind = match word {
+                    "const" | "let" | "var" | "function" | "return" | "if" | "else" |
+                    "for" | "while" | "do" | "switch" | "case" | "break" | "continue" |
+                    "new" | "this" | "class" | "extends" | "import" | "export" |
+                    "default" | "try" | "catch" | "finally" | "throw" | "async" | "await" |
+                    "typeof" | "instanceof" | "in" | "of" | "delete" | "void" | "yield" => TokenKind::Keyword,
+                    "true" | "false" | "null" | "undefined" | "NaN" | "Infinity" => TokenKind::Keyword,
+                    "console" | "request" | "response" | "env" | "expect" => TokenKind::Property,
+                    _ => TokenKind::Plain,
+                };
+                tokens.push(Token { text: word.to_string(), kind });
+            } else if "(){}[].,;:?!+-*/%=<>&|^~".contains(c) {
+                tokens.push(Token { text: c.to_string(), kind: TokenKind::Punctuation });
+            } else {
+                tokens.push(Token { text: c.to_string(), kind: TokenKind::Plain });
+            }
+        }
+
+        tokens
     }
 }

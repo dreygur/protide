@@ -648,7 +648,7 @@ impl TextInput {
                 div()
                     .flex()
                     .text_size(px(font_size))
-                    .font_family("monospace")
+                    .font_family("Ubuntu Mono")
                     .text_color(text_color)
                     .children(self.text.chars().map(|c| {
                         div()
@@ -720,7 +720,7 @@ impl Render for TextInput {
                     .flex()
                     .items_center()
                     .text_size(px(self.style.font_size))
-                    .font_family("monospace")
+                    .font_family("Ubuntu Mono")
                     .child(if self.text.is_empty() && !is_focused {
                         div()
                             .text_color(placeholder_color)

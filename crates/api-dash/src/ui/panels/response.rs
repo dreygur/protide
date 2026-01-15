@@ -7,8 +7,11 @@ use gpui::{
     Window,
 };
 
+use crate::chaining;
+use crate::scripting::results::TestResult;
 use crate::theme;
 use crate::ui::components::code_editor::{CodeEditor, Language};
+use crate::ui::components::TextInput;
 
 /// Response data from an HTTP request
 #[derive(Clone, Default)]
@@ -98,7 +101,7 @@ enum CopyFeedback {
 
 /// Response viewer panel
 pub struct ResponsePanel {
-    /// Active tab index for body/headers/cookies
+    /// Active tab index for body/headers/cookies/tests/extract
     active_tab: usize,
     /// Response data (None if no request sent yet)
     response: Option<ResponseData>,
@@ -110,6 +113,12 @@ pub struct ResponsePanel {
     copy_feedback: Option<CopyFeedback>,
     /// CodeEditor for viewing response body
     body_viewer: Entity<CodeEditor>,
+    /// Test results from script execution
+    test_results: Vec<TestResult>,
+    /// JSONPath expression input for extraction
+    jsonpath_input: Entity<TextInput>,
+    /// Result of JSONPath extraction
+    extraction_result: Option<Result<String, String>>,
 }
 
 impl ResponsePanel {
@@ -119,6 +128,9 @@ impl ResponsePanel {
                 .with_read_only(true)
                 .with_line_numbers(true)
         });
+        let jsonpath_input = cx.new(|cx| {
+            TextInput::new(cx, "$.data.id")
+        });
         Self {
             active_tab: 0,
             response: None,
@@ -126,7 +138,16 @@ impl ResponsePanel {
             error: None,
             copy_feedback: None,
             body_viewer,
+            test_results: Vec::new(),
+            jsonpath_input,
+            extraction_result: None,
         }
+    }
+
+    /// Set test results from script execution
+    pub fn set_test_results(&mut self, results: Vec<TestResult>, cx: &mut Context<Self>) {
+        self.test_results = results;
+        cx.notify();
     }
 
     fn show_copy_feedback(&mut self, feedback: CopyFeedback, cx: &mut Context<Self>) {
@@ -394,8 +415,10 @@ impl ResponsePanel {
 
     fn render_tabs(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = theme::current(cx);
-        let tabs = [("Body", "{ }"), ("Headers", "≡"), ("Cookies", "🍪")];
+        let tabs = [("Body", "{ }"), ("Headers", "≡"), ("Cookies", "🍪"), ("Tests", "✓"), ("Extract", "$")];
         let active_tab = self.active_tab;
+        let test_count = self.test_results.len();
+        let passed_count = self.test_results.iter().filter(|t| t.passed).count();
 
         div()
             .h(px(40.0))
@@ -409,6 +432,10 @@ impl ResponsePanel {
             .bg(theme.colors.bg_primary)
             .children(tabs.iter().enumerate().map(|(i, (tab, icon))| {
                 let is_active = i == active_tab;
+                let is_tests_tab = i == 3;
+                let show_badge = is_tests_tab && test_count > 0;
+                let all_passed = passed_count == test_count;
+
                 div()
                     .id(SharedString::from(format!("response-tab-{}", i)))
                     .px(px(14.0))
@@ -433,6 +460,24 @@ impl ResponsePanel {
                                     .text_color(theme.colors.text_primary)
                                     .child(*tab)
                             )
+                            .when(show_badge, |el| {
+                                el.child(
+                                    div()
+                                        .px(px(5.0))
+                                        .py(px(1.0))
+                                        .rounded(px(8.0))
+                                        .when(all_passed, |el| {
+                                            el.bg(theme.colors.status_success.opacity(0.15))
+                                              .text_color(theme.colors.status_success)
+                                        })
+                                        .when(!all_passed, |el| {
+                                            el.bg(theme.colors.status_client_error.opacity(0.15))
+                                              .text_color(theme.colors.status_client_error)
+                                        })
+                                        .text_size(px(10.0))
+                                        .child(format!("{}/{}", passed_count, test_count))
+                                )
+                            })
                     })
                     .when(!is_active, |el| {
                         el.hover(|s| s.bg(theme.colors.bg_tertiary.opacity(0.5)))
@@ -448,6 +493,24 @@ impl ResponsePanel {
                                     .text_color(theme.colors.text_secondary)
                                     .child(*tab)
                             )
+                            .when(show_badge, |el| {
+                                el.child(
+                                    div()
+                                        .px(px(5.0))
+                                        .py(px(1.0))
+                                        .rounded(px(8.0))
+                                        .when(all_passed, |el| {
+                                            el.bg(theme.colors.status_success.opacity(0.1))
+                                              .text_color(theme.colors.status_success)
+                                        })
+                                        .when(!all_passed, |el| {
+                                            el.bg(theme.colors.status_client_error.opacity(0.1))
+                                              .text_color(theme.colors.status_client_error)
+                                        })
+                                        .text_size(px(10.0))
+                                        .child(format!("{}/{}", passed_count, test_count))
+                                )
+                            })
                     })
                     .on_click(cx.listener(move |this, _, _, cx| {
                         this.set_tab(i, cx);
@@ -522,11 +585,17 @@ impl ResponsePanel {
                 .into_any_element();
         }
 
+        // Tests tab can be shown even without a response (but will be empty)
+        if self.active_tab == 3 {
+            return self.render_tests_tab(cx);
+        }
+
         if let Some(response) = &self.response {
             match self.active_tab {
                 0 => self.render_body_tab(response, cx),
                 1 => self.render_headers_tab(response, cx),
                 2 => self.render_cookies_tab(response, cx),
+                4 => self.render_extract_tab(response, cx),
                 _ => div().into_any_element(),
             }
         } else {
@@ -931,7 +1000,7 @@ impl ResponsePanel {
                                     .px(px(12.0))
                                     .py(px(8.0))
                                     .text_size(px(12.0))
-                                    .font_family("monospace")
+                                    .font_family("Ubuntu Mono")
                                     .text_color(theme.colors.text_primary)
                                     .overflow_hidden()
                                     .child(value.clone())
@@ -1109,7 +1178,7 @@ impl ResponsePanel {
                                     .px(px(12.0))
                                     .py(px(8.0))
                                     .text_size(px(12.0))
-                                    .font_family("monospace")
+                                    .font_family("Ubuntu Mono")
                                     .text_color(theme.colors.text_primary)
                                     .overflow_hidden()
                                     .child(cookie.value)
@@ -1144,6 +1213,490 @@ impl ResponsePanel {
             .into_any_element()
     }
 
+    fn render_tests_tab(&self, cx: &Context<Self>) -> gpui::AnyElement {
+        let theme = theme::current(cx);
+        let test_count = self.test_results.len();
+        let passed_count = self.test_results.iter().filter(|t| t.passed).count();
+        let failed_count = test_count - passed_count;
+
+        if test_count == 0 {
+            return div()
+                .size_full()
+                .flex()
+                .items_center()
+                .justify_center()
+                .child(
+                    div()
+                        .flex()
+                        .flex_col()
+                        .items_center()
+                        .gap(px(8.0))
+                        .child(
+                            div()
+                                .text_size(px(24.0))
+                                .text_color(theme.colors.text_muted.opacity(0.5))
+                                .child("✓")
+                        )
+                        .child(
+                            div()
+                                .text_size(px(12.0))
+                                .text_color(theme.colors.text_muted)
+                                .child("No tests have been run yet")
+                        )
+                        .child(
+                            div()
+                                .text_size(px(11.0))
+                                .text_color(theme.colors.text_muted.opacity(0.7))
+                                .child("Add tests in the Scripts tab and send a request")
+                        )
+                )
+                .into_any_element();
+        }
+
+        div()
+            .size_full()
+            .flex()
+            .flex_col()
+            // Summary bar
+            .child(
+                div()
+                    .w_full()
+                    .flex()
+                    .items_center()
+                    .gap(px(12.0))
+                    .pb(px(12.0))
+                    .child(
+                        div()
+                            .px(px(10.0))
+                            .py(px(6.0))
+                            .rounded(px(6.0))
+                            .bg(theme.colors.status_success.opacity(0.12))
+                            .flex()
+                            .items_center()
+                            .gap(px(6.0))
+                            .child(
+                                div()
+                                    .text_size(px(12.0))
+                                    .text_color(theme.colors.status_success)
+                                    .child("✓")
+                            )
+                            .child(
+                                div()
+                                    .text_size(px(12.0))
+                                    .font_weight(gpui::FontWeight::MEDIUM)
+                                    .text_color(theme.colors.status_success)
+                                    .child(format!("{} passed", passed_count))
+                            )
+                    )
+                    .when(failed_count > 0, |el| {
+                        el.child(
+                            div()
+                                .px(px(10.0))
+                                .py(px(6.0))
+                                .rounded(px(6.0))
+                                .bg(theme.colors.status_client_error.opacity(0.12))
+                                .flex()
+                                .items_center()
+                                .gap(px(6.0))
+                                .child(
+                                    div()
+                                        .text_size(px(12.0))
+                                        .text_color(theme.colors.status_client_error)
+                                        .child("✗")
+                                )
+                                .child(
+                                    div()
+                                        .text_size(px(12.0))
+                                        .font_weight(gpui::FontWeight::MEDIUM)
+                                        .text_color(theme.colors.status_client_error)
+                                        .child(format!("{} failed", failed_count))
+                                )
+                        )
+                    })
+            )
+            // Test results list
+            .child(
+                div()
+                    .id("tests-list")
+                    .flex_1()
+                    .w_full()
+                    .overflow_scroll()
+                    .rounded(px(8.0))
+                    .border_1()
+                    .border_color(theme.colors.border)
+                    .bg(theme.colors.bg_tertiary)
+                    .children(self.test_results.iter().enumerate().map(|(i, result)| {
+                        let is_last = i == test_count - 1;
+                        div()
+                            .w_full()
+                            .px(px(12.0))
+                            .py(px(10.0))
+                            .flex()
+                            .items_center()
+                            .gap(px(10.0))
+                            .when(!is_last, |el| {
+                                el.border_b_1()
+                                  .border_color(theme.colors.border.opacity(0.5))
+                            })
+                            // Status icon
+                            .child(
+                                div()
+                                    .size(px(20.0))
+                                    .rounded(px(4.0))
+                                    .flex()
+                                    .items_center()
+                                    .justify_center()
+                                    .when(result.passed, |el| {
+                                        el.bg(theme.colors.status_success.opacity(0.15))
+                                          .text_color(theme.colors.status_success)
+                                          .text_size(px(11.0))
+                                          .child("✓")
+                                    })
+                                    .when(!result.passed, |el| {
+                                        el.bg(theme.colors.status_client_error.opacity(0.15))
+                                          .text_color(theme.colors.status_client_error)
+                                          .text_size(px(11.0))
+                                          .child("✗")
+                                    })
+                            )
+                            // Test name
+                            .child(
+                                div()
+                                    .flex_1()
+                                    .flex()
+                                    .flex_col()
+                                    .gap(px(2.0))
+                                    .child(
+                                        div()
+                                            .text_size(px(12.0))
+                                            .text_color(theme.colors.text_primary)
+                                            .child(result.name.clone())
+                                    )
+                                    .when(!result.passed && !result.expected.is_empty(), |el| {
+                                        el.child(
+                                            div()
+                                                .flex()
+                                                .items_center()
+                                                .gap(px(8.0))
+                                                .child(
+                                                    div()
+                                                        .text_size(px(10.0))
+                                                        .text_color(theme.colors.text_muted)
+                                                        .child(format!("Expected: {}", result.expected))
+                                                )
+                                                .child(
+                                                    div()
+                                                        .text_size(px(10.0))
+                                                        .text_color(theme.colors.text_muted)
+                                                        .child(format!("Actual: {}", result.actual))
+                                                )
+                                        )
+                                    })
+                            )
+                    }))
+            )
+            .into_any_element()
+    }
+
+    fn render_extract_tab(&self, response: &ResponseData, cx: &Context<Self>) -> gpui::AnyElement {
+        let theme = theme::current(cx);
+
+        // Check if body is JSON
+        let is_json = response.body.trim().starts_with('{') || response.body.trim().starts_with('[');
+
+        if !is_json {
+            return div()
+                .size_full()
+                .flex()
+                .items_center()
+                .justify_center()
+                .child(
+                    div()
+                        .flex()
+                        .flex_col()
+                        .items_center()
+                        .gap(px(8.0))
+                        .child(
+                            div()
+                                .text_size(px(24.0))
+                                .text_color(theme.colors.text_muted.opacity(0.5))
+                                .child("$")
+                        )
+                        .child(
+                            div()
+                                .text_size(px(12.0))
+                                .text_color(theme.colors.text_muted)
+                                .child("JSONPath extraction requires JSON response")
+                        )
+                )
+                .into_any_element();
+        }
+
+        let jsonpath_value = self.jsonpath_input.read(cx).get_text().to_string();
+
+        div()
+            .size_full()
+            .flex()
+            .flex_col()
+            .gap(px(12.0))
+            // Input row
+            .child(
+                div()
+                    .w_full()
+                    .flex()
+                    .items_center()
+                    .gap(px(8.0))
+                    // JSONPath label
+                    .child(
+                        div()
+                            .text_size(px(12.0))
+                            .text_color(theme.colors.text_secondary)
+                            .child("JSONPath:")
+                    )
+                    // Input field
+                    .child(
+                        div()
+                            .flex_1()
+                            .h(px(32.0))
+                            .child(self.jsonpath_input.clone())
+                    )
+                    // Extract button
+                    .child(
+                        div()
+                            .id("extract-btn")
+                            .px(px(12.0))
+                            .py(px(6.0))
+                            .rounded(px(6.0))
+                            .bg(theme.colors.accent)
+                            .text_size(px(12.0))
+                            .text_color(gpui::white())
+                            .cursor_pointer()
+                            .hover(|s| s.bg(theme.colors.accent.opacity(0.85)))
+                            .on_click(cx.listener(move |this, _, _, cx| {
+                                this.run_extraction(cx);
+                            }))
+                            .child("Extract")
+                    )
+            )
+            // Quick patterns
+            .child(
+                div()
+                    .w_full()
+                    .flex()
+                    .items_center()
+                    .gap(px(6.0))
+                    .child(
+                        div()
+                            .text_size(px(10.0))
+                            .text_color(theme.colors.text_muted)
+                            .child("Quick:")
+                    )
+                    .children(
+                        [("$.data", "$.data"), ("$[0]", "$[0]"), ("$.id", "$.id"), ("$.token", "$.token")]
+                            .into_iter()
+                            .map(|(label, pattern)| {
+                                let pattern = pattern.to_string();
+                                div()
+                                    .id(SharedString::from(format!("pattern-{}", label)))
+                                    .px(px(8.0))
+                                    .py(px(3.0))
+                                    .rounded(px(4.0))
+                                    .bg(theme.colors.bg_tertiary)
+                                    .border_1()
+                                    .border_color(theme.colors.border)
+                                    .text_size(px(10.0))
+                                    .font_family("Ubuntu Mono")
+                                    .text_color(theme.colors.text_secondary)
+                                    .cursor_pointer()
+                                    .hover(|s| s.bg(theme.colors.bg_elevated))
+                                    .on_click(cx.listener(move |this, _, _, cx| {
+                                        this.jsonpath_input.update(cx, |input, cx| {
+                                            input.set_text(&pattern, cx);
+                                        });
+                                        this.run_extraction(cx);
+                                    }))
+                                    .child(label)
+                            })
+                    )
+            )
+            // Result display
+            .child(
+                div()
+                    .w_full()
+                    .flex_1()
+                    .rounded(px(8.0))
+                    .border_1()
+                    .border_color(theme.colors.border)
+                    .bg(theme.colors.bg_tertiary)
+                    .overflow_hidden()
+                    .child(
+                        match &self.extraction_result {
+                            Some(Ok(value)) => {
+                                div()
+                                    .size_full()
+                                    .flex()
+                                    .flex_col()
+                                    // Success header
+                                    .child(
+                                        div()
+                                            .w_full()
+                                            .px(px(12.0))
+                                            .py(px(8.0))
+                                            .border_b_1()
+                                            .border_color(theme.colors.border)
+                                            .bg(theme.colors.status_success.opacity(0.1))
+                                            .flex()
+                                            .items_center()
+                                            .justify_between()
+                                            .child(
+                                                div()
+                                                    .flex()
+                                                    .items_center()
+                                                    .gap(px(6.0))
+                                                    .child(
+                                                        div()
+                                                            .text_size(px(12.0))
+                                                            .text_color(theme.colors.status_success)
+                                                            .child("✓")
+                                                    )
+                                                    .child(
+                                                        div()
+                                                            .text_size(px(11.0))
+                                                            .text_color(theme.colors.status_success)
+                                                            .child(format!("Extracted: {}", jsonpath_value))
+                                                    )
+                                            )
+                                            .child(
+                                                div()
+                                                    .id("copy-extract-btn")
+                                                    .px(px(8.0))
+                                                    .py(px(4.0))
+                                                    .rounded(px(4.0))
+                                                    .border_1()
+                                                    .border_color(theme.colors.border)
+                                                    .text_size(px(10.0))
+                                                    .text_color(theme.colors.text_secondary)
+                                                    .cursor_pointer()
+                                                    .hover(|s| s.bg(theme.colors.bg_elevated))
+                                                    .on_click({
+                                                        let value = value.clone();
+                                                        cx.listener(move |_this, _, _, cx| {
+                                                            cx.write_to_clipboard(gpui::ClipboardItem::new_string(value.clone()));
+                                                        })
+                                                    })
+                                                    .child("Copy")
+                                            )
+                                    )
+                                    // Value display
+                                    .child(
+                                        div()
+                                            .id("extract-value")
+                                            .flex_1()
+                                            .p(px(12.0))
+                                            .overflow_scroll()
+                                            .child(
+                                                div()
+                                                    .text_size(px(12.0))
+                                                    .font_family("Ubuntu Mono")
+                                                    .text_color(theme.colors.text_primary)
+                                                    .child(value.clone())
+                                            )
+                                    )
+                                    .into_any_element()
+                            }
+                            Some(Err(error)) => {
+                                div()
+                                    .size_full()
+                                    .flex()
+                                    .flex_col()
+                                    // Error header
+                                    .child(
+                                        div()
+                                            .w_full()
+                                            .px(px(12.0))
+                                            .py(px(8.0))
+                                            .border_b_1()
+                                            .border_color(theme.colors.border)
+                                            .bg(theme.colors.status_client_error.opacity(0.1))
+                                            .flex()
+                                            .items_center()
+                                            .gap(px(6.0))
+                                            .child(
+                                                div()
+                                                    .text_size(px(12.0))
+                                                    .text_color(theme.colors.status_client_error)
+                                                    .child("✗")
+                                            )
+                                            .child(
+                                                div()
+                                                    .text_size(px(11.0))
+                                                    .text_color(theme.colors.status_client_error)
+                                                    .child("Extraction failed")
+                                            )
+                                    )
+                                    // Error message
+                                    .child(
+                                        div()
+                                            .flex_1()
+                                            .p(px(12.0))
+                                            .child(
+                                                div()
+                                                    .text_size(px(12.0))
+                                                    .text_color(theme.colors.text_muted)
+                                                    .child(error.clone())
+                                            )
+                                    )
+                                    .into_any_element()
+                            }
+                            None => {
+                                div()
+                                    .size_full()
+                                    .flex()
+                                    .items_center()
+                                    .justify_center()
+                                    .child(
+                                        div()
+                                            .flex()
+                                            .flex_col()
+                                            .items_center()
+                                            .gap(px(8.0))
+                                            .child(
+                                                div()
+                                                    .text_size(px(14.0))
+                                                    .text_color(theme.colors.text_muted.opacity(0.5))
+                                                    .child("$")
+                                            )
+                                            .child(
+                                                div()
+                                                    .text_size(px(12.0))
+                                                    .text_color(theme.colors.text_muted)
+                                                    .child("Enter a JSONPath expression and click Extract")
+                                            )
+                                    )
+                                    .into_any_element()
+                            }
+                        }
+                    )
+            )
+            .into_any_element()
+    }
+
+    fn run_extraction(&mut self, cx: &mut Context<Self>) {
+        let Some(response) = &self.response else {
+            return;
+        };
+
+        let jsonpath = self.jsonpath_input.read(cx).get_text().to_string();
+        if jsonpath.is_empty() {
+            self.extraction_result = Some(Err("Enter a JSONPath expression".to_string()));
+            cx.notify();
+            return;
+        }
+
+        let result = chaining::extract_jsonpath(&response.body, &jsonpath);
+        self.extraction_result = Some(result);
+        cx.notify();
+    }
 }
 
 fn format_size(bytes: usize) -> String {

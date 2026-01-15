@@ -6,13 +6,15 @@ use gpui::{
 };
 
 use crate::theme;
-use super::panels::{ExplorerPanel, RequestPanel, ResponsePanel};
+use super::panels::{ExplorerPanel, MockServerPanel, RequestPanel, ResponsePanel};
 
 /// Main window containing the application layout
 pub struct MainWindow {
     explorer: Entity<ExplorerPanel>,
     request_panel: Entity<RequestPanel>,
     response_panel: Entity<ResponsePanel>,
+    mock_server_panel: Entity<MockServerPanel>,
+    show_mock_server: bool,
 }
 
 impl MainWindow {
@@ -21,6 +23,7 @@ impl MainWindow {
         let response_panel = cx.new(|cx| ResponsePanel::new(cx));
         let response_panel_clone = response_panel.clone();
         let request_panel = cx.new(|cx| RequestPanel::new(cx, response_panel_clone));
+        let mock_server_panel = cx.new(|cx| MockServerPanel::new(cx));
 
         // Connect explorer to request panel for history loading
         let request_panel_clone = request_panel.clone();
@@ -38,7 +41,14 @@ impl MainWindow {
             explorer,
             request_panel,
             response_panel,
+            mock_server_panel,
+            show_mock_server: false,
         }
+    }
+
+    fn toggle_mock_server(&mut self, cx: &mut Context<Self>) {
+        self.show_mock_server = !self.show_mock_server;
+        cx.notify();
     }
 }
 
@@ -100,13 +110,23 @@ impl Render for MainWindow {
                                     .child(self.response_panel.clone())
                             )
                     )
+                    // Mock Server panel (right sidebar, optional)
+                    .when(self.show_mock_server, |el| {
+                        el.child(
+                            div()
+                                .w(px(320.0))
+                                .h_full()
+                                .child(self.mock_server_panel.clone())
+                        )
+                    })
             )
     }
 }
 
 impl MainWindow {
-    fn render_title_bar(&self, cx: &Context<Self>) -> impl IntoElement {
+    fn render_title_bar(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = theme::current(cx);
+        let show_mock = self.show_mock_server;
 
         div()
             .id("titlebar")
@@ -161,6 +181,30 @@ impl MainWindow {
                                     .text_color(theme.colors.text_primary)
                                     .child("API Dash")
                             )
+                    )
+            )
+            // Mock Server toggle button
+            .child(
+                div()
+                    .id("btn-mock-server")
+                    .h(px(26.0))
+                    .px(px(10.0))
+                    .mr(px(8.0))
+                    .flex()
+                    .items_center()
+                    .gap(px(6.0))
+                    .rounded(px(4.0))
+                    .cursor_pointer()
+                    .bg(if show_mock { theme.colors.accent } else { theme.colors.bg_tertiary })
+                    .hover(|s| s.bg(if show_mock { theme.colors.accent } else { theme.colors.bg_elevated }))
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.toggle_mock_server(cx);
+                    }))
+                    .child(
+                        div()
+                            .text_size(px(11.0))
+                            .text_color(if show_mock { gpui::white() } else { theme.colors.text_secondary })
+                            .child("Mock Server")
                     )
             )
             // Right side - Window controls

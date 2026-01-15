@@ -18,11 +18,16 @@ use gpui::{
 
 use crate::ui::components::{render_text_view_with_max, find_word_start, find_word_end};
 use crate::ui::components::code_editor::{CodeEditor, Language};
+use crate::scripting::{ScriptEngine, ScriptContext, RequestData as ScriptRequestData, ResponseData as ScriptResponseData};
 
 use super::explorer::ExplorerPanel;
 use super::request_types::{ApiKeyLocation, AuthType, BodyType, EditTarget, FormField, FormFieldType, HttpMethod, KeyValuePair};
 use super::request_utils::{base64_encode, status_text, url_decode, url_encode};
 use super::response::{ResponseData, ResponsePanel};
+
+use crate::chaining;
+use crate::codegen::{self, CodegenRequest, Language as CodegenLanguage};
+use http_parser::VariableExtraction;
 
 /// Helper to render text with selection highlighting
 fn render_text_view(
@@ -92,6 +97,21 @@ pub struct RequestPanel {
     pub(super) explorer_panel: Option<Entity<ExplorerPanel>>,
     // CodeEditor for JSON/Raw body
     pub(super) body_editor: Entity<CodeEditor>,
+    // Script editors
+    pub(super) pre_script: String,
+    pub(super) post_script: String,
+    pub(super) tests: String,
+    pub(super) pre_script_editor: Entity<CodeEditor>,
+    pub(super) post_script_editor: Entity<CodeEditor>,
+    pub(super) tests_editor: Entity<CodeEditor>,
+    /// Variable extractions from @set annotations
+    pub(super) variable_extractions: Vec<VariableExtraction>,
+    /// Code generation dropdown state
+    pub(super) codegen_dropdown_open: bool,
+    /// Generated code content
+    pub(super) codegen_content: Option<String>,
+    /// Selected code generation language
+    pub(super) codegen_language: CodegenLanguage,
 }
 
 impl RequestPanel {
@@ -103,6 +123,21 @@ impl RequestPanel {
             CodeEditor::new(cx)
                 .with_content(initial_body)
                 .with_language(Language::Json)
+                .with_line_numbers(true)
+        });
+        let pre_script_editor = cx.new(|cx| {
+            CodeEditor::new(cx)
+                .with_language(Language::JavaScript)
+                .with_line_numbers(true)
+        });
+        let post_script_editor = cx.new(|cx| {
+            CodeEditor::new(cx)
+                .with_language(Language::JavaScript)
+                .with_line_numbers(true)
+        });
+        let tests_editor = cx.new(|cx| {
+            CodeEditor::new(cx)
+                .with_language(Language::JavaScript)
                 .with_line_numbers(true)
         });
         Self {
@@ -149,6 +184,16 @@ impl RequestPanel {
             body_focus: cx.focus_handle(),
             explorer_panel: None,
             body_editor,
+            pre_script: String::new(),
+            post_script: String::new(),
+            tests: String::new(),
+            pre_script_editor,
+            post_script_editor,
+            tests_editor,
+            variable_extractions: Vec::new(),
+            codegen_dropdown_open: false,
+            codegen_content: None,
+            codegen_language: CodegenLanguage::Curl,
         }
     }
 
@@ -168,6 +213,12 @@ impl RequestPanel {
             editor.set_content(content, cx);
         });
         self.body = content.to_string();
+    }
+
+    /// Set variable extractions from @set annotations
+    pub fn set_variable_extractions(&mut self, extractions: Vec<VariableExtraction>, cx: &mut Context<Self>) {
+        self.variable_extractions = extractions;
+        cx.notify();
     }
 
     /// Load request data from a history entry
@@ -216,6 +267,9 @@ impl RequestPanel {
         // Reset editing state
         self.active_edit = None;
         self.method_dropdown_open = false;
+
+        // Clear variable extractions (will be set separately from file load if present)
+        self.variable_extractions.clear();
 
         cx.notify();
     }
@@ -1223,6 +1277,69 @@ impl RequestPanel {
         lines.join("\n")
     }
 
+    /// Toggle code generation dropdown
+    pub(super) fn toggle_codegen_dropdown(&mut self, cx: &mut Context<Self>) {
+        self.codegen_dropdown_open = !self.codegen_dropdown_open;
+        cx.notify();
+    }
+
+    /// Generate code for current request using selected language
+    pub(super) fn generate_code(&mut self, language: CodegenLanguage, cx: &mut Context<Self>) {
+        // Build CodegenRequest from current state
+        let mut headers: Vec<(String, String)> = self
+            .headers
+            .iter()
+            .filter(|h| h.enabled && !h.key.is_empty())
+            .map(|h| (h.key.clone(), h.value.clone()))
+            .collect();
+
+        // Add auth headers
+        match self.auth_type {
+            AuthType::Bearer if !self.bearer_token.is_empty() => {
+                headers.push(("Authorization".to_string(), format!("Bearer {}", self.bearer_token)));
+            }
+            AuthType::Basic if !self.basic_username.is_empty() || !self.basic_password.is_empty() => {
+                let credentials = format!("{}:{}", self.basic_username, self.basic_password);
+                let encoded = base64_encode(credentials.as_bytes());
+                headers.push(("Authorization".to_string(), format!("Basic {}", encoded)));
+            }
+            AuthType::ApiKey if !self.api_key_name.is_empty() && self.api_key_location == ApiKeyLocation::Header => {
+                headers.push((self.api_key_name.clone(), self.api_key_value.clone()));
+            }
+            _ => {}
+        }
+
+        // Get body content
+        let body = self.body_editor.read(cx).content().to_string();
+        let body = if body.trim().is_empty() { None } else { Some(body) };
+
+        let request = CodegenRequest {
+            method: format!("{:?}", self.method).to_uppercase(),
+            url: self.url.clone(),
+            headers,
+            body,
+        };
+
+        let code = codegen::generate(&request, language);
+        self.codegen_language = language;
+        self.codegen_content = Some(code);
+        self.codegen_dropdown_open = false;
+        cx.notify();
+    }
+
+    /// Close code modal
+    pub(super) fn close_codegen_modal(&mut self, cx: &mut Context<Self>) {
+        self.codegen_content = None;
+        cx.notify();
+    }
+
+    /// Copy generated code to clipboard
+    pub(super) fn copy_generated_code(&self, cx: &mut Context<Self>) {
+        if let Some(code) = &self.codegen_content {
+            cx.write_to_clipboard(ClipboardItem::new_string(code.clone()));
+        }
+    }
+
     fn send_request(&mut self, cx: &mut Context<Self>) {
         if self.loading || self.url.is_empty() {
             return;
@@ -1233,6 +1350,11 @@ impl RequestPanel {
 
         // Get body content from CodeEditor
         let body_content = self.body_editor.read(cx).content().to_string();
+
+        // Get script content from editors
+        let pre_script = self.pre_script_editor.read(cx).content().to_string();
+        let post_script = self.post_script_editor.read(cx).content().to_string();
+        let tests_script = self.tests_editor.read(cx).content().to_string();
 
         // Set response panel to loading
         self.response_panel.update(cx, |panel, cx| {
@@ -1257,6 +1379,8 @@ impl RequestPanel {
         let url = substitute(&self.url);
         let method = self.method;
         let response_panel = self.response_panel.clone();
+        let variable_extractions = self.variable_extractions.clone();
+        let explorer_panel = self.explorer_panel.clone();
 
         // Substitute variables in headers
         let mut headers: Vec<(String, String)> = self
@@ -1339,6 +1463,73 @@ impl RequestPanel {
         } else {
             None
         };
+
+        // Run pre-script if present
+        let (mut url, mut headers, mut body) = (url, headers, body);
+        let env_vars: std::collections::HashMap<String, String> = env_state
+            .as_ref()
+            .and_then(|e| e.active())
+            .map(|env| env.variables.clone())
+            .unwrap_or_default();
+
+        if !pre_script.trim().is_empty() {
+            let engine = match ScriptEngine::new() {
+                Ok(e) => e,
+                Err(e) => {
+                    self.loading = false;
+                    self.response_panel.update(cx, |panel, cx| {
+                        panel.set_error(format!("Script engine error: {}", e.message), cx);
+                    });
+                    cx.notify();
+                    return;
+                }
+            };
+
+            let script_request = ScriptRequestData::new(method.as_str(), &url)
+                .with_headers(headers.clone())
+                .with_body(body.clone().unwrap_or_default());
+            let mut script_ctx = ScriptContext::new()
+                .with_request(script_request)
+                .with_env(env_vars.clone());
+
+            match engine.run_pre_script(&pre_script, &mut script_ctx) {
+                Ok(outcome) => {
+                    if !outcome.success {
+                        if let Some(error) = outcome.error {
+                            self.loading = false;
+                            self.response_panel.update(cx, |panel, cx| {
+                                panel.set_error(format!("Pre-script error: {}", error.message), cx);
+                            });
+                            cx.notify();
+                            return;
+                        }
+                    }
+                    // Apply modifications
+                    if let Some(new_url) = outcome.modified_request.url {
+                        url = new_url;
+                    }
+                    for (name, value) in outcome.modified_request.headers_to_set {
+                        // Remove existing header with same name (case-insensitive)
+                        headers.retain(|(k, _)| !k.eq_ignore_ascii_case(&name));
+                        headers.push((name, value));
+                    }
+                    for name in &outcome.modified_request.headers_to_remove {
+                        headers.retain(|(k, _)| !k.eq_ignore_ascii_case(name));
+                    }
+                    if let Some(new_body) = outcome.modified_request.body {
+                        body = Some(new_body);
+                    }
+                }
+                Err(e) => {
+                    self.loading = false;
+                    self.response_panel.update(cx, |panel, cx| {
+                        panel.set_error(format!("Pre-script error: {}", e.message), cx);
+                    });
+                    cx.notify();
+                    return;
+                }
+            }
+        }
 
         // Build final URL with API key as query param if needed
         let final_url = if auth_type == AuthType::ApiKey
@@ -1443,13 +1634,83 @@ impl RequestPanel {
                 Ok(Ok(data)) => {
                     let status = data.status;
                     let response_time = data.time;
+
+                    // Run post-script and tests
+                    let has_scripts = !post_script.trim().is_empty() || !tests_script.trim().is_empty();
+                    let test_results = if has_scripts {
+                        // Clone data for script execution
+                        let script_status = data.status;
+                        let script_status_text = data.status_text.clone();
+                        let script_body = data.body.clone();
+                        let script_headers = data.headers.clone();
+                        let script_time = data.time.as_millis() as u64;
+                        let script_size = data.size;
+
+                        std::thread::spawn(move || {
+                            let engine = match ScriptEngine::new() {
+                                Ok(e) => e,
+                                Err(_) => return Vec::new(),
+                            };
+
+                            let script_response = ScriptResponseData::new(script_status, &script_status_text, script_body)
+                                .with_headers(script_headers)
+                                .with_time(script_time)
+                                .with_size(script_size);
+
+                            let mut script_ctx = ScriptContext::new().with_env(env_vars);
+                            script_ctx.set_response(script_response);
+
+                            // Run post-script (ignore errors, just run)
+                            if !post_script.trim().is_empty() {
+                                let _ = engine.run_post_script(&post_script, &mut script_ctx);
+                            }
+
+                            // Run tests
+                            if !tests_script.trim().is_empty() {
+                                if let Ok(outcome) = engine.run_tests(&tests_script, &mut script_ctx) {
+                                    return outcome.test_results;
+                                }
+                            }
+
+                            Vec::new()
+                        }).join().unwrap_or_default()
+                    } else {
+                        Vec::new()
+                    };
+
+                    // Run variable extractions from @set annotations
+                    let extracted_vars: Vec<(String, String)> = if !variable_extractions.is_empty() {
+                        chaining::extract_variables(&data.body, &variable_extractions)
+                            .into_iter()
+                            .filter(|r| r.success)
+                            .map(|r| (r.name, r.value))
+                            .collect()
+                    } else {
+                        Vec::new()
+                    };
+
                     let _ = cx.update(|cx| {
                         // Update history with response
                         cx.update_global::<super::history::RequestHistory, _>(|history, _| {
                             history.update_response(history_id, status, response_time);
                         });
+
+                        // Apply extracted variables to environment
+                        if !extracted_vars.is_empty() {
+                            if let Some(explorer) = &explorer_panel {
+                                explorer.update(cx, |panel, cx| {
+                                    for (name, value) in &extracted_vars {
+                                        panel.set_env_variable(name, value, cx);
+                                    }
+                                });
+                            }
+                        }
+
                         response_panel.update(cx, |panel, cx| {
                             panel.set_response(data, cx);
+                            if !test_results.is_empty() {
+                                panel.set_test_results(test_results, cx);
+                            }
                         });
                     });
                 }
@@ -1833,6 +2094,14 @@ impl Render for RequestPanel {
             // Floating dropdown overlay (rendered last to be on top)
             .when(self.method_dropdown_open, |el| {
                 el.child(self.render_method_dropdown_overlay(cx))
+            })
+            // Code generation dropdown overlay
+            .when(self.codegen_dropdown_open, |el| {
+                el.child(self.render_codegen_dropdown_overlay(cx))
+            })
+            // Code generation modal
+            .when(self.codegen_content.is_some(), |el| {
+                el.child(self.render_codegen_modal(cx))
             })
     }
 }

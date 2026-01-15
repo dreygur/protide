@@ -19,6 +19,15 @@ http-parser = { path = "crates/http-parser" }
 # Serialization
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+serde_yaml = "0.9"
+
+# URL/encoding
+url = "2"
+urlencoding = "2"
+base64 = "0.22"
+
+# JSONPath for request chaining
+jsonpath-rust = "0.7"
 
 # Error handling
 anyhow = "1"
@@ -39,3 +48,11 @@ notify = "7"
 
 # Paths
 dirs = "6"
+
+# JavaScript engine
+rquickjs = { version = "0.6", features = ["bindgen", "classes", "properties"] }
+
+# HTTP server for mock server
+axum = "0.8"
+hyper = { version = "1", features = ["full"] }
+tower = "0.5"

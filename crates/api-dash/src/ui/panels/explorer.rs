@@ -123,6 +123,14 @@ impl ExplorerPanel {
         &self.env_state
     }
 
+    /// Set a variable in the active environment (for @set extraction)
+    pub fn set_env_variable(&mut self, name: &str, value: &str, cx: &mut Context<Self>) {
+        if let Some(env) = self.env_state.active_mut() {
+            env.set(name, value);
+            cx.notify();
+        }
+    }
+
     fn toggle_history(&mut self, cx: &mut Context<Self>) {
         self.history_expanded = !self.history_expanded;
         cx.notify();
@@ -287,6 +295,89 @@ impl ExplorerPanel {
         }
     }
 
+    /// Import collection from Postman, cURL, or OpenAPI file
+    pub fn import_collection(&mut self, cx: &mut Context<Self>) {
+        let dialog = rfd::FileDialog::new()
+            .set_title("Import Collection")
+            .add_filter("All Supported", &["json", "yaml", "yml", "txt", "curl"])
+            .add_filter("Postman Collection", &["json"])
+            .add_filter("OpenAPI/Swagger", &["json", "yaml", "yml"])
+            .add_filter("cURL Command", &["txt", "curl"]);
+
+        if let Some(file_path) = dialog.pick_file() {
+            if let Ok(content) = fs::read_to_string(&file_path) {
+                match crate::import::import(&content) {
+                    Ok(result) => {
+                        // Determine output directory
+                        let output_dir = self.workspace_path.clone()
+                            .or_else(|| file_path.parent().map(|p| p.to_path_buf()))
+                            .unwrap_or_else(|| PathBuf::from("."));
+
+                        // Create collection folder if we have a name
+                        let collection_dir = if let Some(name) = &result.name {
+                            let sanitized = sanitize_filename(name);
+                            let dir = output_dir.join(&sanitized);
+                            let _ = fs::create_dir_all(&dir);
+                            dir
+                        } else {
+                            output_dir.clone()
+                        };
+
+                        // Write each request as a .http file
+                        let mut created = 0;
+                        for request in &result.requests {
+                            let filename = request.meta.name.as_ref()
+                                .map(|n| sanitize_filename(n))
+                                .unwrap_or_else(|| format!("request-{}", created + 1));
+
+                            let filepath = collection_dir.join(format!("{}.http", filename));
+
+                            if let Ok(content) = request_to_http_content(request) {
+                                if fs::write(&filepath, content).is_ok() {
+                                    created += 1;
+                                }
+                            }
+                        }
+
+                        // Show warnings if any
+                        if !result.warnings.is_empty() {
+                            let warning_text = result.warnings.join("\n");
+                            let _ = rfd::MessageDialog::new()
+                                .set_title("Import Warnings")
+                                .set_description(&warning_text)
+                                .set_level(rfd::MessageLevel::Warning)
+                                .show();
+                        }
+
+                        // Reload collection if workspace is set
+                        if self.workspace_path.is_some() {
+                            self.collection_items = self.scan_directory(&output_dir);
+                        } else {
+                            // Set the collection directory as workspace
+                            self.load_collection_from_path(collection_dir, cx);
+                        }
+
+                        // Show success message
+                        let msg = format!("Imported {} request(s)", created);
+                        let _ = rfd::MessageDialog::new()
+                            .set_title("Import Complete")
+                            .set_description(&msg)
+                            .set_level(rfd::MessageLevel::Info)
+                            .show();
+                    }
+                    Err(e) => {
+                        let _ = rfd::MessageDialog::new()
+                            .set_title("Import Failed")
+                            .set_description(&e)
+                            .set_level(rfd::MessageLevel::Error)
+                            .show();
+                    }
+                }
+            }
+        }
+        cx.notify();
+    }
+
     /// Recursively scan a directory for .http files and subdirectories
     fn scan_directory(&self, path: &PathBuf) -> Vec<CollectionItem> {
         let mut items = Vec::new();
@@ -410,9 +501,14 @@ impl ExplorerPanel {
                             .map(|h| (h.key.clone(), h.value.clone()))
                             .collect();
                         let body = req.body.clone();
+                        let variable_extractions = req.meta.variable_extractions.clone();
 
                         request_panel.update(cx, |panel, cx| {
                             panel.load_from_history(method, url, headers, body, cx);
+                            // Set variable extractions from @set annotations
+                            if !variable_extractions.is_empty() {
+                                panel.set_variable_extractions(variable_extractions, cx);
+                            }
                         });
                     }
                 }
@@ -1010,6 +1106,24 @@ impl ExplorerPanel {
                                 this.open_folder(cx);
                             }))
                             .child("📂")
+                    )
+                    // Import button
+                    .child(
+                        div()
+                            .id("import-collection-btn")
+                            .size(px(22.0))
+                            .rounded(px(4.0))
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .cursor_pointer()
+                            .text_size(px(11.0))
+                            .text_color(theme.colors.text_muted)
+                            .hover(|s| s.bg(theme.colors.bg_tertiary).text_color(theme.colors.text_primary))
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.import_collection(cx);
+                            }))
+                            .child("⬇")
                     )
             )
             // Content
@@ -2199,6 +2313,59 @@ impl Render for ExplorerPanel {
                 .child(self.render_context_menu(path, position, cx))
             })
     }
+}
+
+/// Sanitize a string to be used as a filename
+fn sanitize_filename(name: &str) -> String {
+    name.chars()
+        .map(|c| match c {
+            '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|' => '-',
+            _ => c,
+        })
+        .collect::<String>()
+        .trim()
+        .to_string()
+}
+
+/// Convert a Request to .http file content
+fn request_to_http_content(request: &http_parser::Request) -> Result<String, String> {
+    let mut content = String::new();
+
+    // Add name annotation if present
+    if let Some(name) = &request.meta.name {
+        content.push_str(&format!("# @name {}\n", name));
+    }
+
+    // Add description annotation if present
+    if let Some(desc) = &request.meta.description {
+        content.push_str(&format!("# @description {}\n", desc.lines().next().unwrap_or("")));
+    }
+
+    // Add blank line if we have annotations
+    if !content.is_empty() {
+        content.push('\n');
+    }
+
+    // Add request line
+    content.push_str(&format!("{} {}\n", request.method.as_str(), request.url));
+
+    // Add headers
+    for header in &request.headers {
+        if header.enabled {
+            content.push_str(&format!("{}: {}\n", header.key, header.value));
+        }
+    }
+
+    // Add body if present
+    if let Some(body) = &request.body {
+        content.push_str("\n");
+        content.push_str(body);
+        if !body.ends_with('\n') {
+            content.push('\n');
+        }
+    }
+
+    Ok(content)
 }
 
 #[cfg(test)]
