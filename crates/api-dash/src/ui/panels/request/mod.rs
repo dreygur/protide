@@ -2878,9 +2878,13 @@ impl Render for RequestPanel {
                     this.active_edit = None;
                     cx.notify();
                 }
-                // Close dropdown when clicking outside
+                // Close dropdowns when clicking outside
                 if this.method_dropdown_open {
                     this.method_dropdown_open = false;
+                    cx.notify();
+                }
+                if this.mode_dropdown_open {
+                    this.mode_dropdown_open = false;
                     cx.notify();
                 }
             }))
@@ -2900,6 +2904,10 @@ impl Render for RequestPanel {
             // Floating dropdown overlay (rendered last to be on top)
             .when(self.method_dropdown_open, |el| {
                 el.child(self.render_method_dropdown_overlay(cx))
+            })
+            // Mode selector dropdown overlay
+            .when(self.mode_dropdown_open, |el| {
+                el.child(self.render_mode_dropdown_overlay(cx))
             })
             // Code generation dropdown overlay
             .when(self.codegen_dropdown_open, |el| {

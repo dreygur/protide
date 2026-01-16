@@ -411,6 +411,79 @@ impl RequestPanel {
             }))
     }
 
+    pub(super) fn render_mode_dropdown_overlay(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
+        let theme = theme::current(cx);
+
+        const MODES: &[(RequestMode, &str)] = &[
+            (RequestMode::Http, "HTTP"),
+            (RequestMode::GraphQL, "GraphQL"),
+            (RequestMode::WebSocket, "WebSocket"),
+            (RequestMode::Grpc, "gRPC"),
+            (RequestMode::Trpc, "tRPC"),
+        ];
+
+        // Positioned below the mode selector button
+        div()
+            .id("mode-dropdown-overlay")
+            .absolute()
+            .top(px(68.0))  // Below URL bar (64px) + small gap
+            .left(px(20.0)) // Same padding as URL bar
+            .w(px(140.0))
+            .py(px(6.0))
+            .rounded(px(8.0))
+            .bg(theme.colors.bg_elevated)
+            .border_1()
+            .border_color(theme.colors.border)
+            .shadow_lg()
+            .on_mouse_down(gpui::MouseButton::Left, cx.listener(|this, _, _, cx| {
+                this.skip_blur = true;
+                cx.stop_propagation();
+            }))
+            .children(MODES.iter().map(|(mode, label)| {
+                let is_selected = *mode == self.request_mode;
+
+                div()
+                    .id(SharedString::from(format!("mode-{:?}", mode)))
+                    .mx(px(4.0))
+                    .px(px(12.0))
+                    .py(px(8.0))
+                    .rounded(px(6.0))
+                    .flex()
+                    .items_center()
+                    .gap(px(8.0))
+                    .cursor_pointer()
+                    .when(is_selected, |el| {
+                        el.bg(theme.colors.accent.opacity(0.1))
+                            .child(
+                                div()
+                                    .size(px(6.0))
+                                    .rounded_full()
+                                    .bg(theme.colors.accent)
+                            )
+                    })
+                    .when(!is_selected, |el| {
+                        el.hover(|s| s.bg(theme.colors.bg_tertiary))
+                            .child(div().size(px(6.0)))
+                    })
+                    .child(
+                        div()
+                            .text_size(px(13.0))
+                            .font_weight(gpui::FontWeight::MEDIUM)
+                            .text_color(if is_selected {
+                                theme.colors.text_primary
+                            } else {
+                                theme.colors.text_secondary
+                            })
+                            .child(*label)
+                    )
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        this.set_request_mode(*mode, cx);
+                        this.mode_dropdown_open = false;
+                        cx.notify();
+                    }))
+            }))
+    }
+
     pub(super) fn render_tabs(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = theme::current(cx);
         let tabs: &[(&str, &str)] = match self.request_mode {
