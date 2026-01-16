@@ -41,44 +41,42 @@ impl RequestPanel {
 
         div()
             .w_full()
-            .h(px(56.0))
+            .h(px(60.0))
             .flex()
             .items_center()
-            .gap(px(10.0))
-            .px(px(16.0))
+            .gap(px(12.0))
+            .px(px(20.0))
             .bg(theme.colors.bg_secondary)
             .border_b_1()
             .border_color(theme.colors.border)
-            // Mode toggle (HTTP/GraphQL/WebSocket)
+            // Mode toggle (HTTP/GraphQL/WebSocket/gRPC) - spaced button style
             .child(
                 div()
-                    .id("mode-toggle")
                     .flex()
-                    .items_center()
-                    .h(px(32.0))
-                    .rounded(px(6.0))
-                    .bg(theme.colors.bg_tertiary)
-                    .border_1()
-                    .border_color(theme.colors.border)
-                    .overflow_hidden()
+                    .gap(px(8.0))
                     // HTTP button
                     .child(
                         div()
                             .id("mode-http")
-                            .px(px(10.0))
-                            .h_full()
+                            .h(px(32.0))
+                            .px(px(16.0))
                             .flex()
                             .items_center()
-                            .text_size(px(11.0))
+                            .justify_center()
+                            .text_size(px(13.0))
                             .font_weight(gpui::FontWeight::MEDIUM)
+                            .rounded(px(6.0))
                             .cursor_pointer()
                             .when(self.request_mode == RequestMode::Http, |el| {
-                                el.bg(theme.colors.accent.opacity(0.15))
-                                    .text_color(theme.colors.accent)
+                                el.bg(theme.colors.accent)
+                                    .text_color(gpui::white())
                             })
                             .when(self.request_mode != RequestMode::Http, |el| {
-                                el.text_color(theme.colors.text_secondary)
-                                    .hover(|s| s.bg(theme.colors.bg_secondary))
+                                el.bg(theme.colors.bg_tertiary)
+                                    .text_color(theme.colors.text_secondary)
+                                    .border_1()
+                                    .border_color(theme.colors.border)
+                                    .hover(|s| s.bg(theme.colors.bg_elevated).border_color(theme.colors.border_focused))
                             })
                             .on_click(cx.listener(|this, _, _, cx| {
                                 this.set_request_mode(RequestMode::Http, cx);
@@ -89,20 +87,25 @@ impl RequestPanel {
                     .child(
                         div()
                             .id("mode-graphql")
-                            .px(px(10.0))
-                            .h_full()
+                            .h(px(32.0))
+                            .px(px(16.0))
                             .flex()
                             .items_center()
-                            .text_size(px(11.0))
+                            .justify_center()
+                            .text_size(px(13.0))
                             .font_weight(gpui::FontWeight::MEDIUM)
+                            .rounded(px(6.0))
                             .cursor_pointer()
                             .when(is_graphql, |el| {
-                                el.bg(theme.colors.method_delete.opacity(0.15))
-                                    .text_color(theme.colors.method_delete)
+                                el.bg(theme.colors.method_delete)
+                                    .text_color(gpui::white())
                             })
                             .when(!is_graphql, |el| {
-                                el.text_color(theme.colors.text_secondary)
-                                    .hover(|s| s.bg(theme.colors.bg_secondary))
+                                el.bg(theme.colors.bg_tertiary)
+                                    .text_color(theme.colors.text_secondary)
+                                    .border_1()
+                                    .border_color(theme.colors.border)
+                                    .hover(|s| s.bg(theme.colors.bg_elevated).border_color(theme.colors.border_focused))
                             })
                             .on_click(cx.listener(|this, _, _, cx| {
                                 this.set_request_mode(RequestMode::GraphQL, cx);
@@ -113,44 +116,54 @@ impl RequestPanel {
                     .child(
                         div()
                             .id("mode-ws")
-                            .px(px(10.0))
-                            .h_full()
+                            .h(px(32.0))
+                            .px(px(16.0))
                             .flex()
                             .items_center()
-                            .text_size(px(11.0))
+                            .justify_center()
+                            .text_size(px(13.0))
                             .font_weight(gpui::FontWeight::MEDIUM)
+                            .rounded(px(6.0))
                             .cursor_pointer()
                             .when(self.request_mode == RequestMode::WebSocket, |el| {
-                                el.bg(theme.colors.method_get.opacity(0.15))
-                                    .text_color(theme.colors.method_get)
+                                el.bg(theme.colors.method_get)
+                                    .text_color(gpui::white())
                             })
                             .when(self.request_mode != RequestMode::WebSocket, |el| {
-                                el.text_color(theme.colors.text_secondary)
-                                    .hover(|s| s.bg(theme.colors.bg_secondary))
+                                el.bg(theme.colors.bg_tertiary)
+                                    .text_color(theme.colors.text_secondary)
+                                    .border_1()
+                                    .border_color(theme.colors.border)
+                                    .hover(|s| s.bg(theme.colors.bg_elevated).border_color(theme.colors.border_focused))
                             })
                             .on_click(cx.listener(|this, _, _, cx| {
                                 this.set_request_mode(RequestMode::WebSocket, cx);
                             }))
-                            .child("WS")
+                            .child("WebSocket")
                     )
                     // gRPC button
                     .child(
                         div()
                             .id("mode-grpc")
-                            .px(px(10.0))
-                            .h_full()
+                            .h(px(32.0))
+                            .px(px(16.0))
                             .flex()
                             .items_center()
-                            .text_size(px(11.0))
+                            .justify_center()
+                            .text_size(px(13.0))
                             .font_weight(gpui::FontWeight::MEDIUM)
+                            .rounded(px(6.0))
                             .cursor_pointer()
                             .when(self.request_mode == RequestMode::Grpc, |el| {
-                                el.bg(theme.colors.method_put.opacity(0.15))
-                                    .text_color(theme.colors.method_put)
+                                el.bg(theme.colors.method_put)
+                                    .text_color(gpui::white())
                             })
                             .when(self.request_mode != RequestMode::Grpc, |el| {
-                                el.text_color(theme.colors.text_secondary)
-                                    .hover(|s| s.bg(theme.colors.bg_secondary))
+                                el.bg(theme.colors.bg_tertiary)
+                                    .text_color(theme.colors.text_secondary)
+                                    .border_1()
+                                    .border_color(theme.colors.border)
+                                    .hover(|s| s.bg(theme.colors.bg_elevated).border_color(theme.colors.border_focused))
                             })
                             .on_click(cx.listener(|this, _, _, cx| {
                                 this.set_request_mode(RequestMode::Grpc, cx);
@@ -496,12 +509,12 @@ impl RequestPanel {
         let header_count = self.headers.iter().filter(|h| h.enabled && !h.key.is_empty()).count();
 
         div()
-            .h(px(40.0))
+            .h(px(48.0))
             .w_full()
             .flex()
             .items_center()
-            .px(px(12.0))
-            .gap(px(2.0))
+            .px(px(20.0))
+            .gap(px(4.0))
             .border_b_1()
             .border_color(theme.colors.border)
             .bg(theme.colors.bg_secondary)
@@ -533,11 +546,11 @@ impl RequestPanel {
 
                 div()
                     .id(SharedString::from(format!("tab-{}", i)))
-                    .px(px(14.0))
-                    .py(px(8.0))
+                    .px(px(16.0))
+                    .py(px(10.0))
                     .flex()
                     .items_center()
-                    .gap(px(6.0))
+                    .gap(px(8.0))
                     .rounded_t(px(6.0))
                     .cursor_pointer()
                     .when(is_active, |el| {
@@ -671,6 +684,7 @@ impl RequestPanel {
             .flex()
             .flex_col()
             .gap(px(2.0))
+            .p(px(20.0))
             .track_focus(&self.edit_focus)
             .on_key_down(cx.listener(|this, event: &KeyDownEvent, _, cx| {
                 this.handle_edit_key(event, cx);
@@ -868,6 +882,7 @@ impl RequestPanel {
             .flex()
             .flex_col()
             .gap(px(2.0))
+            .p(px(20.0))
             .track_focus(&self.edit_focus)
             .on_key_down(cx.listener(|this, event: &KeyDownEvent, _, cx| {
                 this.handle_edit_key(event, cx);
@@ -1064,6 +1079,7 @@ impl RequestPanel {
             .flex()
             .flex_col()
             .gap(px(2.0))
+            .p(px(20.0))
             .track_focus(&self.edit_focus)
             .on_key_down(cx.listener(|this, event: &KeyDownEvent, _, cx| {
                 this.handle_edit_key(event, cx);
@@ -1756,6 +1772,7 @@ impl RequestPanel {
                             .flex()
                             .flex_col()
                             .gap(px(2.0))
+            .p(px(20.0))
                             .child(
                                 div()
                                     .text_size(px(12.0))
