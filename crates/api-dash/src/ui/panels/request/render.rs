@@ -1090,20 +1090,25 @@ impl RequestPanel {
                     div()
                         .flex()
                         .items_center()
-                        .gap(px(4.0))
-                        .p(px(3.0))
-                        .rounded(px(6.0))
-                        .bg(theme.colors.bg_tertiary)
+                        .gap(px(0.0))
                         .child(
                             div()
                                 .id("body-type-json-form")
-                                .px(px(10.0))
-                                .py(px(5.0))
-                                .rounded(px(4.0))
+                                .px(px(12.0))
+                                .py(px(6.0))
                                 .cursor_pointer()
-                                .text_color(theme.colors.text_muted)
-                                .hover(|s| s.text_color(theme.colors.text_secondary))
-                                .text_size(px(11.0))
+                                .text_size(px(13.0))
+                                .font_weight(if self.body_type == BodyType::Json {
+                                    gpui::FontWeight::MEDIUM
+                                } else {
+                                    gpui::FontWeight::NORMAL
+                                })
+                                .text_color(if self.body_type == BodyType::Json {
+                                    theme.colors.text_primary
+                                } else {
+                                    theme.colors.text_secondary
+                                })
+                                .hover(|s| s.bg(theme.colors.bg_secondary.opacity(0.3)))
                                 .on_click(cx.listener(|this, _, _, cx| {
                                     this.set_body_type(BodyType::Json, cx);
                                 }))
@@ -1111,14 +1116,28 @@ impl RequestPanel {
                         )
                         .child(
                             div()
+                                .h(px(16.0))
+                                .w(px(1.0))
+                                .bg(theme.colors.border)
+                        )
+                        .child(
+                            div()
                                 .id("body-type-raw-form")
-                                .px(px(10.0))
-                                .py(px(5.0))
-                                .rounded(px(4.0))
+                                .px(px(12.0))
+                                .py(px(6.0))
                                 .cursor_pointer()
-                                .text_color(theme.colors.text_muted)
-                                .hover(|s| s.text_color(theme.colors.text_secondary))
-                                .text_size(px(11.0))
+                                .text_size(px(13.0))
+                                .font_weight(if self.body_type == BodyType::Raw {
+                                    gpui::FontWeight::MEDIUM
+                                } else {
+                                    gpui::FontWeight::NORMAL
+                                })
+                                .text_color(if self.body_type == BodyType::Raw {
+                                    theme.colors.text_primary
+                                } else {
+                                    theme.colors.text_secondary
+                                })
+                                .hover(|s| s.bg(theme.colors.bg_secondary.opacity(0.3)))
                                 .on_click(cx.listener(|this, _, _, cx| {
                                     this.set_body_type(BodyType::Raw, cx);
                                 }))
@@ -1126,15 +1145,28 @@ impl RequestPanel {
                         )
                         .child(
                             div()
+                                .h(px(16.0))
+                                .w(px(1.0))
+                                .bg(theme.colors.border)
+                        )
+                        .child(
+                            div()
                                 .id("body-type-form-form")
-                                .px(px(10.0))
-                                .py(px(5.0))
-                                .rounded(px(4.0))
+                                .px(px(12.0))
+                                .py(px(6.0))
                                 .cursor_pointer()
-                                .bg(theme.colors.bg_primary)
-                                .font_weight(gpui::FontWeight::MEDIUM)
-                                .text_color(theme.colors.text_primary)
-                                .text_size(px(11.0))
+                                .text_size(px(13.0))
+                                .font_weight(if self.body_type == BodyType::Form {
+                                    gpui::FontWeight::MEDIUM
+                                } else {
+                                    gpui::FontWeight::NORMAL
+                                })
+                                .text_color(if self.body_type == BodyType::Form {
+                                    theme.colors.text_primary
+                                } else {
+                                    theme.colors.text_secondary
+                                })
+                                .hover(|s| s.bg(theme.colors.bg_secondary.opacity(0.3)))
                                 .child("Form")
                         )
                 )
@@ -1435,32 +1467,30 @@ impl RequestPanel {
                     .flex()
                     .items_center()
                     .justify_between()
-                    // Left: Body type selector
+                    // Left: Body type selector - minimal style
                     .child(
                         div()
                             .flex()
                             .items_center()
-                            .gap(px(4.0))
-                            .p(px(3.0))
-                            .rounded(px(6.0))
-                            .bg(theme.colors.bg_tertiary)
+                            .gap(px(0.0))
                             .child(
                                 div()
                                     .id("body-type-json")
-                                    .px(px(10.0))
-                                    .py(px(5.0))
-                                    .rounded(px(4.0))
+                                    .px(px(12.0))
+                                    .py(px(6.0))
                                     .cursor_pointer()
-                                    .when(self.body_type == BodyType::Json, |el| {
-                                        el.bg(theme.colors.bg_primary)
-                                            .font_weight(gpui::FontWeight::MEDIUM)
-                                            .text_color(theme.colors.text_primary)
+                                    .text_size(px(13.0))
+                                    .font_weight(if self.body_type == BodyType::Json {
+                                        gpui::FontWeight::MEDIUM
+                                    } else {
+                                        gpui::FontWeight::NORMAL
                                     })
-                                    .when(self.body_type != BodyType::Json, |el| {
-                                        el.text_color(theme.colors.text_muted)
-                                            .hover(|s| s.text_color(theme.colors.text_secondary))
+                                    .text_color(if self.body_type == BodyType::Json {
+                                        theme.colors.text_primary
+                                    } else {
+                                        theme.colors.text_secondary
                                     })
-                                    .text_size(px(11.0))
+                                    .hover(|s| s.bg(theme.colors.bg_secondary.opacity(0.3)))
                                     .on_click(cx.listener(|this, _, _, cx| {
                                         this.set_body_type(BodyType::Json, cx);
                                     }))
@@ -1468,21 +1498,28 @@ impl RequestPanel {
                             )
                             .child(
                                 div()
+                                    .h(px(16.0))
+                                    .w(px(1.0))
+                                    .bg(theme.colors.border)
+                            )
+                            .child(
+                                div()
                                     .id("body-type-raw")
-                                    .px(px(10.0))
-                                    .py(px(5.0))
-                                    .rounded(px(4.0))
+                                    .px(px(12.0))
+                                    .py(px(6.0))
                                     .cursor_pointer()
-                                    .when(self.body_type == BodyType::Raw, |el| {
-                                        el.bg(theme.colors.bg_primary)
-                                            .font_weight(gpui::FontWeight::MEDIUM)
-                                            .text_color(theme.colors.text_primary)
+                                    .text_size(px(13.0))
+                                    .font_weight(if self.body_type == BodyType::Raw {
+                                        gpui::FontWeight::MEDIUM
+                                    } else {
+                                        gpui::FontWeight::NORMAL
                                     })
-                                    .when(self.body_type != BodyType::Raw, |el| {
-                                        el.text_color(theme.colors.text_muted)
-                                            .hover(|s| s.text_color(theme.colors.text_secondary))
+                                    .text_color(if self.body_type == BodyType::Raw {
+                                        theme.colors.text_primary
+                                    } else {
+                                        theme.colors.text_secondary
                                     })
-                                    .text_size(px(11.0))
+                                    .hover(|s| s.bg(theme.colors.bg_secondary.opacity(0.3)))
                                     .on_click(cx.listener(|this, _, _, cx| {
                                         this.set_body_type(BodyType::Raw, cx);
                                     }))
@@ -1490,21 +1527,28 @@ impl RequestPanel {
                             )
                             .child(
                                 div()
+                                    .h(px(16.0))
+                                    .w(px(1.0))
+                                    .bg(theme.colors.border)
+                            )
+                            .child(
+                                div()
                                     .id("body-type-form")
-                                    .px(px(10.0))
-                                    .py(px(5.0))
-                                    .rounded(px(4.0))
+                                    .px(px(12.0))
+                                    .py(px(6.0))
                                     .cursor_pointer()
-                                    .when(self.body_type == BodyType::Form, |el| {
-                                        el.bg(theme.colors.bg_primary)
-                                            .font_weight(gpui::FontWeight::MEDIUM)
-                                            .text_color(theme.colors.text_primary)
+                                    .text_size(px(13.0))
+                                    .font_weight(if self.body_type == BodyType::Form {
+                                        gpui::FontWeight::MEDIUM
+                                    } else {
+                                        gpui::FontWeight::NORMAL
                                     })
-                                    .when(self.body_type != BodyType::Form, |el| {
-                                        el.text_color(theme.colors.text_muted)
-                                            .hover(|s| s.text_color(theme.colors.text_secondary))
+                                    .text_color(if self.body_type == BodyType::Form {
+                                        theme.colors.text_primary
+                                    } else {
+                                        theme.colors.text_secondary
                                     })
-                                    .text_size(px(11.0))
+                                    .hover(|s| s.bg(theme.colors.bg_secondary.opacity(0.3)))
                                     .on_click(cx.listener(|this, _, _, cx| {
                                         this.set_body_type(BodyType::Form, cx);
                                     }))
@@ -1665,10 +1709,10 @@ impl RequestPanel {
         let edit_selection = self.edit_selection.clone();
 
         let auth_types = [
-            (AuthType::None, "None", "○"),
-            (AuthType::Bearer, "Bearer", "🎫"),
-            (AuthType::Basic, "Basic", "👤"),
-            (AuthType::ApiKey, "API Key", "🔑"),
+            (AuthType::None, "None"),
+            (AuthType::Bearer, "Bearer"),
+            (AuthType::Basic, "Basic"),
+            (AuthType::ApiKey, "API Key"),
         ];
 
         div()
@@ -1680,46 +1724,49 @@ impl RequestPanel {
             .on_key_down(cx.listener(|this, event: &KeyDownEvent, _, cx| {
                 this.handle_edit_key(event, cx);
             }))
-            // Auth type selector with pill style
+            // Auth type selector - minimal style
             .child(
                 div()
                     .flex()
                     .items_center()
-                    .gap(px(4.0))
-                    .p(px(3.0))
-                    .rounded(px(8.0))
-                    .bg(theme.colors.bg_tertiary)
-                    .children(auth_types.iter().map(|(at, label, icon)| {
+                    .gap(px(0.0))
+                    .children(auth_types.iter().enumerate().map(|(i, (at, label))| {
                         let is_selected = *at == auth_type;
                         let at = *at;
                         div()
-                            .id(SharedString::from(format!("auth-type-{:?}", at)))
                             .flex()
                             .items_center()
-                            .gap(px(6.0))
-                            .px(px(12.0))
-                            .py(px(6.0))
-                            .rounded(px(6.0))
-                            .cursor_pointer()
-                            .text_size(px(12.0))
-                            .when(is_selected, |el| {
-                                el.bg(theme.colors.bg_primary)
-                                    .font_weight(gpui::FontWeight::MEDIUM)
-                                    .text_color(theme.colors.text_primary)
-                                    .child(
-                                        div()
-                                            .text_size(px(11.0))
-                                            .child(*icon)
-                                    )
+                            .child(
+                                div()
+                                    .id(SharedString::from(format!("auth-type-{:?}", at)))
+                                    .px(px(12.0))
+                                    .py(px(6.0))
+                                    .cursor_pointer()
+                                    .text_size(px(13.0))
+                                    .font_weight(if is_selected {
+                                        gpui::FontWeight::MEDIUM
+                                    } else {
+                                        gpui::FontWeight::NORMAL
+                                    })
+                                    .text_color(if is_selected {
+                                        theme.colors.text_primary
+                                    } else {
+                                        theme.colors.text_secondary
+                                    })
+                                    .hover(|s| s.bg(theme.colors.bg_secondary.opacity(0.3)))
+                                    .on_click(cx.listener(move |this, _, _, cx| {
+                                        this.set_auth_type(at, cx);
+                                    }))
+                                    .child(*label)
+                            )
+                            .when(i < auth_types.len() - 1, |el| {
+                                el.child(
+                                    div()
+                                        .h(px(16.0))
+                                        .w(px(1.0))
+                                        .bg(theme.colors.border)
+                                )
                             })
-                            .when(!is_selected, |el| {
-                                el.text_color(theme.colors.text_muted)
-                                    .hover(|s| s.text_color(theme.colors.text_secondary).bg(theme.colors.bg_secondary.opacity(0.5)))
-                            })
-                            .on_click(cx.listener(move |this, _, _, cx| {
-                                this.set_auth_type(at, cx);
-                            }))
-                            .child(*label)
                     }))
             )
             // Auth type specific content
