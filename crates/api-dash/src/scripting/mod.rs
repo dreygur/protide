@@ -23,7 +23,7 @@ pub mod results;
 mod runtime;
 
 pub use context::{RequestData, ResponseData, ScriptContext};
-pub use results::{ModifiedRequest, ScriptError, ScriptOutcome, TestResult};
+pub use results::{ScriptError, ScriptOutcome};
 use runtime::{JsRuntime, ScriptType};
 
 /// JavaScript scripting engine

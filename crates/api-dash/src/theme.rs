@@ -1,8 +1,17 @@
 //! Theme configuration - follows system preference
+//!
+//! This module provides a comprehensive design token system including:
+//! - Colors (semantic and contextual)
+//! - Typography (sizes, weights, line heights)
+//! - Spacing (8pt grid system)
+//! - Component dimensions
+//! - Border radius scale
+//! - Opacity levels
+//! - Focus indicators
 
 #![allow(dead_code)]
 
-use gpui::{App, rgb, Hsla};
+use gpui::{App, Pixels, rgb, Hsla};
 
 /// Color palette for the application
 #[derive(Clone)]
@@ -38,6 +47,21 @@ pub struct Colors {
     pub status_redirect: Hsla,
     pub status_client_error: Hsla,
     pub status_server_error: Hsla,
+
+    // Semantic colors
+    pub success: Hsla,
+    pub warning: Hsla,
+    pub error: Hsla,
+    pub info: Hsla,
+
+    // Interactive states
+    pub hover_overlay: Hsla,
+    pub active_overlay: Hsla,
+    pub selected_bg: Hsla,
+
+    // Focus indicator
+    pub focus_ring: Hsla,
+    pub focus_ring_error: Hsla,
 }
 
 impl Colors {
@@ -74,6 +98,21 @@ impl Colors {
             status_redirect: rgb(0xfca130).into(),
             status_client_error: rgb(0xf93e3e).into(),
             status_server_error: rgb(0xf93e3e).into(),
+
+            // Semantic colors
+            success: rgb(0x49cc90).into(),
+            warning: rgb(0xfca130).into(),
+            error: rgb(0xf93e3e).into(),
+            info: rgb(0x007acc).into(),
+
+            // Interactive states (white overlays for dark theme)
+            hover_overlay: Hsla { h: 0.0, s: 0.0, l: 1.0, a: 0.08 },
+            active_overlay: Hsla { h: 0.0, s: 0.0, l: 1.0, a: 0.12 },
+            selected_bg: Hsla { h: 203.0 / 360.0, s: 1.0, l: 0.4, a: 0.2 },
+
+            // Focus indicator
+            focus_ring: rgb(0x007acc).into(),
+            focus_ring_error: rgb(0xf93e3e).into(),
         }
     }
 
@@ -110,6 +149,21 @@ impl Colors {
             status_redirect: rgb(0xef6c00).into(),
             status_client_error: rgb(0xc62828).into(),
             status_server_error: rgb(0xc62828).into(),
+
+            // Semantic colors
+            success: rgb(0x2e7d32).into(),
+            warning: rgb(0xef6c00).into(),
+            error: rgb(0xc62828).into(),
+            info: rgb(0x007acc).into(),
+
+            // Interactive states (black overlays for light theme)
+            hover_overlay: Hsla { h: 0.0, s: 0.0, l: 0.0, a: 0.04 },
+            active_overlay: Hsla { h: 0.0, s: 0.0, l: 0.0, a: 0.08 },
+            selected_bg: Hsla { h: 203.0 / 360.0, s: 1.0, l: 0.4, a: 0.15 },
+
+            // Focus indicator
+            focus_ring: rgb(0x007acc).into(),
+            focus_ring_error: rgb(0xc62828).into(),
         }
     }
 }
@@ -120,6 +174,13 @@ impl Colors {
 pub struct Theme {
     pub colors: Colors,
     pub is_dark: bool,
+
+    // Design tokens
+    pub spacing: Spacing,
+    pub typography: Typography,
+    pub sizes: ComponentSizes,
+    pub radius: BorderRadius,
+    pub opacity: Opacity,
 }
 
 impl Theme {
@@ -127,6 +188,11 @@ impl Theme {
         Self {
             colors: Colors::dark(),
             is_dark: true,
+            spacing: Spacing::new(),
+            typography: Typography::new(),
+            sizes: ComponentSizes::new(),
+            radius: BorderRadius::new(),
+            opacity: Opacity::new(),
         }
     }
 
@@ -134,6 +200,11 @@ impl Theme {
         Self {
             colors: Colors::light(),
             is_dark: false,
+            spacing: Spacing::new(),
+            typography: Typography::new(),
+            sizes: ComponentSizes::new(),
+            radius: BorderRadius::new(),
+            opacity: Opacity::new(),
         }
     }
 
@@ -158,6 +229,155 @@ impl Theme {
             500..=599 => self.colors.status_server_error,
             _ => self.colors.text_secondary,
         }
+    }
+}
+
+/// Spacing scale based on 8-point grid system
+/// Use these constants for consistent spacing throughout the UI
+#[derive(Clone, Copy)]
+pub struct Spacing {
+    pub xs: Pixels,      // 4px - tight spacing
+    pub sm: Pixels,      // 8px - small spacing
+    pub md: Pixels,      // 12px - medium spacing
+    pub base: Pixels,    // 16px - standard spacing
+    pub lg: Pixels,      // 24px - large spacing
+    pub xl: Pixels,      // 32px - extra large spacing
+    pub xxl: Pixels,     // 48px - extra extra large spacing
+}
+
+impl Spacing {
+    pub fn new() -> Self {
+        use gpui::px;
+        Self {
+            xs: px(4.0),
+            sm: px(8.0),
+            md: px(12.0),
+            base: px(16.0),
+            lg: px(24.0),
+            xl: px(32.0),
+            xxl: px(48.0),
+        }
+    }
+}
+
+impl Default for Spacing {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Typography scale for consistent text sizing
+#[derive(Clone, Copy)]
+pub struct Typography {
+    pub xs: Pixels,      // 10px - tiny text
+    pub sm: Pixels,      // 12px - small text
+    pub base: Pixels,    // 13px - body text
+    pub md: Pixels,      // 14px - medium text
+    pub lg: Pixels,      // 15px - large text
+    pub xl: Pixels,      // 16px - extra large text
+}
+
+impl Typography {
+    pub fn new() -> Self {
+        use gpui::px;
+        Self {
+            xs: px(10.0),
+            sm: px(12.0),
+            base: px(13.0),
+            md: px(14.0),
+            lg: px(15.0),
+            xl: px(16.0),
+        }
+    }
+}
+
+impl Default for Typography {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Standard component heights for consistency
+#[derive(Clone, Copy)]
+pub struct ComponentSizes {
+    pub input_sm: Pixels,      // 28px - compact input
+    pub input_md: Pixels,      // 32px - standard input
+    pub button_md: Pixels,     // 32px - standard button
+    pub button_lg: Pixels,     // 36px - large button
+    pub toolbar: Pixels,       // 40px - toolbar height
+}
+
+impl ComponentSizes {
+    pub fn new() -> Self {
+        use gpui::px;
+        Self {
+            input_sm: px(28.0),
+            input_md: px(32.0),
+            button_md: px(32.0),
+            button_lg: px(36.0),
+            toolbar: px(40.0),
+        }
+    }
+}
+
+impl Default for ComponentSizes {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Border radius scale for consistent rounded corners
+#[derive(Clone, Copy)]
+pub struct BorderRadius {
+    pub sm: Pixels,      // 4px - subtle rounding
+    pub md: Pixels,      // 6px - standard rounding
+    pub lg: Pixels,      // 8px - pronounced rounding
+    pub xl: Pixels,      // 12px - large rounding
+}
+
+impl BorderRadius {
+    pub fn new() -> Self {
+        use gpui::px;
+        Self {
+            sm: px(4.0),
+            md: px(6.0),
+            lg: px(8.0),
+            xl: px(12.0),
+        }
+    }
+}
+
+impl Default for BorderRadius {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Standard opacity levels for consistency
+#[derive(Clone, Copy)]
+pub struct Opacity {
+    pub disabled: f32,          // 0.4 - disabled elements
+    pub muted: f32,             // 0.6 - muted text
+    pub hover: f32,             // 0.08 - hover overlay
+    pub pressed: f32,           // 0.12 - pressed/active overlay
+    pub selected: f32,          // 0.2 - selected background
+}
+
+impl Opacity {
+    pub fn new() -> Self {
+        Self {
+            disabled: 0.4,
+            muted: 0.6,
+            hover: 0.08,
+            pressed: 0.12,
+            selected: 0.2,
+        }
+    }
+}
+
+impl Default for Opacity {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

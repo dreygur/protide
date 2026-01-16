@@ -1,7 +1,7 @@
 //! Mock server panel UI
 
 use gpui::{
-    div, prelude::*, px, Context, FocusHandle, IntoElement, ParentElement,
+    div, prelude::*, Context, FocusHandle, IntoElement, ParentElement,
     Render, Styled, Window,
 };
 

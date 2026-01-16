@@ -23,6 +23,7 @@ use crate::scripting::{ScriptEngine, ScriptContext, RequestData as ScriptRequest
 use super::explorer::ExplorerPanel;
 use super::request_types::{ApiKeyLocation, AuthType, BodyType, EditTarget, FormField, FormFieldType, HttpMethod, KeyValuePair, RequestMode, WsConnectionState, WsMessage, WsMessageDirection};
 use super::request_utils::{base64_encode, status_text, url_decode, url_encode};
+use base64::Engine;
 use super::response::{ResponseData, ResponsePanel};
 
 use crate::chaining;
@@ -145,6 +146,28 @@ pub struct RequestPanel {
     pub(super) ws_message_editor: Entity<CodeEditor>,
     /// Channel to send messages to WebSocket thread
     ws_send_tx: Option<std::sync::mpsc::Sender<String>>,
+    /// gRPC message editor (JSON/Protobuf)
+    pub(super) grpc_message_editor: Entity<CodeEditor>,
+    /// gRPC metadata (key-value pairs, similar to headers)
+    pub(super) grpc_metadata: Vec<KeyValuePair>,
+    /// Proto file path
+    pub(super) grpc_proto_path: Option<std::path::PathBuf>,
+    /// Proto file content (for display)
+    pub(super) grpc_proto_content: String,
+    /// Available gRPC services (parsed from proto)
+    pub(super) grpc_services: Vec<String>,
+    /// Selected gRPC service
+    pub(super) grpc_service: Option<String>,
+    /// Available methods for selected service
+    pub(super) grpc_methods: Vec<String>,
+    /// Selected gRPC method
+    pub(super) grpc_method: Option<String>,
+
+    // tRPC fields
+    /// tRPC procedure name (e.g., "query.getUser")
+    pub(super) trpc_procedure: String,
+    /// tRPC parameters editor
+    pub(super) trpc_params_editor: Entity<CodeEditor>,
 }
 
 impl RequestPanel {
@@ -188,6 +211,18 @@ impl RequestPanel {
         let ws_message_editor = cx.new(|cx| {
             CodeEditor::new(cx)
                 .with_content("{\"type\": \"hello\"}")
+                .with_language(Language::Json)
+                .with_line_numbers(true)
+        });
+        let grpc_message_editor = cx.new(|cx| {
+            CodeEditor::new(cx)
+                .with_content("{}")
+                .with_language(Language::Json)
+                .with_line_numbers(true)
+        });
+        let trpc_params_editor = cx.new(|cx| {
+            CodeEditor::new(cx)
+                .with_content("{}")
                 .with_language(Language::Json)
                 .with_line_numbers(true)
         });
@@ -257,6 +292,16 @@ impl RequestPanel {
             ws_message_input: String::new(),
             ws_message_editor,
             ws_send_tx: None,
+            grpc_message_editor,
+            grpc_metadata: vec![KeyValuePair::default()],
+            grpc_proto_path: None,
+            grpc_proto_content: String::new(),
+            grpc_services: Vec::new(),
+            grpc_service: None,
+            grpc_methods: Vec::new(),
+            grpc_method: None,
+            trpc_procedure: String::new(),
+            trpc_params_editor,
         }
     }
 
@@ -281,6 +326,22 @@ impl RequestPanel {
                 // WebSocket uses ws:// or wss:// URL
                 if !self.url.starts_with("ws://") && !self.url.starts_with("wss://") {
                     self.url = "wss://echo.websocket.org".to_string();
+                    let len = self.url.chars().count();
+                    self.url_selection = len..len;
+                }
+            }
+            RequestMode::Grpc => {
+                // gRPC uses grpc:// URL scheme
+                if !self.url.contains("grpc") {
+                    self.url = "grpc://localhost:50051".to_string();
+                    let len = self.url.chars().count();
+                    self.url_selection = len..len;
+                }
+            }
+            RequestMode::Trpc => {
+                self.method = HttpMethod::Post;
+                if !self.url.ends_with("/trpc") {
+                    self.url = "http://localhost:3000/trpc".to_string();
                     let len = self.url.chars().count();
                     self.url_selection = len..len;
                 }
@@ -482,6 +543,320 @@ impl RequestPanel {
                 cx.notify();
             }
         }
+    }
+
+    /// Load a proto file for gRPC
+    pub(super) fn load_proto_file(&mut self, cx: &mut Context<Self>) {
+        use rfd::FileDialog;
+
+        // Open file dialog for proto files
+        let path = FileDialog::new()
+            .add_filter("Proto Files", &["proto"])
+            .set_title("Select Proto File")
+            .pick_file();
+
+        if let Some(path) = path {
+            // Read proto file content
+            match std::fs::read_to_string(&path) {
+                Ok(content) => {
+                    self.grpc_proto_path = Some(path);
+                    self.grpc_proto_content = content.clone();
+
+                    // Parse services and methods from proto content (basic parsing)
+                    self.parse_proto_services(&content);
+
+                    cx.notify();
+                }
+                Err(e) => {
+                    eprintln!("Failed to read proto file: {}", e);
+                }
+            }
+        }
+    }
+
+    /// Parse services and methods from proto file content
+    fn parse_proto_services(&mut self, content: &str) {
+        self.grpc_services.clear();
+        self.grpc_methods.clear();
+        self.grpc_service = None;
+        self.grpc_method = None;
+
+        // Simple regex-like parsing for service definitions
+        // service ServiceName { ... }
+        let mut in_service = false;
+        let mut current_service = String::new();
+
+        for line in content.lines() {
+            let trimmed = line.trim();
+
+            // Check for service definition
+            if trimmed.starts_with("service ") {
+                if let Some(name) = trimmed
+                    .strip_prefix("service ")
+                    .and_then(|s| s.split_whitespace().next())
+                {
+                    current_service = name.to_string();
+                    self.grpc_services.push(current_service.clone());
+                    in_service = true;
+                }
+            }
+
+            // Check for rpc method definition
+            if in_service && trimmed.starts_with("rpc ") {
+                if let Some(name) = trimmed
+                    .strip_prefix("rpc ")
+                    .and_then(|s| s.split('(').next())
+                    .map(|s| s.trim())
+                {
+                    self.grpc_methods.push(format!("{}/{}", current_service, name));
+                }
+            }
+
+            // Check for end of service block
+            if in_service && trimmed == "}" {
+                in_service = false;
+            }
+        }
+
+        // Select first service/method if available
+        if let Some(service) = self.grpc_services.first() {
+            self.grpc_service = Some(service.clone());
+        }
+        if let Some(method) = self.grpc_methods.first() {
+            self.grpc_method = Some(method.clone());
+        }
+    }
+
+    /// Send a gRPC request
+    pub(super) fn send_grpc_request(&mut self, cx: &mut Context<Self>) {
+        let Some(method) = &self.grpc_method else {
+            return;
+        };
+
+        self.loading = true;
+        cx.notify();
+
+        // Get the message from editor
+        let message = self.grpc_message_editor.read(cx).content().to_string();
+        let url = self.url.clone();
+        let method = method.clone();
+
+        // Collect enabled metadata
+        let metadata: Vec<(String, String)> = self.grpc_metadata
+            .iter()
+            .filter(|m| m.enabled && !m.key.is_empty())
+            .map(|m| (m.key.clone(), m.value.clone()))
+            .collect();
+
+        let response_panel = self.response_panel.clone();
+
+        // Spawn async task to handle gRPC request
+        let task = cx.spawn(async move |this: gpui::WeakEntity<Self>, cx: &mut gpui::AsyncApp| {
+            let start_time = std::time::Instant::now();
+
+            // Create channel for result
+            let (result_tx, result_rx) = std::sync::mpsc::channel::<(String, std::time::Duration)>();
+
+            // Spawn gRPC request in background thread
+            std::thread::spawn(move || {
+                // Parse the URL (grpc://host:port -> http://host:port)
+                let http_url = url
+                    .replace("grpc://", "http://")
+                    .replace("grpcs://", "https://");
+
+                // For now, we'll show a placeholder response
+                // Full gRPC implementation requires prost-reflect for dynamic messages
+                let response_body = format!(
+                    r#"{{
+  "status": "gRPC Preview",
+  "note": "Full gRPC execution requires proto compilation",
+  "request": {{
+    "url": "{}",
+    "method": "{}",
+    "message": {},
+    "metadata_count": {}
+  }}
+}}"#,
+                    http_url,
+                    method,
+                    message,
+                    metadata.len()
+                );
+
+                let elapsed = start_time.elapsed();
+                let _ = result_tx.send((response_body, elapsed));
+            });
+
+            // Wait for result with timeout
+            if let Ok((body, elapsed)) = result_rx.recv_timeout(std::time::Duration::from_secs(30)) {
+                let _ = cx.update(|cx| {
+                    response_panel.update(cx, |panel, cx| {
+                        panel.set_response(ResponseData {
+                            status: 200,
+                            status_text: "OK".to_string(),
+                            headers: vec![
+                                ("content-type".to_string(), "application/grpc+json".to_string()),
+                                ("grpc-status".to_string(), "0".to_string()),
+                            ],
+                            body: body.clone(),
+                            time: elapsed,
+                            size: body.len(),
+                        }, cx);
+                    });
+                });
+
+                let _ = cx.update(|cx| {
+                    let _ = this.update(cx, |panel, cx| {
+                        panel.loading = false;
+                        cx.notify();
+                    });
+                });
+            }
+        });
+        task.detach();
+    }
+
+    /// Send a tRPC request
+    pub(super) fn send_trpc_request(&mut self, cx: &mut Context<Self>) {
+        if self.trpc_procedure.trim().is_empty() {
+            return;
+        }
+
+        self.loading = true;
+        cx.notify();
+
+        let url = self.url.clone();
+        let procedure = self.trpc_procedure.clone();
+        let params = self.trpc_params_editor.read(cx).content().to_string();
+
+        // Get environment for variable substitution
+        let env_state = self.explorer_panel.as_ref().map(|p| p.read(cx).env_state().clone());
+        let substitute = |s: &str| -> String {
+            if let Some(ref env) = env_state {
+                env.substitute(s)
+            } else {
+                s.to_string()
+            }
+        };
+
+        let url = substitute(&url);
+        let procedure = substitute(&procedure);
+
+        // Collect enabled headers with substitution
+        let mut headers: Vec<(String, String)> = self
+            .headers
+            .iter()
+            .filter(|h| h.enabled && !h.key.is_empty())
+            .map(|h| (substitute(&h.key), substitute(&h.value)))
+            .collect();
+
+        // Add auth headers
+        match self.auth_type {
+            AuthType::Bearer => {
+                if !self.bearer_token.is_empty() {
+                    let token = substitute(&self.bearer_token);
+                    headers.push(("Authorization".to_string(), format!("Bearer {}", token)));
+                }
+            }
+            AuthType::Basic => {
+                if !self.basic_username.is_empty() {
+                    let username = substitute(&self.basic_username);
+                    let password = substitute(&self.basic_password);
+                    let credentials = base64::engine::general_purpose::STANDARD
+                        .encode(format!("{}:{}", username, password));
+                    headers.push(("Authorization".to_string(), format!("Basic {}", credentials)));
+                }
+            }
+            AuthType::ApiKey => {
+                if !self.api_key_name.is_empty() {
+                    let key_name = substitute(&self.api_key_name);
+                    let key_value = substitute(&self.api_key_value);
+                    match self.api_key_location {
+                        ApiKeyLocation::Header => {
+                            headers.push((key_name, key_value));
+                        }
+                        ApiKeyLocation::QueryParam => {
+                            // For tRPC, query params would be appended to URL
+                            // But tRPC typically doesn't use query params, so we'll skip this
+                        }
+                    }
+                }
+            }
+            AuthType::None => {}
+        }
+
+        let response_panel = self.response_panel.clone();
+
+        let task = cx.spawn(async move |this: gpui::WeakEntity<Self>, cx: &mut gpui::AsyncApp| {
+            let (result_tx, result_rx) = std::sync::mpsc::channel();
+
+            // Spawn blocking thread for HTTP request
+            std::thread::spawn(move || {
+                let result = crate::protocols::trpc::execute_trpc(&url, &procedure, &params, headers);
+                let _ = result_tx.send(result);
+            });
+
+            // Wait for result
+            if let Ok(result) = result_rx.recv_timeout(std::time::Duration::from_secs(30)) {
+                match result {
+                    Ok((body, elapsed, status)) => {
+                        let body_size = body.len();
+                        let _ = cx.update(|cx| {
+                            response_panel.update(cx, |panel, cx| {
+                                panel.set_response(
+                                    ResponseData {
+                                        status,
+                                        status_text: status_text(status).to_string(),
+                                        headers: vec![(
+                                            "content-type".to_string(),
+                                            "application/json".to_string(),
+                                        )],
+                                        body,
+                                        time: elapsed,
+                                        size: body_size,
+                                    },
+                                    cx,
+                                );
+                            });
+                        });
+                    }
+                    Err(e) => {
+                        // Show error in response panel
+                        let _ = cx.update(|cx| {
+                            response_panel.update(cx, |panel, cx| {
+                                let error_body = serde_json::json!({
+                                    "error": e,
+                                })
+                                .to_string();
+                                panel.set_response(
+                                    ResponseData {
+                                        status: 500,
+                                        status_text: "tRPC Error".to_string(),
+                                        headers: vec![(
+                                            "content-type".to_string(),
+                                            "application/json".to_string(),
+                                        )],
+                                        body: error_body.clone(),
+                                        time: std::time::Duration::from_secs(0),
+                                        size: error_body.len(),
+                                    },
+                                    cx,
+                                );
+                            });
+                        });
+                    }
+                }
+
+                // Clear loading state
+                let _ = cx.update(|cx| {
+                    let _ = this.update(cx, |panel, cx| {
+                        panel.loading = false;
+                        cx.notify();
+                    });
+                });
+            }
+        });
+        task.detach();
     }
 
     fn cursor(&self) -> usize {

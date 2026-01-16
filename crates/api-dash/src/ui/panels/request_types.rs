@@ -121,13 +121,15 @@ pub enum BodyType {
     Form,
 }
 
-/// Request mode (HTTP, GraphQL, or WebSocket)
+/// Request mode (HTTP, GraphQL, WebSocket, gRPC, or tRPC)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum RequestMode {
     #[default]
     Http,
     GraphQL,
     WebSocket,
+    Grpc,
+    Trpc,
 }
 
 /// WebSocket connection state

@@ -61,5 +61,11 @@ tower = { workspace = true }
 tokio-tungstenite = { workspace = true }
 futures-util = { workspace = true }
 
+# gRPC client
+tonic = { workspace = true }
+prost = { workspace = true }
+prost-types = { workspace = true }
+prost-reflect = { workspace = true }
+
 [dev-dependencies]
 # Standard unit tests - no additional dependencies needed

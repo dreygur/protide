@@ -60,3 +60,9 @@ tower = "0.5"
 # WebSocket client
 tokio-tungstenite = { version = "0.26", features = ["rustls-tls-native-roots"] }
 futures-util = "0.3"
+
+# gRPC client
+tonic = "0.12"
+prost = "0.13"
+prost-types = "0.13"
+prost-reflect = "0.14"

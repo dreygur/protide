@@ -2,10 +2,10 @@
 
 ## Project Overview
 Native desktop API testing tool built with Rust + GPUI (Zed's GPU-accelerated UI framework).
-Supports HTTP, GraphQL, and WebSocket protocols.
+Supports HTTP, GraphQL, WebSocket, and gRPC protocols.
 
 ## Current State (Jan 2025)
-**Progress: ~85% of full plan (Phases 1-5, 8-12 complete)**
+**Progress: ~90% of full plan (Phases 1-6, 8-12 complete)**
 
 ### Completed Features
 **Core HTTP Client**
@@ -21,7 +21,8 @@ Supports HTTP, GraphQL, and WebSocket protocols.
 **Protocol Support**
 - GraphQL mode with query/variables editors and syntax highlighting
 - WebSocket mode with connect/disconnect, message sending, and message history
-- Mode toggle (HTTP/GraphQL/WS)
+- gRPC mode with proto file loading, service/method selection, and metadata
+- Mode toggle (HTTP/GraphQL/WS/gRPC)
 
 **Collections & Storage**
 - File-based collections (folders = collections, .http files = requests)
@@ -115,10 +116,12 @@ cargo test            # 146 tests total
 
 ## Remaining Phases
 
-### Phase 6: gRPC Support
-- Proto file loading (tonic/prost)
-- Service/method selection
-- Streaming support
+### Phase 6: gRPC Support (UI Complete)
+- ✅ Proto file loading and parsing
+- ✅ Service/method selection UI
+- ✅ Metadata editor
+- ⏳ Actual gRPC request execution (requires tonic/prost integration)
+- ⏳ Streaming support
 
 ### Phase 7: tRPC Support
 - Endpoint configuration

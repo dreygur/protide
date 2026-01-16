@@ -10,6 +10,7 @@ use gpui::{
 use crate::theme;
 use crate::codegen::Language as CodegenLanguage;
 use crate::ui::components::render_text_view_with_max;
+use crate::ui::components::{Button, ButtonVariant, ButtonSize};
 use super::super::request_types::{ApiKeyLocation, AuthType, BodyType, EditTarget, FormFieldType, HttpMethod, RequestMode, WsConnectionState, WsMessageDirection};
 use super::{render_text_view, RequestPanel};
 
@@ -131,6 +132,30 @@ impl RequestPanel {
                                 this.set_request_mode(RequestMode::WebSocket, cx);
                             }))
                             .child("WS")
+                    )
+                    // gRPC button
+                    .child(
+                        div()
+                            .id("mode-grpc")
+                            .px(px(10.0))
+                            .h_full()
+                            .flex()
+                            .items_center()
+                            .text_size(px(11.0))
+                            .font_weight(gpui::FontWeight::MEDIUM)
+                            .cursor_pointer()
+                            .when(self.request_mode == RequestMode::Grpc, |el| {
+                                el.bg(theme.colors.method_put.opacity(0.15))
+                                    .text_color(theme.colors.method_put)
+                            })
+                            .when(self.request_mode != RequestMode::Grpc, |el| {
+                                el.text_color(theme.colors.text_secondary)
+                                    .hover(|s| s.bg(theme.colors.bg_secondary))
+                            })
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.set_request_mode(RequestMode::Grpc, cx);
+                            }))
+                            .child("gRPC")
                     )
             )
             // Method selector button (dropdown rendered separately as overlay) - only show for HTTP mode
@@ -286,7 +311,12 @@ impl RequestPanel {
                                     .hover(|style| style.bg(theme.colors.accent_hover))
                                     .active(|style| style.opacity(0.9))
                                     .on_click(cx.listener(|this, _, _, cx| {
-                                        this.send_request(cx);
+                                        match this.request_mode {
+                                            RequestMode::Http | RequestMode::GraphQL => this.send_request(cx),
+                                            RequestMode::WebSocket => this.connect_websocket(cx),
+                                            RequestMode::Grpc => this.send_grpc_request(cx),
+                                            RequestMode::Trpc => this.send_trpc_request(cx),
+                                        }
                                     }))
                                     .child(
                                         div()
@@ -455,6 +485,8 @@ impl RequestPanel {
         let tabs: &[(&str, &str)] = match self.request_mode {
             RequestMode::GraphQL => &[("Query", "◇"), ("Variables", "{ }"), ("Headers", "H"), ("Auth", "🔒")],
             RequestMode::WebSocket => &[("Messages", "⚡"), ("Headers", "H")],
+            RequestMode::Grpc => &[("Message", "◈"), ("Metadata", "M"), ("Proto", "📄")],
+            RequestMode::Trpc => &[("Procedure", "⚙"), ("Parameters", "{ }"), ("Headers", "H"), ("Auth", "🔒")],
             RequestMode::Http => &[("Params", "?"), ("Headers", "H"), ("Body", "{ }"), ("Auth", "🔒"), ("Scripts", "ƒ")],
         };
         let active_tab = self.active_tab;
@@ -482,6 +514,14 @@ impl RequestPanel {
                     },
                     RequestMode::WebSocket => match i {
                         1 => header_count, // Headers is at index 1 for WebSocket
+                        _ => 0,
+                    },
+                    RequestMode::Grpc => match i {
+                        1 => header_count, // Metadata is at index 1 for gRPC
+                        _ => 0,
+                    },
+                    RequestMode::Trpc => match i {
+                        2 => header_count, // Headers is at index 2 for tRPC
                         _ => 0,
                     },
                     RequestMode::Http => match i {
@@ -589,6 +629,25 @@ impl RequestPanel {
                     2 => self.render_body_tab(cx),
                     3 => self.render_auth_tab(cx),
                     4 => self.render_scripts_tab(cx),
+                    _ => div().into_any_element(),
+                }
+            }
+            RequestMode::Grpc => {
+                // gRPC tabs: Message, Metadata, Proto
+                match self.active_tab {
+                    0 => self.render_grpc_message_tab(cx),
+                    1 => self.render_grpc_metadata_tab(cx),
+                    2 => self.render_grpc_proto_tab(cx),
+                    _ => div().into_any_element(),
+                }
+            }
+            RequestMode::Trpc => {
+                // tRPC tabs: Procedure, Parameters, Headers, Auth
+                match self.active_tab {
+                    0 => self.render_trpc_procedure_tab(cx),
+                    1 => self.render_trpc_parameters_tab(cx),
+                    2 => self.render_headers_tab(cx),
+                    3 => self.render_auth_tab(cx),
                     _ => div().into_any_element(),
                 }
             }
@@ -772,27 +831,21 @@ impl RequestPanel {
             div()
                 .id("add-param-btn")
                 .mt(px(8.0))
-                .px(px(10.0))
-                .py(px(6.0))
-                .rounded(px(6.0))
-                .flex()
-                .items_center()
-                .gap(px(6.0))
-                .cursor_pointer()
-                .text_size(px(12.0))
-                .text_color(theme.colors.accent)
-                .border_1()
-                .border_color(theme.colors.accent.opacity(0.3))
-                .hover(|s| s.bg(theme.colors.accent.opacity(0.08)).border_color(theme.colors.accent.opacity(0.5)))
                 .on_click(cx.listener(|this, _, _, cx| {
                     this.add_param(cx);
                 }))
                 .child(
-                    div()
-                        .text_size(px(14.0))
-                        .child("+")
+                    Button::secondary(ButtonSize::Small)
+                        .render(cx,
+                            div()
+                                .flex()
+                                .items_center()
+                                .gap(px(6.0))
+                                .child(div().text_size(px(14.0)).child("+"))
+                                .child("Add Parameter")
+                                .into_any_element()
+                        )
                 )
-                .child("Add Parameter")
         );
 
         container.into_any_element()
@@ -975,27 +1028,21 @@ impl RequestPanel {
             div()
                 .id("add-header-btn")
                 .mt(px(8.0))
-                .px(px(10.0))
-                .py(px(6.0))
-                .rounded(px(6.0))
-                .flex()
-                .items_center()
-                .gap(px(6.0))
-                .cursor_pointer()
-                .text_size(px(12.0))
-                .text_color(theme.colors.accent)
-                .border_1()
-                .border_color(theme.colors.accent.opacity(0.3))
-                .hover(|s| s.bg(theme.colors.accent.opacity(0.08)).border_color(theme.colors.accent.opacity(0.5)))
                 .on_click(cx.listener(|this, _, _, cx| {
                     this.add_header(cx);
                 }))
                 .child(
-                    div()
-                        .text_size(px(14.0))
-                        .child("+")
+                    Button::secondary(ButtonSize::Small)
+                        .render(cx,
+                            div()
+                                .flex()
+                                .items_center()
+                                .gap(px(6.0))
+                                .child(div().text_size(px(14.0)).child("+"))
+                                .child("Add Header")
+                                .into_any_element()
+                        )
                 )
-                .child("Add Header")
         );
 
         container.into_any_element()
@@ -2727,6 +2774,424 @@ impl RequestPanel {
             .into_any_element()
     }
 
+    /// Render gRPC Message tab
+    fn render_grpc_message_tab(&mut self, cx: &mut Context<Self>) -> gpui::AnyElement {
+        let theme = theme::current(cx);
+        let has_service = self.grpc_service.is_some();
+        let has_method = self.grpc_method.is_some();
+
+        div()
+            .id("grpc-message-tab")
+            .w_full()
+            .h_full()
+            .flex()
+            .flex_col()
+            .gap(px(12.0))
+            // Service/Method selection row
+            .child(
+                div()
+                    .w_full()
+                    .flex()
+                    .items_center()
+                    .gap(px(12.0))
+                    // Service dropdown
+                    .child(
+                        div()
+                            .flex_1()
+                            .flex()
+                            .flex_col()
+                            .gap(px(4.0))
+                            .child(
+                                div()
+                                    .text_size(px(11.0))
+                                    .text_color(theme.colors.text_muted)
+                                    .child("Service")
+                            )
+                            .child(
+                                div()
+                                    .w_full()
+                                    .h(px(32.0))
+                                    .px(px(12.0))
+                                    .rounded(px(6.0))
+                                    .bg(theme.colors.bg_secondary)
+                                    .border_1()
+                                    .border_color(theme.colors.border)
+                                    .flex()
+                                    .items_center()
+                                    .text_size(px(12.0))
+                                    .text_color(if has_service { theme.colors.text_primary } else { theme.colors.text_muted })
+                                    .child(
+                                        self.grpc_service.clone()
+                                            .unwrap_or_else(|| "Select service...".to_string())
+                                    )
+                            )
+                    )
+                    // Method dropdown
+                    .child(
+                        div()
+                            .flex_1()
+                            .flex()
+                            .flex_col()
+                            .gap(px(4.0))
+                            .child(
+                                div()
+                                    .text_size(px(11.0))
+                                    .text_color(theme.colors.text_muted)
+                                    .child("Method")
+                            )
+                            .child(
+                                div()
+                                    .w_full()
+                                    .h(px(32.0))
+                                    .px(px(12.0))
+                                    .rounded(px(6.0))
+                                    .bg(theme.colors.bg_secondary)
+                                    .border_1()
+                                    .border_color(theme.colors.border)
+                                    .flex()
+                                    .items_center()
+                                    .text_size(px(12.0))
+                                    .text_color(if has_method { theme.colors.text_primary } else { theme.colors.text_muted })
+                                    .child(
+                                        self.grpc_method.clone()
+                                            .unwrap_or_else(|| "Select method...".to_string())
+                                    )
+                            )
+                    )
+            )
+            // Message editor
+            .child(
+                div()
+                    .flex_1()
+                    .flex()
+                    .flex_col()
+                    .gap(px(4.0))
+                    .child(
+                        div()
+                            .text_size(px(11.0))
+                            .text_color(theme.colors.text_muted)
+                            .child("Request Message (JSON)")
+                    )
+                    .child(
+                        div()
+                            .flex_1()
+                            .border_1()
+                            .border_color(theme.colors.border)
+                            .rounded(px(6.0))
+                            .overflow_hidden()
+                            .child(self.grpc_message_editor.clone())
+                    )
+            )
+            // Send button row
+            .child(
+                div()
+                    .w_full()
+                    .flex()
+                    .justify_end()
+                    .gap(px(8.0))
+                    .child(
+                        div()
+                            .id("grpc-send-btn")
+                            .px(px(20.0))
+                            .py(px(10.0))
+                            .rounded(px(6.0))
+                            .cursor_pointer()
+                            .flex()
+                            .items_center()
+                            .gap(px(6.0))
+                            .when(has_method, |el| {
+                                el.bg(theme.colors.method_put)
+                                    .hover(|s| s.opacity(0.9))
+                                    .text_color(gpui::rgb(0xFFFFFF))
+                            })
+                            .when(!has_method, |el| {
+                                el.bg(theme.colors.text_muted.opacity(0.2))
+                                    .cursor(gpui::CursorStyle::Arrow)
+                                    .text_color(theme.colors.text_muted)
+                            })
+                            .text_size(px(12.0))
+                            .font_weight(gpui::FontWeight::SEMIBOLD)
+                            .on_click(cx.listener(move |this, _, _, cx| {
+                                if has_method {
+                                    this.send_grpc_request(cx);
+                                }
+                            }))
+                            .child("Send gRPC")
+                    )
+            )
+            // Placeholder message when no proto loaded
+            .when(self.grpc_proto_path.is_none(), |el| {
+                el.child(
+                    div()
+                        .w_full()
+                        .py(px(8.0))
+                        .px(px(12.0))
+                        .rounded(px(6.0))
+                        .bg(theme.colors.accent.opacity(0.1))
+                        .text_size(px(11.0))
+                        .text_color(theme.colors.text_muted)
+                        .child("Load a .proto file in the Proto tab to select services and methods")
+                )
+            })
+            .into_any_element()
+    }
+
+    /// Render gRPC Metadata tab - simplified version showing metadata as read-only display
+    fn render_grpc_metadata_tab(&mut self, cx: &mut Context<Self>) -> gpui::AnyElement {
+        let theme = theme::current(cx);
+
+        // Note: For now we show a simplified metadata view
+        // Full editing can be added later using the headers tab pattern
+        div()
+            .id("grpc-metadata-tab")
+            .w_full()
+            .h_full()
+            .flex()
+            .flex_col()
+            .gap(px(8.0))
+            // Info text
+            .child(
+                div()
+                    .text_size(px(11.0))
+                    .text_color(theme.colors.text_muted)
+                    .child("gRPC metadata (similar to HTTP headers)")
+            )
+            // Header row
+            .child(
+                div()
+                    .w_full()
+                    .flex()
+                    .items_center()
+                    .gap(px(8.0))
+                    .pb(px(8.0))
+                    .border_b_1()
+                    .border_color(theme.colors.border.opacity(0.5))
+                    .child(div().size(px(16.0))) // Checkbox spacer
+                    .child(div().flex_1().text_size(px(11.0)).text_color(theme.colors.text_muted).child("Key"))
+                    .child(div().flex_1().text_size(px(11.0)).text_color(theme.colors.text_muted).child("Value"))
+                    .child(div().w(px(24.0))) // Delete spacer
+            )
+            // Metadata rows - display current metadata
+            .children(
+                self.grpc_metadata.iter().enumerate().map(|(idx, meta)| {
+                    let enabled = meta.enabled;
+                    let key = meta.key.clone();
+                    let value = meta.value.clone();
+                    let is_last = idx == self.grpc_metadata.len() - 1;
+
+                    div()
+                        .w_full()
+                        .flex()
+                        .items_center()
+                        .gap(px(8.0))
+                        .py(px(4.0))
+                        // Checkbox
+                        .child(
+                            div()
+                                .id(SharedString::from(format!("grpc-meta-enable-{}", idx)))
+                                .size(px(16.0))
+                                .rounded(px(4.0))
+                                .border_1()
+                                .cursor_pointer()
+                                .flex()
+                                .items_center()
+                                .justify_center()
+                                .when(enabled, |el| {
+                                    el.bg(theme.colors.accent)
+                                        .border_color(theme.colors.accent)
+                                        .child(div().text_size(px(10.0)).text_color(gpui::rgb(0xFFFFFF)).child("✓"))
+                                })
+                                .when(!enabled, |el| {
+                                    el.border_color(theme.colors.border)
+                                        .hover(|s| s.border_color(theme.colors.accent.opacity(0.5)))
+                                })
+                                .on_click(cx.listener(move |this, _, _, cx| {
+                                    if let Some(meta) = this.grpc_metadata.get_mut(idx) {
+                                        meta.enabled = !meta.enabled;
+                                    }
+                                    cx.notify();
+                                }))
+                        )
+                        // Key field
+                        .child(
+                            div()
+                                .flex_1()
+                                .h(px(28.0))
+                                .px(px(8.0))
+                                .rounded(px(4.0))
+                                .bg(theme.colors.bg_secondary)
+                                .flex()
+                                .items_center()
+                                .text_size(px(12.0))
+                                .text_color(if key.is_empty() { theme.colors.text_muted } else { theme.colors.text_primary })
+                                .child(if key.is_empty() { "metadata-key".to_string() } else { key })
+                        )
+                        // Value field
+                        .child(
+                            div()
+                                .flex_1()
+                                .h(px(28.0))
+                                .px(px(8.0))
+                                .rounded(px(4.0))
+                                .bg(theme.colors.bg_secondary)
+                                .flex()
+                                .items_center()
+                                .text_size(px(12.0))
+                                .text_color(if value.is_empty() { theme.colors.text_muted } else { theme.colors.text_primary })
+                                .child(if value.is_empty() { "value".to_string() } else { value })
+                        )
+                        // Delete button
+                        .child(
+                            div()
+                                .id(SharedString::from(format!("grpc-meta-del-{}", idx)))
+                                .size(px(24.0))
+                                .rounded(px(4.0))
+                                .cursor_pointer()
+                                .flex()
+                                .items_center()
+                                .justify_center()
+                                .when(!is_last, |el| {
+                                    el.hover(|s| s.bg(theme.colors.method_delete.opacity(0.1)))
+                                        .text_color(theme.colors.text_muted)
+                                        .hover(|s| s.text_color(theme.colors.method_delete))
+                                        .on_click(cx.listener(move |this, _, _, cx| {
+                                            if this.grpc_metadata.len() > 1 {
+                                                this.grpc_metadata.remove(idx);
+                                                cx.notify();
+                                            }
+                                        }))
+                                })
+                                .when(is_last, |el| el.text_color(theme.colors.text_muted.opacity(0.3)))
+                                .child("×")
+                        )
+                }).collect::<Vec<_>>()
+            )
+            .into_any_element()
+    }
+
+    /// Render gRPC Proto tab
+    fn render_grpc_proto_tab(&mut self, cx: &mut Context<Self>) -> gpui::AnyElement {
+        let theme = theme::current(cx);
+        let has_proto = self.grpc_proto_path.is_some();
+        let proto_path = self.grpc_proto_path.clone()
+            .map(|p| p.display().to_string())
+            .unwrap_or_default();
+
+        div()
+            .id("grpc-proto-tab")
+            .w_full()
+            .h_full()
+            .flex()
+            .flex_col()
+            .gap(px(12.0))
+            // Load proto button row
+            .child(
+                div()
+                    .w_full()
+                    .flex()
+                    .items_center()
+                    .gap(px(12.0))
+                    .child(
+                        div()
+                            .id("load-proto-btn")
+                            .px(px(16.0))
+                            .py(px(8.0))
+                            .rounded(px(6.0))
+                            .bg(theme.colors.accent)
+                            .cursor_pointer()
+                            .hover(|s| s.opacity(0.9))
+                            .text_size(px(12.0))
+                            .text_color(gpui::rgb(0xFFFFFF))
+                            .font_weight(gpui::FontWeight::MEDIUM)
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.load_proto_file(cx);
+                            }))
+                            .child("Load .proto file")
+                    )
+                    .when(has_proto, |el| {
+                        el.child(
+                            div()
+                                .flex_1()
+                                .text_size(px(11.0))
+                                .text_color(theme.colors.text_muted)
+                                .overflow_x_hidden()
+                                .child(proto_path)
+                        )
+                        .child(
+                            div()
+                                .id("clear-proto-btn")
+                                .px(px(12.0))
+                                .py(px(8.0))
+                                .rounded(px(6.0))
+                                .bg(theme.colors.bg_tertiary)
+                                .cursor_pointer()
+                                .hover(|s| s.bg(theme.colors.method_delete.opacity(0.1)))
+                                .text_size(px(11.0))
+                                .text_color(theme.colors.text_muted)
+                                .hover(|s| s.text_color(theme.colors.method_delete))
+                                .on_click(cx.listener(|this, _, _, cx| {
+                                    this.grpc_proto_path = None;
+                                    this.grpc_proto_content.clear();
+                                    this.grpc_services.clear();
+                                    this.grpc_service = None;
+                                    this.grpc_methods.clear();
+                                    this.grpc_method = None;
+                                    cx.notify();
+                                }))
+                                .child("Clear")
+                        )
+                    })
+            )
+            // Proto content display
+            .child(
+                div()
+                    .flex_1()
+                    .flex()
+                    .flex_col()
+                    .gap(px(4.0))
+                    .child(
+                        div()
+                            .text_size(px(11.0))
+                            .text_color(theme.colors.text_muted)
+                            .child("Proto Definition")
+                    )
+                    .child(
+                        div()
+                            .id("proto-content-scroll")
+                            .flex_1()
+                            .border_1()
+                            .border_color(theme.colors.border)
+                            .rounded(px(6.0))
+                            .bg(theme.colors.bg_secondary)
+                            .p(px(12.0))
+                            .overflow_scroll()
+                            .when(has_proto, |el| {
+                                el.child(
+                                    div()
+                                        .text_size(px(11.0))
+                                        .text_color(theme.colors.text_primary)
+                                        .font_family("monospace")
+                                        .child(self.grpc_proto_content.clone())
+                                )
+                            })
+                            .when(!has_proto, |el| {
+                                el.child(
+                                    div()
+                                        .w_full()
+                                        .h_full()
+                                        .flex()
+                                        .items_center()
+                                        .justify_center()
+                                        .text_size(px(12.0))
+                                        .text_color(theme.colors.text_muted)
+                                        .child("No proto file loaded")
+                                )
+                            })
+                    )
+            )
+            .into_any_element()
+    }
+
     /// Render code generation language dropdown overlay
     pub(super) fn render_codegen_dropdown_overlay(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = theme::current(cx);
@@ -3044,7 +3509,7 @@ impl RequestPanel {
                                             .id("import-input")
                                             .size_full()
                                             .cursor_text()
-                                            .on_click(cx.listener(|this, _, window, cx| {
+                                            .on_click(cx.listener(|this, _, _window, cx| {
                                                 // Read from clipboard on click if empty
                                                 if this.import_text.is_empty() {
                                                     if let Some(clipboard) = cx.read_from_clipboard() {
@@ -3131,6 +3596,138 @@ impl RequestPanel {
                             )
                     )
             )
+    }
+
+    fn render_trpc_procedure_tab(&mut self, cx: &mut Context<Self>) -> gpui::AnyElement {
+        let theme = theme::current(cx);
+        let procedure = self.trpc_procedure.clone();
+
+        div()
+            .id("trpc-procedure-tab")
+            .w_full()
+            .h_full()
+            .flex()
+            .flex_col()
+            .gap(px(16.0))
+            .p(px(16.0))
+            .child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap(px(8.0))
+                    .child(
+                        div()
+                            .text_size(px(11.0))
+                            .font_weight(gpui::FontWeight::SEMIBOLD)
+                            .text_color(theme.colors.text_primary)
+                            .child("tRPC Procedure")
+                    )
+                    .child(
+                        div()
+                            .text_size(px(12.0))
+                            .text_color(theme.colors.text_muted)
+                            .child("Enter the procedure name (e.g., \"query.getUser\", \"mutation.createPost\")")
+                    )
+                    .child(
+                        div()
+                            .w_full()
+                            .h(px(40.0))
+                            .px(px(12.0))
+                            .flex()
+                            .items_center()
+                            .bg(theme.colors.bg_secondary)
+                            .border_1()
+                            .border_color(theme.colors.border)
+                            .rounded(px(6.0))
+                            .child(
+                                div()
+                                    .text_size(px(13.0))
+                                    .font_family("Ubuntu Mono")
+                                    .text_color(if procedure.is_empty() {
+                                        theme.colors.text_muted
+                                    } else {
+                                        theme.colors.text_primary
+                                    })
+                                    .child(if procedure.is_empty() {
+                                        "query.getUser".to_string()
+                                    } else {
+                                        procedure
+                                    })
+                            )
+                    )
+                    .child(
+                        div()
+                            .mt(px(8.0))
+                            .p(px(12.0))
+                            .bg(theme.colors.bg_elevated.opacity(0.5))
+                            .border_1()
+                            .border_color(theme.colors.border.opacity(0.5))
+                            .rounded(px(6.0))
+                            .child(
+                                div()
+                                    .text_size(px(11.0))
+                                    .text_color(theme.colors.text_muted)
+                                    .child("Note: Procedure editing in URL bar - MVP shows current value here")
+                            )
+                    )
+            )
+            .into_any_element()
+    }
+
+    fn render_trpc_parameters_tab(&mut self, cx: &mut Context<Self>) -> gpui::AnyElement {
+        let theme = theme::current(cx);
+
+        div()
+            .id("trpc-parameters-tab")
+            .w_full()
+            .h_full()
+            .flex()
+            .flex_col()
+            .gap(px(8.0))
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap(px(8.0))
+                    .px(px(4.0))
+                    .child(
+                        div()
+                            .size(px(20.0))
+                            .rounded(px(4.0))
+                            .bg(theme.colors.method_post.opacity(0.15))
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .text_size(px(10.0))
+                            .text_color(theme.colors.method_post)
+                            .child("{ }")
+                    )
+                    .child(
+                        div()
+                            .text_size(px(12.0))
+                            .font_weight(gpui::FontWeight::SEMIBOLD)
+                            .text_color(theme.colors.text_primary)
+                            .child("Parameters (JSON)")
+                    )
+                    .child(
+                        div()
+                            .text_size(px(10.0))
+                            .text_color(theme.colors.text_muted)
+                            .child("Enter the parameters for your tRPC procedure")
+                    )
+            )
+            .child(
+                div()
+                    .flex()
+                    .flex_1()
+                    .w_full()
+                    .border_1()
+                    .border_color(theme.colors.border)
+                    .rounded(px(6.0))
+                    .overflow_hidden()
+                    .child(self.trpc_params_editor.clone())
+            )
+            .into_any_element()
     }
 }
 

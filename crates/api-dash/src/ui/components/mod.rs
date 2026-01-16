@@ -1,7 +1,10 @@
 //! Shared UI components
 
+pub mod button;
 pub mod code_editor;
 mod text_input;
+
+pub use button::{Button, ButtonVariant, ButtonSize, ButtonStyles};
 
 #[allow(unused_imports)]
 pub use text_input::{
