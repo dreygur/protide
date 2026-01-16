@@ -61,9 +61,15 @@ impl RequestPanel {
                     .rounded(px(6.0))
                     .bg(theme.colors.bg_secondary)
                     .border_1()
-                    .border_color(theme.colors.border)
+                    .border_color(if self.mode_dropdown_open {
+                        theme.colors.accent
+                    } else {
+                        theme.colors.border
+                    })
                     .cursor_pointer()
-                    .hover(|s| s.border_color(theme.colors.border_focused))
+                    .when(!self.mode_dropdown_open, |s| {
+                        s.hover(|s| s.border_color(theme.colors.border_focused))
+                    })
                     .on_click(cx.listener(|this, _, _, cx| {
                         this.mode_dropdown_open = !this.mode_dropdown_open;
                         cx.notify();
@@ -84,8 +90,12 @@ impl RequestPanel {
                     .child(
                         div()
                             .text_size(px(10.0))
-                            .text_color(theme.colors.text_muted)
-                            .child("▼")
+                            .text_color(if self.mode_dropdown_open {
+                                theme.colors.accent
+                            } else {
+                                theme.colors.text_muted
+                            })
+                            .child(if self.mode_dropdown_open { "▲" } else { "▼" })
                     )
             )
             // Method selector button (dropdown rendered separately as overlay) - only show for HTTP mode

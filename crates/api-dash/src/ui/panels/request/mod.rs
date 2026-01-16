@@ -2867,6 +2867,20 @@ impl Render for RequestPanel {
             .relative()
             .track_focus(&self.body_focus)
             .capture_key_down(cx.listener(|this, event: &KeyDownEvent, _, cx| {
+                // Close dropdowns on Escape key
+                if event.keystroke.key == "escape" {
+                    if this.mode_dropdown_open {
+                        this.mode_dropdown_open = false;
+                        cx.notify();
+                        return;
+                    }
+                    if this.method_dropdown_open {
+                        this.method_dropdown_open = false;
+                        cx.notify();
+                        return;
+                    }
+                }
+
                 // Route key events based on active_edit
                 if this.active_edit.is_some() {
                     this.handle_edit_key(event, cx);
