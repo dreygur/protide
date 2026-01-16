@@ -37,138 +37,55 @@ impl RequestPanel {
         let protocol_offset = if is_https || is_http { 70.0 } else { 0.0 };
         self.url_input_left = base_offset + protocol_offset;
 
-        let is_graphql = self.request_mode == RequestMode::GraphQL;
-
         div()
             .w_full()
-            .h(px(60.0))
+            .h(px(64.0))
             .flex()
             .items_center()
             .gap(px(12.0))
             .px(px(20.0))
-            .bg(theme.colors.bg_secondary)
+            .bg(theme.colors.bg_primary)
             .border_b_1()
-            .border_color(theme.colors.border)
-            // Mode toggle (HTTP/GraphQL/WebSocket/gRPC) - spaced button style
+            .border_color(theme.colors.border.opacity(0.5))
+            // Compact mode selector dropdown
             .child(
                 div()
+                    .id("mode-selector")
+                    .w(px(110.0))
+                    .h(px(38.0))
+                    .px(px(12.0))
                     .flex()
+                    .items_center()
+                    .justify_between()
                     .gap(px(8.0))
-                    // HTTP button
+                    .rounded(px(6.0))
+                    .bg(theme.colors.bg_secondary)
+                    .border_1()
+                    .border_color(theme.colors.border)
+                    .cursor_pointer()
+                    .hover(|s| s.border_color(theme.colors.border_focused))
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.mode_dropdown_open = !this.mode_dropdown_open;
+                        cx.notify();
+                    }))
                     .child(
                         div()
-                            .id("mode-http")
-                            .h(px(32.0))
-                            .px(px(16.0))
-                            .flex()
-                            .items_center()
-                            .justify_center()
                             .text_size(px(13.0))
                             .font_weight(gpui::FontWeight::MEDIUM)
-                            .rounded(px(6.0))
-                            .cursor_pointer()
-                            .when(self.request_mode == RequestMode::Http, |el| {
-                                el.bg(theme.colors.accent)
-                                    .text_color(gpui::white())
+                            .text_color(theme.colors.text_primary)
+                            .child(match self.request_mode {
+                                RequestMode::Http => "HTTP",
+                                RequestMode::GraphQL => "GraphQL",
+                                RequestMode::WebSocket => "WebSocket",
+                                RequestMode::Grpc => "gRPC",
+                                RequestMode::Trpc => "tRPC",
                             })
-                            .when(self.request_mode != RequestMode::Http, |el| {
-                                el.bg(theme.colors.bg_tertiary)
-                                    .text_color(theme.colors.text_secondary)
-                                    .border_1()
-                                    .border_color(theme.colors.border)
-                                    .hover(|s| s.bg(theme.colors.bg_elevated).border_color(theme.colors.border_focused))
-                            })
-                            .on_click(cx.listener(|this, _, _, cx| {
-                                this.set_request_mode(RequestMode::Http, cx);
-                            }))
-                            .child("HTTP")
                     )
-                    // GraphQL button
                     .child(
                         div()
-                            .id("mode-graphql")
-                            .h(px(32.0))
-                            .px(px(16.0))
-                            .flex()
-                            .items_center()
-                            .justify_center()
-                            .text_size(px(13.0))
-                            .font_weight(gpui::FontWeight::MEDIUM)
-                            .rounded(px(6.0))
-                            .cursor_pointer()
-                            .when(is_graphql, |el| {
-                                el.bg(theme.colors.method_delete)
-                                    .text_color(gpui::white())
-                            })
-                            .when(!is_graphql, |el| {
-                                el.bg(theme.colors.bg_tertiary)
-                                    .text_color(theme.colors.text_secondary)
-                                    .border_1()
-                                    .border_color(theme.colors.border)
-                                    .hover(|s| s.bg(theme.colors.bg_elevated).border_color(theme.colors.border_focused))
-                            })
-                            .on_click(cx.listener(|this, _, _, cx| {
-                                this.set_request_mode(RequestMode::GraphQL, cx);
-                            }))
-                            .child("GraphQL")
-                    )
-                    // WebSocket button
-                    .child(
-                        div()
-                            .id("mode-ws")
-                            .h(px(32.0))
-                            .px(px(16.0))
-                            .flex()
-                            .items_center()
-                            .justify_center()
-                            .text_size(px(13.0))
-                            .font_weight(gpui::FontWeight::MEDIUM)
-                            .rounded(px(6.0))
-                            .cursor_pointer()
-                            .when(self.request_mode == RequestMode::WebSocket, |el| {
-                                el.bg(theme.colors.method_get)
-                                    .text_color(gpui::white())
-                            })
-                            .when(self.request_mode != RequestMode::WebSocket, |el| {
-                                el.bg(theme.colors.bg_tertiary)
-                                    .text_color(theme.colors.text_secondary)
-                                    .border_1()
-                                    .border_color(theme.colors.border)
-                                    .hover(|s| s.bg(theme.colors.bg_elevated).border_color(theme.colors.border_focused))
-                            })
-                            .on_click(cx.listener(|this, _, _, cx| {
-                                this.set_request_mode(RequestMode::WebSocket, cx);
-                            }))
-                            .child("WebSocket")
-                    )
-                    // gRPC button
-                    .child(
-                        div()
-                            .id("mode-grpc")
-                            .h(px(32.0))
-                            .px(px(16.0))
-                            .flex()
-                            .items_center()
-                            .justify_center()
-                            .text_size(px(13.0))
-                            .font_weight(gpui::FontWeight::MEDIUM)
-                            .rounded(px(6.0))
-                            .cursor_pointer()
-                            .when(self.request_mode == RequestMode::Grpc, |el| {
-                                el.bg(theme.colors.method_put)
-                                    .text_color(gpui::white())
-                            })
-                            .when(self.request_mode != RequestMode::Grpc, |el| {
-                                el.bg(theme.colors.bg_tertiary)
-                                    .text_color(theme.colors.text_secondary)
-                                    .border_1()
-                                    .border_color(theme.colors.border)
-                                    .hover(|s| s.bg(theme.colors.bg_elevated).border_color(theme.colors.border_focused))
-                            })
-                            .on_click(cx.listener(|this, _, _, cx| {
-                                this.set_request_mode(RequestMode::Grpc, cx);
-                            }))
-                            .child("gRPC")
+                            .text_size(px(10.0))
+                            .text_color(theme.colors.text_muted)
+                            .child("▼")
                     )
             )
             // Method selector button (dropdown rendered separately as overlay) - only show for HTTP mode
@@ -283,33 +200,33 @@ impl RequestPanel {
                     }))
                     .child(self.render_url_text(is_url_focused, cx)),
             )
-            // Send button with shortcut hint
+            // Hero Send button with prominent styling
             .child(
                 div()
                     .flex()
                     .items_center()
-                    .gap(px(8.0))
+                    .gap(px(12.0))
                     .child({
                         let is_loading = self.loading;
                         div()
                             .id("send-button")
-                            .h(px(36.0))
-                            .px(px(16.0))
+                            .h(px(44.0))
+                            .px(px(24.0))
                             .flex()
                             .items_center()
                             .justify_center()
-                            .gap(px(6.0))
-                            .rounded(px(6.0))
-                            .text_size(px(13.0))
-                            .font_weight(gpui::FontWeight::SEMIBOLD)
+                            .gap(px(8.0))
+                            .rounded(px(8.0))
+                            .text_size(px(14.0))
+                            .font_weight(gpui::FontWeight::BOLD)
                             .text_color(gpui::white())
+                            .shadow_md()
                             .when(is_loading, |el| {
                                 el.bg(theme.colors.accent.opacity(0.7))
                                     .cursor_default()
-                                    // Spinner
                                     .child(
                                         div()
-                                            .size(px(14.0))
+                                            .size(px(16.0))
                                             .rounded_full()
                                             .border_2()
                                             .border_color(gpui::white().opacity(0.3))
@@ -321,8 +238,11 @@ impl RequestPanel {
                             .when(!is_loading, |el| {
                                 el.bg(theme.colors.accent)
                                     .cursor_pointer()
-                                    .hover(|style| style.bg(theme.colors.accent_hover))
-                                    .active(|style| style.opacity(0.9))
+                                    .hover(|style| {
+                                        style.bg(theme.colors.accent_hover)
+                                            .shadow_lg()
+                                    })
+                                    .active(|style| style.shadow_sm())
                                     .on_click(cx.listener(|this, _, _, cx| {
                                         match this.request_mode {
                                             RequestMode::Http | RequestMode::GraphQL => this.send_request(cx),
@@ -331,24 +251,22 @@ impl RequestPanel {
                                             RequestMode::Trpc => this.send_trpc_request(cx),
                                         }
                                     }))
-                                    .child(
-                                        div()
-                                            .text_size(px(10.0))
-                                            .child("▶")
-                                    )
                                     .child("Send")
                             })
                     })
-                    // Keyboard shortcut hint
+                    // Keyboard shortcut hint - more subtle
                     .child(
                         div()
-                            .px(px(6.0))
-                            .py(px(4.0))
-                            .rounded(px(4.0))
-                            .bg(theme.colors.bg_tertiary)
-                            .text_size(px(10.0))
+                            .px(px(8.0))
+                            .py(px(5.0))
+                            .rounded(px(6.0))
+                            .bg(theme.colors.bg_secondary)
+                            .border_1()
+                            .border_color(theme.colors.border.opacity(0.5))
+                            .text_size(px(11.0))
+                            .font_weight(gpui::FontWeight::MEDIUM)
                             .text_color(theme.colors.text_muted)
-                            .child("⌘↵")
+                            .child("⌘ + Enter")
                     )
                     // Save button
                     .child(
@@ -509,16 +427,14 @@ impl RequestPanel {
         let header_count = self.headers.iter().filter(|h| h.enabled && !h.key.is_empty()).count();
 
         div()
-            .h(px(48.0))
+            .h(px(44.0))
             .w_full()
             .flex()
             .items_center()
             .px(px(20.0))
-            .gap(px(4.0))
-            .border_b_1()
-            .border_color(theme.colors.border)
-            .bg(theme.colors.bg_secondary)
-            .children(tabs.iter().enumerate().map(|(i, (tab, icon))| {
+            .gap(px(2.0))
+            .bg(theme.colors.bg_primary)
+            .children(tabs.iter().enumerate().map(|(i, (tab, _icon))| {
                 let is_active = i == active_tab;
                 let count = match self.request_mode {
                     RequestMode::GraphQL => match i {
@@ -546,61 +462,55 @@ impl RequestPanel {
 
                 div()
                     .id(SharedString::from(format!("tab-{}", i)))
-                    .px(px(16.0))
-                    .py(px(10.0))
+                    .px(px(14.0))
+                    .h_full()
                     .flex()
                     .items_center()
-                    .gap(px(8.0))
-                    .rounded_t(px(6.0))
+                    .gap(px(6.0))
                     .cursor_pointer()
                     .when(is_active, |el| {
-                        el.bg(theme.colors.bg_tertiary)
+                        el.border_b_2()
+                            .border_color(theme.colors.accent)
                             .child(
                                 div()
-                                    .text_size(px(11.0))
-                                    .text_color(theme.colors.accent)
-                                    .child(*icon)
-                            )
-                            .child(
-                                div()
-                                    .text_size(px(12.0))
-                                    .font_weight(gpui::FontWeight::MEDIUM)
+                                    .text_size(px(13.0))
+                                    .font_weight(gpui::FontWeight::SEMIBOLD)
                                     .text_color(theme.colors.text_primary)
                                     .child(*tab)
                             )
                             .when(count > 0, |el| {
                                 el.child(
                                     div()
-                                        .px(px(5.0))
-                                        .py(px(1.0))
-                                        .rounded(px(8.0))
-                                        .bg(theme.colors.accent.opacity(0.15))
+                                        .px(px(6.0))
+                                        .py(px(2.0))
+                                        .rounded(px(10.0))
+                                        .bg(theme.colors.accent)
                                         .text_size(px(10.0))
-                                        .text_color(theme.colors.accent)
+                                        .font_weight(gpui::FontWeight::MEDIUM)
+                                        .text_color(gpui::white())
                                         .child(format!("{}", count))
                                 )
                             })
                     })
                     .when(!is_active, |el| {
-                        el.hover(|s| s.bg(theme.colors.bg_tertiary.opacity(0.5)))
+                        el.border_b_2()
+                            .border_color(gpui::transparent_black())
+                            .hover(|s| {
+                                s.border_color(theme.colors.border)
+                                    .bg(theme.colors.bg_secondary.opacity(0.5))
+                            })
                             .child(
                                 div()
-                                    .text_size(px(11.0))
-                                    .text_color(theme.colors.text_muted)
-                                    .child(*icon)
-                            )
-                            .child(
-                                div()
-                                    .text_size(px(12.0))
+                                    .text_size(px(13.0))
                                     .text_color(theme.colors.text_secondary)
                                     .child(*tab)
                             )
                             .when(count > 0, |el| {
                                 el.child(
                                     div()
-                                        .px(px(5.0))
-                                        .py(px(1.0))
-                                        .rounded(px(8.0))
+                                        .px(px(6.0))
+                                        .py(px(2.0))
+                                        .rounded(px(10.0))
                                         .bg(theme.colors.bg_tertiary)
                                         .text_size(px(10.0))
                                         .text_color(theme.colors.text_muted)
