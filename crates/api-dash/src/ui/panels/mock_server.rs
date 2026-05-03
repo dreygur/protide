@@ -44,6 +44,27 @@ impl MockServerPanel {
         cx.notify();
     }
 
+    fn add_proxy_route(&mut self, cx: &mut Context<Self>) {
+        // Ask user for target URL via simple dialog
+        // (rfd doesn't support text input natively, so we use a workaround:
+        //  pick_folder as a signal and use a message dialog for instruction)
+        // In practice, we use a pre-filled default and let users edit the route list
+        let target = "https://api.example.com".to_string();
+        let route = MockRoute::proxy(self.new_route_method, "/api/*", &target);
+        self.server.add_route(route);
+
+        let _ = rfd::MessageDialog::new()
+            .set_title("Proxy Route Added")
+            .set_description(&format!(
+                "Proxy route added: {} /api/* → {}\n\nEdit the route in the list to change the path and target.",
+                self.new_route_method.as_str(), target
+            ))
+            .set_level(rfd::MessageLevel::Info)
+            .show();
+
+        cx.notify();
+    }
+
     fn remove_route(&mut self, index: usize, cx: &mut Context<Self>) {
         self.server.remove_route(index);
         cx.notify();
@@ -207,10 +228,13 @@ impl Render for MockServerPanel {
                                                     .text_xs()
                                                     .px_2()
                                                     .py_px()
-                                                    
-                                                    .bg(status_color(route.response.status, &theme.colors))
+                                                    .bg(if route.is_proxy() { theme.colors.accent } else { status_color(route.response.status, &theme.colors) })
                                                     .text_color(theme.colors.bg_primary)
-                                                    .child(format!("{}", route.response.status))
+                                                    .child(if route.is_proxy() {
+                                                        format!("→ {}", route.proxy_target.as_deref().unwrap_or(""))
+                                                    } else {
+                                                        format!("{}", route.response.status)
+                                                    })
                                             )
                                             .child(
                                                 div()
@@ -330,23 +354,44 @@ impl Render for MockServerPanel {
                                     .on_click(cx.listener(|this, _, _, cx| this.set_status(500, cx)))
                             )
                     )
-                    // Add button
+                    // Buttons row
                     .child(
                         div()
-                            .id("add-route-btn")
                             .mt_2()
-                            .px_3()
-                            .py_1()
-                            
-                            .cursor_pointer()
-                            .bg(theme.colors.accent)
-                            .text_color(theme.colors.bg_primary)
-                            .text_sm()
-                            .text_center()
-                            .child("Add Route")
-                            .on_click(cx.listener(|this, _, _, cx| {
-                                this.add_route(cx);
-                            }))
+                            .flex()
+                            .gap_2()
+                            .child(
+                                div()
+                                    .id("add-route-btn")
+                                    .flex_1()
+                                    .px_3()
+                                    .py_1()
+                                    .cursor_pointer()
+                                    .bg(theme.colors.accent)
+                                    .text_color(theme.colors.bg_primary)
+                                    .text_sm()
+                                    .text_center()
+                                    .child("Add Mock Route")
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        this.add_route(cx);
+                                    }))
+                            )
+                            .child(
+                                div()
+                                    .id("add-proxy-btn")
+                                    .flex_1()
+                                    .px_3()
+                                    .py_1()
+                                    .cursor_pointer()
+                                    .bg(theme.colors.bg_tertiary)
+                                    .text_color(theme.colors.text_primary)
+                                    .text_sm()
+                                    .text_center()
+                                    .child("Add Proxy Route")
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        this.add_proxy_route(cx);
+                                    }))
+                            )
                     )
             )
     }

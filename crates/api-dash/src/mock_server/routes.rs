@@ -152,10 +152,14 @@ pub struct MockRoute {
     pub method: HttpMethod,
     /// Path pattern (supports * wildcard)
     pub path: String,
-    /// Response to return
+    /// Response to return (used when proxy_target is None)
     pub response: MockResponse,
     /// Whether route is enabled
     pub enabled: bool,
+    /// Optional proxy target URL — when set, the request is forwarded here
+    /// instead of returning the static response.
+    /// E.g. "https://api.example.com" → request to /users becomes https://api.example.com/users
+    pub proxy_target: Option<String>,
 }
 
 impl MockRoute {
@@ -168,7 +172,27 @@ impl MockRoute {
             path,
             response,
             enabled: true,
+            proxy_target: None,
         }
+    }
+
+    /// Create a proxy route that forwards requests to `target_url`.
+    pub fn proxy(method: HttpMethod, path: impl Into<String>, target_url: impl Into<String>) -> Self {
+        let path = path.into();
+        let target = target_url.into();
+        Self {
+            name: format!("{} {} → {}", method, path, target),
+            method,
+            path,
+            response: MockResponse::default(),
+            enabled: true,
+            proxy_target: Some(target),
+        }
+    }
+
+    /// Whether this route uses proxy forwarding
+    pub fn is_proxy(&self) -> bool {
+        self.proxy_target.is_some()
     }
 
     /// Set route name
@@ -251,6 +275,7 @@ impl Default for MockRoute {
             path: "/".to_string(),
             response: MockResponse::ok(""),
             enabled: true,
+            proxy_target: None,
         }
     }
 }

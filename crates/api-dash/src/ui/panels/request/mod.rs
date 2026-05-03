@@ -587,34 +587,46 @@ impl RequestPanel {
         }
     }
 
-    /// Parse services and methods from proto file content
+    /// Parse services and methods from proto file using protox, falling back to text parsing.
     fn parse_proto_services(&mut self, content: &str) {
         self.grpc_services.clear();
         self.grpc_methods.clear();
         self.grpc_service = None;
         self.grpc_method = None;
 
-        // Simple regex-like parsing for service definitions
-        // service ServiceName { ... }
+        // Try real proto parsing via protox first
+        if let Some(ref path) = self.grpc_proto_path.clone() {
+            if let Ok(pool) = crate::protocols::grpc::parse_proto_file(path) {
+                for svc in pool.services() {
+                    let svc_name = svc.full_name().to_string();
+                    self.grpc_services.push(svc_name.clone());
+                    for method in svc.methods() {
+                        self.grpc_methods.push(format!("{}/{}", svc_name, method.name()));
+                    }
+                }
+                if let Some(s) = self.grpc_services.first() {
+                    self.grpc_service = Some(s.clone());
+                }
+                if let Some(m) = self.grpc_methods.first() {
+                    self.grpc_method = Some(m.clone());
+                }
+                return;
+            }
+        }
+
+        // Fallback: basic text parsing
         let mut in_service = false;
         let mut current_service = String::new();
 
         for line in content.lines() {
             let trimmed = line.trim();
-
-            // Check for service definition
             if trimmed.starts_with("service ") {
-                if let Some(name) = trimmed
-                    .strip_prefix("service ")
-                    .and_then(|s| s.split_whitespace().next())
-                {
+                if let Some(name) = trimmed.strip_prefix("service ").and_then(|s| s.split_whitespace().next()) {
                     current_service = name.to_string();
                     self.grpc_services.push(current_service.clone());
                     in_service = true;
                 }
             }
-
-            // Check for rpc method definition
             if in_service && trimmed.starts_with("rpc ") {
                 if let Some(name) = trimmed
                     .strip_prefix("rpc ")
@@ -624,19 +636,16 @@ impl RequestPanel {
                     self.grpc_methods.push(format!("{}/{}", current_service, name));
                 }
             }
-
-            // Check for end of service block
             if in_service && trimmed == "}" {
                 in_service = false;
             }
         }
 
-        // Select first service/method if available
-        if let Some(service) = self.grpc_services.first() {
-            self.grpc_service = Some(service.clone());
+        if let Some(s) = self.grpc_services.first() {
+            self.grpc_service = Some(s.clone());
         }
-        if let Some(method) = self.grpc_methods.first() {
-            self.grpc_method = Some(method.clone());
+        if let Some(m) = self.grpc_methods.first() {
+            self.grpc_method = Some(m.clone());
         }
     }
 
@@ -645,79 +654,81 @@ impl RequestPanel {
         let Some(method) = &self.grpc_method else {
             return;
         };
+        let Some(proto_path) = self.grpc_proto_path.clone() else {
+            return;
+        };
 
         self.loading = true;
         cx.notify();
 
-        // Get the message from editor
         let message = self.grpc_message_editor.read(cx).content().to_string();
         let url = self.url.clone();
         let method = method.clone();
 
-        // Collect enabled metadata
+        let env_state = self.explorer_panel.as_ref().map(|p| p.read(cx).env_state().clone());
+        let substitute = |s: &str| -> String {
+            if let Some(ref env) = env_state { env.substitute(s) } else { s.to_string() }
+        };
+
+        let url = substitute(&url);
+
         let metadata: Vec<(String, String)> = self.grpc_metadata
             .iter()
             .filter(|m| m.enabled && !m.key.is_empty())
-            .map(|m| (m.key.clone(), m.value.clone()))
+            .map(|m| (substitute(&m.key), substitute(&m.value)))
             .collect();
 
         let response_panel = self.response_panel.clone();
 
-        // Spawn async task to handle gRPC request
         let task = cx.spawn(async move |this: gpui::WeakEntity<Self>, cx: &mut gpui::AsyncApp| {
-            let start_time = std::time::Instant::now();
+            let (result_tx, result_rx) = std::sync::mpsc::channel::<Result<(String, std::time::Duration), String>>();
 
-            // Create channel for result
-            let (result_tx, result_rx) = std::sync::mpsc::channel::<(String, std::time::Duration)>();
-
-            // Spawn gRPC request in background thread
             std::thread::spawn(move || {
-                // Parse the URL (grpc://host:port -> http://host:port)
-                let http_url = url
-                    .replace("grpc://", "http://")
-                    .replace("grpcs://", "https://");
-
-                // For now, we'll show a placeholder response
-                // Full gRPC implementation requires prost-reflect for dynamic messages
-                let response_body = format!(
-                    r#"{{
-  "status": "gRPC Preview",
-  "note": "Full gRPC execution requires proto compilation",
-  "request": {{
-    "url": "{}",
-    "method": "{}",
-    "message": {},
-    "metadata_count": {}
-  }}
-}}"#,
-                    http_url,
-                    method,
-                    message,
-                    metadata.len()
+                let result = crate::protocols::grpc::execute_unary_blocking(
+                    &url,
+                    &method,
+                    &message,
+                    metadata,
+                    &proto_path,
                 );
-
-                let elapsed = start_time.elapsed();
-                let _ = result_tx.send((response_body, elapsed));
+                let _ = result_tx.send(result);
             });
 
-            // Wait for result with timeout
-            if let Ok((body, elapsed)) = result_rx.recv_timeout(std::time::Duration::from_secs(30)) {
-                let _ = cx.update(|cx| {
-                    response_panel.update(cx, |panel, cx| {
-                        panel.set_response(ResponseData {
-                            status: 200,
-                            status_text: "OK".to_string(),
-                            headers: vec![
-                                ("content-type".to_string(), "application/grpc+json".to_string()),
-                                ("grpc-status".to_string(), "0".to_string()),
-                            ],
-                            body: body.clone(),
-                            time: elapsed,
-                            size: body.len(),
-                        }, cx);
-                    });
-                });
-
+            if let Ok(result) = result_rx.recv_timeout(std::time::Duration::from_secs(60)) {
+                match result {
+                    Ok((body, elapsed)) => {
+                        let body_size = body.len();
+                        let _ = cx.update(|cx| {
+                            response_panel.update(cx, |panel, cx| {
+                                panel.set_response(ResponseData {
+                                    status: 200,
+                                    status_text: "OK".to_string(),
+                                    headers: vec![
+                                        ("content-type".to_string(), "application/grpc+json".to_string()),
+                                        ("grpc-status".to_string(), "0".to_string()),
+                                    ],
+                                    body,
+                                    time: elapsed,
+                                    size: body_size,
+                                }, cx);
+                            });
+                        });
+                    }
+                    Err(e) => {
+                        let _ = cx.update(|cx| {
+                            response_panel.update(cx, |panel, cx| {
+                                panel.set_response(ResponseData {
+                                    status: 0,
+                                    status_text: "Error".to_string(),
+                                    headers: vec![],
+                                    body: format!("gRPC Error: {}", e),
+                                    time: std::time::Duration::ZERO,
+                                    size: 0,
+                                }, cx);
+                            });
+                        });
+                    }
+                }
                 let _ = cx.update(|cx| {
                     let _ = this.update(cx, |panel, cx| {
                         panel.loading = false;
@@ -2074,11 +2085,15 @@ impl RequestPanel {
         cx.notify();
     }
 
-    /// Browse for a file to import (Postman collection, etc.)
+    /// Browse for a file to import (Postman collection, Bruno, OpenAPI, etc.)
     pub(super) fn browse_import_file(&mut self, cx: &mut Context<Self>) {
         let mut dialog = rfd::FileDialog::new()
             .set_title("Import Collection")
+            .add_filter("All Supported", &["json", "yaml", "yml", "bru", "txt", "curl"])
             .add_filter("Postman Collection", &["json"])
+            .add_filter("OpenAPI/Swagger", &["json", "yaml", "yml"])
+            .add_filter("Bruno Collection", &["bru"])
+            .add_filter("cURL Command", &["txt", "curl"])
             .add_filter("All Files", &["*"]);
 
         if let Some(home) = dirs::home_dir() {

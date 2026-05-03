@@ -4,11 +4,14 @@
 //! - cURL commands
 //! - Postman Collection v2.1
 //! - OpenAPI/Swagger specifications
+//! - Bruno .bru files
 
+mod bruno;
 mod curl;
 mod openapi;
 mod postman;
 
+pub use bruno::parse_bruno;
 pub use curl::parse_curl;
 pub use openapi::parse_openapi;
 pub use postman::parse_postman;
@@ -22,16 +25,15 @@ pub enum ImportFormat {
     Curl,
     Postman,
     OpenApi,
+    Bruno,
 }
 
 impl ImportFormat {
     /// Detect format from file extension
     pub fn from_extension(path: &Path) -> Option<Self> {
         match path.extension()?.to_str()? {
-            "json" => {
-                // Could be Postman or OpenAPI - need to inspect content
-                None
-            }
+            "bru" => Some(Self::Bruno),
+            "json" => None, // Could be Postman or OpenAPI - inspect content
             "yaml" | "yml" => Some(Self::OpenApi),
             _ => None,
         }
@@ -46,17 +48,21 @@ impl ImportFormat {
             return Some(Self::Curl);
         }
 
+        // Bruno .bru format (has "meta {" block)
+        if trimmed.contains("meta {") && (trimmed.contains("get {") || trimmed.contains("post {")
+            || trimmed.contains("put {") || trimmed.contains("delete {")
+            || trimmed.contains("patch {")) {
+            return Some(Self::Bruno);
+        }
+
         // Try to parse as JSON
         if let Ok(json) = serde_json::from_str::<serde_json::Value>(trimmed) {
-            // Postman Collection v2.1
             if json.get("info").and_then(|i| i.get("schema")).is_some() {
                 return Some(Self::Postman);
             }
-            // OpenAPI 3.x
             if json.get("openapi").is_some() {
                 return Some(Self::OpenApi);
             }
-            // Swagger 2.0
             if json.get("swagger").is_some() {
                 return Some(Self::OpenApi);
             }
@@ -114,11 +120,12 @@ impl Default for ImportResult {
 /// Import from any supported format (auto-detect)
 pub fn import(content: &str) -> Result<ImportResult, String> {
     let format = ImportFormat::detect(content)
-        .ok_or_else(|| "Could not detect import format".to_string())?;
+        .ok_or_else(|| "Could not detect import format. Supported: cURL, Postman, OpenAPI, Bruno .bru".to_string())?;
 
     match format {
         ImportFormat::Curl => parse_curl(content),
         ImportFormat::Postman => parse_postman(content),
         ImportFormat::OpenApi => parse_openapi(content),
+        ImportFormat::Bruno => parse_bruno(content),
     }
 }

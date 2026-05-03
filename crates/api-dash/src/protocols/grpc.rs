@@ -1,6 +1,8 @@
 //! gRPC protocol support using prost-reflect for dynamic proto handling
 
-use prost_reflect::{DescriptorPool, DynamicMessage, MethodDescriptor, ServiceDescriptor};
+use prost::Message;
+use prost_reflect::{DescriptorPool, DynamicMessage};
+use std::path::Path;
 use std::time::Duration;
 
 /// gRPC method information
@@ -22,168 +24,181 @@ pub struct GrpcService {
     pub methods: Vec<GrpcMethod>,
 }
 
-/// Parse a proto file content into a descriptor pool
-///
-/// This uses prost-reflect to parse proto files at runtime without compile-time codegen.
-pub fn parse_proto_file(content: &str) -> Result<DescriptorPool, String> {
-    // Try to parse as FileDescriptorSet
-    // prost-reflect expects proto files to be compiled to FileDescriptorSet format
-    // For raw .proto files, we need to use protoc or a parser
-
-    // For now, return error with helpful message
-    // In a full implementation, we would:
-    // 1. Use protox or similar to parse .proto syntax into FileDescriptorProto
-    // 2. Build DescriptorPool from FileDescriptorProto
-
-    Err("Proto file parsing requires protoc integration. Use precompiled .pb files or integrate protox crate.".to_string())
+/// Parse a .proto file and return a DescriptorPool.
+/// Uses protox to compile the file without requiring system protoc.
+pub fn parse_proto_file(path: &Path) -> Result<DescriptorPool, String> {
+    let dir = path.parent().unwrap_or(Path::new("."));
+    let fds = protox::compile([path], [dir])
+        .map_err(|e| format!("Proto compile error: {}", e))?;
+    DescriptorPool::from_file_descriptor_set(fds)
+        .map_err(|e| format!("Descriptor pool error: {}", e))
 }
 
-/// Extract services and methods from a descriptor pool
+/// Extract services and methods from a descriptor pool.
 pub fn extract_services(pool: &DescriptorPool) -> Vec<GrpcService> {
-    let mut services = Vec::new();
-
-    for service_desc in pool.services() {
-        let mut methods = Vec::new();
-
-        for method_desc in service_desc.methods() {
-            methods.push(GrpcMethod {
-                name: method_desc.name().to_string(),
-                full_name: method_desc.full_name().to_string(),
-                input_type: method_desc.input().full_name().to_string(),
-                output_type: method_desc.output().full_name().to_string(),
-                is_client_streaming: method_desc.is_client_streaming(),
-                is_server_streaming: method_desc.is_server_streaming(),
-            });
-        }
-
-        services.push(GrpcService {
-            name: service_desc.name().to_string(),
-            full_name: service_desc.full_name().to_string(),
-            methods,
-        });
-    }
-
-    services
+    pool.services()
+        .map(|svc| {
+            let methods = svc
+                .methods()
+                .map(|m| GrpcMethod {
+                    name: m.name().to_string(),
+                    full_name: m.full_name().to_string(),
+                    input_type: m.input().full_name().to_string(),
+                    output_type: m.output().full_name().to_string(),
+                    is_client_streaming: m.is_client_streaming(),
+                    is_server_streaming: m.is_server_streaming(),
+                })
+                .collect();
+            GrpcService {
+                name: svc.name().to_string(),
+                full_name: svc.full_name().to_string(),
+                methods,
+            }
+        })
+        .collect()
 }
 
-/// Execute a unary gRPC call
+/// Execute a unary gRPC call (blocking).
 ///
-/// # Arguments
-/// * `url` - The gRPC server URL (e.g., "http://localhost:50051")
-/// * `method_full_name` - Full method name (e.g., "/package.Service/Method")
-/// * `message_json` - JSON representation of the message
-/// * `metadata` - gRPC metadata (headers)
-/// * `descriptor_pool` - Descriptor pool for message serialization
+/// `method_full_name` format: `ServiceName/MethodName` or `package.ServiceName/MethodName`
+/// (leading slash is optional).
 ///
-/// # Returns
-/// Result containing (response_json, elapsed_time) or error string
-pub async fn execute_unary(
+/// Returns `(response_json, elapsed)` on success.
+pub fn execute_unary_blocking(
     url: &str,
     method_full_name: &str,
     message_json: &str,
     metadata: Vec<(String, String)>,
-    descriptor_pool: &DescriptorPool,
+    proto_path: &Path,
 ) -> Result<(String, Duration), String> {
     let start = std::time::Instant::now();
 
-    // Get method descriptor
-    let method_desc = descriptor_pool
-        .get_service_by_name(&extract_service_name(method_full_name))
-        .and_then(|svc| {
-            svc.methods()
-                .find(|m| m.full_name() == method_full_name || format!("/{}", m.full_name()) == method_full_name)
-        })
-        .ok_or_else(|| format!("Method not found: {}", method_full_name))?;
+    let pool = parse_proto_file(proto_path)?;
 
-    // Parse JSON into DynamicMessage
-    let _request_msg = json_to_dynamic_message(message_json, method_desc.input(), descriptor_pool)?;
+    // Parse "Service/Method" or "pkg.Service/Method"
+    let method_path = method_full_name.trim_start_matches('/');
+    let slash_pos = method_path
+        .rfind('/')
+        .ok_or_else(|| format!("Invalid method name '{}': missing '/'", method_full_name))?;
+    let service_name = &method_path[..slash_pos];
+    let method_name = &method_path[slash_pos + 1..];
 
-    // Serialize to protobuf bytes
-    // TODO: Implement proper encoding once prost-reflect API is correctly used
-    let request_bytes: Vec<u8> = Vec::new(); // _request_msg.encode_to_vec();
-    let request_size = request_bytes.len();
+    let service_desc = pool
+        .get_service_by_name(service_name)
+        .ok_or_else(|| format!("Service not found: '{}'", service_name))?;
 
-    // Create tonic channel
-    let _channel = tonic::transport::Channel::from_shared(url.to_string())
-        .map_err(|e| format!("Invalid URL: {}", e))?
-        .connect()
-        .await
-        .map_err(|e| format!("Connection failed: {}", e))?;
+    let method_desc = service_desc
+        .methods()
+        .find(|m| m.name() == method_name)
+        .ok_or_else(|| format!("Method not found: '{}'", method_name))?;
 
-    // Build request with metadata
-    let mut request = tonic::Request::new(request_bytes);
-    for (key, value) in metadata {
-        if let (Ok(key_name), Ok(val)) = (
-            tonic::metadata::MetadataKey::from_bytes(key.as_bytes()),
-            tonic::metadata::MetadataValue::try_from(&value),
-        ) {
-            request.metadata_mut().insert(key_name, val);
-        }
+    let input_desc = method_desc.input();
+    let output_desc = method_desc.output();
+
+    // JSON → DynamicMessage → protobuf bytes
+    let request_msg = DynamicMessage::deserialize(
+        input_desc,
+        &mut serde_json::Deserializer::from_str(message_json),
+    )
+    .map_err(|e| format!("JSON parse error: {}", e))?;
+    let request_bytes = request_msg.encode_to_vec();
+    let grpc_body = grpc_encode_message(&request_bytes);
+
+    // Build HTTP URL: grpc:// → http://, grpcs:// → https://
+    let http_url = url
+        .trim_end_matches('/')
+        .replace("grpc://", "http://")
+        .replace("grpcs://", "https://");
+    let full_url = format!("{}/{}", http_url, method_path);
+    let use_h2c = http_url.starts_with("http://");
+
+    // Build reqwest blocking client with HTTP/2
+    let mut builder = reqwest::blocking::Client::builder()
+        .timeout(Duration::from_secs(30));
+    if use_h2c {
+        builder = builder.http2_prior_knowledge();
+    }
+    let client = builder
+        .build()
+        .map_err(|e| format!("Client build error: {}", e))?;
+
+    let mut req = client
+        .post(&full_url)
+        .header("content-type", "application/grpc+proto")
+        .header("te", "trailers")
+        .body(grpc_body);
+
+    for (key, value) in &metadata {
+        req = req.header(key.as_str(), value.as_str());
     }
 
-    // Execute unary call using generic codec
-    // Note: This requires tonic::codec::ProstCodec which works with bytes
-    use tonic::codec::{Codec, DecodeBuf, EncodeBuf};
+    let response = req
+        .send()
+        .map_err(|e| format!("gRPC request failed: {}", e))?;
 
-    // For simplicity, we'll use HTTP/2 directly
-    // In a full implementation, use tonic::client::Grpc with dynamic codec
-
-    // Placeholder: Return success with timing
     let elapsed = start.elapsed();
 
-    let response_json = serde_json::json!({
-        "note": "gRPC unary execution partially implemented",
-        "method": method_full_name,
-        "request_size": request_size,
-        "elapsed_ms": elapsed.as_millis(),
-        "status": "Connected to channel successfully",
-        "next_steps": "Implement dynamic codec for prost-reflect DynamicMessage"
-    });
+    // Check grpc-status (status 0 = OK)
+    let grpc_status = response
+        .headers()
+        .get("grpc-status")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.parse::<u32>().ok())
+        .unwrap_or(0);
 
-    Ok((serde_json::to_string_pretty(&response_json).unwrap(), elapsed))
-}
-
-/// Convert JSON string to DynamicMessage
-fn json_to_dynamic_message(
-    json: &str,
-    message_desc: prost_reflect::MessageDescriptor,
-    _pool: &DescriptorPool,
-) -> Result<DynamicMessage, String> {
-    // Parse JSON
-    let _json_value: serde_json::Value = serde_json::from_str(json)
-        .map_err(|e| format!("Invalid JSON: {}", e))?;
-
-    // Create dynamic message from JSON
-    // TODO: Use correct prost-reflect API for JSON deserialization
-    let msg = DynamicMessage::new(message_desc);
-    // let msg = DynamicMessage::deserialize(message_desc, _json_value)
-    //     .map_err(|e| format!("Failed to convert JSON to protobuf: {}", e))?;
-
-    Ok(msg)
-}
-
-/// Convert DynamicMessage to JSON string
-fn dynamic_message_to_json(_msg: &DynamicMessage) -> Result<String, String> {
-    // TODO: Use correct prost-reflect API for JSON serialization
-    // let json_value = _msg.serialize_to_json_value()
-    //     .map_err(|e| format!("Failed to convert protobuf to JSON: {}", e))?;
-    let json_value = serde_json::json!({"status": "todo"});
-
-    serde_json::to_string_pretty(&json_value)
-        .map_err(|e| format!("Failed to serialize JSON: {}", e))
-}
-
-/// Extract service name from full method name
-/// E.g., "/package.Service/Method" -> "package.Service"
-fn extract_service_name(full_method: &str) -> String {
-    let trimmed = full_method.trim_start_matches('/');
-    if let Some(slash_pos) = trimmed.rfind('/') {
-        trimmed[..slash_pos].to_string()
-    } else if let Some(dot_pos) = trimmed.rfind('.') {
-        trimmed[..=dot_pos].trim_end_matches('.').to_string()
-    } else {
-        trimmed.to_string()
+    if grpc_status != 0 {
+        let grpc_message = response
+            .headers()
+            .get("grpc-message")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("Unknown gRPC error")
+            .to_string();
+        return Err(format!(
+            "gRPC error status {}: {}",
+            grpc_status, grpc_message
+        ));
     }
+
+    let body_bytes = response
+        .bytes()
+        .map_err(|e| format!("Failed to read response body: {}", e))?;
+
+    let msg_bytes = grpc_decode_message(&body_bytes)?;
+
+    let response_msg = DynamicMessage::decode(output_desc, msg_bytes.as_ref())
+        .map_err(|e| format!("Protobuf decode error: {}", e))?;
+
+    let response_json = serde_json::to_string_pretty(&response_msg)
+        .map_err(|e| format!("JSON serialize error: {}", e))?;
+
+    Ok((response_json, elapsed))
+}
+
+fn grpc_encode_message(msg_bytes: &[u8]) -> Vec<u8> {
+    let mut buf = Vec::with_capacity(5 + msg_bytes.len());
+    buf.push(0u8); // compression flag: not compressed
+    buf.extend_from_slice(&(msg_bytes.len() as u32).to_be_bytes());
+    buf.extend_from_slice(msg_bytes);
+    buf
+}
+
+fn grpc_decode_message(data: &[u8]) -> Result<Vec<u8>, String> {
+    if data.len() < 5 {
+        return Err(format!(
+            "gRPC response too short ({} bytes, need at least 5)",
+            data.len()
+        ));
+    }
+    let _compressed = data[0];
+    let msg_len = u32::from_be_bytes([data[1], data[2], data[3], data[4]]) as usize;
+    if data.len() < 5 + msg_len {
+        return Err(format!(
+            "Incomplete gRPC response (got {} bytes, expected {})",
+            data.len(),
+            5 + msg_len
+        ));
+    }
+    Ok(data[5..5 + msg_len].to_vec())
 }
 
 #[cfg(test)]
@@ -191,9 +206,20 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_extract_service_name() {
-        assert_eq!(extract_service_name("/greet.Greeter/SayHello"), "greet.Greeter");
-        assert_eq!(extract_service_name("greet.Greeter/SayHello"), "greet.Greeter");
-        assert_eq!(extract_service_name("/Greeter/SayHello"), "Greeter");
+    fn test_grpc_encode_decode_roundtrip() {
+        let msg = b"hello world";
+        let encoded = grpc_encode_message(msg);
+        assert_eq!(encoded[0], 0);
+        assert_eq!(
+            u32::from_be_bytes([encoded[1], encoded[2], encoded[3], encoded[4]]),
+            msg.len() as u32
+        );
+        let decoded = grpc_decode_message(&encoded).unwrap();
+        assert_eq!(decoded, msg);
+    }
+
+    #[test]
+    fn test_grpc_decode_too_short() {
+        assert!(grpc_decode_message(&[0, 0, 0]).is_err());
     }
 }

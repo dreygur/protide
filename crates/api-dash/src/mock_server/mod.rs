@@ -177,27 +177,66 @@ fn create_router(routes: Arc<RwLock<Vec<MockRoute>>>) -> axum::Router {
     ) -> impl IntoResponse {
         let method = req.method().to_string();
         let path = req.uri().path().to_string();
+        let query = req.uri().query().unwrap_or("").to_string();
+
+        // Collect request headers for proxy forwarding
+        let req_headers: Vec<(String, String)> = req
+            .headers()
+            .iter()
+            .filter_map(|(k, v)| {
+                // Skip hop-by-hop headers
+                let key = k.as_str().to_lowercase();
+                if matches!(key.as_str(), "host" | "connection" | "transfer-encoding") {
+                    return None;
+                }
+                Some((k.to_string(), v.to_str().unwrap_or("").to_string()))
+            })
+            .collect();
+
+        // Read request body for proxy forwarding
+        let body_bytes = axum::body::to_bytes(req.into_body(), 16 * 1024 * 1024)
+            .await
+            .unwrap_or_default();
 
         // Find matching route
-        let routes_guard = routes.read().unwrap();
-        for route in routes_guard.iter() {
-            if route.matches(&method, &path) {
-                let response = &route.response;
-                let mut builder = axum::http::Response::builder()
-                    .status(response.status);
+        let matched = {
+            let routes_guard = routes.read().unwrap();
+            routes_guard
+                .iter()
+                .find(|r| r.matches(&method, &path))
+                .cloned()
+        };
 
-                for (key, value) in &response.headers {
-                    builder = builder.header(key, value);
-                }
+        if let Some(route) = matched {
+            // Proxy mode: forward to target
+            if let Some(ref target) = route.proxy_target {
+                let full_url = if query.is_empty() {
+                    format!("{}{}", target.trim_end_matches('/'), path)
+                } else {
+                    format!("{}{}{}", target.trim_end_matches('/'), path, query)
+                };
 
-                return builder
-                    .body(Body::from(response.body.clone()))
-                    .unwrap()
+                return proxy_request(&method, &full_url, req_headers, body_bytes.to_vec())
+                    .await
                     .into_response();
             }
+
+            // Static response
+            if route.response.delay_ms > 0 {
+                tokio::time::sleep(std::time::Duration::from_millis(route.response.delay_ms)).await;
+            }
+
+            let response = &route.response;
+            let mut builder = axum::http::Response::builder().status(response.status);
+            for (key, value) in &response.headers {
+                builder = builder.header(key, value);
+            }
+            return builder
+                .body(Body::from(response.body.clone()))
+                .unwrap()
+                .into_response();
         }
 
-        // No match found
         (StatusCode::NOT_FOUND, "No matching mock route").into_response()
     }
 
@@ -205,6 +244,54 @@ fn create_router(routes: Arc<RwLock<Vec<MockRoute>>>) -> axum::Router {
         .route("/{*path}", any(handler))
         .route("/", any(handler))
         .with_state(routes)
+}
+
+/// Forward a request to `url` and return the response as an axum Response.
+async fn proxy_request(
+    method: &str,
+    url: &str,
+    headers: Vec<(String, String)>,
+    body: Vec<u8>,
+) -> axum::response::Response {
+    use axum::{body::Body, http::StatusCode};
+
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(30))
+        .build()
+        .unwrap_or_default();
+
+    let req_method = reqwest::Method::from_bytes(method.as_bytes())
+        .unwrap_or(reqwest::Method::GET);
+
+    let mut req = client.request(req_method, url).body(body);
+    for (k, v) in &headers {
+        req = req.header(k.as_str(), v.as_str());
+    }
+
+    match req.send().await {
+        Ok(resp) => {
+            let status = resp.status().as_u16();
+            let mut builder = axum::http::Response::builder().status(status);
+            for (k, v) in resp.headers() {
+                if let Ok(val) = v.to_str() {
+                    builder = builder.header(k.as_str(), val);
+                }
+            }
+            let body_bytes = resp.bytes().await.unwrap_or_default();
+            builder
+                .body(Body::from(body_bytes))
+                .unwrap_or_else(|_| {
+                    axum::http::Response::builder()
+                        .status(502)
+                        .body(Body::from("Proxy response build error"))
+                        .unwrap()
+                })
+        }
+        Err(e) => axum::http::Response::builder()
+            .status(StatusCode::BAD_GATEWAY)
+            .body(Body::from(format!("Proxy error: {}", e)))
+            .unwrap(),
+    }
 }
 
 #[cfg(test)]

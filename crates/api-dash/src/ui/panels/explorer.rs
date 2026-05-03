@@ -7,6 +7,7 @@ use gpui::{
 use std::fs;
 use std::ops::Range;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use crate::models::{Environment, EnvironmentState};
 use crate::theme;
@@ -49,6 +50,8 @@ pub struct ExplorerPanel {
     collections_expanded: bool,
     /// Current workspace root path
     workspace_path: Option<PathBuf>,
+    /// Active workspace watcher (keeps watcher alive and provides event channel)
+    workspace_watcher: Option<Arc<crate::workspace::Workspace>>,
     /// Collection items (folders and .http files)
     collection_items: Vec<CollectionItem>,
     /// Environment state
@@ -92,6 +95,7 @@ impl ExplorerPanel {
             history_expanded: true,
             collections_expanded: true,
             workspace_path: None,
+            workspace_watcher: None,
             collection_items: Vec::new(),
             env_state: EnvironmentState::new(),
             env_dropdown_open: false,
@@ -291,7 +295,25 @@ impl ExplorerPanel {
         if path.is_dir() {
             self.workspace_path = Some(path.clone());
             self.collection_items = self.scan_directory(&path);
+            // Start file watcher for auto-refresh
+            match crate::workspace::Workspace::open(&path) {
+                Ok(ws) => { self.workspace_watcher = Some(Arc::new(ws)); }
+                Err(e) => { eprintln!("File watcher failed: {}", e); }
+            }
             cx.notify();
+        }
+    }
+
+    /// Poll the file watcher and refresh the collection tree if changes detected.
+    pub fn poll_workspace_changes(&mut self, cx: &mut Context<Self>) {
+        let watcher = self.workspace_watcher.clone();
+        let workspace = self.workspace_path.clone();
+        if let (Some(ws), Some(root)) = (watcher, workspace) {
+            let events = ws.poll_events();
+            if events.iter().any(|e| crate::workspace::is_relevant(e, &root)) {
+                self.collection_items = self.scan_directory(&root);
+                cx.notify();
+            }
         }
     }
 
@@ -299,9 +321,10 @@ impl ExplorerPanel {
     pub fn import_collection(&mut self, cx: &mut Context<Self>) {
         let dialog = rfd::FileDialog::new()
             .set_title("Import Collection")
-            .add_filter("All Supported", &["json", "yaml", "yml", "txt", "curl"])
+            .add_filter("All Supported", &["json", "yaml", "yml", "bru", "txt", "curl"])
             .add_filter("Postman Collection", &["json"])
             .add_filter("OpenAPI/Swagger", &["json", "yaml", "yml"])
+            .add_filter("Bruno Collection", &["bru"])
             .add_filter("cURL Command", &["txt", "curl"]);
 
         if let Some(file_path) = dialog.pick_file() {
@@ -376,6 +399,54 @@ impl ExplorerPanel {
             }
         }
         cx.notify();
+    }
+
+    /// Export the current collection as Markdown/HTML documentation.
+    pub fn export_docs(&self, _cx: &mut Context<Self>) {
+        let Some(workspace) = &self.workspace_path else { return };
+
+        let dialog = rfd::FileDialog::new()
+            .set_title("Export API Documentation")
+            .add_filter("Markdown", &["md"])
+            .add_filter("HTML", &["html"])
+            .set_file_name("api-docs.md");
+
+        if let Some(save_path) = dialog.save_file() {
+            let is_html = save_path.extension().and_then(|e| e.to_str()) == Some("html");
+            let format = if is_html {
+                crate::export::ExportFormat::Html
+            } else {
+                crate::export::ExportFormat::Markdown
+            };
+
+            match crate::export::export_collection(workspace, format) {
+                Ok(content) => {
+                    match std::fs::write(&save_path, &content) {
+                        Ok(_) => {
+                            let _ = rfd::MessageDialog::new()
+                                .set_title("Export Complete")
+                                .set_description(&format!("Documentation saved to {}", save_path.display()))
+                                .set_level(rfd::MessageLevel::Info)
+                                .show();
+                        }
+                        Err(e) => {
+                            let _ = rfd::MessageDialog::new()
+                                .set_title("Export Failed")
+                                .set_description(&format!("Failed to write file: {}", e))
+                                .set_level(rfd::MessageLevel::Error)
+                                .show();
+                        }
+                    }
+                }
+                Err(e) => {
+                    let _ = rfd::MessageDialog::new()
+                        .set_title("Export Failed")
+                        .set_description(&e)
+                        .set_level(rfd::MessageLevel::Error)
+                        .show();
+                }
+            }
+        }
     }
 
     /// Recursively scan a directory for .http files and subdirectories
@@ -1120,6 +1191,25 @@ impl ExplorerPanel {
                             }))
                             .child("⬇")
                     )
+                    // Export docs button
+                    .when(self.workspace_path.is_some(), |el| {
+                        el.child(
+                            div()
+                                .id("export-docs-btn")
+                                .size(px(22.0))
+                                .flex()
+                                .items_center()
+                                .justify_center()
+                                .cursor_pointer()
+                                .text_size(px(11.0))
+                                .text_color(theme.colors.text_muted)
+                                .hover(|s| s.bg(theme.colors.bg_tertiary).text_color(theme.colors.text_primary))
+                                .on_click(cx.listener(|this, _, _, cx| {
+                                    this.export_docs(cx);
+                                }))
+                                .child("📄")
+                        )
+                    })
             )
             // Content
             .when(collections_expanded, |el| {
@@ -2197,6 +2287,8 @@ impl ExplorerPanel {
 
 impl Render for ExplorerPanel {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        // Poll file system changes on each render (cheap: just drains a channel)
+        self.poll_workspace_changes(cx);
         let theme = theme::current(cx);
 
         div()

@@ -43,7 +43,7 @@ thiserror = "2"
 tokio = { version = "1", features = ["full"] }
 
 # HTTP client
-reqwest = { version = "0.12", features = ["json", "rustls-tls", "blocking", "multipart"] }
+reqwest = { version = "0.12", features = ["json", "rustls-tls", "blocking", "multipart", "http2"] }
 
 # Utils
 uuid = { version = "1", features = ["v4", "serde"] }
@@ -71,4 +71,5 @@ futures-util = "0.3"
 tonic = "0.12"
 prost = "0.13"
 prost-types = "0.13"
-prost-reflect = "0.14"
+prost-reflect = { version = "0.14", features = ["serde"] }
+protox = "0.7"
