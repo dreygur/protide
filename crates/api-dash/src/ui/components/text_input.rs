@@ -76,7 +76,6 @@ pub struct TextInputStyle {
     pub height: f32,
     pub font_size: f32,
     pub padding_x: f32,
-    pub border_radius: f32,
     pub bg_color: Option<Hsla>,
     pub border_color: Option<Hsla>,
     pub border_focused_color: Option<Hsla>,
@@ -86,11 +85,11 @@ pub struct TextInputStyle {
 
 impl Default for TextInputStyle {
     fn default() -> Self {
+        use crate::theme::sizes;
         Self {
-            height: 32.0,
+            height: sizes::INPUT_MD,
             font_size: 13.0,
             padding_x: 12.0,
-            border_radius: 4.0,
             bg_color: None,
             border_color: None,
             border_focused_color: None,
@@ -102,21 +101,21 @@ impl Default for TextInputStyle {
 
 impl TextInputStyle {
     pub fn small() -> Self {
+        use crate::theme::sizes;
         Self {
-            height: 24.0,
+            height: sizes::INPUT_XS,
             font_size: 11.0,
             padding_x: 6.0,
-            border_radius: 4.0,
             ..Default::default()
         }
     }
 
     pub fn compact() -> Self {
+        use crate::theme::sizes;
         Self {
-            height: 28.0,
+            height: sizes::INPUT_SM,
             font_size: 12.0,
             padding_x: 8.0,
-            border_radius: 4.0,
             ..Default::default()
         }
     }
@@ -686,7 +685,6 @@ impl Render for TextInput {
             .flex()
             .items_center()
             .overflow_hidden()
-            .rounded(px(self.style.border_radius))
             .border_1()
             .border_color(border_color)
             .bg(bg_color)

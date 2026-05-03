@@ -3,6 +3,7 @@
 use gpui::{
     div, prelude::*, px, Entity, InteractiveElement,
     IntoElement, ParentElement, Render, Styled, Window, Context, App,
+    MouseButton,
 };
 
 use crate::theme;
@@ -15,6 +16,10 @@ pub struct MainWindow {
     response_panel: Entity<ResponsePanel>,
     mock_server_panel: Entity<MockServerPanel>,
     show_mock_server: bool,
+    sidebar_width: f32,
+    request_height: f32,
+    drag_sidebar: Option<(f32, f32)>,   // (start_mouse_x, start_sidebar_width)
+    drag_response: Option<(f32, f32)>,  // (start_mouse_y, start_request_height)
 }
 
 impl MainWindow {
@@ -43,6 +48,10 @@ impl MainWindow {
             response_panel,
             mock_server_panel,
             show_mock_server: false,
+            sidebar_width: 250.0,
+            request_height: 320.0,
+            drag_sidebar: None,
+            drag_response: None,
         }
     }
 
@@ -55,6 +64,8 @@ impl MainWindow {
 impl Render for MainWindow {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = theme::current(cx);
+        let is_dragging = self.drag_sidebar.is_some() || self.drag_response.is_some();
+        let is_sidebar_drag = self.drag_sidebar.is_some();
 
         div()
             .size_full()
@@ -62,24 +73,36 @@ impl Render for MainWindow {
             .flex_col()
             .bg(theme.colors.bg_primary)
             .text_color(theme.colors.text_primary)
-            // Removed track_focus to allow child panels to receive key events
-            // Title bar with window controls
             .child(self.render_title_bar(cx))
-            // Main content
             .child(
                 div()
                     .flex_1()
                     .flex()
                     .overflow_hidden()
-                    // Sidebar (Explorer)
+                    // Sidebar
                     .child(
                         div()
-                            .w(px(250.0))
+                            .w(px(self.sidebar_width))
                             .h_full()
-                            .border_r_1()
-                            .border_color(theme.colors.border)
+                            .flex_shrink_0()
                             .bg(theme.colors.bg_secondary)
+                            .overflow_hidden()
                             .child(self.explorer.clone())
+                    )
+                    // Sidebar resize handle
+                    .child(
+                        div()
+                            .id("sidebar-resize-handle")
+                            .w(px(4.0))
+                            .h_full()
+                            .flex_shrink_0()
+                            .border_l_1()
+                            .border_color(theme.colors.border)
+                            .cursor_col_resize()
+                            .hover(|s| s.bg(theme.colors.accent.opacity(0.25)))
+                            .on_mouse_down(MouseButton::Left, cx.listener(|this, event: &gpui::MouseDownEvent, _window, _cx| {
+                                this.drag_sidebar = Some((f32::from(event.position.x), this.sidebar_width));
+                            }))
                     )
                     // Main content area
                     .child(
@@ -88,19 +111,34 @@ impl Render for MainWindow {
                             .flex()
                             .flex_col()
                             .overflow_hidden()
-                            // Request panel (top) - 45% of space
+                            // Request panel
                             .child(
                                 div()
                                     .flex()
                                     .flex_col()
-                                    .min_h(px(200.0))
-                                    .h(gpui::relative(0.45))
+                                    .flex_shrink_0()
+                                    .min_h(px(150.0))
+                                    .h(px(self.request_height))
                                     .w_full()
-                                    .border_b_1()
-                                    .border_color(theme.colors.border)
+                                    .overflow_hidden()
                                     .child(self.request_panel.clone())
                             )
-                            // Response panel (bottom) - 55% of space
+                            // Response resize handle
+                            .child(
+                                div()
+                                    .id("response-resize-handle")
+                                    .w_full()
+                                    .h(px(4.0))
+                                    .flex_shrink_0()
+                                    .border_t_1()
+                                    .border_color(theme.colors.border)
+                                    .cursor_row_resize()
+                                    .hover(|s| s.bg(theme.colors.accent.opacity(0.25)))
+                                    .on_mouse_down(MouseButton::Left, cx.listener(|this, event: &gpui::MouseDownEvent, _window, _cx| {
+                                        this.drag_response = Some((f32::from(event.position.y), this.request_height));
+                                    }))
+                            )
+                            // Response panel
                             .child(
                                 div()
                                     .flex_1()
@@ -110,7 +148,7 @@ impl Render for MainWindow {
                                     .child(self.response_panel.clone())
                             )
                     )
-                    // Mock Server panel (right sidebar, optional)
+                    // Mock Server panel (optional right sidebar)
                     .when(self.show_mock_server, |el| {
                         el.child(
                             div()
@@ -119,7 +157,39 @@ impl Render for MainWindow {
                                 .child(self.mock_server_panel.clone())
                         )
                     })
+                    // Drag overlay — captures mouse during resize, must be last child
+                    .when(is_dragging, |el| {
+                        el.child(
+                            div()
+                                .id("resize-drag-overlay")
+                                .absolute()
+                                .top_0()
+                                .left_0()
+                                .w_full()
+                                .h_full()
+                                .when(is_sidebar_drag, |el| el.cursor_col_resize())
+                                .when(!is_sidebar_drag, |el| el.cursor_row_resize())
+                                .on_mouse_move(cx.listener(|this, event: &gpui::MouseMoveEvent, _window, cx| {
+                                    if let Some((start_x, start_w)) = this.drag_sidebar {
+                                        let delta = f32::from(event.position.x) - start_x;
+                                        this.sidebar_width = (start_w + delta).max(150.0).min(600.0);
+                                        cx.notify();
+                                    }
+                                    if let Some((start_y, start_h)) = this.drag_response {
+                                        let delta = f32::from(event.position.y) - start_y;
+                                        this.request_height = (start_h + delta).max(150.0).min(800.0);
+                                        cx.notify();
+                                    }
+                                }))
+                                .on_mouse_up(MouseButton::Left, cx.listener(|this, _, _window, cx| {
+                                    this.drag_sidebar = None;
+                                    this.drag_response = None;
+                                    cx.notify();
+                                }))
+                        )
+                    })
             )
+            .child(self.render_status_bar(cx))
     }
 }
 
@@ -130,102 +200,128 @@ impl MainWindow {
 
         div()
             .id("titlebar")
-            .h(px(38.0))
+            .h(px(36.0))
             .w_full()
             .flex()
             .items_center()
-            .justify_between()
             .bg(theme.colors.bg_primary)
             .border_b_1()
             .border_color(theme.colors.border)
-            // Left side - Logo and title (draggable area)
+            // Traffic lights (decorative — actual WM controls are right side)
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap(px(6.0))
+                    .px(px(12.0))
+                    .flex_shrink_0()
+                    .child(div().size(px(10.0)).bg(gpui::rgb(0xef4444)).opacity(0.85))
+                    .child(div().size(px(10.0)).bg(gpui::rgb(0xf59e0b)).opacity(0.85))
+                    .child(div().size(px(10.0)).bg(gpui::rgb(0x22c55e)).opacity(0.85))
+            )
+            // Logo + title (draggable)
             .child(
                 div()
                     .id("titlebar-drag")
-                    .flex_1()
-                    .h_full()
                     .flex()
                     .items_center()
-                    .px(px(12.0))
+                    .gap(px(7.0))
+                    .px(px(8.0))
+                    .h_full()
                     .cursor_pointer()
                     .on_mouse_down(gpui::MouseButton::Left, |_, window, _cx: &mut App| {
                         window.start_window_move();
                     })
+                    // Logo badge
                     .child(
                         div()
+                            .size(px(18.0))
+                            .bg(theme.colors.accent)
                             .flex()
                             .items_center()
-                            .gap(px(10.0))
-                            // Logo - gradient-style badge
+                            .justify_center()
                             .child(
                                 div()
-                                    .size(px(22.0))
-                                    .rounded(px(6.0))
-                                    .bg(theme.colors.accent)
-                                    .flex()
-                                    .items_center()
-                                    .justify_center()
-                                    .child(
-                                        div()
-                                            .text_size(px(11.0))
-                                            .font_weight(gpui::FontWeight::BOLD)
-                                            .text_color(gpui::white())
-                                            .child("A")
-                                    )
-                            )
-                            // Title
-                            .child(
-                                div()
-                                    .text_size(px(13.0))
-                                    .font_weight(gpui::FontWeight::SEMIBOLD)
-                                    .text_color(theme.colors.text_primary)
-                                    .child("API Dash")
+                                    .text_size(px(10.0))
+                                    .font_weight(gpui::FontWeight::BOLD)
+                                    .text_color(gpui::rgb(0x00082b))
+                                    .child("A")
                             )
                     )
+                    // Title
+                    .child(
+                        div()
+                            .text_size(px(12.0))
+                            .font_weight(gpui::FontWeight::BOLD)
+                            .text_color(theme.colors.text_primary)
+                            .child("API Dash")
+                    )
             )
-            // Mock Server toggle button
+            // Drag region (fills remaining space)
+            .child(
+                div()
+                    .flex_1()
+                    .h_full()
+                    .on_mouse_down(gpui::MouseButton::Left, |_, window, _cx: &mut App| {
+                        window.start_window_move();
+                    })
+            )
+            // Mock server toggle
             .child(
                 div()
                     .id("btn-mock-server")
-                    .h(px(26.0))
-                    .px(px(10.0))
-                    .mr(px(8.0))
+                    .h(px(22.0))
+                    .px(px(8.0))
+                    .mr(px(6.0))
                     .flex()
                     .items_center()
-                    .gap(px(6.0))
-                    .rounded(px(4.0))
                     .cursor_pointer()
-                    .bg(if show_mock { theme.colors.accent } else { theme.colors.bg_tertiary })
-                    .hover(|s| s.bg(if show_mock { theme.colors.accent } else { theme.colors.bg_elevated }))
+                    .bg(if show_mock {
+                        theme.colors.accent.opacity(0.15)
+                    } else {
+                        theme.colors.bg_elevated
+                    })
+                    .border_1()
+                    .border_color(if show_mock {
+                        theme.colors.accent.opacity(0.4)
+                    } else {
+                        theme.colors.border
+                    })
+                    .hover(|s| s.border_color(theme.colors.accent.opacity(0.5)))
                     .on_click(cx.listener(|this, _, _, cx| {
                         this.toggle_mock_server(cx);
                     }))
                     .child(
                         div()
-                            .text_size(px(11.0))
-                            .text_color(if show_mock { gpui::white() } else { theme.colors.text_secondary })
+                            .text_size(px(10.0))
+                            .font_weight(gpui::FontWeight::MEDIUM)
+                            .text_color(if show_mock {
+                                theme.colors.accent
+                            } else {
+                                theme.colors.text_secondary
+                            })
                             .child("Mock Server")
                     )
             )
-            // Right side - Window controls
+            // Window controls
             .child(
                 div()
                     .flex()
                     .items_center()
                     .h_full()
-                    .gap(px(1.0))
-                    // Minimize button
+                    .border_l_1()
+                    .border_color(theme.colors.border)
+                    // Minimize
                     .child(
                         div()
                             .id("btn-minimize")
-                            .w(px(44.0))
+                            .w(px(40.0))
                             .h_full()
                             .flex()
                             .items_center()
                             .justify_center()
                             .cursor_pointer()
-                            .hover(|s| s.bg(theme.colors.bg_tertiary))
-                            .active(|s| s.bg(theme.colors.bg_elevated))
+                            .hover(|s| s.bg(theme.colors.hover_overlay))
                             .on_click(|_, window, _cx: &mut App| {
                                 window.minimize_window();
                             })
@@ -236,34 +332,32 @@ impl MainWindow {
                                     .bg(theme.colors.text_muted)
                             )
                     )
-                    // Maximize button
+                    // Maximize
                     .child(
                         div()
                             .id("btn-maximize")
-                            .w(px(44.0))
+                            .w(px(40.0))
                             .h_full()
                             .flex()
                             .items_center()
                             .justify_center()
                             .cursor_pointer()
-                            .hover(|s| s.bg(theme.colors.bg_tertiary))
-                            .active(|s| s.bg(theme.colors.bg_elevated))
+                            .hover(|s| s.bg(theme.colors.hover_overlay))
                             .on_click(|_, window, _cx: &mut App| {
                                 window.toggle_fullscreen();
                             })
                             .child(
                                 div()
-                                    .size(px(9.0))
+                                    .size(px(8.0))
                                     .border_1()
                                     .border_color(theme.colors.text_muted)
-                                    .rounded(px(1.0))
                             )
                     )
-                    // Close button
+                    // Close
                     .child(
                         div()
                             .id("btn-close")
-                            .w(px(44.0))
+                            .w(px(40.0))
                             .h_full()
                             .flex()
                             .items_center()
@@ -276,10 +370,134 @@ impl MainWindow {
                             })
                             .child(
                                 div()
-                                    .text_size(px(14.0))
+                                    .text_size(px(13.0))
                                     .child("✕")
                             )
                     )
             )
+    }
+
+    fn render_status_bar(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
+        let theme = theme::current(cx);
+
+        // Read protocol from request panel
+        let protocol = self.request_panel.read(cx).mode_label();
+        let protocol_color = theme.method_color(protocol);
+
+        // Read last response summary
+        let response_info = self.response_panel.read(cx).last_response_summary();
+        let is_loading = self.response_panel.read(cx).is_loading();
+
+        let sep = || div()
+            .w(px(1.0))
+            .h(px(10.0))
+            .bg(theme.colors.border)
+            .mx(px(6.0));
+
+        div()
+            .id("status-bar")
+            .h(px(22.0))
+            .w_full()
+            .flex()
+            .items_center()
+            .flex_shrink_0()
+            .px(px(10.0))
+            .gap(px(0.0))
+            .bg(theme.colors.bg_primary)
+            .border_t_1()
+            .border_color(theme.colors.border)
+            // Active env dot + label
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap(px(5.0))
+                    .child(
+                        div()
+                            .size(px(6.0))
+                            .bg(theme.colors.accent)
+                    )
+                    .child(
+                        div()
+                            .text_size(px(10.0))
+                            .text_color(theme.colors.text_secondary)
+                            .child("Local Dev")
+                    )
+            )
+            .child(sep())
+            // Protocol badge
+            .child(
+                div()
+                    .text_size(px(10.0))
+                    .font_weight(gpui::FontWeight::SEMIBOLD)
+                    .text_color(protocol_color)
+                    .child(protocol)
+            )
+            .child(sep())
+            // Response info or ready state
+            .child(if is_loading {
+                div()
+                    .flex()
+                    .items_center()
+                    .gap(px(5.0))
+                    .child(
+                        div()
+                            .text_size(px(10.0))
+                            .text_color(theme.colors.text_muted)
+                            .child("Sending…")
+                    )
+                    .into_any_element()
+            } else if let Some((status, _, time_ms, size_bytes)) = response_info {
+                let status_color = theme.status_color(status);
+                let size_str = if size_bytes >= 1024 * 1024 {
+                    format!("{:.1} MB", size_bytes as f64 / (1024.0 * 1024.0))
+                } else if size_bytes >= 1024 {
+                    format!("{:.1} KB", size_bytes as f64 / 1024.0)
+                } else {
+                    format!("{} B", size_bytes)
+                };
+                div()
+                    .flex()
+                    .items_center()
+                    .gap(px(4.0))
+                    .child(
+                        div()
+                            .text_size(px(10.0))
+                            .font_weight(gpui::FontWeight::BOLD)
+                            .text_color(status_color)
+                            .child(format!("{}", status))
+                    )
+                    .child(
+                        div()
+                            .text_size(px(10.0))
+                            .text_color(theme.colors.text_muted)
+                            .child("·")
+                    )
+                    .child(
+                        div()
+                            .text_size(px(10.0))
+                            .text_color(theme.colors.text_secondary)
+                            .child(format!("{}ms", time_ms))
+                    )
+                    .child(
+                        div()
+                            .text_size(px(10.0))
+                            .text_color(theme.colors.text_muted)
+                            .child("·")
+                    )
+                    .child(
+                        div()
+                            .text_size(px(10.0))
+                            .text_color(theme.colors.text_secondary)
+                            .child(size_str)
+                    )
+                    .into_any_element()
+            } else {
+                div()
+                    .text_size(px(10.0))
+                    .text_color(theme.colors.text_muted)
+                    .child("Ready")
+                    .into_any_element()
+            })
     }
 }

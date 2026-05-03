@@ -11,8 +11,8 @@ mod tests;
 use std::ops::Range;
 
 use gpui::{
-    div, prelude::*, px, ClipboardItem, Context, Entity, FocusHandle, IntoElement, KeyDownEvent,
-    MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement, Render, Styled,
+    deferred, div, prelude::*, px, ClipboardItem, Context, Entity, FocusHandle, IntoElement,
+    KeyDownEvent, MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement, Render, Styled,
     Window,
 };
 
@@ -311,6 +311,17 @@ impl RequestPanel {
     pub fn set_explorer_panel(&mut self, explorer_panel: Entity<ExplorerPanel>, cx: &mut Context<Self>) {
         self.explorer_panel = Some(explorer_panel);
         cx.notify();
+    }
+
+    /// Get the current request mode label for status bar display
+    pub fn mode_label(&self) -> &'static str {
+        match self.request_mode {
+            RequestMode::Http => "HTTP",
+            RequestMode::GraphQL => "GraphQL",
+            RequestMode::WebSocket => "WebSocket",
+            RequestMode::Grpc => "gRPC",
+            RequestMode::Trpc => "tRPC",
+        }
     }
 
     /// Set request mode (HTTP, GraphQL, or WebSocket)
@@ -1003,6 +1014,39 @@ impl RequestPanel {
         }
     }
 
+    fn toggle_grpc_meta(&mut self, index: usize, cx: &mut Context<Self>) {
+        if let Some(meta) = self.grpc_metadata.get_mut(index) {
+            meta.enabled = !meta.enabled;
+            cx.notify();
+        }
+    }
+
+    fn add_grpc_meta(&mut self, cx: &mut Context<Self>) {
+        self.grpc_metadata.push(KeyValuePair::default());
+        cx.notify();
+    }
+
+    fn remove_grpc_meta(&mut self, index: usize, cx: &mut Context<Self>) {
+        if index < self.grpc_metadata.len() && self.grpc_metadata.len() > 1 {
+            self.grpc_metadata.remove(index);
+            if let Some(target) = self.active_edit {
+                match target {
+                    EditTarget::GrpcMetaKey(i) | EditTarget::GrpcMetaValue(i) if i == index => {
+                        self.active_edit = None;
+                    }
+                    EditTarget::GrpcMetaKey(i) if i > index => {
+                        self.active_edit = Some(EditTarget::GrpcMetaKey(i - 1));
+                    }
+                    EditTarget::GrpcMetaValue(i) if i > index => {
+                        self.active_edit = Some(EditTarget::GrpcMetaValue(i - 1));
+                    }
+                    _ => {}
+                }
+            }
+            cx.notify();
+        }
+    }
+
     fn toggle_param(&mut self, index: usize, cx: &mut Context<Self>) {
         if let Some(param) = self.params.get_mut(index) {
             param.enabled = !param.enabled;
@@ -1227,6 +1271,9 @@ impl RequestPanel {
             EditTarget::BasicPassword => &self.basic_password,
             EditTarget::ApiKeyName => &self.api_key_name,
             EditTarget::ApiKeyValue => &self.api_key_value,
+            EditTarget::GrpcMetaKey(i) => self.grpc_metadata.get(i).map(|m| m.key.as_str()).unwrap_or(""),
+            EditTarget::GrpcMetaValue(i) => self.grpc_metadata.get(i).map(|m| m.value.as_str()).unwrap_or(""),
+            EditTarget::TrpcProcedure => &self.trpc_procedure,
         }
     }
 
@@ -1246,6 +1293,9 @@ impl RequestPanel {
             EditTarget::BasicPassword => Some(&mut self.basic_password),
             EditTarget::ApiKeyName => Some(&mut self.api_key_name),
             EditTarget::ApiKeyValue => Some(&mut self.api_key_value),
+            EditTarget::GrpcMetaKey(i) => self.grpc_metadata.get_mut(i).map(|m| &mut m.key),
+            EditTarget::GrpcMetaValue(i) => self.grpc_metadata.get_mut(i).map(|m| &mut m.value),
+            EditTarget::TrpcProcedure => Some(&mut self.trpc_procedure),
         }
     }
 
@@ -1306,6 +1356,9 @@ impl RequestPanel {
             EditTarget::BasicUsername | EditTarget::BasicPassword => auth_input_left + 50.0,
             EditTarget::ApiKeyName | EditTarget::ApiKeyValue => auth_input_left + 50.0,
             EditTarget::Url | EditTarget::Body => 0.0, // These use their own handling
+            EditTarget::GrpcMetaKey(_) => key_input_left,
+            EditTarget::GrpcMetaValue(_) => value_input_left,
+            EditTarget::TrpcProcedure => SIDEBAR_WIDTH + BORDER + 12.0 + 16.0 + 12.0,
         }
     }
 
@@ -2915,25 +2968,21 @@ impl Render for RequestPanel {
                     .overflow_scroll()
                     .child(self.render_tab_content(cx)),
             )
-            // Floating dropdown overlay (rendered last to be on top)
+            // Floating dropdown overlays — wrapped in deferred() to paint above overflow_scroll
             .when(self.method_dropdown_open, |el| {
-                el.child(self.render_method_dropdown_overlay(cx))
+                el.child(deferred(self.render_method_dropdown_overlay(cx)).with_priority(1))
             })
-            // Mode selector dropdown overlay
             .when(self.mode_dropdown_open, |el| {
-                el.child(self.render_mode_dropdown_overlay(cx))
+                el.child(deferred(self.render_mode_dropdown_overlay(cx)).with_priority(1))
             })
-            // Code generation dropdown overlay
             .when(self.codegen_dropdown_open, |el| {
-                el.child(self.render_codegen_dropdown_overlay(cx))
+                el.child(deferred(self.render_codegen_dropdown_overlay(cx)).with_priority(1))
             })
-            // Code generation modal
             .when(self.codegen_content.is_some(), |el| {
-                el.child(self.render_codegen_modal(cx))
+                el.child(deferred(self.render_codegen_modal(cx)).with_priority(1))
             })
-            // Import modal
             .when(self.import_modal_open, |el| {
-                el.child(self.render_import_modal(cx))
+                el.child(deferred(self.render_import_modal(cx)).with_priority(1))
             })
     }
 }

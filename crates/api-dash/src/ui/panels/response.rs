@@ -230,6 +230,15 @@ impl ResponsePanel {
         }
     }
 
+    /// Returns (status, status_text, time_ms, size_bytes) for the status bar, if any response received.
+    pub fn last_response_summary(&self) -> Option<(u16, &str, u64, usize)> {
+        self.response.as_ref().map(|r| (r.status, r.status_text.as_str(), r.time.as_millis() as u64, r.size))
+    }
+
+    pub fn is_loading(&self) -> bool {
+        self.loading
+    }
+
     pub fn set_error(&mut self, error: String, cx: &mut Context<Self>) {
         self.loading = false;
         self.error = Some(error);
@@ -272,7 +281,7 @@ impl ResponsePanel {
         let theme = theme::current(cx);
 
         div()
-            .h(px(44.0))
+            .h(px(40.0))
             .w_full()
             .flex()
             .items_center()
@@ -316,7 +325,7 @@ impl ResponsePanel {
                 .child(
                     div()
                         .size(px(14.0))
-                        .rounded_full()
+                        
                         .border_2()
                         .border_color(theme.colors.accent.opacity(0.5))
                 )
@@ -333,7 +342,6 @@ impl ResponsePanel {
                 .gap(px(6.0))
                 .px(px(10.0))
                 .py(px(4.0))
-                .rounded(px(6.0))
                 .bg(theme.colors.status_client_error.opacity(0.1))
                 .child(
                     div()
@@ -366,7 +374,6 @@ impl ResponsePanel {
                             div()
                                 .px(px(10.0))
                                 .py(px(4.0))
-                                .rounded(px(6.0))
                                 .bg(status_color.opacity(0.12))
                                 .child(
                                     div()
@@ -470,7 +477,6 @@ impl ResponsePanel {
                                     div()
                                         .px(px(5.0))
                                         .py(px(1.0))
-                                        .rounded(px(8.0))
                                         .bg(if is_active {
                                             if all_passed {
                                                 theme.colors.status_success.opacity(0.15)
@@ -522,7 +528,7 @@ impl ResponsePanel {
                 .child(
                     div()
                         .size(px(32.0))
-                        .rounded_full()
+                        
                         .border_3()
                         .border_color(theme.colors.accent.opacity(0.4))
                 )
@@ -546,7 +552,7 @@ impl ResponsePanel {
                 .child(
                     div()
                         .size(px(48.0))
-                        .rounded_full()
+                        
                         .bg(theme.colors.status_client_error.opacity(0.1))
                         .flex()
                         .items_center()
@@ -601,7 +607,6 @@ impl ResponsePanel {
                 .child(
                     div()
                         .size(px(80.0))
-                        .rounded(px(20.0))
                         .bg(theme.colors.bg_tertiary)
                         .border_1()
                         .border_color(theme.colors.border.opacity(0.5))
@@ -672,7 +677,6 @@ impl ResponsePanel {
                                     div()
                                         .px(px(6.0))
                                         .py(px(3.0))
-                                        .rounded(px(4.0))
                                         .bg(theme.colors.bg_elevated)
                                         .border_1()
                                         .border_color(theme.colors.border)
@@ -685,7 +689,6 @@ impl ResponsePanel {
                                     div()
                                         .px(px(6.0))
                                         .py(px(3.0))
-                                        .rounded(px(4.0))
                                         .bg(theme.colors.bg_elevated)
                                         .border_1()
                                         .border_color(theme.colors.border)
@@ -781,7 +784,6 @@ impl ResponsePanel {
                                 div()
                                     .px(px(8.0))
                                     .py(px(3.0))
-                                    .rounded(px(4.0))
                                     .bg(format_color.opacity(0.12))
                                     .text_size(px(10.0))
                                     .font_weight(gpui::FontWeight::SEMIBOLD)
@@ -805,7 +807,6 @@ impl ResponsePanel {
                             .gap(px(4.0))
                             .px(px(10.0))
                             .py(px(5.0))
-                            .rounded(px(6.0))
                             .text_size(px(11.0))
                             .when(is_copied, |el| el.text_color(theme.colors.status_success).border_color(theme.colors.status_success))
                             .when(!is_copied, |el| el.text_color(theme.colors.text_secondary).border_color(theme.colors.border))
@@ -876,7 +877,6 @@ impl ResponsePanel {
                                 div()
                                     .px(px(8.0))
                                     .py(px(3.0))
-                                    .rounded(px(4.0))
                                     .bg(theme.colors.accent.opacity(0.12))
                                     .text_size(px(10.0))
                                     .font_weight(gpui::FontWeight::SEMIBOLD)
@@ -905,7 +905,6 @@ impl ResponsePanel {
                             .gap(px(4.0))
                             .px(px(10.0))
                             .py(px(5.0))
-                            .rounded(px(6.0))
                             .text_size(px(11.0))
                             .when(is_copied, |el| el.text_color(theme.colors.status_success).border_color(theme.colors.status_success))
                             .when(!is_copied, |el| el.text_color(theme.colors.text_secondary).border_color(theme.colors.border))
@@ -928,7 +927,6 @@ impl ResponsePanel {
             .child(
                 div()
                     .w_full()
-                    .rounded(px(8.0))
                     .border_1()
                     .border_color(theme.colors.border)
                     .overflow_hidden()
@@ -1062,7 +1060,6 @@ impl ResponsePanel {
                                 div()
                                     .px(px(8.0))
                                     .py(px(4.0))
-                                    .rounded(px(6.0))
                                     .bg(theme.colors.accent.opacity(0.12))
                                     .text_size(px(11.0))
                                     .font_weight(gpui::FontWeight::MEDIUM)
@@ -1076,7 +1073,6 @@ impl ResponsePanel {
                 div()
                     .flex_1()
                     .w_full()
-                    .rounded(px(8.0))
                     .border_1()
                     .border_color(theme.colors.border)
                     .bg(theme.colors.bg_tertiary)
@@ -1259,7 +1255,6 @@ impl ResponsePanel {
                         div()
                             .px(px(10.0))
                             .py(px(6.0))
-                            .rounded(px(6.0))
                             .bg(theme.colors.status_success.opacity(0.12))
                             .flex()
                             .items_center()
@@ -1283,7 +1278,6 @@ impl ResponsePanel {
                             div()
                                 .px(px(10.0))
                                 .py(px(6.0))
-                                .rounded(px(6.0))
                                 .bg(theme.colors.status_client_error.opacity(0.12))
                                 .flex()
                                 .items_center()
@@ -1311,7 +1305,6 @@ impl ResponsePanel {
                     .flex_1()
                     .w_full()
                     .overflow_scroll()
-                    .rounded(px(8.0))
                     .border_1()
                     .border_color(theme.colors.border)
                     .bg(theme.colors.bg_tertiary)
@@ -1332,7 +1325,6 @@ impl ResponsePanel {
                             .child(
                                 div()
                                     .size(px(20.0))
-                                    .rounded(px(4.0))
                                     .flex()
                                     .items_center()
                                     .justify_center()
@@ -1454,9 +1446,10 @@ impl ResponsePanel {
                     .child(
                         div()
                             .id("extract-btn")
+                            .h(px(32.0))
                             .px(px(12.0))
-                            .py(px(6.0))
-                            .rounded(px(6.0))
+                            .flex()
+                            .items_center()
                             .bg(theme.colors.accent)
                             .text_size(px(12.0))
                             .text_color(gpui::white())
@@ -1490,7 +1483,6 @@ impl ResponsePanel {
                                     .id(SharedString::from(format!("pattern-{}", label)))
                                     .px(px(8.0))
                                     .py(px(3.0))
-                                    .rounded(px(4.0))
                                     .bg(theme.colors.bg_tertiary)
                                     .border_1()
                                     .border_color(theme.colors.border)
@@ -1514,7 +1506,6 @@ impl ResponsePanel {
                 div()
                     .w_full()
                     .flex_1()
-                    .rounded(px(8.0))
                     .border_1()
                     .border_color(theme.colors.border)
                     .bg(theme.colors.bg_tertiary)
@@ -1561,7 +1552,6 @@ impl ResponsePanel {
                                                     .id("copy-extract-btn")
                                                     .px(px(8.0))
                                                     .py(px(4.0))
-                                                    .rounded(px(4.0))
                                                     .border_1()
                                                     .border_color(theme.colors.border)
                                                     .text_size(px(10.0))

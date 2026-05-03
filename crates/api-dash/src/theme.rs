@@ -41,6 +41,13 @@ pub struct Colors {
     pub method_put: Hsla,
     pub method_patch: Hsla,
     pub method_delete: Hsla,
+    pub method_head: Hsla,
+    pub method_options: Hsla,
+
+    // Protocol colors
+    pub protocol_ws: Hsla,
+    pub protocol_grpc: Hsla,
+    pub protocol_graphql: Hsla,
 
     // Status codes
     pub status_success: Hsla,
@@ -67,52 +74,59 @@ pub struct Colors {
 impl Colors {
     pub fn dark() -> Self {
         Self {
-            // Backgrounds
-            bg_primary: rgb(0x1e1e1e).into(),
-            bg_secondary: rgb(0x252526).into(),
-            bg_tertiary: rgb(0x2d2d2d).into(),
-            bg_elevated: rgb(0x333333).into(),
+            // Backgrounds — Zed-style ultra-dark IDE palette
+            bg_primary: rgb(0x0d0d0f).into(),    // app bg
+            bg_secondary: rgb(0x111113).into(),  // sidebar bg
+            bg_tertiary: rgb(0x131315).into(),   // panel bg (request/response)
+            bg_elevated: rgb(0x1b1b1e).into(),   // input/elevated bg
 
             // Text
-            text_primary: rgb(0xcccccc).into(),
-            text_secondary: rgb(0x9d9d9d).into(),
-            text_muted: rgb(0x6d6d6d).into(),
+            text_primary: rgb(0xe4e4ed).into(),
+            text_secondary: rgb(0x7f7f92).into(),
+            text_muted: rgb(0x3e3e4a).into(),
 
             // Borders
-            border: rgb(0x3c3c3c).into(),
-            border_focused: rgb(0x007acc).into(),
+            border: rgb(0x252529).into(),
+            border_focused: rgb(0x4ade80).into(),
 
-            // Accent
-            accent: rgb(0x007acc).into(),
-            accent_hover: rgb(0x1c8cd4).into(),
+            // Accent — green like Zed
+            accent: rgb(0x4ade80).into(),
+            accent_hover: rgb(0x6ee7a0).into(),
 
-            // HTTP Methods
-            method_get: rgb(0x61affe).into(),
-            method_post: rgb(0x49cc90).into(),
-            method_put: rgb(0xfca130).into(),
-            method_patch: rgb(0x50e3c2).into(),
-            method_delete: rgb(0xf93e3e).into(),
+            // HTTP Methods — design spec colors
+            method_get: rgb(0x4ade80).into(),    // green
+            method_post: rgb(0x60a5fa).into(),   // blue
+            method_put: rgb(0xfbbf24).into(),    // yellow
+            method_patch: rgb(0xfb923c).into(),  // orange
+            method_delete: rgb(0xf87171).into(), // red
+            method_head: rgb(0xa78bfa).into(),   // purple
+            method_options: rgb(0x94a3b8).into(), // slate
+
+            // Protocol colors
+            protocol_ws: rgb(0x34d399).into(),      // emerald
+            protocol_grpc: rgb(0x818cf8).into(),    // indigo
+            protocol_graphql: rgb(0xf472b6).into(), // pink
 
             // Status codes
-            status_success: rgb(0x49cc90).into(),
-            status_redirect: rgb(0xfca130).into(),
-            status_client_error: rgb(0xf93e3e).into(),
-            status_server_error: rgb(0xf93e3e).into(),
+            status_success: rgb(0x4ade80).into(),
+            status_redirect: rgb(0xfbbf24).into(),
+            status_client_error: rgb(0xfb923c).into(),
+            status_server_error: rgb(0xf87171).into(),
 
             // Semantic colors
-            success: rgb(0x49cc90).into(),
-            warning: rgb(0xfca130).into(),
-            error: rgb(0xf93e3e).into(),
-            info: rgb(0x007acc).into(),
+            success: rgb(0x4ade80).into(),
+            warning: rgb(0xfbbf24).into(),
+            error: rgb(0xf87171).into(),
+            info: rgb(0x60a5fa).into(),
 
             // Interactive states (white overlays for dark theme)
-            hover_overlay: Hsla { h: 0.0, s: 0.0, l: 1.0, a: 0.08 },
-            active_overlay: Hsla { h: 0.0, s: 0.0, l: 1.0, a: 0.12 },
-            selected_bg: Hsla { h: 203.0 / 360.0, s: 1.0, l: 0.4, a: 0.2 },
+            hover_overlay: Hsla { h: 0.0, s: 0.0, l: 1.0, a: 0.035 },
+            active_overlay: Hsla { h: 0.0, s: 0.0, l: 1.0, a: 0.055 },
+            selected_bg: Hsla { h: 0.0, s: 0.0, l: 1.0, a: 0.055 },
 
             // Focus indicator
-            focus_ring: rgb(0x007acc).into(),
-            focus_ring_error: rgb(0xf93e3e).into(),
+            focus_ring: rgb(0x4ade80).into(),
+            focus_ring_error: rgb(0xf87171).into(),
         }
     }
 
@@ -143,6 +157,13 @@ impl Colors {
             method_put: rgb(0xef6c00).into(),
             method_patch: rgb(0x00897b).into(),
             method_delete: rgb(0xc62828).into(),
+            method_head: rgb(0x7c3aed).into(),
+            method_options: rgb(0x475569).into(),
+
+            // Protocol colors
+            protocol_ws: rgb(0x059669).into(),
+            protocol_grpc: rgb(0x4338ca).into(),
+            protocol_graphql: rgb(0xdb2777).into(),
 
             // Status codes
             status_success: rgb(0x2e7d32).into(),
@@ -208,7 +229,7 @@ impl Theme {
         }
     }
 
-    /// Get the color for an HTTP method
+    /// Get the color for an HTTP method or protocol label
     pub fn method_color(&self, method: &str) -> Hsla {
         match method.to_uppercase().as_str() {
             "GET" => self.colors.method_get,
@@ -216,6 +237,11 @@ impl Theme {
             "PUT" => self.colors.method_put,
             "PATCH" => self.colors.method_patch,
             "DELETE" => self.colors.method_delete,
+            "HEAD" => self.colors.method_head,
+            "OPTIONS" => self.colors.method_options,
+            "WS" | "WEBSOCKET" => self.colors.protocol_ws,
+            "GRPC" => self.colors.protocol_grpc,
+            "GQL" | "GRAPHQL" => self.colors.protocol_graphql,
             _ => self.colors.text_secondary,
         }
     }
@@ -297,25 +323,42 @@ impl Default for Typography {
     }
 }
 
-/// Standard component heights for consistency
+/// Raw dimension constants — use these in components that lack `cx`.
+/// All interactive components of the same tier should share these values.
+pub mod sizes {
+    pub const INPUT_XS: f32 = 24.0;     // inline / extra-small input
+    pub const INPUT_SM: f32 = 28.0;     // compact input, small button, compact row
+    pub const INPUT_MD: f32 = 32.0;     // standard input, medium button, standard row
+    pub const INPUT_LG: f32 = 36.0;     // large input, large button
+    pub const PANEL_HEADER: f32 = 32.0; // section / collapsible headers
+    pub const TOOLBAR: f32 = 40.0;      // toolbars, tab bars, nav bars
+    pub const URL_BAR: f32 = 64.0;      // primary URL bar
+}
+
+/// Pixel-typed component dimensions for use via `theme.sizes.*`.
 #[derive(Clone, Copy)]
 pub struct ComponentSizes {
-    pub input_sm: Pixels,      // 28px - compact input
-    pub input_md: Pixels,      // 32px - standard input
-    pub button_md: Pixels,     // 32px - standard button
-    pub button_lg: Pixels,     // 36px - large button
-    pub toolbar: Pixels,       // 40px - toolbar height
+    pub input_xs: Pixels,       // 24px - inline / extra-small input
+    pub input_sm: Pixels,       // 28px - compact input / small button / compact row
+    pub input_md: Pixels,       // 32px - standard input / medium button / standard row
+    pub input_lg: Pixels,       // 36px - large input / large button
+    pub panel_header: Pixels,   // 32px - section / collapsible headers
+    pub toolbar: Pixels,        // 40px - toolbars, tab bars, nav bars
+    pub url_bar: Pixels,        // 64px - primary URL bar
 }
 
 impl ComponentSizes {
     pub fn new() -> Self {
         use gpui::px;
+        use crate::theme::sizes;
         Self {
-            input_sm: px(28.0),
-            input_md: px(32.0),
-            button_md: px(32.0),
-            button_lg: px(36.0),
-            toolbar: px(40.0),
+            input_xs: px(sizes::INPUT_XS),
+            input_sm: px(sizes::INPUT_SM),
+            input_md: px(sizes::INPUT_MD),
+            input_lg: px(sizes::INPUT_LG),
+            panel_header: px(sizes::PANEL_HEADER),
+            toolbar: px(sizes::TOOLBAR),
+            url_bar: px(sizes::URL_BAR),
         }
     }
 }

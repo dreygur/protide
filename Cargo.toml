@@ -16,6 +16,12 @@ authors = ["API Dash Contributors"]
 # Parser crate
 http-parser = { path = "crates/http-parser" }
 
+# UI Framework - same git spec as gpui-component so Cargo unifies to one commit
+gpui = { git = "https://github.com/zed-industries/zed", features = ["wayland"] }
+gpui_platform = { git = "https://github.com/zed-industries/zed", package = "gpui_platform", features = ["wayland", "x11"] }
+gpui-component = { git = "https://github.com/longbridge/gpui-component" }
+gpui-component-assets = { git = "https://github.com/longbridge/gpui-component", package = "gpui-component-assets" }
+
 # Serialization
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -50,7 +56,7 @@ notify = "7"
 dirs = "6"
 
 # JavaScript engine
-rquickjs = { version = "0.6", features = ["bindgen", "classes", "properties"] }
+rquickjs = { version = "0.6", features = ["classes", "properties"] }
 
 # HTTP server for mock server
 axum = "0.8"

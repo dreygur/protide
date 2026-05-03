@@ -98,7 +98,7 @@ impl Render for MockServerPanel {
                             .id("toggle-server")
                             .px_3()
                             .py_1()
-                            .rounded_md()
+                            
                             .cursor_pointer()
                             .bg(if is_running { theme.colors.status_client_error } else { theme.colors.status_success })
                             .text_color(theme.colors.bg_primary)
@@ -126,7 +126,7 @@ impl Render for MockServerPanel {
                                 div()
                                     .w_2()
                                     .h_2()
-                                    .rounded_full()
+                                    
                                     .bg(if is_running { theme.colors.status_success } else { theme.colors.text_muted })
                             )
                             .child(
@@ -174,7 +174,7 @@ impl Render for MockServerPanel {
                                     .justify_between()
                                     .px_2()
                                     .py_1()
-                                    .rounded_md()
+                                    
                                     .bg(theme.colors.bg_secondary)
                                     .border_1()
                                     .border_color(theme.colors.border)
@@ -207,7 +207,7 @@ impl Render for MockServerPanel {
                                                     .text_xs()
                                                     .px_2()
                                                     .py_px()
-                                                    .rounded_sm()
+                                                    
                                                     .bg(status_color(route.response.status, &theme.colors))
                                                     .text_color(theme.colors.bg_primary)
                                                     .child(format!("{}", route.response.status))
@@ -252,7 +252,7 @@ impl Render for MockServerPanel {
                             .child(
                                 div()
                                     .id("method-get")
-                                    .px_2().py_1().rounded_sm().cursor_pointer().text_xs()
+                                    .px_2().py_1().cursor_pointer().text_xs()
                                     .bg(if new_method == HttpMethod::Get { theme.colors.accent } else { theme.colors.bg_secondary })
                                     .text_color(if new_method == HttpMethod::Get { theme.colors.bg_primary } else { theme.colors.text_secondary })
                                     .child("GET")
@@ -261,7 +261,7 @@ impl Render for MockServerPanel {
                             .child(
                                 div()
                                     .id("method-post")
-                                    .px_2().py_1().rounded_sm().cursor_pointer().text_xs()
+                                    .px_2().py_1().cursor_pointer().text_xs()
                                     .bg(if new_method == HttpMethod::Post { theme.colors.accent } else { theme.colors.bg_secondary })
                                     .text_color(if new_method == HttpMethod::Post { theme.colors.bg_primary } else { theme.colors.text_secondary })
                                     .child("POST")
@@ -270,7 +270,7 @@ impl Render for MockServerPanel {
                             .child(
                                 div()
                                     .id("method-put")
-                                    .px_2().py_1().rounded_sm().cursor_pointer().text_xs()
+                                    .px_2().py_1().cursor_pointer().text_xs()
                                     .bg(if new_method == HttpMethod::Put { theme.colors.accent } else { theme.colors.bg_secondary })
                                     .text_color(if new_method == HttpMethod::Put { theme.colors.bg_primary } else { theme.colors.text_secondary })
                                     .child("PUT")
@@ -279,7 +279,7 @@ impl Render for MockServerPanel {
                             .child(
                                 div()
                                     .id("method-delete")
-                                    .px_2().py_1().rounded_sm().cursor_pointer().text_xs()
+                                    .px_2().py_1().cursor_pointer().text_xs()
                                     .bg(if new_method == HttpMethod::Delete { theme.colors.accent } else { theme.colors.bg_secondary })
                                     .text_color(if new_method == HttpMethod::Delete { theme.colors.bg_primary } else { theme.colors.text_secondary })
                                     .child("DELETE")
@@ -296,7 +296,7 @@ impl Render for MockServerPanel {
                             .child(
                                 div()
                                     .id("status-200")
-                                    .px_2().py_1().rounded_sm().cursor_pointer().text_xs()
+                                    .px_2().py_1().cursor_pointer().text_xs()
                                     .bg(if new_status == 200 { theme.colors.status_success } else { theme.colors.bg_secondary })
                                     .text_color(if new_status == 200 { theme.colors.bg_primary } else { theme.colors.text_secondary })
                                     .child("200")
@@ -305,7 +305,7 @@ impl Render for MockServerPanel {
                             .child(
                                 div()
                                     .id("status-400")
-                                    .px_2().py_1().rounded_sm().cursor_pointer().text_xs()
+                                    .px_2().py_1().cursor_pointer().text_xs()
                                     .bg(if new_status == 400 { theme.colors.status_client_error } else { theme.colors.bg_secondary })
                                     .text_color(if new_status == 400 { theme.colors.bg_primary } else { theme.colors.text_secondary })
                                     .child("400")
@@ -314,7 +314,7 @@ impl Render for MockServerPanel {
                             .child(
                                 div()
                                     .id("status-404")
-                                    .px_2().py_1().rounded_sm().cursor_pointer().text_xs()
+                                    .px_2().py_1().cursor_pointer().text_xs()
                                     .bg(if new_status == 404 { theme.colors.status_client_error } else { theme.colors.bg_secondary })
                                     .text_color(if new_status == 404 { theme.colors.bg_primary } else { theme.colors.text_secondary })
                                     .child("404")
@@ -323,7 +323,7 @@ impl Render for MockServerPanel {
                             .child(
                                 div()
                                     .id("status-500")
-                                    .px_2().py_1().rounded_sm().cursor_pointer().text_xs()
+                                    .px_2().py_1().cursor_pointer().text_xs()
                                     .bg(if new_status == 500 { theme.colors.status_server_error } else { theme.colors.bg_secondary })
                                     .text_color(if new_status == 500 { theme.colors.bg_primary } else { theme.colors.text_secondary })
                                     .child("500")
@@ -337,7 +337,7 @@ impl Render for MockServerPanel {
                             .mt_2()
                             .px_3()
                             .py_1()
-                            .rounded_md()
+                            
                             .cursor_pointer()
                             .bg(theme.colors.accent)
                             .text_color(theme.colors.bg_primary)

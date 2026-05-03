@@ -33,10 +33,11 @@ pub struct ButtonStyles;
 impl ButtonStyles {
     /// Get button height based on size
     pub fn height(size: ButtonSize) -> Pixels {
+        use crate::theme::sizes;
         match size {
-            ButtonSize::Small => px(28.0),
-            ButtonSize::Medium => px(32.0),
-            ButtonSize::Large => px(36.0),
+            ButtonSize::Small => px(sizes::INPUT_SM),
+            ButtonSize::Medium => px(sizes::INPUT_MD),
+            ButtonSize::Large => px(sizes::INPUT_LG),
         }
     }
 
@@ -146,7 +147,6 @@ pub fn button(variant: ButtonVariant, size: ButtonSize) -> Div {
         .gap(px(8.0))
         .h(ButtonStyles::height(size))
         .px(ButtonStyles::padding_x(size))
-        .rounded(px(6.0))
         .cursor_pointer()
         // Styling will be applied via map_some or when_some based on context
 }
@@ -208,7 +208,6 @@ impl Button {
             .gap(px(8.0))
             .h(ButtonStyles::height(size))
             .px(ButtonStyles::padding_x(size))
-            .rounded(theme.radius.md)
             .text_size(ButtonStyles::font_size(size, &theme))
             .when(!disabled, |el| {
                 let mut el = el

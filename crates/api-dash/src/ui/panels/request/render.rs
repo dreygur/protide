@@ -7,10 +7,12 @@ use gpui::{
     MouseUpEvent, ParentElement, SharedString, Styled, Window,
 };
 
+use gpui_component::button::{Button as GButton, ButtonVariants as _};
+use gpui_component::{Disableable as _, Size, Sizable as _};
+
 use crate::theme;
 use crate::codegen::Language as CodegenLanguage;
 use crate::ui::components::render_text_view_with_max;
-use crate::ui::components::{Button, ButtonVariant, ButtonSize};
 use super::super::request_types::{ApiKeyLocation, AuthType, BodyType, EditTarget, FormFieldType, HttpMethod, RequestMode, WsConnectionState, WsMessageDirection};
 use super::{render_text_view, RequestPanel};
 
@@ -21,21 +23,9 @@ impl RequestPanel {
         let method_color = theme.method_color(method.as_str());
         let is_url_focused = self.url_focus.is_focused(window);
 
-        // Detect protocol
-        let is_https = self.url.starts_with("https://");
-        let is_http = self.url.starts_with("http://");
-        let protocol_color = if is_https {
-            theme.colors.status_success
-        } else if is_http {
-            theme.colors.method_patch // orange/yellow for http
-        } else {
-            theme.colors.text_muted
-        };
-
         // Calculate URL input text position from window left edge
-        let base_offset = 360.0;
-        let protocol_offset = if is_https || is_http { 70.0 } else { 0.0 };
-        self.url_input_left = base_offset + protocol_offset;
+        // sidebar(250) + handle(4) + px(20) + mode(110) + gap(12) + method(~72) + gap(12) ≈ 480
+        self.url_input_left = 480.0;
 
         div()
             .w_full()
@@ -52,13 +42,12 @@ impl RequestPanel {
                 div()
                     .id("mode-selector")
                     .w(px(110.0))
-                    .h(px(38.0))
+                    .h(px(32.0))
                     .px(px(12.0))
                     .flex()
                     .items_center()
                     .justify_between()
                     .gap(px(8.0))
-                    .rounded(px(6.0))
                     .bg(theme.colors.bg_secondary)
                     .border_1()
                     .border_color(if self.mode_dropdown_open {
@@ -104,9 +93,8 @@ impl RequestPanel {
                     div()
                         .id("method-selector")
                         .min_w(px(72.0))
+                        .h(px(32.0))
                         .px(px(12.0))
-                        .py(px(8.0))
-                        .rounded(px(6.0))
                         .bg(method_color.opacity(0.1))
                         .border_1()
                         .border_color(method_color.opacity(0.2))
@@ -132,45 +120,17 @@ impl RequestPanel {
                         )
                 )
             })
-            // Protocol indicator
-            .when(is_https || is_http, |el| {
-                el.child(
-                    div()
-                        .flex()
-                        .items_center()
-                        .gap(px(4.0))
-                        .px(px(8.0))
-                        .py(px(4.0))
-                        .rounded(px(4.0))
-                        .bg(protocol_color.opacity(0.1))
-                        .child(
-                            div()
-                                .text_size(px(11.0))
-                                .when(is_https, |el| el.child("🔒"))
-                                .when(is_http, |el| el.child("⚠"))
-                        )
-                        .child(
-                            div()
-                                .text_size(px(10.0))
-                                .font_weight(gpui::FontWeight::SEMIBOLD)
-                                .text_color(protocol_color)
-                                .when(is_https, |el| el.child("HTTPS"))
-                                .when(is_http, |el| el.child("HTTP"))
-                        )
-                )
-            })
             // URL input with selection support
             .child(
                 div()
                     .id("url-input")
                     .flex_1()
                     .min_w(px(0.0))
-                    .h(px(36.0))
+                    .h(px(32.0))
                     .px(px(14.0))
                     .flex()
                     .items_center()
                     .overflow_hidden()
-                    .rounded(px(6.0))
                     .border_1()
                     .when(is_url_focused, |el| {
                         el.border_color(theme.colors.accent)
@@ -210,73 +170,50 @@ impl RequestPanel {
                     }))
                     .child(self.render_url_text(is_url_focused, cx)),
             )
-            // Hero Send button with prominent styling
+            // Send button
             .child(
                 div()
                     .flex()
                     .items_center()
-                    .gap(px(12.0))
+                    .gap(px(8.0))
                     .child({
                         let is_loading = self.loading;
-                        div()
-                            .id("send-button")
-                            .h(px(44.0))
-                            .px(px(24.0))
-                            .flex()
-                            .items_center()
-                            .justify_center()
-                            .gap(px(8.0))
-                            .rounded(px(8.0))
-                            .text_size(px(14.0))
-                            .font_weight(gpui::FontWeight::BOLD)
-                            .text_color(gpui::white())
-                            .shadow_md()
-                            .when(is_loading, |el| {
-                                el.bg(theme.colors.accent.opacity(0.7))
-                                    .cursor_default()
-                                    .child(
-                                        div()
-                                            .size(px(16.0))
-                                            .rounded_full()
-                                            .border_2()
-                                            .border_color(gpui::white().opacity(0.3))
-                                            .border_t_2()
-                                            .border_color(gpui::white())
-                                    )
-                                    .child("Sending...")
-                            })
-                            .when(!is_loading, |el| {
-                                el.bg(theme.colors.accent)
-                                    .cursor_pointer()
-                                    .hover(|style| {
-                                        style.bg(theme.colors.accent_hover)
-                                            .shadow_lg()
-                                    })
-                                    .active(|style| style.shadow_sm())
-                                    .on_click(cx.listener(|this, _, _, cx| {
-                                        match this.request_mode {
-                                            RequestMode::Http | RequestMode::GraphQL => this.send_request(cx),
-                                            RequestMode::WebSocket => this.connect_websocket(cx),
-                                            RequestMode::Grpc => this.send_grpc_request(cx),
-                                            RequestMode::Trpc => this.send_trpc_request(cx),
-                                        }
-                                    }))
-                                    .child("Send")
-                            })
+                        let send_label = match self.request_mode {
+                            RequestMode::WebSocket => if matches!(self.ws_state, WsConnectionState::Connected) {
+                                "Disconnect"
+                            } else {
+                                "Connect"
+                            },
+                            _ => "Send",
+                        };
+                        GButton::new("send-button")
+                            .primary()
+                            .with_size(Size::Medium)
+                            .label(send_label)
+                            .loading(is_loading)
+                            .disabled(is_loading)
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                match this.request_mode {
+                                    RequestMode::Http | RequestMode::GraphQL => this.send_request(cx),
+                                    RequestMode::WebSocket => this.connect_websocket(cx),
+                                    RequestMode::Grpc => this.send_grpc_request(cx),
+                                    RequestMode::Trpc => this.send_trpc_request(cx),
+                                }
+                            }))
                     })
-                    // Keyboard shortcut hint - more subtle
                     .child(
                         div()
+                            .h(px(32.0))
                             .px(px(8.0))
-                            .py(px(5.0))
-                            .rounded(px(6.0))
+                            .flex()
+                            .items_center()
                             .bg(theme.colors.bg_secondary)
                             .border_1()
                             .border_color(theme.colors.border.opacity(0.5))
                             .text_size(px(11.0))
                             .font_weight(gpui::FontWeight::MEDIUM)
                             .text_color(theme.colors.text_muted)
-                            .child("⌘ + Enter")
+                            .child("⌘↵")
                     )
                     // Save button
                     .child(
@@ -288,7 +225,6 @@ impl RequestPanel {
                             .items_center()
                             .justify_center()
                             .gap(px(4.0))
-                            .rounded(px(6.0))
                             .text_size(px(11.0))
                             .text_color(theme.colors.text_secondary)
                             .cursor_pointer()
@@ -311,7 +247,6 @@ impl RequestPanel {
                             .items_center()
                             .justify_center()
                             .gap(px(4.0))
-                            .rounded(px(6.0))
                             .text_size(px(11.0))
                             .text_color(theme.colors.text_secondary)
                             .cursor_pointer()
@@ -333,7 +268,6 @@ impl RequestPanel {
                             .items_center()
                             .justify_center()
                             .gap(px(4.0))
-                            .rounded(px(6.0))
                             .text_size(px(11.0))
                             .text_color(theme.colors.text_secondary)
                             .cursor_pointer()
@@ -372,7 +306,6 @@ impl RequestPanel {
             .left(px(16.0)) // Same padding as URL bar
             .min_w(px(100.0))
             .py(px(6.0))
-            .rounded(px(8.0))
             .bg(theme.colors.bg_elevated)
             .border_1()
             .border_color(theme.colors.border)
@@ -390,7 +323,6 @@ impl RequestPanel {
                     .mx(px(4.0))
                     .px(px(12.0))
                     .py(px(8.0))
-                    .rounded(px(4.0))
                     .flex()
                     .items_center()
                     .gap(px(8.0))
@@ -400,7 +332,6 @@ impl RequestPanel {
                             .child(
                                 div()
                                     .size(px(6.0))
-                                    .rounded_full()
                                     .bg(method_color)
                             )
                     })
@@ -440,7 +371,6 @@ impl RequestPanel {
             .left(px(20.0)) // Same padding as URL bar
             .w(px(140.0))
             .py(px(6.0))
-            .rounded(px(8.0))
             .bg(theme.colors.bg_elevated)
             .border_1()
             .border_color(theme.colors.border)
@@ -457,7 +387,6 @@ impl RequestPanel {
                     .mx(px(4.0))
                     .px(px(12.0))
                     .py(px(8.0))
-                    .rounded(px(6.0))
                     .flex()
                     .items_center()
                     .gap(px(8.0))
@@ -467,7 +396,6 @@ impl RequestPanel {
                             .child(
                                 div()
                                     .size(px(6.0))
-                                    .rounded_full()
                                     .bg(theme.colors.accent)
                             )
                     })
@@ -496,46 +424,33 @@ impl RequestPanel {
 
     pub(super) fn render_tabs(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = theme::current(cx);
-        let tabs: &[(&str, &str)] = match self.request_mode {
-            RequestMode::GraphQL => &[("Query", "◇"), ("Variables", "{ }"), ("Headers", "H"), ("Auth", "🔒")],
-            RequestMode::WebSocket => &[("Messages", "⚡"), ("Headers", "H")],
-            RequestMode::Grpc => &[("Message", "◈"), ("Metadata", "M"), ("Proto", "📄")],
-            RequestMode::Trpc => &[("Procedure", "⚙"), ("Parameters", "{ }"), ("Headers", "H"), ("Auth", "🔒")],
-            RequestMode::Http => &[("Params", "?"), ("Headers", "H"), ("Body", "{ }"), ("Auth", "🔒"), ("Scripts", "ƒ")],
+        let tab_labels: &[&str] = match self.request_mode {
+            RequestMode::GraphQL => &["Query", "Variables", "Headers", "Auth"],
+            RequestMode::WebSocket => &["Messages", "Headers"],
+            RequestMode::Grpc => &["Message", "Metadata", "Proto"],
+            RequestMode::Trpc => &["Procedure", "Parameters", "Headers", "Auth"],
+            RequestMode::Http => &["Params", "Headers", "Body", "Auth", "Scripts"],
         };
         let active_tab = self.active_tab;
-
-        // Get counts for badges
         let param_count = self.params.iter().filter(|p| p.enabled && !p.key.is_empty()).count();
         let header_count = self.headers.iter().filter(|h| h.enabled && !h.key.is_empty()).count();
+        let mode = self.request_mode;
 
         div()
-            .h(px(44.0))
+            .h(px(40.0))
             .w_full()
             .flex()
             .items_center()
-            .px(px(20.0))
-            .gap(px(2.0))
+            .border_b_1()
+            .border_color(theme.colors.border)
             .bg(theme.colors.bg_primary)
-            .children(tabs.iter().enumerate().map(|(i, (tab, _icon))| {
+            .children(tab_labels.iter().enumerate().map(|(i, label)| {
                 let is_active = i == active_tab;
-                let count = match self.request_mode {
-                    RequestMode::GraphQL => match i {
-                        2 => header_count, // Headers is at index 2 for GraphQL
-                        _ => 0,
-                    },
-                    RequestMode::WebSocket => match i {
-                        1 => header_count, // Headers is at index 1 for WebSocket
-                        _ => 0,
-                    },
-                    RequestMode::Grpc => match i {
-                        1 => header_count, // Metadata is at index 1 for gRPC
-                        _ => 0,
-                    },
-                    RequestMode::Trpc => match i {
-                        2 => header_count, // Headers is at index 2 for tRPC
-                        _ => 0,
-                    },
+                let count = match mode {
+                    RequestMode::GraphQL => if i == 2 { header_count } else { 0 },
+                    RequestMode::WebSocket => if i == 1 { header_count } else { 0 },
+                    RequestMode::Grpc => if i == 1 { header_count } else { 0 },
+                    RequestMode::Trpc => if i == 2 { header_count } else { 0 },
                     RequestMode::Http => match i {
                         0 => param_count,
                         1 => header_count,
@@ -544,66 +459,49 @@ impl RequestPanel {
                 };
 
                 div()
-                    .id(SharedString::from(format!("tab-{}", i)))
-                    .px(px(14.0))
+                    .id(SharedString::from(format!("req-tab-{}", i)))
                     .h_full()
+                    .px(px(16.0))
                     .flex()
                     .items_center()
                     .gap(px(6.0))
                     .cursor_pointer()
-                    .when(is_active, |el| {
-                        el.border_b_2()
-                            .border_color(theme.colors.accent)
-                            .child(
-                                div()
-                                    .text_size(px(13.0))
-                                    .font_weight(gpui::FontWeight::SEMIBOLD)
-                                    .text_color(theme.colors.text_primary)
-                                    .child(*tab)
-                            )
-                            .when(count > 0, |el| {
-                                el.child(
-                                    div()
-                                        .px(px(6.0))
-                                        .py(px(2.0))
-                                        .rounded(px(10.0))
-                                        .bg(theme.colors.accent)
-                                        .text_size(px(10.0))
-                                        .font_weight(gpui::FontWeight::MEDIUM)
-                                        .text_color(gpui::white())
-                                        .child(format!("{}", count))
-                                )
-                            })
-                    })
+                    .border_b_2()
+                    .when(is_active, |el| el.border_color(theme.colors.accent))
                     .when(!is_active, |el| {
-                        el.border_b_2()
-                            .border_color(gpui::transparent_black())
-                            .hover(|s| {
-                                s.border_color(theme.colors.border)
-                                    .bg(theme.colors.bg_secondary.opacity(0.5))
-                            })
-                            .child(
-                                div()
-                                    .text_size(px(13.0))
-                                    .text_color(theme.colors.text_secondary)
-                                    .child(*tab)
-                            )
-                            .when(count > 0, |el| {
-                                el.child(
-                                    div()
-                                        .px(px(6.0))
-                                        .py(px(2.0))
-                                        .rounded(px(10.0))
-                                        .bg(theme.colors.bg_tertiary)
-                                        .text_size(px(10.0))
-                                        .text_color(theme.colors.text_muted)
-                                        .child(format!("{}", count))
-                                )
-                            })
+                        el.border_color(gpui::transparent_black())
+                            .hover(|s| s.bg(theme.colors.hover_overlay))
                     })
                     .on_click(cx.listener(move |this, _, _, cx| {
                         this.set_tab(i, cx);
                     }))
+                    .child(
+                        div()
+                            .text_size(px(13.0))
+                            .font_weight(if is_active {
+                                gpui::FontWeight::MEDIUM
+                            } else {
+                                gpui::FontWeight::NORMAL
+                            })
+                            .text_color(if is_active {
+                                theme.colors.text_primary
+                            } else {
+                                theme.colors.text_secondary
+                            })
+                            .child(*label)
+                    )
+                    .when(count > 0, |el| {
+                        el.child(
+                            div()
+                                .px(px(5.0))
+                                .py(px(1.0))
+                                .bg(theme.colors.accent.opacity(0.15))
+                                .text_size(px(10.0))
+                                .font_weight(gpui::FontWeight::MEDIUM)
+                                .text_color(theme.colors.accent)
+                                .child(format!("{}", count))
+                        )
+                    })
             }))
     }
 
@@ -723,7 +621,6 @@ impl RequestPanel {
                             div()
                                 .px(px(6.0))
                                 .py(px(2.0))
-                                .rounded(px(8.0))
                                 .bg(theme.colors.accent.opacity(0.12))
                                 .text_size(px(10.0))
                                 .font_weight(gpui::FontWeight::MEDIUM)
@@ -732,7 +629,7 @@ impl RequestPanel {
                         )
                 )
                 // Action spacer
-                .child(div().size(px(24.0)))
+                .child(div().size(px(28.0)))
         );
 
         // Params list
@@ -751,14 +648,12 @@ impl RequestPanel {
                     .gap(px(8.0))
                     .py(px(4.0))
                     .px(px(2.0))
-                    .rounded(px(4.0))
                     .when(!is_row_editing, |el| el.hover(|s| s.bg(theme.colors.bg_tertiary.opacity(0.3))))
                     // Checkbox
                     .child(
                         div()
                             .id(SharedString::from(format!("param-checkbox-{}", i)))
                             .size(px(16.0))
-                            .rounded(px(4.0))
                             .border_1()
                             .cursor_pointer()
                             .when(is_enabled, |el| {
@@ -813,8 +708,7 @@ impl RequestPanel {
                     .child(
                         div()
                             .id(SharedString::from(format!("param-remove-{}", i)))
-                            .size(px(24.0))
-                            .rounded(px(4.0))
+                            .size(px(28.0))
                             .flex()
                             .items_center()
                             .justify_center()
@@ -836,22 +730,15 @@ impl RequestPanel {
         // Add param button
         container = container.child(
             div()
-                .id("add-param-btn")
                 .mt(px(8.0))
-                .on_click(cx.listener(|this, _, _, cx| {
-                    this.add_param(cx);
-                }))
                 .child(
-                    Button::secondary(ButtonSize::Small)
-                        .render(cx,
-                            div()
-                                .flex()
-                                .items_center()
-                                .gap(px(6.0))
-                                .child(div().text_size(px(14.0)).child("+"))
-                                .child("Add Parameter")
-                                .into_any_element()
-                        )
+                    GButton::new("add-param")
+                        .outline()
+                        .with_size(Size::Small)
+                        .label("+ Add Parameter")
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            this.add_param(cx);
+                        }))
                 )
         );
 
@@ -921,7 +808,6 @@ impl RequestPanel {
                             div()
                                 .px(px(6.0))
                                 .py(px(2.0))
-                                .rounded(px(8.0))
                                 .bg(theme.colors.accent.opacity(0.12))
                                 .text_size(px(10.0))
                                 .font_weight(gpui::FontWeight::MEDIUM)
@@ -930,7 +816,7 @@ impl RequestPanel {
                         )
                 )
                 // Action spacer
-                .child(div().size(px(24.0)))
+                .child(div().size(px(28.0)))
         );
 
         // Headers list
@@ -949,14 +835,12 @@ impl RequestPanel {
                     .gap(px(8.0))
                     .py(px(4.0))
                     .px(px(2.0))
-                    .rounded(px(4.0))
                     .when(!is_row_editing, |el| el.hover(|s| s.bg(theme.colors.bg_tertiary.opacity(0.3))))
                     // Checkbox
                     .child(
                         div()
                             .id(SharedString::from(format!("header-checkbox-{}", i)))
                             .size(px(16.0))
-                            .rounded(px(4.0))
                             .border_1()
                             .cursor_pointer()
                             .when(is_enabled, |el| {
@@ -1011,8 +895,7 @@ impl RequestPanel {
                     .child(
                         div()
                             .id(SharedString::from(format!("header-remove-{}", i)))
-                            .size(px(24.0))
-                            .rounded(px(4.0))
+                            .size(px(28.0))
                             .flex()
                             .items_center()
                             .justify_center()
@@ -1034,22 +917,15 @@ impl RequestPanel {
         // Add header button
         container = container.child(
             div()
-                .id("add-header-btn")
                 .mt(px(8.0))
-                .on_click(cx.listener(|this, _, _, cx| {
-                    this.add_header(cx);
-                }))
                 .child(
-                    Button::secondary(ButtonSize::Small)
-                        .render(cx,
-                            div()
-                                .flex()
-                                .items_center()
-                                .gap(px(6.0))
-                                .child(div().text_size(px(14.0)).child("+"))
-                                .child("Add Header")
-                                .into_any_element()
-                        )
+                    GButton::new("add-header")
+                        .outline()
+                        .with_size(Size::Small)
+                        .label("+ Add Header")
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            this.add_header(cx);
+                        }))
                 )
         );
 
@@ -1174,7 +1050,6 @@ impl RequestPanel {
                     div()
                         .px(px(6.0))
                         .py(px(2.0))
-                        .rounded(px(8.0))
                         .bg(theme.colors.accent.opacity(0.12))
                         .text_size(px(10.0))
                         .font_weight(gpui::FontWeight::MEDIUM)
@@ -1219,7 +1094,7 @@ impl RequestPanel {
                         .text_color(theme.colors.text_muted)
                         .child("VALUE")
                 )
-                .child(div().size(px(24.0)))
+                .child(div().size(px(28.0)))
         );
 
         // Form fields list
@@ -1239,14 +1114,12 @@ impl RequestPanel {
                     .gap(px(8.0))
                     .py(px(4.0))
                     .px(px(2.0))
-                    .rounded(px(4.0))
                     .when(!is_row_editing, |el| el.hover(|s| s.bg(theme.colors.bg_tertiary.opacity(0.3))))
                     // Checkbox
                     .child(
                         div()
                             .id(SharedString::from(format!("form-checkbox-{}", i)))
                             .size(px(16.0))
-                            .rounded(px(4.0))
                             .border_1()
                             .cursor_pointer()
                             .when(is_enabled, |el| {
@@ -1297,7 +1170,6 @@ impl RequestPanel {
                             .flex()
                             .items_center()
                             .justify_center()
-                            .rounded(px(4.0))
                             .cursor_pointer()
                             .border_1()
                             .border_color(theme.colors.border)
@@ -1344,7 +1216,6 @@ impl RequestPanel {
                                         .flex()
                                         .items_center()
                                         .justify_center()
-                                        .rounded(px(4.0))
                                         .cursor_pointer()
                                         .bg(theme.colors.bg_tertiary)
                                         .border_1()
@@ -1385,8 +1256,7 @@ impl RequestPanel {
                     .child(
                         div()
                             .id(SharedString::from(format!("form-remove-{}", i)))
-                            .size(px(24.0))
-                            .rounded(px(4.0))
+                            .size(px(28.0))
                             .flex()
                             .items_center()
                             .justify_center()
@@ -1420,7 +1290,6 @@ impl RequestPanel {
                         .id("add-form-field-btn")
                         .w_full()
                         .py(px(8.0))
-                        .rounded(px(6.0))
                         .border_1()
                         .border_color(theme.colors.border.opacity(0.5))
                         .flex()
@@ -1599,7 +1468,6 @@ impl RequestPanel {
             .px(px(8.0))
             .flex()
             .when(!is_editing, |el| el.items_center())
-            .rounded(px(4.0))
             .border_1()
             .cursor_text()
             .when(is_editing, |el| el.border_color(theme.colors.accent))
@@ -1651,7 +1519,6 @@ impl RequestPanel {
             .px(px(8.0))
             .flex()
             .when(!is_editing, |el| el.items_center())
-            .rounded(px(4.0))
             .border_1()
             .cursor_text()
             .when(is_editing, |el| el.border_color(theme.colors.accent))
@@ -1788,7 +1655,6 @@ impl RequestPanel {
                 div()
                     .w_full()
                     .p(px(16.0))
-                    .rounded(px(8.0))
                     .bg(theme.colors.bg_tertiary.opacity(0.5))
                     .border_1()
                     .border_color(theme.colors.border.opacity(0.5))
@@ -1798,7 +1664,6 @@ impl RequestPanel {
                     .child(
                         div()
                             .size(px(32.0))
-                            .rounded(px(6.0))
                             .bg(theme.colors.text_muted.opacity(0.1))
                             .flex()
                             .items_center()
@@ -1836,7 +1701,6 @@ impl RequestPanel {
                 div()
                     .w_full()
                     .p(px(16.0))
-                    .rounded(px(8.0))
                     .bg(theme.colors.bg_tertiary.opacity(0.5))
                     .border_1()
                     .border_color(theme.colors.border.opacity(0.5))
@@ -1852,7 +1716,6 @@ impl RequestPanel {
                             .child(
                                 div()
                                     .size(px(32.0))
-                                    .rounded(px(6.0))
                                     .bg(theme.colors.accent.opacity(0.1))
                                     .flex()
                                     .items_center()
@@ -1915,7 +1778,6 @@ impl RequestPanel {
                 div()
                     .w_full()
                     .p(px(16.0))
-                    .rounded(px(8.0))
                     .bg(theme.colors.bg_tertiary.opacity(0.5))
                     .border_1()
                     .border_color(theme.colors.border.opacity(0.5))
@@ -1931,7 +1793,6 @@ impl RequestPanel {
                             .child(
                                 div()
                                     .size(px(32.0))
-                                    .rounded(px(6.0))
                                     .bg(theme.colors.accent.opacity(0.1))
                                     .flex()
                                     .items_center()
@@ -2028,7 +1889,6 @@ impl RequestPanel {
                 div()
                     .w_full()
                     .p(px(16.0))
-                    .rounded(px(8.0))
                     .bg(theme.colors.bg_tertiary.opacity(0.5))
                     .border_1()
                     .border_color(theme.colors.border.opacity(0.5))
@@ -2044,7 +1904,6 @@ impl RequestPanel {
                             .child(
                                 div()
                                     .size(px(32.0))
-                                    .rounded(px(6.0))
                                     .bg(theme.colors.accent.opacity(0.1))
                                     .flex()
                                     .items_center()
@@ -2153,7 +2012,6 @@ impl RequestPanel {
                                     .items_center()
                                     .gap(px(4.0))
                                     .p(px(3.0))
-                                    .rounded(px(6.0))
                                     .bg(theme.colors.bg_primary)
                                     .child(
                                         div()
@@ -2163,7 +2021,6 @@ impl RequestPanel {
                                             .gap(px(6.0))
                                             .px(px(10.0))
                                             .py(px(5.0))
-                                            .rounded(px(4.0))
                                             .cursor_pointer()
                                             .text_size(px(11.0))
                                             .when(location == ApiKeyLocation::Header, |el| {
@@ -2191,7 +2048,6 @@ impl RequestPanel {
                                             .gap(px(6.0))
                                             .px(px(10.0))
                                             .py(px(5.0))
-                                            .rounded(px(4.0))
                                             .cursor_pointer()
                                             .text_size(px(11.0))
                                             .when(location == ApiKeyLocation::QueryParam, |el| {
@@ -2273,7 +2129,6 @@ impl RequestPanel {
             .px(px(12.0))
             .flex()
             .when(!is_editing, |el| el.items_center())
-            .rounded(px(4.0))
             .border_1()
             .cursor_text()
             .when(is_editing, |el| el.border_color(theme.colors.accent))
@@ -2326,7 +2181,6 @@ impl RequestPanel {
                             .child(
                                 div()
                                     .size(px(20.0))
-                                    .rounded(px(4.0))
                                     .bg(theme.colors.method_post.opacity(0.15))
                                     .flex()
                                     .items_center()
@@ -2355,7 +2209,6 @@ impl RequestPanel {
                             .w_full()
                             .border_1()
                             .border_color(theme.colors.border)
-                            .rounded(px(6.0))
                             .overflow_hidden()
                             .child(self.pre_script_editor.clone())
                     )
@@ -2374,7 +2227,6 @@ impl RequestPanel {
                             .child(
                                 div()
                                     .size(px(20.0))
-                                    .rounded(px(4.0))
                                     .bg(theme.colors.status_success.opacity(0.15))
                                     .flex()
                                     .items_center()
@@ -2403,7 +2255,6 @@ impl RequestPanel {
                             .w_full()
                             .border_1()
                             .border_color(theme.colors.border)
-                            .rounded(px(6.0))
                             .overflow_hidden()
                             .child(self.post_script_editor.clone())
                     )
@@ -2422,7 +2273,6 @@ impl RequestPanel {
                             .child(
                                 div()
                                     .size(px(20.0))
-                                    .rounded(px(4.0))
                                     .bg(theme.colors.accent.opacity(0.15))
                                     .flex()
                                     .items_center()
@@ -2451,7 +2301,6 @@ impl RequestPanel {
                             .w_full()
                             .border_1()
                             .border_color(theme.colors.border)
-                            .rounded(px(6.0))
                             .overflow_hidden()
                             .child(self.tests_editor.clone())
                     )
@@ -2480,7 +2329,6 @@ impl RequestPanel {
                     .child(
                         div()
                             .size(px(20.0))
-                            .rounded(px(4.0))
                             .bg(theme.colors.method_delete.opacity(0.15))
                             .flex()
                             .items_center()
@@ -2511,7 +2359,6 @@ impl RequestPanel {
                     .min_h(px(200.0))
                     .border_1()
                     .border_color(theme.colors.border)
-                    .rounded(px(6.0))
                     .overflow_hidden()
                     .child(self.graphql_query_editor.clone())
             )
@@ -2539,7 +2386,6 @@ impl RequestPanel {
                     .child(
                         div()
                             .size(px(20.0))
-                            .rounded(px(4.0))
                             .bg(theme.colors.accent.opacity(0.15))
                             .flex()
                             .items_center()
@@ -2570,7 +2416,6 @@ impl RequestPanel {
                     .min_h(px(150.0))
                     .border_1()
                     .border_color(theme.colors.border)
-                    .rounded(px(6.0))
                     .overflow_hidden()
                     .child(self.graphql_variables_editor.clone())
             )
@@ -2607,7 +2452,6 @@ impl RequestPanel {
                             .child(
                                 div()
                                     .size(px(20.0))
-                                    .rounded(px(4.0))
                                     .bg(if is_connected {
                                         theme.colors.method_get.opacity(0.15)
                                     } else {
@@ -2635,7 +2479,6 @@ impl RequestPanel {
                                 div()
                                     .px(px(8.0))
                                     .py(px(2.0))
-                                    .rounded(px(4.0))
                                     .bg(if is_connected {
                                         theme.colors.method_get.opacity(0.15)
                                     } else if is_connecting {
@@ -2664,7 +2507,6 @@ impl RequestPanel {
                             .id("ws-connect-btn")
                             .px(px(12.0))
                             .py(px(6.0))
-                            .rounded(px(6.0))
                             .cursor_pointer()
                             .when(is_connected, |el| {
                                 el.bg(theme.colors.method_delete.opacity(0.15))
@@ -2703,7 +2545,6 @@ impl RequestPanel {
                     .min_h(px(100.0))
                     .border_1()
                     .border_color(theme.colors.border)
-                    .rounded(px(6.0))
                     .bg(theme.colors.bg_primary)
                     .overflow_scroll()
                     .flex()
@@ -2728,7 +2569,6 @@ impl RequestPanel {
                                     .id(SharedString::from(format!("ws-msg-{}", i)))
                                     .w_full()
                                     .p(px(8.0))
-                                    .rounded(px(4.0))
                                     .bg(if is_sent {
                                         theme.colors.accent.opacity(0.08)
                                     } else {
@@ -2793,7 +2633,6 @@ impl RequestPanel {
                                     .h(px(80.0))
                                     .border_1()
                                     .border_color(theme.colors.border)
-                                    .rounded(px(6.0))
                                     .overflow_hidden()
                                     .child(self.ws_message_editor.clone())
                             )
@@ -2802,7 +2641,6 @@ impl RequestPanel {
                                     .id("ws-send-btn")
                                     .h(px(80.0))
                                     .w(px(70.0))
-                                    .rounded(px(6.0))
                                     .cursor_pointer()
                                     .flex()
                                     .items_center()
@@ -2869,7 +2707,6 @@ impl RequestPanel {
                                     .w_full()
                                     .h(px(32.0))
                                     .px(px(12.0))
-                                    .rounded(px(6.0))
                                     .bg(theme.colors.bg_secondary)
                                     .border_1()
                                     .border_color(theme.colors.border)
@@ -2901,7 +2738,6 @@ impl RequestPanel {
                                     .w_full()
                                     .h(px(32.0))
                                     .px(px(12.0))
-                                    .rounded(px(6.0))
                                     .bg(theme.colors.bg_secondary)
                                     .border_1()
                                     .border_color(theme.colors.border)
@@ -2934,7 +2770,6 @@ impl RequestPanel {
                             .flex_1()
                             .border_1()
                             .border_color(theme.colors.border)
-                            .rounded(px(6.0))
                             .overflow_hidden()
                             .child(self.grpc_message_editor.clone())
                     )
@@ -2951,7 +2786,6 @@ impl RequestPanel {
                             .id("grpc-send-btn")
                             .px(px(20.0))
                             .py(px(10.0))
-                            .rounded(px(6.0))
                             .cursor_pointer()
                             .flex()
                             .items_center()
@@ -2983,7 +2817,6 @@ impl RequestPanel {
                         .w_full()
                         .py(px(8.0))
                         .px(px(12.0))
-                        .rounded(px(6.0))
                         .bg(theme.colors.accent.opacity(0.1))
                         .text_size(px(11.0))
                         .text_color(theme.colors.text_muted)
@@ -2993,137 +2826,175 @@ impl RequestPanel {
             .into_any_element()
     }
 
-    /// Render gRPC Metadata tab - simplified version showing metadata as read-only display
     fn render_grpc_metadata_tab(&mut self, cx: &mut Context<Self>) -> gpui::AnyElement {
         let theme = theme::current(cx);
+        let meta_len = self.grpc_metadata.len();
+        let active_edit = self.active_edit;
+        let edit_selection = self.edit_selection.clone();
+        let enabled_count = self.grpc_metadata.iter().filter(|m| m.enabled && !m.key.is_empty()).count();
 
-        // Note: For now we show a simplified metadata view
-        // Full editing can be added later using the headers tab pattern
-        div()
-            .id("grpc-metadata-tab")
+        let meta_data: Vec<_> = self.grpc_metadata.iter().enumerate().map(|(i, m)| {
+            (i, m.enabled, m.key.clone(), m.value.clone())
+        }).collect();
+
+        let mut container = div()
             .w_full()
-            .h_full()
             .flex()
             .flex_col()
-            .gap(px(8.0))
-            // Info text
-            .child(
+            .gap(px(2.0))
+            .p(px(20.0))
+            .track_focus(&self.edit_focus)
+            .on_key_down(cx.listener(|this, event: &KeyDownEvent, _, cx| {
+                this.handle_edit_key(event, cx);
+            }));
+
+        container = container.child(
+            div()
+                .w_full()
+                .flex()
+                .items_center()
+                .gap(px(8.0))
+                .pb(px(8.0))
+                .border_b_1()
+                .border_color(theme.colors.border.opacity(0.5))
+                .mb(px(4.0))
+                .child(div().size(px(16.0)))
+                .child(
+                    div()
+                        .w(px(150.0))
+                        .text_size(px(10.0))
+                        .font_weight(gpui::FontWeight::SEMIBOLD)
+                        .text_color(theme.colors.text_muted)
+                        .child("KEY")
+                )
+                .child(
+                    div()
+                        .flex_1()
+                        .flex()
+                        .items_center()
+                        .justify_between()
+                        .child(
+                            div()
+                                .text_size(px(10.0))
+                                .font_weight(gpui::FontWeight::SEMIBOLD)
+                                .text_color(theme.colors.text_muted)
+                                .child("VALUE")
+                        )
+                        .child(
+                            div()
+                                .px(px(6.0))
+                                .py(px(2.0))
+                                .bg(theme.colors.accent.opacity(0.12))
+                                .text_size(px(10.0))
+                                .font_weight(gpui::FontWeight::MEDIUM)
+                                .text_color(theme.colors.accent)
+                                .child(format!("{} active", enabled_count))
+                        )
+                )
+                .child(div().size(px(28.0)))
+        );
+
+        for (i, is_enabled, key, value) in meta_data {
+            let can_remove = meta_len > 1;
+            let is_editing_key = active_edit == Some(EditTarget::GrpcMetaKey(i));
+            let is_editing_value = active_edit == Some(EditTarget::GrpcMetaValue(i));
+            let is_row_editing = is_editing_key || is_editing_value;
+
+            container = container.child(
                 div()
-                    .text_size(px(11.0))
-                    .text_color(theme.colors.text_muted)
-                    .child("gRPC metadata (similar to HTTP headers)")
-            )
-            // Header row
-            .child(
-                div()
+                    .id(SharedString::from(format!("grpc-meta-row-{}", i)))
                     .w_full()
                     .flex()
                     .items_center()
                     .gap(px(8.0))
-                    .pb(px(8.0))
-                    .border_b_1()
-                    .border_color(theme.colors.border.opacity(0.5))
-                    .child(div().size(px(16.0))) // Checkbox spacer
-                    .child(div().flex_1().text_size(px(11.0)).text_color(theme.colors.text_muted).child("Key"))
-                    .child(div().flex_1().text_size(px(11.0)).text_color(theme.colors.text_muted).child("Value"))
-                    .child(div().w(px(24.0))) // Delete spacer
-            )
-            // Metadata rows - display current metadata
-            .children(
-                self.grpc_metadata.iter().enumerate().map(|(idx, meta)| {
-                    let enabled = meta.enabled;
-                    let key = meta.key.clone();
-                    let value = meta.value.clone();
-                    let is_last = idx == self.grpc_metadata.len() - 1;
+                    .py(px(4.0))
+                    .px(px(2.0))
+                    .when(!is_row_editing, |el| el.hover(|s| s.bg(theme.colors.bg_tertiary.opacity(0.3))))
+                    .child(
+                        div()
+                            .id(SharedString::from(format!("grpc-meta-cb-{}", i)))
+                            .size(px(16.0))
+                            .border_1()
+                            .cursor_pointer()
+                            .when(is_enabled, |el| {
+                                el.bg(theme.colors.accent).border_color(theme.colors.accent)
+                            })
+                            .when(!is_enabled, |el| {
+                                el.border_color(theme.colors.border)
+                                    .hover(|s| s.border_color(theme.colors.text_muted))
+                            })
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .when(is_enabled, |el| {
+                                el.child(
+                                    div().text_size(px(10.0)).text_color(gpui::white()).child("✓")
+                                )
+                            })
+                            .on_click(cx.listener(move |this, _, _, cx| {
+                                this.toggle_grpc_meta(i, cx);
+                            }))
+                    )
+                    .child(
+                        self.render_kv_input(
+                            format!("grpc-meta-key-{}", i),
+                            EditTarget::GrpcMetaKey(i),
+                            &key,
+                            "metadata-key",
+                            is_editing_key,
+                            if is_editing_key { edit_selection.clone() } else { 0..0 },
+                            px(150.0),
+                            cx,
+                        )
+                    )
+                    .child(
+                        self.render_kv_input_flex(
+                            format!("grpc-meta-val-{}", i),
+                            EditTarget::GrpcMetaValue(i),
+                            &value,
+                            "value",
+                            is_editing_value,
+                            if is_editing_value { edit_selection.clone() } else { 0..0 },
+                            cx,
+                        )
+                    )
+                    .child(
+                        div()
+                            .id(SharedString::from(format!("grpc-meta-del-{}", i)))
+                            .size(px(28.0))
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .cursor_pointer()
+                            .text_size(px(14.0))
+                            .when(can_remove, |el| {
+                                el.text_color(theme.colors.text_muted)
+                                    .hover(|s| s.bg(theme.colors.status_client_error.opacity(0.1)).text_color(theme.colors.status_client_error))
+                                    .on_click(cx.listener(move |this, _, _, cx| {
+                                        this.remove_grpc_meta(i, cx);
+                                    }))
+                            })
+                            .when(!can_remove, |el| el.text_color(theme.colors.border))
+                            .child("×")
+                    )
+            );
+        }
 
-                    div()
-                        .w_full()
-                        .flex()
-                        .items_center()
-                        .gap(px(8.0))
-                        .py(px(4.0))
-                        // Checkbox
-                        .child(
-                            div()
-                                .id(SharedString::from(format!("grpc-meta-enable-{}", idx)))
-                                .size(px(16.0))
-                                .rounded(px(4.0))
-                                .border_1()
-                                .cursor_pointer()
-                                .flex()
-                                .items_center()
-                                .justify_center()
-                                .when(enabled, |el| {
-                                    el.bg(theme.colors.accent)
-                                        .border_color(theme.colors.accent)
-                                        .child(div().text_size(px(10.0)).text_color(gpui::rgb(0xFFFFFF)).child("✓"))
-                                })
-                                .when(!enabled, |el| {
-                                    el.border_color(theme.colors.border)
-                                        .hover(|s| s.border_color(theme.colors.accent.opacity(0.5)))
-                                })
-                                .on_click(cx.listener(move |this, _, _, cx| {
-                                    if let Some(meta) = this.grpc_metadata.get_mut(idx) {
-                                        meta.enabled = !meta.enabled;
-                                    }
-                                    cx.notify();
-                                }))
-                        )
-                        // Key field
-                        .child(
-                            div()
-                                .flex_1()
-                                .h(px(28.0))
-                                .px(px(8.0))
-                                .rounded(px(4.0))
-                                .bg(theme.colors.bg_secondary)
-                                .flex()
-                                .items_center()
-                                .text_size(px(12.0))
-                                .text_color(if key.is_empty() { theme.colors.text_muted } else { theme.colors.text_primary })
-                                .child(if key.is_empty() { "metadata-key".to_string() } else { key })
-                        )
-                        // Value field
-                        .child(
-                            div()
-                                .flex_1()
-                                .h(px(28.0))
-                                .px(px(8.0))
-                                .rounded(px(4.0))
-                                .bg(theme.colors.bg_secondary)
-                                .flex()
-                                .items_center()
-                                .text_size(px(12.0))
-                                .text_color(if value.is_empty() { theme.colors.text_muted } else { theme.colors.text_primary })
-                                .child(if value.is_empty() { "value".to_string() } else { value })
-                        )
-                        // Delete button
-                        .child(
-                            div()
-                                .id(SharedString::from(format!("grpc-meta-del-{}", idx)))
-                                .size(px(24.0))
-                                .rounded(px(4.0))
-                                .cursor_pointer()
-                                .flex()
-                                .items_center()
-                                .justify_center()
-                                .when(!is_last, |el| {
-                                    el.hover(|s| s.bg(theme.colors.method_delete.opacity(0.1)))
-                                        .text_color(theme.colors.text_muted)
-                                        .hover(|s| s.text_color(theme.colors.method_delete))
-                                        .on_click(cx.listener(move |this, _, _, cx| {
-                                            if this.grpc_metadata.len() > 1 {
-                                                this.grpc_metadata.remove(idx);
-                                                cx.notify();
-                                            }
-                                        }))
-                                })
-                                .when(is_last, |el| el.text_color(theme.colors.text_muted.opacity(0.3)))
-                                .child("×")
-                        )
-                }).collect::<Vec<_>>()
-            )
-            .into_any_element()
+        container = container.child(
+            div()
+                .mt(px(8.0))
+                .child(
+                    GButton::new("add-grpc-meta")
+                        .outline()
+                        .with_size(Size::Small)
+                        .label("+ Add Metadata")
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            this.add_grpc_meta(cx);
+                        }))
+                )
+        );
+
+        container.into_any_element()
     }
 
     /// Render gRPC Proto tab
@@ -3153,7 +3024,6 @@ impl RequestPanel {
                             .id("load-proto-btn")
                             .px(px(16.0))
                             .py(px(8.0))
-                            .rounded(px(6.0))
                             .bg(theme.colors.accent)
                             .cursor_pointer()
                             .hover(|s| s.opacity(0.9))
@@ -3179,7 +3049,6 @@ impl RequestPanel {
                                 .id("clear-proto-btn")
                                 .px(px(12.0))
                                 .py(px(8.0))
-                                .rounded(px(6.0))
                                 .bg(theme.colors.bg_tertiary)
                                 .cursor_pointer()
                                 .hover(|s| s.bg(theme.colors.method_delete.opacity(0.1)))
@@ -3218,7 +3087,6 @@ impl RequestPanel {
                             .flex_1()
                             .border_1()
                             .border_color(theme.colors.border)
-                            .rounded(px(6.0))
                             .bg(theme.colors.bg_secondary)
                             .p(px(12.0))
                             .overflow_scroll()
@@ -3269,7 +3137,6 @@ impl RequestPanel {
             .right(px(16.0))
             .min_w(px(180.0))
             .py(px(6.0))
-            .rounded(px(8.0))
             .bg(theme.colors.bg_elevated)
             .border_1()
             .border_color(theme.colors.border)
@@ -3286,7 +3153,6 @@ impl RequestPanel {
                     .mx(px(4.0))
                     .px(px(12.0))
                     .py(px(8.0))
-                    .rounded(px(4.0))
                     .flex()
                     .flex_col()
                     .cursor_pointer()
@@ -3347,7 +3213,6 @@ impl RequestPanel {
                     .bg(theme.colors.bg_primary)
                     .border_1()
                     .border_color(theme.colors.border)
-                    .rounded(px(12.0))
                     .shadow_lg()
                     .flex()
                     .flex_col()
@@ -3388,7 +3253,6 @@ impl RequestPanel {
                                             .id("copy-codegen")
                                             .px(px(10.0))
                                             .py(px(6.0))
-                                            .rounded(px(4.0))
                                             .text_size(px(11.0))
                                             .text_color(theme.colors.text_secondary)
                                             .cursor_pointer()
@@ -3407,7 +3271,6 @@ impl RequestPanel {
                                             .flex()
                                             .items_center()
                                             .justify_center()
-                                            .rounded(px(4.0))
                                             .text_size(px(14.0))
                                             .text_color(theme.colors.text_muted)
                                             .cursor_pointer()
@@ -3431,7 +3294,6 @@ impl RequestPanel {
                                     .w_full()
                                     .p(px(12.0))
                                     .bg(theme.colors.bg_secondary)
-                                    .rounded(px(6.0))
                                     .font_family("Ubuntu Mono")
                                     .text_size(px(12.0))
                                     .text_color(theme.colors.text_primary)
@@ -3466,7 +3328,6 @@ impl RequestPanel {
                     .bg(theme.colors.bg_primary)
                     .border_1()
                     .border_color(theme.colors.border)
-                    .rounded(px(12.0))
                     .shadow_lg()
                     .flex()
                     .flex_col()
@@ -3497,7 +3358,6 @@ impl RequestPanel {
                                     .flex()
                                     .items_center()
                                     .justify_center()
-                                    .rounded(px(4.0))
                                     .text_size(px(14.0))
                                     .text_color(theme.colors.text_muted)
                                     .cursor_pointer()
@@ -3533,7 +3393,6 @@ impl RequestPanel {
                                             .id("browse-import")
                                             .px(px(10.0))
                                             .py(px(5.0))
-                                            .rounded(px(4.0))
                                             .text_size(px(11.0))
                                             .text_color(theme.colors.text_secondary)
                                             .cursor_pointer()
@@ -3556,7 +3415,6 @@ impl RequestPanel {
                                     .bg(theme.colors.bg_secondary)
                                     .border_1()
                                     .border_color(theme.colors.border)
-                                    .rounded(px(6.0))
                                     .overflow_scroll()
                                     .font_family("Ubuntu Mono")
                                     .text_size(px(12.0))
@@ -3597,7 +3455,6 @@ impl RequestPanel {
                                         .bg(theme.colors.status_client_error.opacity(0.1))
                                         .border_1()
                                         .border_color(theme.colors.status_client_error.opacity(0.3))
-                                        .rounded(px(4.0))
                                         .text_size(px(12.0))
                                         .text_color(theme.colors.status_client_error)
                                         .child(import_error.unwrap_or_default())
@@ -3621,7 +3478,6 @@ impl RequestPanel {
                                     .id("clear-import")
                                     .px(px(14.0))
                                     .py(px(8.0))
-                                    .rounded(px(6.0))
                                     .text_size(px(12.0))
                                     .text_color(theme.colors.text_secondary)
                                     .cursor_pointer()
@@ -3639,7 +3495,6 @@ impl RequestPanel {
                                     .id("execute-import")
                                     .px(px(14.0))
                                     .py(px(8.0))
-                                    .rounded(px(6.0))
                                     .text_size(px(12.0))
                                     .font_weight(gpui::FontWeight::SEMIBOLD)
                                     .text_color(gpui::white())
@@ -3658,6 +3513,8 @@ impl RequestPanel {
     fn render_trpc_procedure_tab(&mut self, cx: &mut Context<Self>) -> gpui::AnyElement {
         let theme = theme::current(cx);
         let procedure = self.trpc_procedure.clone();
+        let is_editing = self.active_edit == Some(EditTarget::TrpcProcedure);
+        let edit_selection = self.edit_selection.clone();
 
         div()
             .id("trpc-procedure-tab")
@@ -3667,6 +3524,10 @@ impl RequestPanel {
             .flex_col()
             .gap(px(16.0))
             .p(px(16.0))
+            .track_focus(&self.edit_focus)
+            .on_key_down(cx.listener(|this, event: &KeyDownEvent, _, cx| {
+                this.handle_edit_key(event, cx);
+            }))
             .child(
                 div()
                     .flex()
@@ -3686,46 +3547,15 @@ impl RequestPanel {
                             .child("Enter the procedure name (e.g., \"query.getUser\", \"mutation.createPost\")")
                     )
                     .child(
-                        div()
-                            .w_full()
-                            .h(px(40.0))
-                            .px(px(12.0))
-                            .flex()
-                            .items_center()
-                            .bg(theme.colors.bg_secondary)
-                            .border_1()
-                            .border_color(theme.colors.border)
-                            .rounded(px(6.0))
-                            .child(
-                                div()
-                                    .text_size(px(13.0))
-                                    .font_family("Ubuntu Mono")
-                                    .text_color(if procedure.is_empty() {
-                                        theme.colors.text_muted
-                                    } else {
-                                        theme.colors.text_primary
-                                    })
-                                    .child(if procedure.is_empty() {
-                                        "query.getUser".to_string()
-                                    } else {
-                                        procedure
-                                    })
-                            )
-                    )
-                    .child(
-                        div()
-                            .mt(px(8.0))
-                            .p(px(12.0))
-                            .bg(theme.colors.bg_elevated.opacity(0.5))
-                            .border_1()
-                            .border_color(theme.colors.border.opacity(0.5))
-                            .rounded(px(6.0))
-                            .child(
-                                div()
-                                    .text_size(px(11.0))
-                                    .text_color(theme.colors.text_muted)
-                                    .child("Note: Procedure editing in URL bar - MVP shows current value here")
-                            )
+                        self.render_kv_input_flex(
+                            "trpc-procedure-input".to_string(),
+                            EditTarget::TrpcProcedure,
+                            &procedure,
+                            "query.getUser",
+                            is_editing,
+                            if is_editing { edit_selection } else { 0..0 },
+                            cx,
+                        )
                     )
             )
             .into_any_element()
@@ -3750,7 +3580,6 @@ impl RequestPanel {
                     .child(
                         div()
                             .size(px(20.0))
-                            .rounded(px(4.0))
                             .bg(theme.colors.method_post.opacity(0.15))
                             .flex()
                             .items_center()
@@ -3780,7 +3609,6 @@ impl RequestPanel {
                     .w_full()
                     .border_1()
                     .border_color(theme.colors.border)
-                    .rounded(px(6.0))
                     .overflow_hidden()
                     .child(self.trpc_params_editor.clone())
             )

@@ -48,6 +48,9 @@ pub enum EditTarget {
     ApiKeyValue,
     FormKey(usize),
     FormValue(usize),
+    GrpcMetaKey(usize),
+    GrpcMetaValue(usize),
+    TrpcProcedure,
 }
 
 /// Authentication type
