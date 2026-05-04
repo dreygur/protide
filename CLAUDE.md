@@ -102,11 +102,17 @@ api-dash/
 3. **No database**: File-system based storage (collections = folders)
 4. **UI framework**: GPUI from Zed - GPU-accelerated, immediate mode style
 
+### GPUI Reference
+- **Zed editor is the authoritative GPUI example source.** GPUI was invented and built by Zed. Always look at Zed's source code for correct GPUI patterns, event handling, rendering APIs, and idioms before guessing or inventing approaches.
+- Zed source: `~/.cargo/git/checkouts/zed-a70e2ad075855582/db5a9be/crates/`
+
 ### GPUI Gotchas
-- `overflow_scroll()` requires `.id()` on the element
+- `overflow_scroll()` requires `.id()` on the element — but prefer custom scroll with `on_scroll_wheel` + viewport virtualization for large content (avoid rendering thousands of nodes)
 - No `overflow_y_scroll()` or `overflow_x_scroll()` - only `overflow_scroll()`
 - Theme colors accessed via `theme::current(cx).colors.*`
 - Method colors: `theme.method_color("GET")` returns colored Hsla
+- `ScrollWheelEvent` / `on_scroll_wheel` available in `gpui::interactive`
+- Render one div per logical token/span — never one div per character (massive layout cost)
 
 ### Running the App
 ```bash
@@ -120,12 +126,15 @@ cargo test            # 146 tests total
 
 ## Remaining Phases
 
-### Phase 6: gRPC Support (UI Complete)
-- ✅ Proto file loading and parsing
+### Phase 6: gRPC Support
+- ✅ Proto file loading and parsing (protox + prost-reflect)
 - ✅ Service/method selection UI
 - ✅ Metadata editor
-- ⏳ Actual gRPC request execution (requires tonic/prost integration)
-- ⏳ Streaming support
+- ✅ Unary execution (reqwest blocking)
+- ✅ Server streaming (async reqwest)
+- ✅ Client streaming
+- ✅ Bidirectional streaming
+- ✅ Streaming type detection & UI badge
 
 ### Phase 7: tRPC Support
 - Endpoint configuration

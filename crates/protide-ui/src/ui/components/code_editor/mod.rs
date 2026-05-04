@@ -16,7 +16,7 @@ use std::collections::{HashMap, HashSet};
 use gpui::{
     div, prelude::*, px, canvas, ClipboardItem, Context, FocusHandle,
     IntoElement, KeyDownEvent, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent,
-    ParentElement, Render, Styled, Window, Bounds, Pixels,
+    ParentElement, Render, ScrollWheelEvent, Styled, Window, Bounds, Pixels,
 };
 
 use crate::theme;
@@ -523,6 +523,7 @@ impl Render for CodeEditor {
             .on_mouse_down(MouseButton::Left, cx.listener(Self::handle_mouse_down))
             .on_mouse_move(cx.listener(Self::handle_mouse_move))
             .on_mouse_up(MouseButton::Left, cx.listener(Self::handle_mouse_up))
+            .on_scroll_wheel(cx.listener(Self::handle_scroll))
             .child(
                 canvas(
                     move |bounds, _window, cx| {
@@ -571,23 +572,33 @@ impl CodeEditor {
         let line_height = self.config.line_height;
         let font_size = self.config.font_size;
 
-        // Collect visible lines
         let visible_lines: Vec<usize> = (0..self.buffer.line_count())
             .filter(|&idx| self.is_line_visible(idx))
             .collect();
+        let total_visible = visible_lines.len();
+
+        let viewport_height = self.bounds.map(|b| f32::from(b.size.height)).unwrap_or(400.0);
+        let first = (self.scroll_offset / line_height) as usize;
+        let count = (viewport_height / line_height).ceil() as usize + 2;
+        let last = (first + count).min(total_visible);
+
+        let top_pad = first as f32 * line_height;
+        let bottom_pad = (total_visible.saturating_sub(last)) as f32 * line_height;
 
         div()
             .id("code-editor-content")
             .size_full()
-            .overflow_scroll()
+            .overflow_hidden()
             .child(
                 div()
                     .flex()
                     .flex_col()
                     .min_w_full()
-                    .children(visible_lines.into_iter().map(|line_idx| {
+                    .child(div().h(px(top_pad)).flex_shrink_0())
+                    .children(visible_lines[first..last].iter().map(|&line_idx| {
                         self.render_line(line_idx, &theme.colors, line_height, font_size, cx)
                     }))
+                    .child(div().h(px(bottom_pad)).flex_shrink_0())
             )
     }
 
@@ -712,22 +723,18 @@ impl CodeEditor {
                                         .bg(theme.accent)
                                 )
                             })
-                            // Tokens - render each character in fixed-width container
-                            // to ensure cursor position matches actual text position
+                            // Tokens - one span per token, cursor/selection are absolute overlays
                             .child(
                                 div()
                                     .flex()
                                     .text_size(px(font_size))
                                     .font_family(self.config.font_family.clone())
-                                    .children(tokens.into_iter().flat_map(|token| {
+                                    .children(tokens.into_iter().map(|token| {
                                         let color = token.kind.color(theme);
-                                        let char_width = font_size * self.config.char_width_ratio;
-                                        token.text.chars().map(move |c| {
-                                            div()
-                                                .w(px(char_width))
-                                                .text_color(color)
-                                                .child(c.to_string())
-                                        }).collect::<Vec<_>>()
+                                        div()
+                                            .flex_shrink_0()
+                                            .text_color(color)
+                                            .child(token.text.clone())
                                     }))
                             )
                     )
@@ -825,7 +832,22 @@ impl CodeEditor {
             let local_x = f32::from(event.position.x) - f32::from(bounds.origin.x);
             let local_y = f32::from(event.position.y) - f32::from(bounds.origin.y);
             let offset = self.offset_at_position(local_x, local_y);
-            self.selection.head = offset;
+            if self.selection.head != offset {
+                self.selection.head = offset;
+                cx.notify();
+            }
+        }
+    }
+
+    fn handle_scroll(&mut self, event: &ScrollWheelEvent, _window: &mut Window, cx: &mut Context<Self>) {
+        let line_height = self.config.line_height;
+        let delta = event.delta.pixel_delta(px(line_height)).y;
+        let total_height = self.buffer.line_count() as f32 * line_height;
+        let viewport_height = self.bounds.map(|b| f32::from(b.size.height)).unwrap_or(400.0);
+        let max_scroll = (total_height - viewport_height).max(0.0);
+        let new_offset = (self.scroll_offset - f32::from(delta)).clamp(0.0, max_scroll);
+        if (new_offset - self.scroll_offset).abs() > 0.5 {
+            self.scroll_offset = new_offset;
             cx.notify();
         }
     }
