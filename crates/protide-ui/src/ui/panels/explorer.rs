@@ -1983,10 +1983,12 @@ impl ExplorerPanel {
                                         .flex()
                                         .items_center()
                                         .gap(px(4.0))
+                                        .bg(theme.colors.bg_secondary)
+                                        .py(px(6.0))
                                         .child(
                                             div()
                                                 .w(px(self.env_col_key_w))
-                                                .text_size(px(9.0))
+                                                .text_size(px(10.0))
                                                 .font_weight(gpui::FontWeight::SEMIBOLD)
                                                 .text_color(theme.colors.text_muted)
                                                 .child("KEY")
@@ -1995,7 +1997,7 @@ impl ExplorerPanel {
                                         .child(
                                             div()
                                                 .flex_1()
-                                                .text_size(px(9.0))
+                                                .text_size(px(10.0))
                                                 .font_weight(gpui::FontWeight::SEMIBOLD)
                                                 .text_color(theme.colors.text_muted)
                                                 .child("VALUE")

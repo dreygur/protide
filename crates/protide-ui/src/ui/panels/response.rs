@@ -1128,9 +1128,9 @@ impl ResponsePanel {
                         div()
                             .w_full()
                             .flex()
+                            .bg(theme.colors.bg_secondary)
                             .border_b_1()
                             .border_color(theme.colors.border)
-                            .bg(theme.colors.bg_secondary.opacity(0.5))
                             .child(
                                 div()
                                     .w(px(self.cookie_col1_w))

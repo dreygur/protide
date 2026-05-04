@@ -617,8 +617,9 @@ impl RequestPanel {
                 .items_center()
                 .gap(px(8.0))
                 .pb(px(8.0))
+                .bg(theme.colors.bg_secondary)
                 .border_b_1()
-                .border_color(theme.colors.border.opacity(0.5))
+                .border_color(theme.colors.border)
                 .mb(px(4.0))
                 // Checkbox spacer
                 .child(div().size(px(16.0)))
@@ -816,8 +817,9 @@ impl RequestPanel {
                 .items_center()
                 .gap(px(8.0))
                 .pb(px(8.0))
+                .bg(theme.colors.bg_secondary)
                 .border_b_1()
-                .border_color(theme.colors.border.opacity(0.5))
+                .border_color(theme.colors.border)
                 .mb(px(4.0))
                 // Checkbox spacer
                 .child(div().size(px(16.0)))
@@ -2959,8 +2961,9 @@ impl RequestPanel {
                 .items_center()
                 .gap(px(8.0))
                 .pb(px(8.0))
+                .bg(theme.colors.bg_secondary)
                 .border_b_1()
-                .border_color(theme.colors.border.opacity(0.5))
+                .border_color(theme.colors.border)
                 .mb(px(4.0))
                 .child(div().size(px(16.0)))
                 .child(
