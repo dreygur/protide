@@ -626,7 +626,7 @@ impl TextInput {
                         .bottom_0()
                         .left(px(sel_x))
                         .w(px(sel_width))
-                        .bg(gpui::rgba(0x3366ff40))
+                        .bg(theme.colors.accent.opacity(0.25))
                 )
             })
             // Cursor (absolute positioned, centered vertically)
@@ -642,18 +642,18 @@ impl TextInput {
                         .bg(text_color)
                 )
             })
-            // Characters in fixed-width containers
             .child(
                 div()
                     .flex()
                     .text_size(px(font_size))
-                    .font_family("JetBrains Mono")
-                    .text_color(text_color)
-                    .children(self.text.chars().map(|c| {
-                        div()
-                            .w(px(char_width))
-                            .child(c.to_string())
-                    }))
+                    .child(StyledText::new(self.text.clone()).with_runs(vec![TextRun {
+                        len: self.text.len(),
+                        font: font("JetBrains Mono"),
+                        color: text_color,
+                        background_color: None,
+                        underline: None,
+                        strikethrough: None,
+                    }]))
             )
             .into_any_element()
     }
@@ -749,8 +749,9 @@ pub fn render_text_view(
     text_color: Hsla,
     placeholder: Option<&str>,
     placeholder_color: Hsla,
+    selection_bg: Hsla,
 ) -> gpui::AnyElement {
-    render_text_view_with_max(text, selection, is_focused, font_size, text_color, placeholder, placeholder_color, None)
+    render_text_view_with_max(text, selection, is_focused, font_size, text_color, placeholder, placeholder_color, None, selection_bg)
 }
 
 /// Render text with optional max character limit for truncation
@@ -764,6 +765,7 @@ pub fn render_text_view_with_max(
     placeholder: Option<&str>,
     placeholder_color: Hsla,
     max_chars: Option<usize>,
+    selection_bg: Hsla,
 ) -> gpui::AnyElement {
     // Use default chars_per_line based on max_chars for multi-line when focused
     let chars_per_line = max_chars.map(|m| m.max(10));
@@ -777,6 +779,7 @@ pub fn render_text_view_with_max(
         placeholder_color,
         max_chars,
         chars_per_line,
+        selection_bg,
     )
 }
 
@@ -793,6 +796,7 @@ pub fn render_text_view_multiline(
     placeholder_color: Hsla,
     max_chars: Option<usize>,
     chars_per_line: Option<usize>,
+    selection_bg: Hsla,
 ) -> gpui::AnyElement {
     use gpui::IntoElement;
 
@@ -880,7 +884,7 @@ pub fn render_text_view_multiline(
                             .bottom_0()
                             .left(px(sel_x))
                             .w(px(sel_width))
-                            .bg(gpui::rgba(0x3366ff40))
+                            .bg(selection_bg)
                     )
                 })
                 // Cursor (absolute positioned, centered vertically)
@@ -967,7 +971,7 @@ pub fn render_text_view_multiline(
                             .bottom_0()
                             .left(px(sel_x))
                             .w(px(sel_width.max(2.0)))
-                            .bg(gpui::rgba(0x3366ff40))
+                            .bg(selection_bg)
                     )
                 })
                 // Cursor (absolute positioned)

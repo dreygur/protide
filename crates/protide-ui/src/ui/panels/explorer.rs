@@ -1409,7 +1409,6 @@ impl ExplorerPanel {
                     .items_center()
                     .justify_between()
                     .px(px(12.0))
-                    .mt(px(8.0))
                     .cursor_pointer()
                     .mx(px(4.0))
                     .hover(|s| s.bg(theme.colors.bg_tertiary))
@@ -1467,14 +1466,32 @@ impl ExplorerPanel {
                             el.child(
                                 div()
                                     .w_full()
-                                    .py(px(16.0))
+                                    .px(px(16.0))
+                                    .py(px(20.0))
                                     .flex()
-                                    .justify_center()
+                                    .flex_col()
+                                    .items_center()
+                                    .gap(px(8.0))
+                                    .child(
+                                        div()
+                                            .size(px(40.0))
+                                            .bg(theme.colors.bg_tertiary)
+                                            .flex()
+                                            .items_center()
+                                            .justify_center()
+                                            .child(icon(ICON_FILE, ICON_MD, theme.colors.text_muted))
+                                    )
                                     .child(
                                         div()
                                             .text_size(px(12.0))
+                                            .text_color(theme.colors.text_secondary)
+                                            .child("No history yet")
+                                    )
+                                    .child(
+                                        div()
+                                            .text_size(px(11.0))
                                             .text_color(theme.colors.text_muted)
-                                            .child("No requests yet")
+                                            .child("Requests will appear here after sending")
                                     )
                             )
                         })
@@ -1580,8 +1597,8 @@ impl ExplorerPanel {
                             )
                             .child(
                                 div()
-                                    .text_size(px(11.0))
-                                    .font_weight(gpui::FontWeight::SEMIBOLD)
+                                    .text_size(px(12.0))
+                                    .font_weight(gpui::FontWeight::MEDIUM)
                                     .text_color(theme.colors.text_secondary)
                                     .child("ENVIRONMENT")
                             )
@@ -1928,7 +1945,7 @@ impl ExplorerPanel {
                                         .text_size(px(11.0))
                                         .font_weight(gpui::FontWeight::MEDIUM)
                                         .bg(theme.colors.accent)
-                                        .text_color(gpui::white())
+                                        .text_color(theme.colors.bg_primary)
                                         .hover(|s| s.bg(theme.colors.accent.opacity(0.9)))
                                         .on_click(cx.listener(|this, _, _, cx| {
                                             this.create_new_env(cx);
@@ -2289,6 +2306,7 @@ impl ExplorerPanel {
                     Some(placeholder),
                     theme.colors.text_muted,
                     Some(max_chars),
+                    theme.colors.accent.opacity(0.25),
                 )
             })
     }
@@ -2372,6 +2390,7 @@ impl ExplorerPanel {
             Some(placeholder),
             theme.colors.text_muted,
             None,
+            theme.colors.accent.opacity(0.25),
         )
     }
 }

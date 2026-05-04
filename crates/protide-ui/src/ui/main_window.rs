@@ -9,7 +9,7 @@ use gpui::{
 };
 
 use crate::theme;
-use crate::ui::components::icons::{icon, ICON_MD, ICON_MENU, ICON_MINIMIZE, ICON_MAXIMIZE, ICON_WINDOW_CLOSE};
+use crate::ui::components::icons::{icon, ICON_MD, ICON_SM, ICON_MENU, ICON_MINIMIZE, ICON_MAXIMIZE, ICON_WINDOW_CLOSE, ICON_CLOSE, ICON_COPY};
 use crate::ui::components::modal::{ModalKind, ModalState, render_modal_shell};
 use super::panels::{ExplorerPanel, MockServerPanel, RequestPanel, ResponsePanel};
 
@@ -32,9 +32,11 @@ pub struct MainWindow {
     sidebar_width: f32,
     request_height: f32,
     mock_server_width: f32,
+    codegen_panel_width: f32,
     drag_sidebar: Option<(f32, f32)>,      // (start_mouse_x, start_sidebar_width)
     drag_response: Option<(f32, f32)>,     // (start_mouse_y, start_request_height)
     drag_mock_server: Option<(f32, f32)>,  // (start_mouse_x, start_mock_server_width)
+    drag_codegen: Option<(f32, f32)>,      // (start_mouse_x, start_codegen_width)
     modal: Option<ModalState>,
     modal_pending: ModalPending,
 }
@@ -70,9 +72,11 @@ impl MainWindow {
             sidebar_width: 250.0,
             request_height: 320.0,
             mock_server_width: 320.0,
+            codegen_panel_width: 400.0,
             drag_sidebar: None,
             drag_response: None,
             drag_mock_server: None,
+            drag_codegen: None,
             modal: None,
             modal_pending: ModalPending::None,
         }
@@ -122,8 +126,9 @@ impl MainWindow {
 impl Render for MainWindow {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = theme::current(cx);
-        let is_dragging = self.drag_sidebar.is_some() || self.drag_response.is_some() || self.drag_mock_server.is_some();
-        let is_col_drag = self.drag_sidebar.is_some() || self.drag_mock_server.is_some();
+        let show_codegen = self.request_panel.read(cx).codegen_content.is_some();
+        let is_dragging = self.drag_sidebar.is_some() || self.drag_response.is_some() || self.drag_mock_server.is_some() || self.drag_codegen.is_some();
+        let is_col_drag = self.drag_sidebar.is_some() || self.drag_mock_server.is_some() || self.drag_codegen.is_some();
 
         div()
             .size_full()
@@ -258,6 +263,25 @@ impl Render for MainWindow {
                                 .child(self.mock_server_panel.clone())
                         )
                     })
+                    // Codegen panel (optional right sidebar)
+                    .when(show_codegen, |el| {
+                        el
+                        .child(
+                            div()
+                                .id("codegen-resize-handle")
+                                .w(px(4.0))
+                                .h_full()
+                                .flex_shrink_0()
+                                .border_l_1()
+                                .border_color(theme.colors.border)
+                                .cursor_col_resize()
+                                .hover(|s| s.bg(theme.colors.accent.opacity(0.25)))
+                                .on_mouse_down(MouseButton::Left, cx.listener(|this, event: &gpui::MouseDownEvent, _window, _cx| {
+                                    this.drag_codegen = Some((f32::from(event.position.x), this.codegen_panel_width));
+                                }))
+                        )
+                        .child(self.render_codegen_panel(cx))
+                    })
                     // Drag overlay — captures mouse during resize, must be last child
                     .when(is_dragging, |el| {
                         el.child(
@@ -286,11 +310,17 @@ impl Render for MainWindow {
                                         this.mock_server_width = (start_w - (mouse_x - start_x)).max(200.0).min(700.0);
                                         cx.notify();
                                     }
+                                    if let Some((start_x, start_w)) = this.drag_codegen {
+                                        // dragging left edge: moving left increases width
+                                        this.codegen_panel_width = (start_w - (mouse_x - start_x)).max(250.0).min(800.0);
+                                        cx.notify();
+                                    }
                                 }))
                                 .on_mouse_up(MouseButton::Left, cx.listener(|this, _, _window, cx| {
                                     this.drag_sidebar = None;
                                     this.drag_response = None;
                                     this.drag_mock_server = None;
+                                    this.drag_codegen = None;
                                     cx.notify();
                                 }))
                         )
@@ -323,7 +353,7 @@ impl Render for MainWindow {
                                 .id("modal-confirm")
                                 .px(px(20.0)).py(px(8.0))
                                 .bg(theme.colors.error)
-                                .text_color(gpui::white())
+                                .text_color(theme.colors.bg_primary)
                                 .text_size(px(12.0))
                                 .font_weight(FontWeight::SEMIBOLD)
                                 .cursor_pointer()
@@ -362,7 +392,7 @@ impl MainWindow {
 
         div()
             .id("titlebar")
-            .h(px(36.0))
+            .h(theme.sizes.toolbar)
             .w_full()
             .flex()
             .items_center()
@@ -394,7 +424,7 @@ impl MainWindow {
                                 div()
                                     .text_size(px(10.0))
                                     .font_weight(gpui::FontWeight::BOLD)
-                                    .text_color(gpui::rgb(0x00082b))
+                                    .text_color(theme.colors.bg_primary)
                                     .child("A")
                             )
                     )
@@ -503,7 +533,7 @@ impl MainWindow {
                             .justify_center()
                             .cursor_pointer()
                             .text_color(theme.colors.text_secondary)
-                            .hover(|s| s.bg(gpui::rgb(0xc42b1c)).text_color(gpui::white()))
+                            .hover(|s| s.bg(theme.colors.error).text_color(theme.colors.bg_primary))
                             .on_click(|_, _window, cx: &mut App| {
                                 cx.quit();
                             })
@@ -634,5 +664,91 @@ impl MainWindow {
                     .child("Ready")
                     .into_any_element()
             })
+    }
+
+    fn render_codegen_panel(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
+        let theme = theme::current(cx);
+        let panel = self.request_panel.read(cx);
+        let lang_name = panel.codegen_lang_name();
+        let editor = panel.codegen_editor.clone();
+        let width = self.codegen_panel_width;
+
+        div()
+            .id("codegen-panel")
+            .w(px(width))
+            .h_full()
+            .flex_shrink_0()
+            .flex()
+            .flex_col()
+            .bg(theme.colors.bg_secondary)
+            .border_l_1()
+            .border_color(theme.colors.border)
+            // Header
+            .child(
+                div()
+                    .h(theme.sizes.toolbar)
+                    .px(px(16.0))
+                    .flex()
+                    .items_center()
+                    .justify_between()
+                    .flex_shrink_0()
+                    .border_b_1()
+                    .border_color(theme.colors.border)
+                    .child(
+                        div()
+                            .text_size(px(13.0))
+                            .font_weight(FontWeight::SEMIBOLD)
+                            .text_color(theme.colors.text_primary)
+                            .child(format!("{} Code", lang_name))
+                    )
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap(px(4.0))
+                            .child(
+                                div()
+                                    .id("codegen-copy")
+                                    .h(px(28.0))
+                                    .px(px(10.0))
+                                    .flex()
+                                    .items_center()
+                                    .gap(px(4.0))
+                                    .text_size(px(11.0))
+                                    .text_color(theme.colors.text_secondary)
+                                    .cursor_pointer()
+                                    .bg(theme.colors.bg_elevated)
+                                    .border_1()
+                                    .border_color(theme.colors.border)
+                                    .hover(|s| s.bg(theme.colors.bg_tertiary))
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        this.request_panel.update(cx, |panel, cx| panel.copy_generated_code(cx));
+                                    }))
+                                    .child(icon(ICON_COPY, ICON_SM, theme.colors.text_secondary))
+                                    .child("Copy")
+                            )
+                            .child(
+                                div()
+                                    .id("codegen-close")
+                                    .size(px(28.0))
+                                    .flex()
+                                    .items_center()
+                                    .justify_center()
+                                    .cursor_pointer()
+                                    .hover(|s| s.bg(theme.colors.bg_tertiary))
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        this.request_panel.update(cx, |panel, cx| panel.close_codegen_panel(cx));
+                                    }))
+                                    .child(icon(ICON_CLOSE, ICON_SM, theme.colors.text_muted))
+                            )
+                    )
+            )
+            // Code editor
+            .child(
+                div()
+                    .flex_1()
+                    .overflow_hidden()
+                    .child(editor)
+            )
     }
 }

@@ -320,6 +320,7 @@ impl RequestPanel {
             theme.colors.text_primary,
             Some("Enter request URL..."),
             theme.colors.text_muted,
+            theme.colors.accent.opacity(0.25),
         )
     }
 
@@ -603,65 +604,12 @@ impl RequestPanel {
             .flex()
             .flex_col()
             .gap(px(2.0))
-            .p(px(20.0))
             .track_focus(&self.edit_focus)
             .on_key_down(cx.listener(|this, event: &KeyDownEvent, _, cx| {
                 this.handle_edit_key(event, cx);
             }));
 
-        // Table header
-        container = container.child(
-            div()
-                .w_full()
-                .flex()
-                .items_center()
-                .gap(px(8.0))
-                .pb(px(8.0))
-                .border_b_1()
-                .border_color(theme.colors.border)
-                .mb(px(4.0))
-                // Checkbox spacer
-                .child(div().size(px(16.0)))
-                // Key column header
-                .child(
-                    div()
-                        .w(px(self.kv_col_key_w))
-                        .text_size(px(10.0))
-                        .font_weight(gpui::FontWeight::SEMIBOLD)
-                        .text_color(theme.colors.text_secondary)
-                        .child("KEY")
-                )
-                .child(self.render_kv_col_drag_handle(cx))
-                // Value column header
-                .child(
-                    div()
-                        .flex_1()
-                        .flex()
-                        .items_center()
-                        .justify_between()
-                        .child(
-                            div()
-                                .text_size(px(10.0))
-                                .font_weight(gpui::FontWeight::SEMIBOLD)
-                                .text_color(theme.colors.text_secondary)
-                                .child("VALUE")
-                        )
-                        .child(
-                            div()
-                                .px(px(6.0))
-                                .py(px(2.0))
-                                .bg(theme.colors.accent.opacity(0.12))
-                                .border_1()
-                                .border_color(theme.colors.accent.opacity(0.35))
-                                .text_size(px(10.0))
-                                .font_weight(gpui::FontWeight::MEDIUM)
-                                .text_color(theme.colors.accent)
-                                .child(format!("{} active", enabled_count))
-                        )
-                )
-                // Action spacer
-                .child(div().size(px(28.0)))
-        );
+        container = container.child(self.render_kv_table_header("KEY", "VALUE", enabled_count, cx));
 
         // Params list
         for (i, is_enabled, key, value) in params_data {
@@ -680,38 +628,10 @@ impl RequestPanel {
                     .py(px(4.0))
                     .px(px(2.0))
                     .when(!is_row_editing, |el| el.hover(|s| s.bg(theme.colors.bg_tertiary.opacity(0.3))))
-                    // Checkbox
                     .child(
-                        div()
-                            .id(SharedString::from(format!("param-checkbox-{}", i)))
-                            .size(px(16.0))
-                            .border_1()
-                            .cursor_pointer()
-                            .when(is_enabled, |el| {
-                                el.bg(theme.colors.accent)
-                                    .border_color(theme.colors.accent)
-                            })
-                            .when(!is_enabled, |el| {
-                                el.border_color(theme.colors.border)
-                                    .hover(|s| s.border_color(theme.colors.text_muted))
-                            })
-                            .flex()
-                            .items_center()
-                            .justify_center()
-                            .when(is_enabled, |el| {
-                                el.child(
-                                    div()
-                                        .flex()
-                                        .items_center()
-                                        .justify_center()
-                                        .child(icon(ICON_CHECK, ICON_SM, gpui::white()))
-                                )
-                            })
-                            .on_click(cx.listener(move |this, _, _, cx| {
-                                this.toggle_param(i, cx);
-                            }))
+                        self.render_kv_checkbox(format!("param-checkbox-{}", i).into(), is_enabled, cx)
+                            .on_click(cx.listener(move |this, _, _, cx| this.toggle_param(i, cx)))
                     )
-                    // Key input
                     .child(
                         self.render_kv_input(
                             format!("param-key-{}", i),
@@ -737,51 +657,18 @@ impl RequestPanel {
                             cx,
                         )
                     )
-                    // Remove button
                     .child(
-                        div()
-                            .id(SharedString::from(format!("param-remove-{}", i)))
-                            .size(px(28.0))
-                            .flex()
-                            .items_center()
-                            .justify_center()
-                            .cursor_pointer()
-                            .text_size(px(14.0))
-                            .when(can_remove, |el| {
-                                el.text_color(theme.colors.text_muted)
-                                    .hover(|s| s.bg(theme.colors.status_client_error.opacity(0.1)).text_color(theme.colors.status_client_error))
-                                    .on_click(cx.listener(move |this, _, _, cx| {
-                                        this.remove_param(i, cx);
-                                    }))
-                            })
-                            .when(!can_remove, |el| el.text_color(theme.colors.border))
-                            .child(icon(ICON_CLOSE, ICON_SM, theme.colors.text_muted))
+                        self.render_kv_remove_btn(format!("param-remove-{}", i).into(), can_remove, cx)
+                            .when(can_remove, |el| el.on_click(cx.listener(move |this, _, _, cx| this.remove_param(i, cx))))
                     )
             );
         }
 
-        // Add param button
         container = container.child(
-            div()
-                .w_full()
-                .pt(px(8.0))
-                .child(
-                    div()
-                        .id("add-param-btn")
-                        .w_full()
-                        .py(px(8.0))
-                        .border_1()
-                        .border_color(theme.colors.border.opacity(0.5))
-                        .flex()
-                        .items_center()
-                        .justify_center()
-                        .cursor_pointer()
-                        .text_size(px(12.0))
-                        .text_color(theme.colors.text_muted)
-                        .hover(|s| s.bg(theme.colors.bg_tertiary).border_color(theme.colors.border).text_color(theme.colors.text_secondary))
-                        .on_click(cx.listener(|this, _, _, cx| { this.add_param(cx); }))
-                        .child("+ Add Parameter")
-                )
+            div().w_full().pt(px(8.0)).child(
+                self.render_kv_add_btn("add-param-btn", "+ Add Parameter", cx)
+                    .on_click(cx.listener(|this, _, _, cx| this.add_param(cx)))
+            )
         );
 
         container.into_any_element()
@@ -804,65 +691,12 @@ impl RequestPanel {
             .flex()
             .flex_col()
             .gap(px(2.0))
-            .p(px(20.0))
             .track_focus(&self.edit_focus)
             .on_key_down(cx.listener(|this, event: &KeyDownEvent, _, cx| {
                 this.handle_edit_key(event, cx);
             }));
 
-        // Table header
-        container = container.child(
-            div()
-                .w_full()
-                .flex()
-                .items_center()
-                .gap(px(8.0))
-                .pb(px(8.0))
-                .border_b_1()
-                .border_color(theme.colors.border)
-                .mb(px(4.0))
-                // Checkbox spacer
-                .child(div().size(px(16.0)))
-                // Key column header
-                .child(
-                    div()
-                        .w(px(self.kv_col_key_w))
-                        .text_size(px(10.0))
-                        .font_weight(gpui::FontWeight::SEMIBOLD)
-                        .text_color(theme.colors.text_secondary)
-                        .child("HEADER")
-                )
-                .child(self.render_kv_col_drag_handle(cx))
-                // Value column header
-                .child(
-                    div()
-                        .flex_1()
-                        .flex()
-                        .items_center()
-                        .justify_between()
-                        .child(
-                            div()
-                                .text_size(px(10.0))
-                                .font_weight(gpui::FontWeight::SEMIBOLD)
-                                .text_color(theme.colors.text_secondary)
-                                .child("VALUE")
-                        )
-                        .child(
-                            div()
-                                .px(px(6.0))
-                                .py(px(2.0))
-                                .bg(theme.colors.accent.opacity(0.12))
-                                .border_1()
-                                .border_color(theme.colors.accent.opacity(0.35))
-                                .text_size(px(10.0))
-                                .font_weight(gpui::FontWeight::MEDIUM)
-                                .text_color(theme.colors.accent)
-                                .child(format!("{} active", enabled_count))
-                        )
-                )
-                // Action spacer
-                .child(div().size(px(28.0)))
-        );
+        container = container.child(self.render_kv_table_header("HEADER", "VALUE", enabled_count, cx));
 
         // Headers list
         for (i, is_enabled, key, value) in headers_data {
@@ -881,38 +715,12 @@ impl RequestPanel {
                     .py(px(4.0))
                     .px(px(2.0))
                     .when(!is_row_editing, |el| el.hover(|s| s.bg(theme.colors.bg_tertiary.opacity(0.3))))
-                    // Checkbox
                     .child(
-                        div()
-                            .id(SharedString::from(format!("header-checkbox-{}", i)))
-                            .size(px(16.0))
-                            .border_1()
-                            .cursor_pointer()
-                            .when(is_enabled, |el| {
-                                el.bg(theme.colors.accent)
-                                    .border_color(theme.colors.accent)
-                            })
-                            .when(!is_enabled, |el| {
-                                el.border_color(theme.colors.border)
-                                    .hover(|s| s.border_color(theme.colors.text_muted))
-                            })
-                            .flex()
-                            .items_center()
-                            .justify_center()
-                            .when(is_enabled, |el| {
-                                el.child(
-                                    div()
-                                        .flex()
-                                        .items_center()
-                                        .justify_center()
-                                        .child(icon(ICON_CHECK, ICON_SM, gpui::white()))
-                                )
-                            })
+                        self.render_kv_checkbox(format!("header-checkbox-{}", i).into(), is_enabled, cx)
                             .on_click(cx.listener(move |this, _, _, cx| {
                                 this.toggle_header(i, cx);
                             }))
                     )
-                    // Key input
                     .child(
                         self.render_kv_input(
                             format!("header-key-{}", i),
@@ -926,7 +734,6 @@ impl RequestPanel {
                         )
                     )
                     .child(div().w(px(4.0)))
-                    // Value input
                     .child(
                         self.render_kv_input_flex(
                             format!("header-value-{}", i),
@@ -938,51 +745,20 @@ impl RequestPanel {
                             cx,
                         )
                     )
-                    // Remove button
                     .child(
-                        div()
-                            .id(SharedString::from(format!("header-remove-{}", i)))
-                            .size(px(28.0))
-                            .flex()
-                            .items_center()
-                            .justify_center()
-                            .cursor_pointer()
-                            .text_size(px(14.0))
-                            .when(can_remove, |el| {
-                                el.text_color(theme.colors.text_muted)
-                                    .hover(|s| s.bg(theme.colors.status_client_error.opacity(0.1)).text_color(theme.colors.status_client_error))
-                                    .on_click(cx.listener(move |this, _, _, cx| {
-                                        this.remove_header(i, cx);
-                                    }))
-                            })
-                            .when(!can_remove, |el| el.text_color(theme.colors.border))
-                            .child(icon(ICON_CLOSE, ICON_SM, theme.colors.text_muted))
+                        self.render_kv_remove_btn(format!("header-remove-{}", i).into(), can_remove, cx)
+                            .when(can_remove, |el| el.on_click(cx.listener(move |this, _, _, cx| {
+                                this.remove_header(i, cx);
+                            })))
                     )
             );
         }
 
-        // Add header button
         container = container.child(
-            div()
-                .w_full()
-                .pt(px(8.0))
-                .child(
-                    div()
-                        .id("add-header-btn")
-                        .w_full()
-                        .py(px(8.0))
-                        .border_1()
-                        .border_color(theme.colors.border.opacity(0.5))
-                        .flex()
-                        .items_center()
-                        .justify_center()
-                        .cursor_pointer()
-                        .text_size(px(12.0))
-                        .text_color(theme.colors.text_muted)
-                        .hover(|s| s.bg(theme.colors.bg_tertiary).border_color(theme.colors.border).text_color(theme.colors.text_secondary))
-                        .on_click(cx.listener(|this, _, _, cx| { this.add_header(cx); }))
-                        .child("+ Add Header")
-                )
+            div().w_full().pt(px(8.0)).child(
+                self.render_kv_add_btn("add-header-btn", "+ Add Header", cx)
+                    .on_click(cx.listener(|this, _, _, cx| { this.add_header(cx); }))
+            )
         );
 
         container.into_any_element()
@@ -1004,7 +780,6 @@ impl RequestPanel {
             .flex()
             .flex_col()
             .gap(px(2.0))
-            .p(px(20.0))
             .track_focus(&self.edit_focus)
             .on_key_down(cx.listener(|this, event: &KeyDownEvent, _, cx| {
                 this.handle_edit_key(event, cx);
@@ -1013,98 +788,68 @@ impl RequestPanel {
         // Toolbar row with body type buttons
         container = container.child(
             div()
+                .h(px(40.0))
                 .w_full()
                 .flex()
                 .items_center()
-                .justify_between()
-                .mb(px(8.0))
+                .border_b_1()
+                .border_color(theme.colors.border)
+                .bg(theme.colors.bg_primary)
                 .child(
                     div()
+                        .id("body-type-json-form")
+                        .h_full()
+                        .px(px(16.0))
                         .flex()
                         .items_center()
-                        .gap(px(0.0))
-                        .child(
-                            div()
-                                .id("body-type-json-form")
-                                .px(px(12.0))
-                                .py(px(6.0))
-                                .cursor_pointer()
-                                .text_size(px(13.0))
-                                .font_weight(if self.body_type == BodyType::Json {
-                                    gpui::FontWeight::MEDIUM
-                                } else {
-                                    gpui::FontWeight::NORMAL
-                                })
-                                .text_color(if self.body_type == BodyType::Json {
-                                    theme.colors.text_primary
-                                } else {
-                                    theme.colors.text_secondary
-                                })
-                                .hover(|s| s.bg(theme.colors.bg_secondary.opacity(0.3)))
-                                .on_click(cx.listener(|this, _, _, cx| {
-                                    this.set_body_type(BodyType::Json, cx);
-                                }))
-                                .child("JSON")
-                        )
-                        .child(
-                            div()
-                                .h(px(16.0))
-                                .w(px(1.0))
-                                .bg(theme.colors.border)
-                        )
-                        .child(
-                            div()
-                                .id("body-type-raw-form")
-                                .px(px(12.0))
-                                .py(px(6.0))
-                                .cursor_pointer()
-                                .text_size(px(13.0))
-                                .font_weight(if self.body_type == BodyType::Raw {
-                                    gpui::FontWeight::MEDIUM
-                                } else {
-                                    gpui::FontWeight::NORMAL
-                                })
-                                .text_color(if self.body_type == BodyType::Raw {
-                                    theme.colors.text_primary
-                                } else {
-                                    theme.colors.text_secondary
-                                })
-                                .hover(|s| s.bg(theme.colors.bg_secondary.opacity(0.3)))
-                                .on_click(cx.listener(|this, _, _, cx| {
-                                    this.set_body_type(BodyType::Raw, cx);
-                                }))
-                                .child("Raw")
-                        )
-                        .child(
-                            div()
-                                .h(px(16.0))
-                                .w(px(1.0))
-                                .bg(theme.colors.border)
-                        )
-                        .child(
-                            div()
-                                .id("body-type-form-form")
-                                .px(px(12.0))
-                                .py(px(6.0))
-                                .cursor_pointer()
-                                .text_size(px(13.0))
-                                .font_weight(if self.body_type == BodyType::Form {
-                                    gpui::FontWeight::MEDIUM
-                                } else {
-                                    gpui::FontWeight::NORMAL
-                                })
-                                .text_color(if self.body_type == BodyType::Form {
-                                    theme.colors.text_primary
-                                } else {
-                                    theme.colors.text_secondary
-                                })
-                                .hover(|s| s.bg(theme.colors.bg_secondary.opacity(0.3)))
-                                .child("Form")
-                        )
+                        .cursor_pointer()
+                        .border_b_2()
+                        .when(self.body_type == BodyType::Json, |el| el.border_color(theme.colors.accent))
+                        .when(self.body_type != BodyType::Json, |el| el.border_color(gpui::transparent_black()).hover(|s| s.bg(theme.colors.hover_overlay)))
+                        .on_click(cx.listener(|this, _, _, cx| { this.set_body_type(BodyType::Json, cx); }))
+                        .child(div().text_size(px(13.0))
+                            .font_weight(if self.body_type == BodyType::Json { gpui::FontWeight::MEDIUM } else { gpui::FontWeight::NORMAL })
+                            .text_color(if self.body_type == BodyType::Json { theme.colors.text_primary } else { theme.colors.text_secondary })
+                            .child("JSON"))
                 )
                 .child(
                     div()
-                        .px(px(6.0))
+                        .id("body-type-raw-form")
+                        .h_full()
+                        .px(px(16.0))
+                        .flex()
+                        .items_center()
+                        .cursor_pointer()
+                        .border_b_2()
+                        .when(self.body_type == BodyType::Raw, |el| el.border_color(theme.colors.accent))
+                        .when(self.body_type != BodyType::Raw, |el| el.border_color(gpui::transparent_black()).hover(|s| s.bg(theme.colors.hover_overlay)))
+                        .on_click(cx.listener(|this, _, _, cx| { this.set_body_type(BodyType::Raw, cx); }))
+                        .child(div().text_size(px(13.0))
+                            .font_weight(if self.body_type == BodyType::Raw { gpui::FontWeight::MEDIUM } else { gpui::FontWeight::NORMAL })
+                            .text_color(if self.body_type == BodyType::Raw { theme.colors.text_primary } else { theme.colors.text_secondary })
+                            .child("Raw"))
+                )
+                .child(
+                    div()
+                        .id("body-type-form-form")
+                        .h_full()
+                        .px(px(16.0))
+                        .flex()
+                        .items_center()
+                        .cursor_pointer()
+                        .border_b_2()
+                        .when(self.body_type == BodyType::Form, |el| el.border_color(theme.colors.accent))
+                        .when(self.body_type != BodyType::Form, |el| el.border_color(gpui::transparent_black()).hover(|s| s.bg(theme.colors.hover_overlay)))
+                        .on_click(cx.listener(|this, _, _, cx| { this.set_body_type(BodyType::Form, cx); }))
+                        .child(div().text_size(px(13.0))
+                            .font_weight(if self.body_type == BodyType::Form { gpui::FontWeight::MEDIUM } else { gpui::FontWeight::NORMAL })
+                            .text_color(if self.body_type == BodyType::Form { theme.colors.text_primary } else { theme.colors.text_secondary })
+                            .child("Form"))
+                )
+                .child(div().flex_1())
+                .child(
+                    div()
+                        .px(px(12.0))
                         .py(px(2.0))
                         .bg(theme.colors.accent.opacity(0.12))
                         .text_size(px(10.0))
@@ -1114,16 +859,13 @@ impl RequestPanel {
                 )
         );
 
-        // Table header
+        // Table header — form has an extra TYPE column so render it manually (same style as render_kv_table_header)
         container = container.child(
             div()
-                .w_full()
-                .flex()
-                .items_center()
+                .w_full().flex().items_center()
                 .gap(px(8.0))
-                .pb(px(8.0))
-                .border_b_1()
-                .border_color(theme.colors.border.opacity(0.5))
+                .py(px(6.0))
+                .border_b_1().border_color(theme.colors.border)
                 .mb(px(4.0))
                 .child(div().size(px(16.0)))
                 .child(
@@ -1131,7 +873,7 @@ impl RequestPanel {
                         .w(px(130.0))
                         .text_size(px(10.0))
                         .font_weight(gpui::FontWeight::SEMIBOLD)
-                        .text_color(theme.colors.text_secondary)
+                        .text_color(theme.colors.accent.opacity(0.7))
                         .child("KEY")
                 )
                 .child(
@@ -1144,11 +886,15 @@ impl RequestPanel {
                 )
                 .child(
                     div()
-                        .flex_1()
-                        .text_size(px(10.0))
-                        .font_weight(gpui::FontWeight::SEMIBOLD)
-                        .text_color(theme.colors.text_secondary)
-                        .child("VALUE")
+                        .flex_1().flex().items_center().justify_between()
+                        .child(
+                            div()
+                                .text_size(px(10.0))
+                                .font_weight(gpui::FontWeight::SEMIBOLD)
+                                .text_color(theme.colors.text_secondary)
+                                .child("VALUE")
+                        )
+                        .child(self.render_count_badge(enabled_count, "active", cx))
                 )
                 .child(div().size(px(28.0)))
         );
@@ -1171,29 +917,8 @@ impl RequestPanel {
                     .py(px(4.0))
                     .px(px(2.0))
                     .when(!is_row_editing, |el| el.hover(|s| s.bg(theme.colors.bg_tertiary.opacity(0.3))))
-                    // Checkbox
                     .child(
-                        div()
-                            .id(SharedString::from(format!("form-checkbox-{}", i)))
-                            .size(px(16.0))
-                            .border_1()
-                            .cursor_pointer()
-                            .when(is_enabled, |el| {
-                                el.bg(theme.colors.accent)
-                                    .border_color(theme.colors.accent)
-                                    .child(
-                                        div()
-                                            .size_full()
-                                            .flex()
-                                            .items_center()
-                                            .justify_center()
-                                            .child(icon(ICON_CHECK, ICON_SM, gpui::white()))
-                                    )
-                            })
-                            .when(!is_enabled, |el| {
-                                el.border_color(theme.colors.border)
-                                    .hover(|s| s.border_color(theme.colors.text_muted))
-                            })
+                        self.render_kv_checkbox(format!("form-checkbox-{}", i).into(), is_enabled, cx)
                             .on_click({
                                 let idx = i;
                                 cx.listener(move |this, _, _, cx| {
@@ -1305,64 +1030,23 @@ impl RequestPanel {
                                 })
                         )
                     })
-                    // Remove button
                     .child(
-                        div()
-                            .id(SharedString::from(format!("form-remove-{}", i)))
-                            .size(px(28.0))
-                            .flex()
-                            .items_center()
-                            .justify_center()
-                            .cursor_pointer()
-                            .when(can_remove, |el| {
-                                el.text_color(theme.colors.text_muted)
-                                    .hover(|s| s.bg(theme.colors.status_client_error.opacity(0.1)).text_color(theme.colors.status_client_error))
-                                    .on_click({
-                                        let idx = i;
-                                        cx.listener(move |this, _, _, cx| {
-                                            this.remove_form_field(idx, cx);
-                                        })
-                                    })
-                            })
-                            .when(!can_remove, |el| {
-                                el.text_color(theme.colors.text_muted.opacity(0.3))
-                            })
-                            .text_size(px(14.0))
-                            .child(icon(ICON_CLOSE, ICON_SM, theme.colors.text_muted))
+                        self.render_kv_remove_btn(format!("form-remove-{}", i).into(), can_remove, cx)
+                            .when(can_remove, |el| el.on_click({
+                                let idx = i;
+                                cx.listener(move |this, _, _, cx| {
+                                    this.remove_form_field(idx, cx);
+                                })
+                            }))
                     )
             );
         }
 
-        // Add field button
         container = container.child(
-            div()
-                .w_full()
-                .pt(px(8.0))
-                .child(
-                    div()
-                        .id("add-form-field-btn")
-                        .w_full()
-                        .py(px(8.0))
-                        .border_1()
-                        .border_color(theme.colors.border.opacity(0.5))
-                        .flex()
-                        .items_center()
-                        .justify_center()
-                        .gap(px(6.0))
-                        .cursor_pointer()
-                        .text_size(px(12.0))
-                        .text_color(theme.colors.text_muted)
-                        .hover(|s| {
-                            s.bg(theme.colors.bg_tertiary)
-                                .border_color(theme.colors.border)
-                                .text_color(theme.colors.text_secondary)
-                        })
-                        .on_click(cx.listener(|this, _, _, cx| {
-                            this.add_form_field(cx);
-                        }))
-                        .child("+")
-                        .child("Add Field")
-                )
+            div().w_full().pt(px(8.0)).child(
+                self.render_kv_add_btn("add-form-field-btn", "+ Add Field", cx)
+                    .on_click(cx.listener(|this, _, _, cx| { this.add_form_field(cx); }))
+            )
         );
 
         container.into_any_element()
@@ -1385,101 +1069,68 @@ impl RequestPanel {
             // Toolbar row
             .child(
                 div()
+                    .h(px(40.0))
                     .w_full()
                     .flex()
                     .items_center()
-                    .justify_between()
-                    // Left: Body type selector - minimal style
+                    .border_b_1()
+                    .border_color(theme.colors.border)
+                    .bg(theme.colors.bg_primary)
                     .child(
                         div()
+                            .id("body-type-json")
+                            .h_full()
+                            .px(px(16.0))
                             .flex()
                             .items_center()
-                            .gap(px(0.0))
-                            .child(
-                                div()
-                                    .id("body-type-json")
-                                    .px(px(12.0))
-                                    .py(px(6.0))
-                                    .cursor_pointer()
-                                    .text_size(px(13.0))
-                                    .font_weight(if self.body_type == BodyType::Json {
-                                        gpui::FontWeight::MEDIUM
-                                    } else {
-                                        gpui::FontWeight::NORMAL
-                                    })
-                                    .text_color(if self.body_type == BodyType::Json {
-                                        theme.colors.text_primary
-                                    } else {
-                                        theme.colors.text_secondary
-                                    })
-                                    .hover(|s| s.bg(theme.colors.bg_secondary.opacity(0.3)))
-                                    .on_click(cx.listener(|this, _, _, cx| {
-                                        this.set_body_type(BodyType::Json, cx);
-                                    }))
-                                    .child("JSON")
-                            )
-                            .child(
-                                div()
-                                    .h(px(16.0))
-                                    .w(px(1.0))
-                                    .bg(theme.colors.border)
-                            )
-                            .child(
-                                div()
-                                    .id("body-type-raw")
-                                    .px(px(12.0))
-                                    .py(px(6.0))
-                                    .cursor_pointer()
-                                    .text_size(px(13.0))
-                                    .font_weight(if self.body_type == BodyType::Raw {
-                                        gpui::FontWeight::MEDIUM
-                                    } else {
-                                        gpui::FontWeight::NORMAL
-                                    })
-                                    .text_color(if self.body_type == BodyType::Raw {
-                                        theme.colors.text_primary
-                                    } else {
-                                        theme.colors.text_secondary
-                                    })
-                                    .hover(|s| s.bg(theme.colors.bg_secondary.opacity(0.3)))
-                                    .on_click(cx.listener(|this, _, _, cx| {
-                                        this.set_body_type(BodyType::Raw, cx);
-                                    }))
-                                    .child("Raw")
-                            )
-                            .child(
-                                div()
-                                    .h(px(16.0))
-                                    .w(px(1.0))
-                                    .bg(theme.colors.border)
-                            )
-                            .child(
-                                div()
-                                    .id("body-type-form")
-                                    .px(px(12.0))
-                                    .py(px(6.0))
-                                    .cursor_pointer()
-                                    .text_size(px(13.0))
-                                    .font_weight(if self.body_type == BodyType::Form {
-                                        gpui::FontWeight::MEDIUM
-                                    } else {
-                                        gpui::FontWeight::NORMAL
-                                    })
-                                    .text_color(if self.body_type == BodyType::Form {
-                                        theme.colors.text_primary
-                                    } else {
-                                        theme.colors.text_secondary
-                                    })
-                                    .hover(|s| s.bg(theme.colors.bg_secondary.opacity(0.3)))
-                                    .on_click(cx.listener(|this, _, _, cx| {
-                                        this.set_body_type(BodyType::Form, cx);
-                                    }))
-                                    .child("Form")
-                            )
+                            .cursor_pointer()
+                            .border_b_2()
+                            .when(self.body_type == BodyType::Json, |el| el.border_color(theme.colors.accent))
+                            .when(self.body_type != BodyType::Json, |el| el.border_color(gpui::transparent_black()).hover(|s| s.bg(theme.colors.hover_overlay)))
+                            .on_click(cx.listener(|this, _, _, cx| { this.set_body_type(BodyType::Json, cx); }))
+                            .child(div().text_size(px(13.0))
+                                .font_weight(if self.body_type == BodyType::Json { gpui::FontWeight::MEDIUM } else { gpui::FontWeight::NORMAL })
+                                .text_color(if self.body_type == BodyType::Json { theme.colors.text_primary } else { theme.colors.text_secondary })
+                                .child("JSON"))
                     )
-                    // Right: Info label
                     .child(
                         div()
+                            .id("body-type-raw")
+                            .h_full()
+                            .px(px(16.0))
+                            .flex()
+                            .items_center()
+                            .cursor_pointer()
+                            .border_b_2()
+                            .when(self.body_type == BodyType::Raw, |el| el.border_color(theme.colors.accent))
+                            .when(self.body_type != BodyType::Raw, |el| el.border_color(gpui::transparent_black()).hover(|s| s.bg(theme.colors.hover_overlay)))
+                            .on_click(cx.listener(|this, _, _, cx| { this.set_body_type(BodyType::Raw, cx); }))
+                            .child(div().text_size(px(13.0))
+                                .font_weight(if self.body_type == BodyType::Raw { gpui::FontWeight::MEDIUM } else { gpui::FontWeight::NORMAL })
+                                .text_color(if self.body_type == BodyType::Raw { theme.colors.text_primary } else { theme.colors.text_secondary })
+                                .child("Raw"))
+                    )
+                    .child(
+                        div()
+                            .id("body-type-form")
+                            .h_full()
+                            .px(px(16.0))
+                            .flex()
+                            .items_center()
+                            .cursor_pointer()
+                            .border_b_2()
+                            .when(self.body_type == BodyType::Form, |el| el.border_color(theme.colors.accent))
+                            .when(self.body_type != BodyType::Form, |el| el.border_color(gpui::transparent_black()).hover(|s| s.bg(theme.colors.hover_overlay)))
+                            .on_click(cx.listener(|this, _, _, cx| { this.set_body_type(BodyType::Form, cx); }))
+                            .child(div().text_size(px(13.0))
+                                .font_weight(if self.body_type == BodyType::Form { gpui::FontWeight::MEDIUM } else { gpui::FontWeight::NORMAL })
+                                .text_color(if self.body_type == BodyType::Form { theme.colors.text_primary } else { theme.colors.text_secondary })
+                                .child("Form"))
+                    )
+                    .child(div().flex_1())
+                    .child(
+                        div()
+                            .px(px(12.0))
                             .text_size(px(10.0))
                             .text_color(theme.colors.text_muted)
                             .child("request body")
@@ -1505,12 +1156,109 @@ impl RequestPanel {
             .w(px(4.0))
             .self_stretch()
             .cursor_col_resize()
-            .bg(theme.colors.border.opacity(0.3))
-            .hover(|s| s.bg(theme.colors.accent.opacity(0.5)))
+            .bg(theme.colors.border.opacity(0.6))
+            .hover(|s| s.bg(theme.colors.accent.opacity(0.6)))
             .on_mouse_down(gpui::MouseButton::Left, cx.listener(move |this, event: &gpui::MouseDownEvent, _, cx| {
                 this.kv_col_drag = Some((f32::from(event.position.x), start_w));
                 cx.notify();
             }))
+    }
+
+    fn render_count_badge(&self, count: usize, suffix: &str, cx: &Context<Self>) -> impl IntoElement {
+        let theme = theme::current(cx);
+        div()
+            .px(px(6.0)).py(px(2.0))
+            .bg(theme.colors.accent.opacity(0.12))
+            .border_1().border_color(theme.colors.accent.opacity(0.35))
+            .text_size(px(10.0))
+            .font_weight(gpui::FontWeight::MEDIUM)
+            .text_color(theme.colors.accent)
+            .child(format!("{} {}", count, suffix))
+    }
+
+    fn render_kv_table_header(&self, key_label: &'static str, value_label: &'static str, count: usize, cx: &Context<Self>) -> impl IntoElement {
+        let theme = theme::current(cx);
+        div()
+            .w_full().flex().items_center()
+            .gap(px(8.0))
+            .py(px(6.0))
+            .border_b_1().border_color(theme.colors.border)
+            .mb(px(4.0))
+            .child(div().size(px(16.0)))
+            .child(
+                div()
+                    .w(px(self.kv_col_key_w))
+                    .text_size(px(10.0))
+                    .font_weight(gpui::FontWeight::SEMIBOLD)
+                    .text_color(theme.colors.accent.opacity(0.7))
+                    .child(key_label)
+            )
+            .child(self.render_kv_col_drag_handle(cx))
+            .child(
+                div().flex_1().flex().items_center().justify_between()
+                    .child(
+                        div()
+                            .text_size(px(10.0))
+                            .font_weight(gpui::FontWeight::SEMIBOLD)
+                            .text_color(theme.colors.text_secondary)
+                            .child(value_label)
+                    )
+                    .child(self.render_count_badge(count, "active", cx))
+            )
+            .child(div().size(px(28.0)))
+    }
+
+    fn render_kv_checkbox(&self, id: SharedString, is_enabled: bool, cx: &Context<Self>) -> gpui::Stateful<gpui::Div> {
+        let theme = theme::current(cx);
+        div()
+            .id(id)
+            .size(px(16.0))
+            .border_1()
+            .cursor_pointer()
+            .when(is_enabled, |el| el.bg(theme.colors.accent).border_color(theme.colors.accent))
+            .when(!is_enabled, |el| {
+                el.border_color(theme.colors.border)
+                    .hover(|s| s.border_color(theme.colors.text_muted))
+            })
+            .flex().items_center().justify_center()
+            .when(is_enabled, |el| {
+                el.child(div().flex().items_center().justify_center().child(icon(ICON_CHECK, ICON_SM, theme.colors.bg_primary)))
+            })
+    }
+
+    fn render_kv_remove_btn(&self, id: SharedString, can_remove: bool, cx: &Context<Self>) -> gpui::Stateful<gpui::Div> {
+        let theme = theme::current(cx);
+        div()
+            .id(id)
+            .size(px(28.0))
+            .flex().items_center().justify_center()
+            .text_size(px(14.0))
+            .when(can_remove, |el| {
+                el.cursor_pointer()
+                    .text_color(theme.colors.text_muted)
+                    .hover(|s| s.bg(theme.colors.status_client_error.opacity(0.1)).text_color(theme.colors.status_client_error))
+            })
+            .when(!can_remove, |el| {
+                el.cursor(gpui::CursorStyle::Arrow)
+                    .text_color(theme.colors.border)
+            })
+            .child(icon(ICON_CLOSE, ICON_SM, theme.colors.text_muted))
+    }
+
+    fn render_kv_add_btn(&self, id: &'static str, label: &'static str, cx: &Context<Self>) -> gpui::Stateful<gpui::Div> {
+        let theme = theme::current(cx);
+        div()
+            .id(id)
+            .w_full()
+            .py(px(8.0))
+            .border_1()
+            .border_color(theme.colors.border.opacity(0.5))
+            .flex().items_center().justify_center()
+            .cursor_pointer()
+            .text_size(px(12.0))
+            .text_color(theme.colors.text_muted)
+            .hover(|s| s.bg(theme.colors.bg_tertiary).border_color(theme.colors.border).text_color(theme.colors.text_secondary))
+            .child(label)
     }
 
     /// Render a key-value input field with fixed width
@@ -1542,7 +1290,7 @@ impl RequestPanel {
             .cursor_text()
             .when(is_editing, |el| el.border_color(theme.colors.accent))
             .when(!is_editing, |el| {
-                el.border_color(gpui::transparent_white())
+                el.border_color(gpui::transparent_black())
                   .hover(|s| s.border_color(theme.colors.border))
             })
             .bg(theme.colors.bg_tertiary)
@@ -1613,7 +1361,7 @@ impl RequestPanel {
             .cursor_text()
             .when(is_editing, |el| el.border_color(theme.colors.accent))
             .when(!is_editing, |el| {
-                el.border_color(gpui::transparent_white())
+                el.border_color(gpui::transparent_black())
                   .hover(|s| s.border_color(theme.colors.border))
             })
             .bg(theme.colors.bg_tertiary)
@@ -1672,6 +1420,7 @@ impl RequestPanel {
             Some(placeholder),
             theme.colors.text_muted,
             max_chars,
+            theme.colors.accent.opacity(0.25),
         )
     }
 
@@ -1697,24 +1446,37 @@ impl RequestPanel {
             .on_key_down(cx.listener(|this, event: &KeyDownEvent, _, cx| {
                 this.handle_edit_key(event, cx);
             }))
-            // Auth type selector - minimal style
+            // Auth type selector - same style as main tab bar
             .child(
                 div()
+                    .h(px(40.0))
+                    .w_full()
                     .flex()
                     .items_center()
-                    .gap(px(0.0))
-                    .children(auth_types.iter().enumerate().map(|(i, (at, label))| {
+                    .border_b_1()
+                    .border_color(theme.colors.border)
+                    .bg(theme.colors.bg_primary)
+                    .children(auth_types.iter().map(|(at, label)| {
                         let is_selected = *at == auth_type;
                         let at = *at;
                         div()
+                            .id(SharedString::from(format!("auth-type-{:?}", at)))
+                            .h_full()
+                            .px(px(16.0))
                             .flex()
                             .items_center()
+                            .cursor_pointer()
+                            .border_b_2()
+                            .when(is_selected, |el| el.border_color(theme.colors.accent))
+                            .when(!is_selected, |el| {
+                                el.border_color(gpui::transparent_black())
+                                    .hover(|s| s.bg(theme.colors.hover_overlay))
+                            })
+                            .on_click(cx.listener(move |this, _, _, cx| {
+                                this.set_auth_type(at, cx);
+                            }))
                             .child(
                                 div()
-                                    .id(SharedString::from(format!("auth-type-{:?}", at)))
-                                    .px(px(12.0))
-                                    .py(px(6.0))
-                                    .cursor_pointer()
                                     .text_size(px(13.0))
                                     .font_weight(if is_selected {
                                         gpui::FontWeight::MEDIUM
@@ -1726,20 +1488,8 @@ impl RequestPanel {
                                     } else {
                                         theme.colors.text_secondary
                                     })
-                                    .hover(|s| s.bg(theme.colors.bg_secondary.opacity(0.3)))
-                                    .on_click(cx.listener(move |this, _, _, cx| {
-                                        this.set_auth_type(at, cx);
-                                    }))
                                     .child(*label)
                             )
-                            .when(i < auth_types.len() - 1, |el| {
-                                el.child(
-                                    div()
-                                        .h(px(16.0))
-                                        .w(px(1.0))
-                                        .bg(theme.colors.border)
-                                )
-                            })
                     }))
             )
             // Auth type specific content
@@ -2236,7 +1986,7 @@ impl RequestPanel {
             .cursor_text()
             .when(is_editing, |el| el.border_color(theme.colors.accent))
             .when(!is_editing, |el| {
-                el.border_color(gpui::transparent_white())
+                el.border_color(gpui::transparent_black())
                   .hover(|s| s.border_color(theme.colors.border))
             })
             .bg(theme.colors.bg_tertiary)
@@ -2759,7 +2509,7 @@ impl RequestPanel {
                                     .when(is_connected, |el| {
                                         el.bg(theme.colors.accent)
                                             .hover(|s| s.opacity(0.9))
-                                            .text_color(gpui::rgb(0xFFFFFF))
+                                            .text_color(theme.colors.bg_primary)
                                     })
                                     .when(!is_connected, |el| {
                                         el.bg(theme.colors.text_muted.opacity(0.15))
@@ -2924,7 +2674,7 @@ impl RequestPanel {
                             .when(has_method, |el| {
                                 el.bg(theme.colors.method_put)
                                     .hover(|s| s.opacity(0.9))
-                                    .text_color(gpui::rgb(0xFFFFFF))
+                                    .text_color(theme.colors.bg_primary)
                             })
                             .when(!has_method, |el| {
                                 el.bg(theme.colors.text_muted.opacity(0.2))
@@ -2973,59 +2723,12 @@ impl RequestPanel {
             .flex()
             .flex_col()
             .gap(px(2.0))
-            .p(px(20.0))
             .track_focus(&self.edit_focus)
             .on_key_down(cx.listener(|this, event: &KeyDownEvent, _, cx| {
                 this.handle_edit_key(event, cx);
             }));
 
-        container = container.child(
-            div()
-                .w_full()
-                .flex()
-                .items_center()
-                .gap(px(8.0))
-                .pb(px(8.0))
-                .bg(theme.colors.bg_secondary)
-                .border_b_1()
-                .border_color(theme.colors.border)
-                .mb(px(4.0))
-                .child(div().size(px(16.0)))
-                .child(
-                    div()
-                        .w(px(self.kv_col_key_w))
-                        .text_size(px(10.0))
-                        .font_weight(gpui::FontWeight::SEMIBOLD)
-                        .text_color(theme.colors.text_muted)
-                        .child("KEY")
-                )
-                .child(self.render_kv_col_drag_handle(cx))
-                .child(
-                    div()
-                        .flex_1()
-                        .flex()
-                        .items_center()
-                        .justify_between()
-                        .child(
-                            div()
-                                .text_size(px(10.0))
-                                .font_weight(gpui::FontWeight::SEMIBOLD)
-                                .text_color(theme.colors.text_muted)
-                                .child("VALUE")
-                        )
-                        .child(
-                            div()
-                                .px(px(6.0))
-                                .py(px(2.0))
-                                .bg(theme.colors.accent.opacity(0.12))
-                                .text_size(px(10.0))
-                                .font_weight(gpui::FontWeight::MEDIUM)
-                                .text_color(theme.colors.accent)
-                                .child(format!("{} active", enabled_count))
-                        )
-                )
-                .child(div().size(px(28.0)))
-        );
+        container = container.child(self.render_kv_table_header("KEY", "VALUE", enabled_count, cx));
 
         for (i, is_enabled, key, value) in meta_data {
             let can_remove = meta_len > 1;
@@ -3044,26 +2747,7 @@ impl RequestPanel {
                     .px(px(2.0))
                     .when(!is_row_editing, |el| el.hover(|s| s.bg(theme.colors.bg_tertiary.opacity(0.3))))
                     .child(
-                        div()
-                            .id(SharedString::from(format!("grpc-meta-cb-{}", i)))
-                            .size(px(16.0))
-                            .border_1()
-                            .cursor_pointer()
-                            .when(is_enabled, |el| {
-                                el.bg(theme.colors.accent).border_color(theme.colors.accent)
-                            })
-                            .when(!is_enabled, |el| {
-                                el.border_color(theme.colors.border)
-                                    .hover(|s| s.border_color(theme.colors.text_muted))
-                            })
-                            .flex()
-                            .items_center()
-                            .justify_center()
-                            .when(is_enabled, |el| {
-                                el.child(
-                                    div().flex().items_center().justify_center().child(icon(ICON_CHECK, ICON_SM, gpui::white()))
-                                )
-                            })
+                        self.render_kv_checkbox(format!("grpc-meta-cb-{}", i).into(), is_enabled, cx)
                             .on_click(cx.listener(move |this, _, _, cx| {
                                 this.toggle_grpc_meta(i, cx);
                             }))
@@ -3093,48 +2777,19 @@ impl RequestPanel {
                         )
                     )
                     .child(
-                        div()
-                            .id(SharedString::from(format!("grpc-meta-del-{}", i)))
-                            .size(px(28.0))
-                            .flex()
-                            .items_center()
-                            .justify_center()
-                            .cursor_pointer()
-                            .text_size(px(14.0))
-                            .when(can_remove, |el| {
-                                el.text_color(theme.colors.text_muted)
-                                    .hover(|s| s.bg(theme.colors.status_client_error.opacity(0.1)).text_color(theme.colors.status_client_error))
-                                    .on_click(cx.listener(move |this, _, _, cx| {
-                                        this.remove_grpc_meta(i, cx);
-                                    }))
-                            })
-                            .when(!can_remove, |el| el.text_color(theme.colors.border))
-                            .child(icon(ICON_CLOSE, ICON_SM, theme.colors.text_muted))
+                        self.render_kv_remove_btn(format!("grpc-meta-del-{}", i).into(), can_remove, cx)
+                            .when(can_remove, |el| el.on_click(cx.listener(move |this, _, _, cx| {
+                                this.remove_grpc_meta(i, cx);
+                            })))
                     )
             );
         }
 
         container = container.child(
-            div()
-                .w_full()
-                .pt(px(8.0))
-                .child(
-                    div()
-                        .id("add-grpc-meta-btn")
-                        .w_full()
-                        .py(px(8.0))
-                        .border_1()
-                        .border_color(theme.colors.border.opacity(0.5))
-                        .flex()
-                        .items_center()
-                        .justify_center()
-                        .cursor_pointer()
-                        .text_size(px(12.0))
-                        .text_color(theme.colors.text_muted)
-                        .hover(|s| s.bg(theme.colors.bg_tertiary).border_color(theme.colors.border).text_color(theme.colors.text_secondary))
-                        .on_click(cx.listener(|this, _, _, cx| { this.add_grpc_meta(cx); }))
-                        .child("+ Add Metadata")
-                )
+            div().w_full().pt(px(8.0)).child(
+                self.render_kv_add_btn("add-grpc-meta-btn", "+ Add Metadata", cx)
+                    .on_click(cx.listener(|this, _, _, cx| { this.add_grpc_meta(cx); }))
+            )
         );
 
         container.into_any_element()
@@ -3171,7 +2826,7 @@ impl RequestPanel {
                             .cursor_pointer()
                             .hover(|s| s.opacity(0.9))
                             .text_size(px(12.0))
-                            .text_color(gpui::rgb(0xFFFFFF))
+                            .text_color(theme.colors.bg_primary)
                             .font_weight(gpui::FontWeight::MEDIUM)
                             .on_click(cx.listener(|this, _, _, cx| {
                                 this.load_proto_file(cx);
@@ -3340,12 +2995,12 @@ impl RequestPanel {
             .id("codegen-modal-overlay")
             .absolute()
             .inset_0()
-            .bg(gpui::black().opacity(0.5))
+            .bg(theme.colors.overlay)
             .flex()
             .items_center()
             .justify_center()
             .on_click(cx.listener(|this, _, _, cx| {
-                this.close_codegen_modal(cx);
+                this.close_codegen_panel(cx);
             }))
             .child(
                 div()
@@ -3419,7 +3074,7 @@ impl RequestPanel {
                                             .cursor_pointer()
                                             .hover(|s| s.bg(theme.colors.bg_tertiary))
                                             .on_click(cx.listener(|this, _, _, cx| {
-                                                this.close_codegen_modal(cx);
+                                                this.close_codegen_panel(cx);
                                             }))
                                             .child(icon(ICON_CLOSE, ICON_SM, theme.colors.text_muted))
                                     )
@@ -3447,7 +3102,7 @@ impl RequestPanel {
             .id("import-modal-overlay")
             .absolute()
             .inset_0()
-            .bg(gpui::black().opacity(0.5))
+            .bg(theme.colors.overlay)
             .flex()
             .items_center()
             .justify_center()
@@ -3631,7 +3286,7 @@ impl RequestPanel {
                                     .py(px(8.0))
                                     .text_size(px(12.0))
                                     .font_weight(gpui::FontWeight::SEMIBOLD)
-                                    .text_color(gpui::white())
+                                    .text_color(theme.colors.bg_primary)
                                     .bg(theme.colors.accent)
                                     .cursor_pointer()
                                     .hover(|s| s.bg(theme.colors.accent_hover))

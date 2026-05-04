@@ -40,8 +40,9 @@ fn render_text_view(
     text_color: gpui::Hsla,
     placeholder: Option<&str>,
     placeholder_color: gpui::Hsla,
+    selection_bg: gpui::Hsla,
 ) -> gpui::AnyElement {
-    render_text_view_with_max(text, selection, is_focused, font_size, text_color, placeholder, placeholder_color, None)
+    render_text_view_with_max(text, selection, is_focused, font_size, text_color, placeholder, placeholder_color, None, selection_bg)
 }
 
 /// Convert character index to byte offset in a string
@@ -122,11 +123,11 @@ pub struct RequestPanel {
     /// Code generation dropdown state
     pub(super) codegen_dropdown_open: bool,
     /// Generated code content
-    pub(super) codegen_content: Option<String>,
+    pub codegen_content: Option<String>,
     /// Selected code generation language
-    pub(super) codegen_language: CodegenLanguage,
+    pub codegen_language: CodegenLanguage,
     /// Read-only editor for generated code display
-    pub(super) codegen_editor: Entity<CodeEditor>,
+    pub codegen_editor: Entity<CodeEditor>,
     /// Import modal open state
     pub(super) import_modal_open: bool,
     /// Import text input content
@@ -1155,6 +1156,8 @@ impl RequestPanel {
 
     fn set_tab(&mut self, index: usize, cx: &mut Context<Self>) {
         self.active_tab = index;
+        self.active_edit = None;
+        self.edit_selection = 0..0;
         cx.notify();
     }
 
@@ -2223,13 +2226,23 @@ impl RequestPanel {
     }
 
     /// Close code modal
-    pub(super) fn close_codegen_modal(&mut self, cx: &mut Context<Self>) {
+    pub fn codegen_lang_name(&self) -> &'static str {
+        match self.codegen_language {
+            CodegenLanguage::Curl => "cURL",
+            CodegenLanguage::Python => "Python",
+            CodegenLanguage::JavaScript => "JavaScript",
+            CodegenLanguage::Go => "Go",
+            CodegenLanguage::Rust => "Rust",
+        }
+    }
+
+    pub fn close_codegen_panel(&mut self, cx: &mut Context<Self>) {
         self.codegen_content = None;
         cx.notify();
     }
 
     /// Copy generated code to clipboard
-    pub(super) fn copy_generated_code(&self, cx: &mut Context<Self>) {
+    pub fn copy_generated_code(&self, cx: &mut Context<Self>) {
         if let Some(code) = &self.codegen_content {
             cx.write_to_clipboard(ClipboardItem::new_string(code.clone()));
         }
@@ -3166,9 +3179,6 @@ impl Render for RequestPanel {
             })
             .when(self.codegen_dropdown_open, |el| {
                 el.child(deferred(self.render_codegen_dropdown_overlay(cx)).with_priority(1))
-            })
-            .when(self.codegen_content.is_some(), |el| {
-                el.child(deferred(self.render_codegen_modal(cx)).with_priority(1))
             })
             .when(self.import_modal_open, |el| {
                 el.child(deferred(self.render_import_modal(cx)).with_priority(1))

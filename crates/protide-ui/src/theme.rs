@@ -69,6 +69,9 @@ pub struct Colors {
     // Focus indicator
     pub focus_ring: Hsla,
     pub focus_ring_error: Hsla,
+
+    // Modal backdrop
+    pub overlay: Hsla,
 }
 
 impl Colors {
@@ -127,6 +130,9 @@ impl Colors {
             // Focus indicator
             focus_ring: rgb(0x4ade80).into(),
             focus_ring_error: rgb(0xf87171).into(),
+
+            // Modal backdrop
+            overlay: Hsla { h: 0.0, s: 0.0, l: 0.0, a: 0.5 },
         }
     }
 
@@ -185,6 +191,9 @@ impl Colors {
             // Focus indicator
             focus_ring: rgb(0x007acc).into(),
             focus_ring_error: rgb(0xc62828).into(),
+
+            // Modal backdrop
+            overlay: Hsla { h: 0.0, s: 0.0, l: 0.0, a: 0.4 },
         }
     }
 }

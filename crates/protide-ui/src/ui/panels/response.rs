@@ -793,9 +793,22 @@ impl ResponsePanel {
                 .justify_center()
                 .child(
                     div()
-                        .text_size(px(12.0))
-                        .text_color(theme.colors.text_muted)
-                        .child("Response body is empty")
+                        .flex()
+                        .flex_col()
+                        .items_center()
+                        .gap(px(8.0))
+                        .child(
+                            div()
+                                .flex()
+                                .items_center()
+                                .child(icon(ICON_CIRCLE_CHECK, ICON_MD, theme.colors.text_muted.opacity(0.5)))
+                        )
+                        .child(
+                            div()
+                                .text_size(px(12.0))
+                                .text_color(theme.colors.text_muted)
+                                .child("Response body is empty")
+                        )
                 )
                 .into_any_element();
         }
@@ -892,9 +905,22 @@ impl ResponsePanel {
                 .justify_center()
                 .child(
                     div()
-                        .text_size(px(12.0))
-                        .text_color(theme.colors.text_muted)
-                        .child("No headers in response")
+                        .flex()
+                        .flex_col()
+                        .items_center()
+                        .gap(px(8.0))
+                        .child(
+                            div()
+                                .flex()
+                                .items_center()
+                                .child(icon(ICON_COPY, ICON_MD, theme.colors.text_muted.opacity(0.5)))
+                        )
+                        .child(
+                            div()
+                                .text_size(px(12.0))
+                                .text_color(theme.colors.text_muted)
+                                .child("No headers in response")
+                        )
                 )
                 .into_any_element();
         }
@@ -1481,7 +1507,7 @@ impl ResponsePanel {
                             .items_center()
                             .bg(theme.colors.accent)
                             .text_size(px(12.0))
-                            .text_color(gpui::white())
+                            .text_color(theme.colors.bg_primary)
                             .cursor_pointer()
                             .hover(|s| s.bg(theme.colors.accent.opacity(0.85)))
                             .on_click(cx.listener(move |this, _, _, cx| {
