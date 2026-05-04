@@ -1,4 +1,4 @@
-# API Dash - Development Context
+# Protide - Development Context
 
 ## Project Overview
 Native desktop API testing tool built with Rust + GPUI (Zed's GPU-accelerated UI framework).
@@ -113,6 +113,10 @@ api-dash/
 cargo run --release   # Release build recommended for performance
 cargo test            # 146 tests total
 ```
+
+## Coding Rules
+
+- **DRY**: Never write the same line of code twice. Extract shared logic into functions, constants, or type aliases.
 
 ## Remaining Phases
 

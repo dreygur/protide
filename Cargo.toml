@@ -2,19 +2,23 @@
 resolver = "2"
 members = [
     "crates/http-parser",
-    "crates/api-dash",
+    "crates/protide-core",
+    "crates/protide-ui",
+    "crates/protide",
 ]
 
 [workspace.package]
 version = "0.1.0"
 edition = "2024"
 license = "MIT"
-repository = "https://github.com/user/api-dash"
-authors = ["API Dash Contributors"]
+repository = "https://github.com/dreygur/protide"
+authors = ["Protide Contributors"]
 
 [workspace.dependencies]
-# Parser crate
+# Internal crates
 http-parser = { path = "crates/http-parser" }
+protide-core = { path = "crates/protide-core" }
+protide-ui = { path = "crates/protide-ui" }
 
 # UI Framework - same git spec as gpui-component so Cargo unifies to one commit
 gpui = { git = "https://github.com/zed-industries/zed", features = ["wayland"] }

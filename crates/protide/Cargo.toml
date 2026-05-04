@@ -1,0 +1,21 @@
+[package]
+name = "protide"
+description = "Free and open-source API testing tool"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "protide"
+path = "src/main.rs"
+
+[dependencies]
+protide-core = { workspace = true }
+protide-ui = { workspace = true }
+
+gpui = { workspace = true }
+gpui_platform = { workspace = true }
+gpui-component = { workspace = true }
+gpui-component-assets = { workspace = true }
+
+anyhow = { workspace = true }

@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(grep -E \"\\\\.rs$\")",
+      "Bash(cargo build *)",
+      "Bash(kill %1)",
+      "Bash(cargo check *)",
+      "Bash(ldconfig -p)",
+      "Bash(dnf list *)",
+      "Bash(sudo dnf *)",
+      "Bash(cp \"/home/dreygur/.claude/projects/-mnt-sda1-Code-github-protide/14310c08-55c8-4d15-b567-e5b85b22ca87/tool-results/webfetch-1777740353288-u48itv.bin\" /tmp/design.gz)",
+      "Bash(gunzip -f /tmp/design.gz)",
+      "Read(//tmp/**)",
+      "Bash(cargo run *)"
+    ]
+  }
+}
