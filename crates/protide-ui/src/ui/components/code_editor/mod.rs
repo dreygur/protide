@@ -14,9 +14,9 @@ pub use selection::Selection;
 use std::collections::{HashMap, HashSet};
 
 use gpui::{
-    div, prelude::*, px, canvas, ClipboardItem, Context, FocusHandle,
+    div, font, prelude::*, px, canvas, ClipboardItem, Context, FocusHandle,
     IntoElement, KeyDownEvent, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent,
-    ParentElement, Render, ScrollWheelEvent, Styled, Window, Bounds, Pixels,
+    ParentElement, Render, ScrollWheelEvent, StyledText, TextRun, Styled, Window, Bounds, Pixels,
 };
 
 use crate::theme;
@@ -723,20 +723,23 @@ impl CodeEditor {
                                         .bg(theme.accent)
                                 )
                             })
-                            // Tokens - one span per token, cursor/selection are absolute overlays
-                            .child(
+                            // StyledText — single GPU text paint per line, one TextRun per token
+                            .child({
+                                let mono_font = font(self.config.font_family.as_str());
+                                let runs: Vec<TextRun> = tokens.into_iter().map(|token| {
+                                    TextRun {
+                                        len: token.text.len(),
+                                        font: mono_font.clone(),
+                                        color: token.kind.color(theme),
+                                        background_color: None,
+                                        underline: None,
+                                        strikethrough: None,
+                                    }
+                                }).collect();
                                 div()
-                                    .flex()
                                     .text_size(px(font_size))
-                                    .font_family(self.config.font_family.clone())
-                                    .children(tokens.into_iter().map(|token| {
-                                        let color = token.kind.color(theme);
-                                        div()
-                                            .flex_shrink_0()
-                                            .text_color(color)
-                                            .child(token.text.clone())
-                                    }))
-                            )
+                                    .child(StyledText::new(line_content.to_string()).with_runs(runs))
+                            })
                     )
                     // Folded indicator
                     .when(is_folded, |el| {
