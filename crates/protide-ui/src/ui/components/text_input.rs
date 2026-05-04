@@ -18,9 +18,9 @@ use std::ops::Range;
 const MAX_UNDO_HISTORY: usize = 100;
 
 use gpui::{
-    div, prelude::*, px, ClipboardItem, Context, FocusHandle, Hsla, IntoElement,
+    div, font, prelude::*, px, ClipboardItem, Context, FocusHandle, Hsla, IntoElement,
     KeyDownEvent, MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement,
-    Render, SharedString, Styled, Window,
+    Render, SharedString, StyledText, TextRun, Styled, Window,
 };
 
 use crate::theme;
@@ -893,20 +893,17 @@ pub fn render_text_view_multiline(
                         .w(px(2.0))
                         .bg(text_color)
                 )
-                // Characters in fixed-width containers
                 .child(
                     div()
-                        .flex()
                         .text_size(px(font_size))
-                        .font_family("JetBrains Mono")
-                        .text_color(text_color)
-                        .children(text.chars().map(|c| {
-                            div()
-                                .w(px(char_width))
-                                .flex()
-                                .justify_center()
-                                .child(c.to_string())
-                        }))
+                        .child(StyledText::new(text.to_string()).with_runs(vec![TextRun {
+                            len: text.len(),
+                            font: font("JetBrains Mono"),
+                            color: text_color,
+                            background_color: None,
+                            underline: None,
+                            strikethrough: None,
+                        }]))
                 )
                 .into_any_element();
         }
@@ -986,15 +983,17 @@ pub fn render_text_view_multiline(
                             .bg(text_color)
                     )
                 })
-                // Characters in fixed-width containers
                 .child(
                     div()
-                        .flex()
-                        .children(line_text.chars().map(|c| {
-                            div()
-                                .w(px(char_width))
-                                .child(c.to_string())
-                        }))
+                        .text_size(px(font_size))
+                        .child(StyledText::new(line_text.clone()).with_runs(vec![TextRun {
+                            len: line_text.len(),
+                            font: font("JetBrains Mono"),
+                            color: text_color,
+                            background_color: None,
+                            underline: None,
+                            strikethrough: None,
+                        }]))
                 )
         }))
         .into_any_element()
