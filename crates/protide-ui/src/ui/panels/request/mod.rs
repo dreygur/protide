@@ -125,6 +125,8 @@ pub struct RequestPanel {
     pub(super) codegen_content: Option<String>,
     /// Selected code generation language
     pub(super) codegen_language: CodegenLanguage,
+    /// Read-only editor for generated code display
+    pub(super) codegen_editor: Entity<CodeEditor>,
     /// Import modal open state
     pub(super) import_modal_open: bool,
     /// Import text input content
@@ -233,6 +235,11 @@ impl RequestPanel {
                 .with_language(Language::Json)
                 .with_line_numbers(true)
         });
+        let codegen_editor = cx.new(|cx| {
+            CodeEditor::new(cx)
+                .with_read_only(true)
+                .with_line_numbers(true)
+        });
         Self {
             active_tab: 0,
             method: HttpMethod::Post,
@@ -289,6 +296,7 @@ impl RequestPanel {
             codegen_dropdown_open: false,
             codegen_content: None,
             codegen_language: CodegenLanguage::Curl,
+            codegen_editor,
             import_modal_open: false,
             import_text: String::new(),
             import_error: None,
@@ -2201,8 +2209,16 @@ impl RequestPanel {
 
         let code = codegen::generate(&request, language);
         self.codegen_language = language;
-        self.codegen_content = Some(code);
+        self.codegen_content = Some(code.clone());
         self.codegen_dropdown_open = false;
+        let editor_lang = match language {
+            CodegenLanguage::JavaScript => Language::JavaScript,
+            _ => Language::Plain,
+        };
+        self.codegen_editor.update(cx, |editor, cx| {
+            editor.set_content(&code, cx);
+            editor.set_language(editor_lang, cx);
+        });
         cx.notify();
     }
 

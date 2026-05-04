@@ -617,7 +617,6 @@ impl RequestPanel {
                 .items_center()
                 .gap(px(8.0))
                 .pb(px(8.0))
-                .bg(theme.colors.bg_secondary)
                 .border_b_1()
                 .border_color(theme.colors.border)
                 .mb(px(4.0))
@@ -629,7 +628,7 @@ impl RequestPanel {
                         .w(px(self.kv_col_key_w))
                         .text_size(px(10.0))
                         .font_weight(gpui::FontWeight::SEMIBOLD)
-                        .text_color(theme.colors.text_muted)
+                        .text_color(theme.colors.text_secondary)
                         .child("KEY")
                 )
                 .child(self.render_kv_col_drag_handle(cx))
@@ -644,7 +643,7 @@ impl RequestPanel {
                             div()
                                 .text_size(px(10.0))
                                 .font_weight(gpui::FontWeight::SEMIBOLD)
-                                .text_color(theme.colors.text_muted)
+                                .text_color(theme.colors.text_secondary)
                                 .child("VALUE")
                         )
                         .child(
@@ -652,6 +651,8 @@ impl RequestPanel {
                                 .px(px(6.0))
                                 .py(px(2.0))
                                 .bg(theme.colors.accent.opacity(0.12))
+                                .border_1()
+                                .border_color(theme.colors.accent.opacity(0.35))
                                 .text_size(px(10.0))
                                 .font_weight(gpui::FontWeight::MEDIUM)
                                 .text_color(theme.colors.accent)
@@ -817,7 +818,6 @@ impl RequestPanel {
                 .items_center()
                 .gap(px(8.0))
                 .pb(px(8.0))
-                .bg(theme.colors.bg_secondary)
                 .border_b_1()
                 .border_color(theme.colors.border)
                 .mb(px(4.0))
@@ -829,7 +829,7 @@ impl RequestPanel {
                         .w(px(self.kv_col_key_w))
                         .text_size(px(10.0))
                         .font_weight(gpui::FontWeight::SEMIBOLD)
-                        .text_color(theme.colors.text_muted)
+                        .text_color(theme.colors.text_secondary)
                         .child("HEADER")
                 )
                 .child(self.render_kv_col_drag_handle(cx))
@@ -844,7 +844,7 @@ impl RequestPanel {
                             div()
                                 .text_size(px(10.0))
                                 .font_weight(gpui::FontWeight::SEMIBOLD)
-                                .text_color(theme.colors.text_muted)
+                                .text_color(theme.colors.text_secondary)
                                 .child("VALUE")
                         )
                         .child(
@@ -852,6 +852,8 @@ impl RequestPanel {
                                 .px(px(6.0))
                                 .py(px(2.0))
                                 .bg(theme.colors.accent.opacity(0.12))
+                                .border_1()
+                                .border_color(theme.colors.accent.opacity(0.35))
                                 .text_size(px(10.0))
                                 .font_weight(gpui::FontWeight::MEDIUM)
                                 .text_color(theme.colors.accent)
@@ -1129,7 +1131,7 @@ impl RequestPanel {
                         .w(px(130.0))
                         .text_size(px(10.0))
                         .font_weight(gpui::FontWeight::SEMIBOLD)
-                        .text_color(theme.colors.text_muted)
+                        .text_color(theme.colors.text_secondary)
                         .child("KEY")
                 )
                 .child(
@@ -1137,7 +1139,7 @@ impl RequestPanel {
                         .w(px(50.0))
                         .text_size(px(10.0))
                         .font_weight(gpui::FontWeight::SEMIBOLD)
-                        .text_color(theme.colors.text_muted)
+                        .text_color(theme.colors.text_secondary)
                         .child("TYPE")
                 )
                 .child(
@@ -1145,7 +1147,7 @@ impl RequestPanel {
                         .flex_1()
                         .text_size(px(10.0))
                         .font_weight(gpui::FontWeight::SEMIBOLD)
-                        .text_color(theme.colors.text_muted)
+                        .text_color(theme.colors.text_secondary)
                         .child("VALUE")
                 )
                 .child(div().size(px(28.0)))
@@ -1539,7 +1541,10 @@ impl RequestPanel {
             .border_1()
             .cursor_text()
             .when(is_editing, |el| el.border_color(theme.colors.accent))
-            .when(!is_editing, |el| el.border_color(theme.colors.border))
+            .when(!is_editing, |el| {
+                el.border_color(gpui::transparent_white())
+                  .hover(|s| s.border_color(theme.colors.border))
+            })
             .bg(theme.colors.bg_tertiary)
             .text_size(px(12.0))
             .on_mouse_down(
@@ -1607,7 +1612,10 @@ impl RequestPanel {
             .border_1()
             .cursor_text()
             .when(is_editing, |el| el.border_color(theme.colors.accent))
-            .when(!is_editing, |el| el.border_color(theme.colors.border))
+            .when(!is_editing, |el| {
+                el.border_color(gpui::transparent_white())
+                  .hover(|s| s.border_color(theme.colors.border))
+            })
             .bg(theme.colors.bg_tertiary)
             .text_size(px(12.0))
             .on_mouse_down(
@@ -2227,7 +2235,10 @@ impl RequestPanel {
             .border_1()
             .cursor_text()
             .when(is_editing, |el| el.border_color(theme.colors.accent))
-            .when(!is_editing, |el| el.border_color(theme.colors.border))
+            .when(!is_editing, |el| {
+                el.border_color(gpui::transparent_white())
+                  .hover(|s| s.border_color(theme.colors.border))
+            })
             .bg(theme.colors.bg_tertiary)
             .text_size(px(12.0))
             .on_mouse_down(
@@ -2311,10 +2322,8 @@ impl RequestPanel {
                     )
                     .child(
                         div()
-                            .h(px(150.0))
+                            .h(px(200.0))
                             .w_full()
-                            .border_1()
-                            .border_color(theme.colors.border)
                             .overflow_hidden()
                             .child(self.pre_script_editor.clone())
                     )
@@ -2355,10 +2364,8 @@ impl RequestPanel {
                     )
                     .child(
                         div()
-                            .h(px(150.0))
+                            .h(px(200.0))
                             .w_full()
-                            .border_1()
-                            .border_color(theme.colors.border)
                             .overflow_hidden()
                             .child(self.post_script_editor.clone())
                     )
@@ -2399,10 +2406,8 @@ impl RequestPanel {
                     )
                     .child(
                         div()
-                            .h(px(150.0))
+                            .h(px(200.0))
                             .w_full()
-                            .border_1()
-                            .border_color(theme.colors.border)
                             .overflow_hidden()
                             .child(self.tests_editor.clone())
                     )
@@ -3322,7 +3327,6 @@ impl RequestPanel {
     /// Render code generation modal with generated code
     pub(super) fn render_codegen_modal(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = theme::current(cx);
-        let code = self.codegen_content.clone().unwrap_or_default();
         let lang_name = match self.codegen_language {
             CodegenLanguage::Curl => "cURL",
             CodegenLanguage::Python => "Python",
@@ -3426,18 +3430,8 @@ impl RequestPanel {
                         div()
                             .id("codegen-content")
                             .flex_1()
-                            .p(px(16.0))
-                            .overflow_scroll()
-                            .child(
-                                div()
-                                    .w_full()
-                                    .p(px(12.0))
-                                    .bg(theme.colors.bg_secondary)
-                                    .font_family("JetBrains Mono")
-                                    .text_size(px(12.0))
-                                    .text_color(theme.colors.text_primary)
-                                    .child(code)
-                            )
+                            .overflow_hidden()
+                            .child(self.codegen_editor.clone())
                     )
             )
     }

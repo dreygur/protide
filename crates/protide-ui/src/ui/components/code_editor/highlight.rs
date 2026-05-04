@@ -28,10 +28,10 @@ impl TokenKind {
             TokenKind::Number => theme.method_patch,
             TokenKind::Boolean | TokenKind::Keyword => theme.method_delete,
             TokenKind::Null => theme.method_put,
-            TokenKind::Punctuation => theme.text_muted,
+            TokenKind::Punctuation => theme.text_secondary,
             TokenKind::Tag => theme.accent,
             TokenKind::Attribute => theme.accent,
-            TokenKind::Comment => theme.text_muted.opacity(0.7),
+            TokenKind::Comment => theme.text_secondary.opacity(0.6),
             TokenKind::Property => theme.method_get,
             TokenKind::Plain => theme.text_primary,
         }

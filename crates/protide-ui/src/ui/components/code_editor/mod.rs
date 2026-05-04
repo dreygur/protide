@@ -517,7 +517,7 @@ impl Render for CodeEditor {
             .overflow_hidden()
             .bg(theme.colors.bg_secondary)
             .border_1()
-            .border_color(if is_focused { theme.colors.accent } else { theme.colors.border })
+            .border_color(if is_focused { theme.colors.accent } else { gpui::transparent_white() })
             .track_focus(&self.focus_handle)
             .on_key_down(cx.listener(Self::handle_key_down))
             .on_mouse_down(MouseButton::Left, cx.listener(Self::handle_mouse_down))
@@ -618,12 +618,16 @@ impl CodeEditor {
             .flex()
             .items_center()
             .flex_shrink_0()
+            .when(cursor_in_line && !self.config.read_only, |el| {
+                el.bg(theme.bg_elevated.opacity(0.5))
+            })
             // Gutter with fold marker and line number
             .when(self.config.show_line_numbers, |el| {
                 el.child(
                     div()
                         .w(px(self.config.gutter_width))
                         .h_full()
+                        .bg(theme.bg_primary)
                         .flex()
                         .items_center()
                         .flex_shrink_0()
@@ -637,7 +641,7 @@ impl CodeEditor {
                                 .items_center()
                                 .justify_center()
                                 .text_size(px(10.0))
-                                .text_color(theme.text_muted)
+                                .text_color(theme.text_secondary)
                                 .when(is_foldable, |el| {
                                     el.cursor_pointer()
                                         .hover(|s| s.text_color(theme.accent))
@@ -657,7 +661,7 @@ impl CodeEditor {
                                 .justify_end()
                                 .pr(px(8.0))
                                 .text_size(px(font_size - 1.0))
-                                .text_color(theme.text_muted)
+                                .text_color(theme.text_secondary)
                                 .child(format!("{}", line_idx + 1))
                         )
                 )
@@ -759,6 +763,7 @@ impl CodeEditor {
             "delete" => self.delete_char(true, cx),
             "enter" => self.insert_text("\n", cx),
             "tab" => self.insert_text("  ", cx),
+            "space" => self.insert_text(" ", cx),
             "a" if ctrl => self.select_all(cx),
             "c" if ctrl => self.copy(cx),
             "x" if ctrl => self.cut(cx),
