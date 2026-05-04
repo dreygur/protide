@@ -135,6 +135,34 @@ pub enum RequestMode {
     Trpc,
 }
 
+/// gRPC streaming type
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum GrpcStreamingType {
+    #[default]
+    Unary,
+    ServerStreaming,
+    ClientStreaming,
+    BidiStreaming,
+}
+
+impl GrpcStreamingType {
+    pub fn label(&self) -> &'static str {
+        match self {
+            GrpcStreamingType::Unary => "unary",
+            GrpcStreamingType::ServerStreaming => "server",
+            GrpcStreamingType::ClientStreaming => "client",
+            GrpcStreamingType::BidiStreaming => "bidi",
+        }
+    }
+}
+
+/// gRPC method info with streaming type
+#[derive(Debug, Clone)]
+pub struct GrpcMethodInfo {
+    pub full_name: String,
+    pub streaming_type: GrpcStreamingType,
+}
+
 /// WebSocket connection state
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum WsConnectionState {

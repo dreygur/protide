@@ -19,7 +19,7 @@ use crate::ui::components::icons::{
     ICON_COPY, ICON_FOLDER, ICON_USER, ICON_KEY,
     ICON_FORM, ICON_PLAY, ICON_CIRCLE_X,
 };
-use super::super::request_types::{ApiKeyLocation, AuthType, BodyType, EditTarget, FormFieldType, HttpMethod, RequestMode, WsConnectionState, WsMessageDirection};
+use super::super::request_types::{ApiKeyLocation, AuthType, BodyType, EditTarget, FormFieldType, GrpcMethodInfo, GrpcStreamingType, HttpMethod, RequestMode, WsConnectionState, WsMessageDirection};
 use super::{render_text_view, RequestPanel};
 
 impl RequestPanel {
@@ -2849,12 +2849,32 @@ impl RequestPanel {
                                     .border_color(theme.colors.border)
                                     .flex()
                                     .items_center()
+                                    .gap(px(8.0))
                                     .text_size(px(12.0))
                                     .text_color(if has_method { theme.colors.text_primary } else { theme.colors.text_muted })
                                     .child(
-                                        self.grpc_method.clone()
+                                        self.grpc_method
+                                            .as_ref()
+                                            .map(|m| m.full_name.clone())
                                             .unwrap_or_else(|| "Select method...".to_string())
                                     )
+                                    .when(self.grpc_method.as_ref().map(|m| m.streaming_type != GrpcStreamingType::Unary).unwrap_or(false), |el| {
+                                        el.child(
+                                            div()
+                                                .id("grpc-streaming-badge")
+                                                .px(px(6.0))
+                                                .py(px(2.0))
+                                                .bg(theme.colors.protocol_grpc.opacity(0.15))
+                                                .text_size(px(9.0))
+                                                .font_weight(gpui::FontWeight::MEDIUM)
+                                                .text_color(theme.colors.protocol_grpc)
+                                                .child(
+                                                    self.grpc_method.as_ref()
+                                                        .map(|m| m.streaming_type.label())
+                                                        .unwrap_or("")
+                                                )
+                                        )
+                                    })
                             )
                     )
             )

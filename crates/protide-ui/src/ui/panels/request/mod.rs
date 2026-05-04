@@ -21,7 +21,7 @@ use crate::ui::components::code_editor::{CodeEditor, Language};
 use protide_core::scripting::{ScriptEngine, ScriptContext, RequestData as ScriptRequestData, ResponseData as ScriptResponseData};
 
 use super::explorer::ExplorerPanel;
-use super::request_types::{ApiKeyLocation, AuthType, BodyType, EditTarget, FormField, FormFieldType, HttpMethod, KeyValuePair, RequestMode, WsConnectionState, WsMessage, WsMessageDirection};
+use super::request_types::{ApiKeyLocation, AuthType, BodyType, EditTarget, FormField, FormFieldType, GrpcMethodInfo, GrpcStreamingType, HttpMethod, KeyValuePair, RequestMode, WsConnectionState, WsMessage, WsMessageDirection};
 use super::request_utils::{base64_encode, status_text, url_decode, url_encode};
 use base64::Engine;
 use super::response::{ResponseData, ResponsePanel};
@@ -161,10 +161,10 @@ pub struct RequestPanel {
     pub(super) grpc_services: Vec<String>,
     /// Selected gRPC service
     pub(super) grpc_service: Option<String>,
-    /// Available methods for selected service
-    pub(super) grpc_methods: Vec<String>,
+    /// Available methods for selected service with streaming type
+    pub(super) grpc_methods: Vec<GrpcMethodInfo>,
     /// Selected gRPC method
-    pub(super) grpc_method: Option<String>,
+    pub(super) grpc_method: Option<GrpcMethodInfo>,
 
     // tRPC fields
     /// tRPC procedure name (e.g., "query.getUser")
@@ -610,7 +610,16 @@ impl RequestPanel {
                     let svc_name = svc.full_name().to_string();
                     self.grpc_services.push(svc_name.clone());
                     for method in svc.methods() {
-                        self.grpc_methods.push(format!("{}/{}", svc_name, method.name()));
+                        let streaming_type = match (method.is_client_streaming(), method.is_server_streaming()) {
+                            (false, false) => GrpcStreamingType::Unary,
+                            (false, true) => GrpcStreamingType::ServerStreaming,
+                            (true, false) => GrpcStreamingType::ClientStreaming,
+                            (true, true) => GrpcStreamingType::BidiStreaming,
+                        };
+                        self.grpc_methods.push(GrpcMethodInfo {
+                            full_name: format!("{}/{}", svc_name, method.name()),
+                            streaming_type,
+                        });
                     }
                 }
                 if let Some(s) = self.grpc_services.first() {
@@ -623,7 +632,7 @@ impl RequestPanel {
             }
         }
 
-        // Fallback: basic text parsing
+        // Fallback: basic text parsing (streaming unknown, default to unary)
         let mut in_service = false;
         let mut current_service = String::new();
 
@@ -642,7 +651,10 @@ impl RequestPanel {
                     .and_then(|s| s.split('(').next())
                     .map(|s| s.trim())
                 {
-                    self.grpc_methods.push(format!("{}/{}", current_service, name));
+                    self.grpc_methods.push(GrpcMethodInfo {
+                        full_name: format!("{}/{}", current_service, name),
+                        streaming_type: GrpcStreamingType::Unary,
+                    });
                 }
             }
             if in_service && trimmed == "}" {
@@ -673,6 +685,7 @@ impl RequestPanel {
         let message = self.grpc_message_editor.read(cx).content().to_string();
         let url = self.url.clone();
         let method = method.clone();
+        let streaming_type = method.streaming_type;
 
         let env_state = self.explorer_panel.as_ref().map(|p| p.read(cx).env_state().clone());
         let substitute = |s: &str| -> String {
@@ -689,64 +702,233 @@ impl RequestPanel {
 
         let response_panel = self.response_panel.clone();
 
-        let task = cx.spawn(async move |this: gpui::WeakEntity<Self>, cx: &mut gpui::AsyncApp| {
-            let (result_tx, result_rx) = std::sync::mpsc::channel::<Result<(String, std::time::Duration), String>>();
+        match streaming_type {
+            GrpcStreamingType::Unary => {
+                let task = cx.spawn(async move |this: gpui::WeakEntity<Self>, cx: &mut gpui::AsyncApp| {
+                    let (result_tx, result_rx) = std::sync::mpsc::channel::<Result<(String, std::time::Duration), String>>();
 
-            std::thread::spawn(move || {
-                let result = protide_core::protocols::grpc::execute_unary_blocking(
-                    &url,
-                    &method,
-                    &message,
-                    metadata,
-                    &proto_path,
-                );
-                let _ = result_tx.send(result);
-            });
+                    std::thread::spawn(move || {
+                        let result = protide_core::protocols::grpc::execute_unary_blocking(
+                            &url,
+                            &method.full_name,
+                            &message,
+                            metadata,
+                            &proto_path,
+                        );
+                        let _ = result_tx.send(result);
+                    });
 
-            if let Ok(result) = result_rx.recv_timeout(std::time::Duration::from_secs(60)) {
-                match result {
-                    Ok((body, elapsed)) => {
-                        let body_size = body.len();
+                    if let Ok(result) = result_rx.recv_timeout(std::time::Duration::from_secs(60)) {
+                        match result {
+                            Ok((body, elapsed)) => {
+                                let body_size = body.len();
+                                let _ = cx.update(|cx| {
+                                    response_panel.update(cx, |panel, cx| {
+                                        panel.set_response(ResponseData {
+                                            status: 200,
+                                            status_text: "OK".to_string(),
+                                            headers: vec![
+                                                ("content-type".to_string(), "application/grpc+json".to_string()),
+                                                ("grpc-status".to_string(), "0".to_string()),
+                                            ],
+                                            body,
+                                            time: elapsed,
+                                            size: body_size,
+                                        }, cx);
+                                    });
+                                });
+                            }
+                            Err(e) => {
+                                let _ = cx.update(|cx| {
+                                    response_panel.update(cx, |panel, cx| {
+                                        panel.set_response(ResponseData {
+                                            status: 0,
+                                            status_text: "Error".to_string(),
+                                            headers: vec![],
+                                            body: format!("gRPC Error: {}", e),
+                                            time: std::time::Duration::ZERO,
+                                            size: 0,
+                                        }, cx);
+                                    });
+                                });
+                            }
+                        }
                         let _ = cx.update(|cx| {
-                            response_panel.update(cx, |panel, cx| {
-                                panel.set_response(ResponseData {
-                                    status: 200,
-                                    status_text: "OK".to_string(),
-                                    headers: vec![
-                                        ("content-type".to_string(), "application/grpc+json".to_string()),
-                                        ("grpc-status".to_string(), "0".to_string()),
-                                    ],
-                                    body,
-                                    time: elapsed,
-                                    size: body_size,
-                                }, cx);
+                            let _ = this.update(cx, |panel, cx| {
+                                panel.loading = false;
+                                cx.notify();
                             });
                         });
                     }
-                    Err(e) => {
-                        let _ = cx.update(|cx| {
-                            response_panel.update(cx, |panel, cx| {
-                                panel.set_response(ResponseData {
-                                    status: 0,
-                                    status_text: "Error".to_string(),
-                                    headers: vec![],
-                                    body: format!("gRPC Error: {}", e),
-                                    time: std::time::Duration::ZERO,
-                                    size: 0,
-                                }, cx);
+                });
+                task.detach();
+            }
+            GrpcStreamingType::ServerStreaming => {
+                let task = cx.spawn(async move |this: gpui::WeakEntity<Self>, cx: &mut gpui::AsyncApp| {
+                    let result = protide_core::protocols::grpc::execute_server_streaming(
+                        &url,
+                        &method.full_name,
+                        &message,
+                        metadata,
+                        &proto_path,
+                    ).await;
+
+                    match result {
+                        Ok(chunks) => {
+                            let body = chunks.join("\n---\n");
+                            let body_size = body.len();
+                            let _ = cx.update(|cx| {
+                                response_panel.update(cx, |panel, cx| {
+                                    panel.set_response(ResponseData {
+                                        status: 200,
+                                        status_text: "OK (streaming)".to_string(),
+                                        headers: vec![
+                                            ("content-type".to_string(), "application/grpc+json".to_string()),
+                                            ("grpc-status".to_string(), "0".to_string()),
+                                            ("x-streaming".to_string(), "true".to_string()),
+                                        ],
+                                        body,
+                                        time: std::time::Duration::from_secs(1),
+                                        size: body_size,
+                                    }, cx);
+                                });
                             });
-                        });
+                        }
+                        Err(e) => {
+                            let _ = cx.update(|cx| {
+                                response_panel.update(cx, |panel, cx| {
+                                    panel.set_response(ResponseData {
+                                        status: 0,
+                                        status_text: "Error".to_string(),
+                                        headers: vec![],
+                                        body: format!("gRPC Streaming Error: {}", e),
+                                        time: std::time::Duration::ZERO,
+                                        size: 0,
+                                    }, cx);
+                                });
+                            });
+                        }
                     }
-                }
-                let _ = cx.update(|cx| {
-                    let _ = this.update(cx, |panel, cx| {
-                        panel.loading = false;
-                        cx.notify();
+                    let _ = cx.update(|cx| {
+                        let _ = this.update(cx, |panel, cx| {
+                            panel.loading = false;
+                            cx.notify();
+                        });
                     });
                 });
+                task.detach();
             }
-        });
-        task.detach();
+            GrpcStreamingType::ClientStreaming => {
+                let task = cx.spawn(async move |this: gpui::WeakEntity<Self>, cx: &mut gpui::AsyncApp| {
+                    let messages: Vec<String> = vec![message];
+                    let result = protide_core::protocols::grpc::execute_client_streaming(
+                        &url,
+                        &method.full_name,
+                        messages,
+                        metadata,
+                        &proto_path,
+                    ).await;
+
+                    match result {
+                        Ok(body) => {
+                            let body_size = body.len();
+                            let _ = cx.update(|cx| {
+                                response_panel.update(cx, |panel, cx| {
+                                    panel.set_response(ResponseData {
+                                        status: 200,
+                                        status_text: "OK".to_string(),
+                                        headers: vec![
+                                            ("content-type".to_string(), "application/grpc+json".to_string()),
+                                            ("grpc-status".to_string(), "0".to_string()),
+                                        ],
+                                        body,
+                                        time: std::time::Duration::from_secs(1),
+                                        size: body_size,
+                                    }, cx);
+                                });
+                            });
+                        }
+                        Err(e) => {
+                            let _ = cx.update(|cx| {
+                                response_panel.update(cx, |panel, cx| {
+                                    panel.set_response(ResponseData {
+                                        status: 0,
+                                        status_text: "Error".to_string(),
+                                        headers: vec![],
+                                        body: format!("gRPC Streaming Error: {}", e),
+                                        time: std::time::Duration::ZERO,
+                                        size: 0,
+                                    }, cx);
+                                });
+                            });
+                        }
+                    }
+                    let _ = cx.update(|cx| {
+                        let _ = this.update(cx, |panel, cx| {
+                            panel.loading = false;
+                            cx.notify();
+                        });
+                    });
+                });
+                task.detach();
+            }
+            GrpcStreamingType::BidiStreaming => {
+                let task = cx.spawn(async move |this: gpui::WeakEntity<Self>, cx: &mut gpui::AsyncApp| {
+                    let messages: Vec<String> = vec![message];
+                    let result = protide_core::protocols::grpc::execute_bidi_streaming(
+                        &url,
+                        &method.full_name,
+                        messages,
+                        metadata,
+                        &proto_path,
+                    ).await;
+
+                    match result {
+                        Ok(chunks) => {
+                            let body = chunks.join("\n---\n");
+                            let body_size = body.len();
+                            let _ = cx.update(|cx| {
+                                response_panel.update(cx, |panel, cx| {
+                                    panel.set_response(ResponseData {
+                                        status: 200,
+                                        status_text: "OK (bidi)".to_string(),
+                                        headers: vec![
+                                            ("content-type".to_string(), "application/grpc+json".to_string()),
+                                            ("grpc-status".to_string(), "0".to_string()),
+                                            ("x-streaming".to_string(), "true".to_string()),
+                                        ],
+                                        body,
+                                        time: std::time::Duration::from_secs(1),
+                                        size: body_size,
+                                    }, cx);
+                                });
+                            });
+                        }
+                        Err(e) => {
+                            let _ = cx.update(|cx| {
+                                response_panel.update(cx, |panel, cx| {
+                                    panel.set_response(ResponseData {
+                                        status: 0,
+                                        status_text: "Error".to_string(),
+                                        headers: vec![],
+                                        body: format!("gRPC Bidi Error: {}", e),
+                                        time: std::time::Duration::ZERO,
+                                        size: 0,
+                                    }, cx);
+                                });
+                            });
+                        }
+                    }
+                    let _ = cx.update(|cx| {
+                        let _ = this.update(cx, |panel, cx| {
+                            panel.loading = false;
+                            cx.notify();
+                        });
+                    });
+                });
+                task.detach();
+            }
+        }
     }
 
     /// Send a tRPC request
