@@ -2655,42 +2655,6 @@ impl RequestPanel {
                             .child(self.grpc_message_editor.clone())
                     )
             )
-            // Send button row
-            .child(
-                div()
-                    .w_full()
-                    .flex()
-                    .justify_end()
-                    .gap(px(8.0))
-                    .child(
-                        div()
-                            .id("grpc-send-btn")
-                            .px(px(20.0))
-                            .py(px(10.0))
-                            .cursor_pointer()
-                            .flex()
-                            .items_center()
-                            .gap(px(6.0))
-                            .when(has_method, |el| {
-                                el.bg(theme.colors.method_put)
-                                    .hover(|s| s.opacity(0.9))
-                                    .text_color(theme.colors.bg_primary)
-                            })
-                            .when(!has_method, |el| {
-                                el.bg(theme.colors.text_muted.opacity(0.2))
-                                    .cursor(gpui::CursorStyle::Arrow)
-                                    .text_color(theme.colors.text_muted)
-                            })
-                            .text_size(px(12.0))
-                            .font_weight(gpui::FontWeight::SEMIBOLD)
-                            .on_click(cx.listener(move |this, _, _, cx| {
-                                if has_method {
-                                    this.send_grpc_request(cx);
-                                }
-                            }))
-                            .child("Send gRPC")
-                    )
-            )
             // Placeholder message when no proto loaded
             .when(self.grpc_proto_path.is_none(), |el| {
                 el.child(
