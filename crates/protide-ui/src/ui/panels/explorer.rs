@@ -1653,6 +1653,7 @@ impl ExplorerPanel {
                                         .flex_1()
                                         .min_w(px(0.0))
                                         .overflow_hidden()
+                                        .whitespace_nowrap()
                                         .text_size(px(12.0))
                                         .text_color(theme.colors.text_primary)
                                         .child(display_url),
