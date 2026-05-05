@@ -310,6 +310,10 @@ pub enum Language {
     Html,
     JavaScript,
     GraphQL,
+    Shell,
+    Python,
+    Go,
+    Rust,
     Plain,
 }
 
@@ -320,6 +324,10 @@ impl Language {
             Language::Xml | Language::Html => Box::new(XmlHighlighter),
             Language::JavaScript => Box::new(JavaScriptHighlighter),
             Language::GraphQL => Box::new(GraphQLHighlighter),
+            Language::Shell => Box::new(ShellHighlighter),
+            Language::Python => Box::new(PythonHighlighter),
+            Language::Go => Box::new(GoHighlighter),
+            Language::Rust => Box::new(RustHighlighter),
             Language::Plain => Box::new(PlainHighlighter),
         }
     }
@@ -338,6 +346,163 @@ impl Language {
         } else {
             Language::Plain
         }
+    }
+}
+
+pub struct ShellHighlighter;
+pub struct PythonHighlighter;
+pub struct GoHighlighter;
+pub struct RustHighlighter;
+
+fn tokenize_generic(line: &str, is_keyword: impl Fn(&str) -> bool, comment_prefix: &str, double_slash_comment: bool) -> Vec<Token> {
+    let mut tokens = Vec::new();
+    let mut chars = line.char_indices().peekable();
+
+    while let Some((i, c)) = chars.next() {
+        if c.is_whitespace() {
+            tokens.push(Token { text: c.to_string(), kind: TokenKind::Plain });
+        } else if double_slash_comment && c == '/' && chars.peek().map(|(_, c)| *c) == Some('/') {
+            tokens.push(Token { text: line[i..].to_string(), kind: TokenKind::Comment });
+            break;
+        } else if !double_slash_comment && c == comment_prefix.chars().next().unwrap_or('\0') && comment_prefix.len() == 1 {
+            tokens.push(Token { text: line[i..].to_string(), kind: TokenKind::Comment });
+            break;
+        } else if c == '"' || c == '\'' {
+            let quote = c;
+            let start = i;
+            let mut end = i + 1;
+            while let Some((j, ch)) = chars.next() {
+                end = j + ch.len_utf8();
+                if ch == quote { break; }
+                if ch == '\\' { chars.next(); }
+            }
+            tokens.push(Token { text: line[start..end].to_string(), kind: TokenKind::String });
+        } else if c.is_ascii_digit() {
+            let start = i;
+            let mut end = i + 1;
+            while let Some(&(j, ch)) = chars.peek() {
+                if ch.is_ascii_digit() || ch == '.' {
+                    end = j + ch.len_utf8();
+                    chars.next();
+                } else { break; }
+            }
+            tokens.push(Token { text: line[start..end].to_string(), kind: TokenKind::Number });
+        } else if c.is_alphabetic() || c == '_' {
+            let start = i;
+            let mut end = i + c.len_utf8();
+            while let Some(&(j, ch)) = chars.peek() {
+                if ch.is_alphanumeric() || ch == '_' {
+                    end = j + ch.len_utf8();
+                    chars.next();
+                } else { break; }
+            }
+            let word = &line[start..end];
+            let kind = if is_keyword(word) { TokenKind::Keyword } else { TokenKind::Plain };
+            tokens.push(Token { text: word.to_string(), kind });
+        } else if "(){}[].,;:=<>&|!".contains(c) {
+            tokens.push(Token { text: c.to_string(), kind: TokenKind::Punctuation });
+        } else {
+            tokens.push(Token { text: c.to_string(), kind: TokenKind::Plain });
+        }
+    }
+    tokens
+}
+
+impl Highlighter for ShellHighlighter {
+    fn tokenize_line(&self, line: &str) -> Vec<Token> {
+        let mut tokens = Vec::new();
+        let mut chars = line.char_indices().peekable();
+
+        while let Some((i, c)) = chars.next() {
+            if c == '#' {
+                tokens.push(Token { text: line[i..].to_string(), kind: TokenKind::Comment });
+                break;
+            } else if c == '\'' {
+                let start = i;
+                let mut end = i + 1;
+                while let Some((j, ch)) = chars.next() {
+                    end = j + ch.len_utf8();
+                    if ch == '\'' { break; }
+                }
+                tokens.push(Token { text: line[start..end].to_string(), kind: TokenKind::String });
+            } else if c == '"' {
+                let start = i;
+                let mut end = i + 1;
+                while let Some((j, ch)) = chars.next() {
+                    end = j + ch.len_utf8();
+                    if ch == '"' { break; }
+                    if ch == '\\' { chars.next(); }
+                }
+                tokens.push(Token { text: line[start..end].to_string(), kind: TokenKind::String });
+            } else if c == '-' {
+                // flags like -H, --data-raw
+                let start = i;
+                let mut end = i + 1;
+                while let Some(&(j, ch)) = chars.peek() {
+                    if ch.is_alphanumeric() || ch == '-' || ch == '_' {
+                        end = j + ch.len_utf8();
+                        chars.next();
+                    } else { break; }
+                }
+                tokens.push(Token { text: line[start..end].to_string(), kind: TokenKind::Keyword });
+            } else if c.is_alphabetic() || c == '_' {
+                let start = i;
+                let mut end = i + c.len_utf8();
+                while let Some(&(j, ch)) = chars.peek() {
+                    if ch.is_alphanumeric() || ch == '_' {
+                        end = j + ch.len_utf8();
+                        chars.next();
+                    } else { break; }
+                }
+                let word = &line[start..end];
+                let kind = match word {
+                    "curl" | "http" | "https" => TokenKind::Keyword,
+                    _ => TokenKind::Plain,
+                };
+                tokens.push(Token { text: word.to_string(), kind });
+            } else if c.is_whitespace() {
+                tokens.push(Token { text: c.to_string(), kind: TokenKind::Plain });
+            } else {
+                tokens.push(Token { text: c.to_string(), kind: TokenKind::Plain });
+            }
+        }
+        tokens
+    }
+}
+
+impl Highlighter for PythonHighlighter {
+    fn tokenize_line(&self, line: &str) -> Vec<Token> {
+        tokenize_generic(line, |w| matches!(w,
+            "import" | "from" | "def" | "class" | "return" | "if" | "elif" | "else" |
+            "for" | "while" | "with" | "as" | "in" | "not" | "and" | "or" | "is" |
+            "try" | "except" | "finally" | "raise" | "pass" | "break" | "continue" |
+            "True" | "False" | "None" | "lambda" | "yield" | "async" | "await" |
+            "print" | "len" | "range" | "open" | "type"
+        ), "#", false)
+    }
+}
+
+impl Highlighter for GoHighlighter {
+    fn tokenize_line(&self, line: &str) -> Vec<Token> {
+        tokenize_generic(line, |w| matches!(w,
+            "package" | "import" | "func" | "var" | "const" | "type" | "struct" | "interface" |
+            "if" | "else" | "for" | "range" | "return" | "switch" | "case" | "default" |
+            "break" | "continue" | "goto" | "defer" | "go" | "select" | "chan" | "map" |
+            "nil" | "true" | "false" | "error" | "string" | "int" | "bool" | "byte" |
+            "make" | "new" | "append" | "len" | "cap" | "close" | "panic" | "recover"
+        ), "", true)
+    }
+}
+
+impl Highlighter for RustHighlighter {
+    fn tokenize_line(&self, line: &str) -> Vec<Token> {
+        tokenize_generic(line, |w| matches!(w,
+            "use" | "fn" | "let" | "mut" | "pub" | "mod" | "impl" | "struct" | "enum" |
+            "trait" | "type" | "const" | "static" | "if" | "else" | "for" | "while" |
+            "loop" | "match" | "return" | "break" | "continue" | "move" | "ref" | "in" |
+            "where" | "self" | "Self" | "super" | "crate" | "async" | "await" | "dyn" |
+            "true" | "false" | "Some" | "None" | "Ok" | "Err" | "Box" | "Vec" | "String"
+        ), "", true)
     }
 }
 

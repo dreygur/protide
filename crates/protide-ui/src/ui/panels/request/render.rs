@@ -17,7 +17,7 @@ use crate::ui::components::icons::{
     ICON_CHEVRON_LEFT, ICON_CHEVRON_RIGHT, ICON_ARROW_DOWN,
     ICON_ARROW_LEFT, ICON_ARROW_RIGHT,
     ICON_COPY, ICON_FOLDER, ICON_USER, ICON_KEY,
-    ICON_FORM, ICON_PLAY, ICON_CIRCLE_X,
+    ICON_FORM, ICON_PLAY, ICON_CIRCLE_X, ICON_CODE,
 };
 use super::super::request_types::{ApiKeyLocation, AuthType, BodyType, EditTarget, FormFieldType, GrpcMethodInfo, GrpcStreamingType, HttpMethod, RequestMode, WsConnectionState, WsMessageDirection};
 use super::{render_text_view, RequestPanel};
@@ -229,20 +229,6 @@ impl RequestPanel {
                             }))
                             .child(send_label)
                     })
-                    .child(
-                        div()
-                            .h(px(32.0))
-                            .px(px(8.0))
-                            .flex()
-                            .items_center()
-                            .bg(theme.colors.bg_secondary)
-                            .border_1()
-                            .border_color(theme.colors.border.opacity(0.5))
-                            .text_size(px(11.0))
-                            .font_weight(gpui::FontWeight::MEDIUM)
-                            .text_color(theme.colors.text_muted)
-                            .child("⌘↵")
-                    )
                     // Save button
                     .child(
                         div()
@@ -281,9 +267,10 @@ impl RequestPanel {
                             .border_color(theme.colors.border)
                             .hover(|s| s.bg(theme.colors.bg_tertiary).border_color(theme.colors.text_muted))
                             .on_click(cx.listener(|this, _, _, cx| {
-                                this.toggle_codegen_dropdown(cx);
+                                this.generate_code(this.codegen_language, cx);
                             }))
-                            .child("</> Code")
+                            .child(icon(ICON_CODE, ICON_MD, theme.colors.text_secondary))
+                            .child("Code")
                     )
                     // Import button
                     .child(
@@ -2877,182 +2864,6 @@ impl RequestPanel {
                     )
             )
             .into_any_element()
-    }
-
-    /// Render code generation language dropdown overlay
-    pub(super) fn render_codegen_dropdown_overlay(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
-        let theme = theme::current(cx);
-
-        let languages = [
-            (CodegenLanguage::Curl, "cURL", "curl command"),
-            (CodegenLanguage::Python, "Python", "requests library"),
-            (CodegenLanguage::JavaScript, "JavaScript", "fetch API"),
-            (CodegenLanguage::Go, "Go", "net/http"),
-            (CodegenLanguage::Rust, "Rust", "reqwest"),
-        ];
-
-        // Position near the Code button (right side of URL bar)
-        div()
-            .id("codegen-dropdown-overlay")
-            .absolute()
-            .top(px(46.0))
-            .right(px(16.0))
-            .min_w(px(180.0))
-            .py(px(6.0))
-            .bg(theme.colors.bg_elevated)
-            .border_1()
-            .border_color(theme.colors.border)
-            .shadow_lg()
-            .on_mouse_down(gpui::MouseButton::Left, cx.listener(|this, _, _, cx| {
-                this.skip_blur = true;
-                cx.stop_propagation();
-            }))
-            .children(languages.iter().map(|&(lang, name, desc)| {
-                let is_selected = lang == self.codegen_language;
-
-                div()
-                    .id(SharedString::from(format!("codegen-{}", name)))
-                    .mx(px(4.0))
-                    .px(px(12.0))
-                    .py(px(8.0))
-                    .flex()
-                    .flex_col()
-                    .cursor_pointer()
-                    .when(is_selected, |el| {
-                        el.bg(theme.colors.accent.opacity(0.1))
-                    })
-                    .when(!is_selected, |el| {
-                        el.hover(|s| s.bg(theme.colors.bg_tertiary))
-                    })
-                    .child(
-                        div()
-                            .text_size(px(12.0))
-                            .font_weight(gpui::FontWeight::SEMIBOLD)
-                            .text_color(theme.colors.text_primary)
-                            .child(name)
-                    )
-                    .child(
-                        div()
-                            .text_size(px(10.0))
-                            .text_color(theme.colors.text_muted)
-                            .child(desc)
-                    )
-                    .on_click(cx.listener(move |this, _, _, cx| {
-                        this.generate_code(lang, cx);
-                    }))
-            }))
-    }
-
-    /// Render code generation modal with generated code
-    pub(super) fn render_codegen_modal(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
-        let theme = theme::current(cx);
-        let lang_name = match self.codegen_language {
-            CodegenLanguage::Curl => "cURL",
-            CodegenLanguage::Python => "Python",
-            CodegenLanguage::JavaScript => "JavaScript",
-            CodegenLanguage::Go => "Go",
-            CodegenLanguage::Rust => "Rust",
-        };
-
-        // Full-screen overlay with centered modal
-        div()
-            .id("codegen-modal-overlay")
-            .absolute()
-            .inset_0()
-            .bg(theme.colors.overlay)
-            .flex()
-            .items_center()
-            .justify_center()
-            .on_click(cx.listener(|this, _, _, cx| {
-                this.close_codegen_panel(cx);
-            }))
-            .child(
-                div()
-                    .id("codegen-modal")
-                    .w(px(700.0))
-                    .max_h(px(500.0))
-                    .bg(theme.colors.bg_primary)
-                    .border_1()
-                    .border_color(theme.colors.border)
-                    .shadow_lg()
-                    .flex()
-                    .flex_col()
-                    .on_click(cx.listener(|_, _, _, cx| {
-                        cx.stop_propagation();
-                    }))
-                    // Header
-                    .child(
-                        div()
-                            .h(px(48.0))
-                            .px(px(16.0))
-                            .flex()
-                            .items_center()
-                            .justify_between()
-                            .border_b_1()
-                            .border_color(theme.colors.border)
-                            .child(
-                                div()
-                                    .flex()
-                                    .items_center()
-                                    .gap(px(8.0))
-                                    .child(
-                                        div()
-                                            .text_size(px(14.0))
-                                            .font_weight(gpui::FontWeight::SEMIBOLD)
-                                            .text_color(theme.colors.text_primary)
-                                            .child(format!("Generated {} Code", lang_name))
-                                    )
-                            )
-                            .child(
-                                div()
-                                    .flex()
-                                    .items_center()
-                                    .gap(px(8.0))
-                                    // Copy button
-                                    .child(
-                                        div()
-                                            .id("copy-codegen")
-                                            .px(px(10.0))
-                                            .py(px(6.0))
-                                            .text_size(px(11.0))
-                                            .text_color(theme.colors.text_secondary)
-                                            .cursor_pointer()
-                                            .bg(theme.colors.bg_secondary)
-                                            .hover(|s| s.bg(theme.colors.bg_tertiary))
-                                            .on_click(cx.listener(|this, _, _, cx| {
-                                                this.copy_generated_code(cx);
-                                            }))
-                                            .child(icon(ICON_COPY, ICON_MD, theme.colors.text_secondary))
-                                            .child("Copy")
-                                    )
-                                    // Close button
-                                    .child(
-                                        div()
-                                            .id("close-codegen-modal")
-                                            .size(px(28.0))
-                                            .flex()
-                                            .items_center()
-                                            .justify_center()
-                                            .text_size(px(14.0))
-                                            .text_color(theme.colors.text_muted)
-                                            .cursor_pointer()
-                                            .hover(|s| s.bg(theme.colors.bg_tertiary))
-                                            .on_click(cx.listener(|this, _, _, cx| {
-                                                this.close_codegen_panel(cx);
-                                            }))
-                                            .child(icon(ICON_CLOSE, ICON_SM, theme.colors.text_muted))
-                                    )
-                            )
-                    )
-                    // Code content
-                    .child(
-                        div()
-                            .id("codegen-content")
-                            .flex_1()
-                            .overflow_hidden()
-                            .child(self.codegen_editor.clone())
-                    )
-            )
     }
 
     /// Render import modal

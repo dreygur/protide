@@ -120,8 +120,6 @@ pub struct RequestPanel {
     pub(super) tests_editor: Entity<CodeEditor>,
     /// Variable extractions from @set annotations
     pub(super) variable_extractions: Vec<VariableExtraction>,
-    /// Code generation dropdown state
-    pub(super) codegen_dropdown_open: bool,
     /// Generated code content
     pub codegen_content: Option<String>,
     /// Selected code generation language
@@ -294,7 +292,6 @@ impl RequestPanel {
             post_script_editor,
             tests_editor,
             variable_extractions: Vec::new(),
-            codegen_dropdown_open: false,
             codegen_content: None,
             codegen_language: CodegenLanguage::Curl,
             codegen_editor,
@@ -2167,14 +2164,8 @@ impl RequestPanel {
         lines.join("\n")
     }
 
-    /// Toggle code generation dropdown
-    pub(super) fn toggle_codegen_dropdown(&mut self, cx: &mut Context<Self>) {
-        self.codegen_dropdown_open = !self.codegen_dropdown_open;
-        cx.notify();
-    }
-
     /// Generate code for current request using selected language
-    pub(super) fn generate_code(&mut self, language: CodegenLanguage, cx: &mut Context<Self>) {
+    pub fn generate_code(&mut self, language: CodegenLanguage, cx: &mut Context<Self>) {
         // Build CodegenRequest from current state
         let mut headers: Vec<(String, String)> = self
             .headers
@@ -2213,10 +2204,12 @@ impl RequestPanel {
         let code = codegen::generate(&request, language);
         self.codegen_language = language;
         self.codegen_content = Some(code.clone());
-        self.codegen_dropdown_open = false;
         let editor_lang = match language {
+            CodegenLanguage::Curl       => Language::Shell,
+            CodegenLanguage::Python     => Language::Python,
             CodegenLanguage::JavaScript => Language::JavaScript,
-            _ => Language::Plain,
+            CodegenLanguage::Go         => Language::Go,
+            CodegenLanguage::Rust       => Language::Rust,
         };
         self.codegen_editor.update(cx, |editor, cx| {
             editor.set_content(&code, cx);
@@ -3176,9 +3169,6 @@ impl Render for RequestPanel {
             })
             .when(self.mode_dropdown_open, |el| {
                 el.child(deferred(self.render_mode_dropdown_overlay(cx)).with_priority(1))
-            })
-            .when(self.codegen_dropdown_open, |el| {
-                el.child(deferred(self.render_codegen_dropdown_overlay(cx)).with_priority(1))
             })
             .when(self.import_modal_open, |el| {
                 el.child(deferred(self.render_import_modal(cx)).with_priority(1))

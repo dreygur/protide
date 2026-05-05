@@ -582,8 +582,10 @@ impl CodeEditor {
         let count = (viewport_height / line_height).ceil() as usize + 2;
         let last = (first + count).min(total_visible);
 
-        let top_pad = first as f32 * line_height;
-        let bottom_pad = (total_visible.saturating_sub(last)) as f32 * line_height;
+        // Fractional sub-line offset for smooth pixel scrolling.
+        // mt(-frac) shifts the content up so line `first` appears at y = -frac,
+        // which is correctly clipped by overflow_hidden on the parent.
+        let frac = self.scroll_offset % line_height;
 
         div()
             .id("code-editor-content")
@@ -594,11 +596,10 @@ impl CodeEditor {
                     .flex()
                     .flex_col()
                     .min_w_full()
-                    .child(div().h(px(top_pad)).flex_shrink_0())
+                    .mt(px(-frac))
                     .children(visible_lines[first..last].iter().map(|&line_idx| {
                         self.render_line(line_idx, &theme.colors, line_height, font_size, cx)
                     }))
-                    .child(div().h(px(bottom_pad)).flex_shrink_0())
             )
     }
 
@@ -845,11 +846,14 @@ impl CodeEditor {
     fn handle_scroll(&mut self, event: &ScrollWheelEvent, _window: &mut Window, cx: &mut Context<Self>) {
         let line_height = self.config.line_height;
         let delta = event.delta.pixel_delta(px(line_height)).y;
-        let total_height = self.buffer.line_count() as f32 * line_height;
+        let visible_line_count = (0..self.buffer.line_count())
+            .filter(|&i| self.is_line_visible(i))
+            .count();
+        let total_height = visible_line_count as f32 * line_height;
         let viewport_height = self.bounds.map(|b| f32::from(b.size.height)).unwrap_or(400.0);
         let max_scroll = (total_height - viewport_height).max(0.0);
         let new_offset = (self.scroll_offset - f32::from(delta)).clamp(0.0, max_scroll);
-        if (new_offset - self.scroll_offset).abs() > 0.5 {
+        if new_offset != self.scroll_offset {
             self.scroll_offset = new_offset;
             cx.notify();
         }

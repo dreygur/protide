@@ -57,3 +57,4 @@ pub const ICON_BEARER:         &str = "icons/circle-user.svg";
 pub const ICON_TIMER:          &str = "icons/loader-circle.svg";
 pub const ICON_STAR:           &str = "icons/star.svg";
 pub const ICON_ELLIPSIS:       &str = "icons/ellipsis.svg";
+pub const ICON_CODE:           &str = "icons/square-terminal.svg";
