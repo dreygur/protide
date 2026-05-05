@@ -827,7 +827,6 @@ impl ResponsePanel {
                     .w_full()
                     .flex()
                     .items_center()
-                    .justify_between()
                     // Left: Format badge
                     .child(
                         div()
@@ -851,6 +850,8 @@ impl ResponsePanel {
                                     .child(format!("{} lines", line_count))
                             )
                     )
+                    // Spacer pushes Copy to the right
+                    .child(div().flex_1())
                     // Right: Copy button
                     .child({
                         let is_copied = self.copy_feedback == Some(CopyFeedback::Body);
@@ -936,7 +937,6 @@ impl ResponsePanel {
                     .w_full()
                     .flex()
                     .items_center()
-                    .justify_between()
                     .child(
                         div()
                             .flex()
@@ -959,6 +959,8 @@ impl ResponsePanel {
                                     .child("response headers")
                             )
                     )
+                    // Spacer pushes Copy to the right
+                    .child(div().flex_1())
                     // Copy headers button
                     .child({
                         let headers_text: String = response.headers

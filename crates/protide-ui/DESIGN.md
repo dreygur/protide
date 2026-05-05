@@ -393,6 +393,29 @@ Inactive tab:
 - `font_weight(FontWeight::MEDIUM)`, `text_color(text_secondary)`
 - Hover: `text_color(text_primary)`, `bg(bg_tertiary)`
 
+### Content Toolbar (sub-tab action bars)
+
+Rows that sit above content (e.g. the response body row with format badge and Copy
+button). Height is implicit — whatever the tallest child needs. Always push action
+buttons to the **right** using a `flex_1` spacer, **not** `justify_between`.
+
+```rust
+div()
+    .w_full().flex().items_center()
+    // Left: info content (badges, counts, labels)
+    .child(div().flex().items_center().gap(px(8.0))
+        .child(badge)
+        .child(caption_text)
+    )
+    // flex_1 spacer — pushes everything after it to the right
+    .child(div().flex_1())
+    // Right: action button(s)
+    .child(copy_button)
+```
+
+**Never use `justify_between`** for this pattern — GPUI's flex layout does not
+reliably apply it when the container is inside an `overflow_scroll` region.
+
 ### Input Field
 
 ```rust
@@ -490,3 +513,4 @@ Tests header (36px, collapsible)
 | `accent.opacity(0.12)` for badge bg | Full accent background on badges |
 | `text_muted` for placeholder text | `text_secondary` or lower |
 | `border_1()` + `border_color(border)` for default input border | Custom border widths |
+| `div().flex_1()` spacer to right-align toolbar actions | `justify_between` (unreliable inside overflow_scroll) |
