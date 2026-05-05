@@ -69,10 +69,10 @@ impl MainWindow {
             mock_server_panel,
             show_mock_server: false,
             sidebar_collapsed: false,
-            sidebar_width: 250.0,
-            request_height: 320.0,
-            mock_server_width: 320.0,
-            codegen_panel_width: 400.0,
+            sidebar_width: crate::prefs::get_f32("main.sidebar_width", 250.0),
+            request_height: crate::prefs::get_f32("main.request_height", 320.0),
+            mock_server_width: crate::prefs::get_f32("main.mock_server_width", 320.0),
+            codegen_panel_width: crate::prefs::get_f32("main.codegen_panel_width", 400.0),
             drag_sidebar: None,
             drag_response: None,
             drag_mock_server: None,
@@ -317,10 +317,18 @@ impl Render for MainWindow {
                                     }
                                 }))
                                 .on_mouse_up(MouseButton::Left, cx.listener(|this, _, _window, cx| {
-                                    this.drag_sidebar = None;
-                                    this.drag_response = None;
-                                    this.drag_mock_server = None;
-                                    this.drag_codegen = None;
+                                    if this.drag_sidebar.take().is_some() {
+                                        crate::prefs::set_f32("main.sidebar_width", this.sidebar_width);
+                                    }
+                                    if this.drag_response.take().is_some() {
+                                        crate::prefs::set_f32("main.request_height", this.request_height);
+                                    }
+                                    if this.drag_mock_server.take().is_some() {
+                                        crate::prefs::set_f32("main.mock_server_width", this.mock_server_width);
+                                    }
+                                    if this.drag_codegen.take().is_some() {
+                                        crate::prefs::set_f32("main.codegen_panel_width", this.codegen_panel_width);
+                                    }
                                     cx.notify();
                                 }))
                         )

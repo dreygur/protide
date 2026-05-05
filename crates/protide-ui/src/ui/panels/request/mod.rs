@@ -177,6 +177,16 @@ pub struct RequestPanel {
     pub(super) kv_col_key_w: f32,
     /// Active KV column drag: (start_x, start_width)
     pub(super) kv_col_drag: Option<(f32, f32)>,
+    /// Whether each script section is expanded
+    pub(super) script_pre_open: bool,
+    pub(super) script_post_open: bool,
+    pub(super) script_tests_open: bool,
+    /// Script editor heights when expanded
+    pub(super) script_pre_h: f32,
+    pub(super) script_post_h: f32,
+    /// Active script drag: (start_mouse_y, start_height)
+    pub(super) drag_script_pre: Option<(f32, f32)>,
+    pub(super) drag_script_post: Option<(f32, f32)>,
 }
 
 impl RequestPanel {
@@ -320,6 +330,13 @@ impl RequestPanel {
             trpc_params_editor,
             kv_col_key_w: 150.0,
             kv_col_drag: None,
+            script_pre_open: true,
+            script_post_open: true,
+            script_tests_open: true,
+            script_pre_h: crate::prefs::get_f32("request.script_pre_h", 160.0),
+            script_post_h: crate::prefs::get_f32("request.script_post_h", 160.0),
+            drag_script_pre: None,
+            drag_script_post: None,
         }
     }
 

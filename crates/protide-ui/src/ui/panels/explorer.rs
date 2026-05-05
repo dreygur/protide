@@ -1,30 +1,28 @@
 //! File explorer panel - displays the workspace file tree, request history, and environment selector
 
-use gpui::{
-    canvas, deferred, div, prelude::*, px, ClipboardItem, Context, Entity, FocusHandle,
-    FontWeight, IntoElement, KeyDownEvent, MouseButton, MouseDownEvent, MouseMoveEvent,
-    MouseUpEvent, ParentElement, Point, Pixels, Render, SharedString, Styled, Subscription,
-    WeakEntity, Window,
-};
 use crate::ui::components::modal::ModalState;
 use crate::ui::main_window::MainWindow;
+use gpui::{
+    ClipboardItem, Context, Entity, FocusHandle, IntoElement, KeyDownEvent, MouseButton,
+    MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement, Pixels, Point, Render,
+    SharedString, Styled, Subscription, WeakEntity, Window, canvas, deferred, div, prelude::*, px,
+};
 use std::fs;
 use std::ops::Range;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use protide_core::models::{Environment, EnvironmentState};
-use crate::last_paths;
-use crate::theme;
-use crate::ui::components::render_text_view_with_max;
-use crate::ui::components::icons::{
-    icon, ICON_SM, ICON_MD,
-    ICON_MENU, ICON_CHEVRON_DOWN, ICON_CHEVRON_RIGHT, ICON_CHEVRON_UP,
-    ICON_FOLDER, ICON_FOLDER_OPEN, ICON_FILE, ICON_REFRESH, ICON_ARROW_DOWN,
-    ICON_SETTINGS, ICON_EDIT, ICON_DELETE, ICON_CLOSE, ICON_INFO, ICON_TIMER, ICON_PLUS,
-};
 use super::history::{HistoryEntry, RequestHistory};
 use super::request::RequestPanel;
+use crate::last_paths;
+use crate::theme;
+use crate::ui::components::icons::{
+    ICON_ARROW_DOWN, ICON_CHEVRON_DOWN, ICON_CHEVRON_RIGHT, ICON_CHEVRON_UP, ICON_CLOSE,
+    ICON_DELETE, ICON_EDIT, ICON_FILE, ICON_FOLDER, ICON_FOLDER_OPEN, ICON_INFO, ICON_MD,
+    ICON_MENU, ICON_PLUS, ICON_REFRESH, ICON_SETTINGS, ICON_SM, ICON_TIMER, icon,
+};
+use crate::ui::components::render_text_view_with_max;
+use protide_core::models::{Environment, EnvironmentState};
 
 /// Represents an item in the collection tree (either a folder or a .http file)
 #[derive(Clone, Debug)]
@@ -103,6 +101,14 @@ pub struct ExplorerPanel {
     env_col_key_w: f32,
     /// Active env column drag: (start_x, start_width)
     env_col_drag: Option<(f32, f32)>,
+    /// Height of collections section when expanded
+    collections_h: f32,
+    /// Height of env editor when open
+    env_h: f32,
+    /// Active collections drag: (start_mouse_y, start_collections_h)
+    drag_coll: Option<(f32, f32)>,
+    /// Active env drag: (start_mouse_y, start_env_h)
+    drag_env: Option<(f32, f32)>,
     /// Handle to main window for showing full-screen modals
     main_window: WeakEntity<MainWindow>,
 }
@@ -135,12 +141,20 @@ impl ExplorerPanel {
             rename_text: String::new(),
             env_col_key_w: 90.0,
             env_col_drag: None,
+            collections_h: crate::prefs::get_f32("explorer.collections_h", 220.0),
+            env_h: crate::prefs::get_f32("explorer.env_h", 200.0),
+            drag_coll: None,
+            drag_env: None,
             main_window,
         }
     }
 
     /// Set the request panel reference for loading history items
-    pub fn set_request_panel(&mut self, request_panel: Entity<RequestPanel>, cx: &mut Context<Self>) {
+    pub fn set_request_panel(
+        &mut self,
+        request_panel: Entity<RequestPanel>,
+        cx: &mut Context<Self>,
+    ) {
         self.request_panel = Some(request_panel);
         cx.notify();
     }
@@ -277,8 +291,7 @@ impl ExplorerPanel {
     /// Create a new .http file
     pub fn create_new_request(&mut self, cx: &mut Context<Self>) {
         // Default directory is workspace path or home
-        let default_dir = self.workspace_path.clone()
-            .or_else(|| dirs::home_dir());
+        let default_dir = self.workspace_path.clone().or_else(|| dirs::home_dir());
 
         let start_dir = last_paths::last_dir("save_request").or(default_dir);
         let mut dialog = rfd::FileDialog::new()
@@ -323,8 +336,12 @@ impl ExplorerPanel {
             self.collection_items = self.scan_directory(&path);
             // Start file watcher for auto-refresh
             match protide_core::workspace::Workspace::open(&path) {
-                Ok(ws) => { self.workspace_watcher = Some(Arc::new(ws)); }
-                Err(e) => { eprintln!("File watcher failed: {}", e); }
+                Ok(ws) => {
+                    self.workspace_watcher = Some(Arc::new(ws));
+                }
+                Err(e) => {
+                    eprintln!("File watcher failed: {}", e);
+                }
             }
             cx.notify();
         }
@@ -336,7 +353,10 @@ impl ExplorerPanel {
         let workspace = self.workspace_path.clone();
         if let (Some(ws), Some(root)) = (watcher, workspace) {
             let events = ws.poll_events();
-            if events.iter().any(|e| protide_core::workspace::is_relevant(e, &root)) {
+            if events
+                .iter()
+                .any(|e| protide_core::workspace::is_relevant(e, &root))
+            {
                 self.collection_items = self.scan_directory(&root);
                 cx.notify();
             }
@@ -347,7 +367,10 @@ impl ExplorerPanel {
     pub fn import_collection(&mut self, cx: &mut Context<Self>) {
         let mut dialog = rfd::FileDialog::new()
             .set_title("Import Collection")
-            .add_filter("All Supported", &["json", "yaml", "yml", "bru", "txt", "curl"])
+            .add_filter(
+                "All Supported",
+                &["json", "yaml", "yml", "bru", "txt", "curl"],
+            )
             .add_filter("Postman Collection", &["json"])
             .add_filter("OpenAPI/Swagger", &["json", "yaml", "yml"])
             .add_filter("Bruno Collection", &["bru"])
@@ -363,7 +386,9 @@ impl ExplorerPanel {
                 match protide_core::import::import(&content) {
                     Ok(result) => {
                         // Determine output directory
-                        let output_dir = self.workspace_path.clone()
+                        let output_dir = self
+                            .workspace_path
+                            .clone()
                             .or_else(|| file_path.parent().map(|p| p.to_path_buf()))
                             .unwrap_or_else(|| PathBuf::from("."));
 
@@ -380,7 +405,10 @@ impl ExplorerPanel {
                         // Write each request as a .http file
                         let mut created = 0;
                         for request in &result.requests {
-                            let filename = request.meta.name.as_ref()
+                            let filename = request
+                                .meta
+                                .name
+                                .as_ref()
                                 .map(|n| sanitize_filename(n))
                                 .unwrap_or_else(|| format!("request-{}", created + 1));
 
@@ -402,7 +430,11 @@ impl ExplorerPanel {
 
                         let mut msg = format!("Imported {} request(s).", created);
                         let modal_state = if !result.warnings.is_empty() {
-                            msg.push_str(&format!("\n\n{} warning(s):\n{}", result.warnings.len(), result.warnings.join("\n")));
+                            msg.push_str(&format!(
+                                "\n\n{} warning(s):\n{}",
+                                result.warnings.len(),
+                                result.warnings.join("\n")
+                            ));
                             ModalState::warning("Import Complete", msg)
                         } else {
                             ModalState::info("Import Complete", msg)
@@ -413,7 +445,9 @@ impl ExplorerPanel {
                     }
                     Err(e) => {
                         if let Some(win) = self.main_window.upgrade() {
-                            win.update(cx, |win, cx| win.show_modal(ModalState::error("Import Failed", e), cx));
+                            win.update(cx, |win, cx| {
+                                win.show_modal(ModalState::error("Import Failed", e), cx)
+                            });
                         }
                     }
                 }
@@ -424,7 +458,9 @@ impl ExplorerPanel {
 
     /// Export the current collection as Markdown/HTML documentation.
     pub fn export_docs(&mut self, _cx: &mut Context<Self>) {
-        let Some(workspace) = &self.workspace_path else { return };
+        let Some(workspace) = &self.workspace_path else {
+            return;
+        };
 
         let dialog = rfd::FileDialog::new()
             .set_title("Export API Documentation")
@@ -442,8 +478,13 @@ impl ExplorerPanel {
 
             let modal_state = match protide_core::export::export_collection(workspace, format) {
                 Ok(content) => match std::fs::write(&save_path, &content) {
-                    Ok(_) => ModalState::info("Export Complete", format!("Documentation saved to {}", save_path.display())),
-                    Err(e) => ModalState::error("Export Failed", format!("Failed to write file: {}", e)),
+                    Ok(_) => ModalState::info(
+                        "Export Complete",
+                        format!("Documentation saved to {}", save_path.display()),
+                    ),
+                    Err(e) => {
+                        ModalState::error("Export Failed", format!("Failed to write file: {}", e))
+                    }
                 },
                 Err(e) => ModalState::error("Export Failed", e),
             };
@@ -570,7 +611,8 @@ impl ExplorerPanel {
                     if let Some(request_panel) = &self.request_panel {
                         let method = format!("{:?}", req.method).to_uppercase();
                         let url = req.url.clone();
-                        let headers: Vec<(String, String)> = req.headers
+                        let headers: Vec<(String, String)> = req
+                            .headers
                             .iter()
                             .filter(|h| h.enabled)
                             .map(|h| (h.key.clone(), h.value.clone()))
@@ -593,7 +635,8 @@ impl ExplorerPanel {
 
     /// Delete a collection item — shows confirm modal in MainWindow.
     fn delete_collection_item(&mut self, path: PathBuf, cx: &mut Context<Self>) {
-        let filename = path.file_name()
+        let filename = path
+            .file_name()
             .map(|n| n.to_string_lossy().to_string())
             .unwrap_or_default();
         let message = if path.is_dir() {
@@ -612,7 +655,11 @@ impl ExplorerPanel {
 
     /// Called by MainWindow when user confirms deletion.
     pub fn execute_delete(&mut self, path: PathBuf, cx: &mut Context<Self>) {
-        let result = if path.is_dir() { fs::remove_dir_all(&path) } else { fs::remove_file(&path) };
+        let result = if path.is_dir() {
+            fs::remove_dir_all(&path)
+        } else {
+            fs::remove_file(&path)
+        };
         if result.is_ok() {
             self.refresh_collections(cx);
         }
@@ -620,7 +667,8 @@ impl ExplorerPanel {
 
     /// Start renaming a collection item
     fn start_rename_item(&mut self, path: PathBuf, cx: &mut Context<Self>) {
-        self.rename_text = path.file_name()
+        self.rename_text = path
+            .file_name()
             .map(|n| n.to_string_lossy().to_string())
             .unwrap_or_default();
         self.renaming_item = Some(path);
@@ -633,7 +681,8 @@ impl ExplorerPanel {
         if let Some(old_path) = self.renaming_item.take() {
             let new_name = self.rename_text.trim();
             if !new_name.is_empty() {
-                let old_name = old_path.file_name()
+                let old_name = old_path
+                    .file_name()
                     .map(|n| n.to_string_lossy().to_string())
                     .unwrap_or_default();
                 if new_name != old_name {
@@ -664,7 +713,12 @@ impl ExplorerPanel {
     }
 
     /// Render context menu for collection item
-    fn render_context_menu(&self, path: PathBuf, position: Point<Pixels>, cx: &Context<Self>) -> impl IntoElement {
+    fn render_context_menu(
+        &self,
+        path: PathBuf,
+        position: Point<Pixels>,
+        cx: &Context<Self>,
+    ) -> impl IntoElement {
         let theme = theme::current(cx);
         let path_for_rename = path.clone();
         let path_for_delete = path.clone();
@@ -699,15 +753,13 @@ impl ExplorerPanel {
                             .on_click(cx.listener(move |this, _, _, cx| {
                                 this.start_rename_item(path_for_rename.clone(), cx);
                             }))
-                            .child(
-                                icon(ICON_EDIT, ICON_MD, theme.colors.text_muted)
-                            )
+                            .child(icon(ICON_EDIT, ICON_MD, theme.colors.text_muted))
                             .child(
                                 div()
                                     .text_size(px(12.0))
                                     .text_color(theme.colors.text_primary)
-                                    .child("Rename")
-                            )
+                                    .child("Rename"),
+                            ),
                     )
                     // Delete option
                     .child(
@@ -724,16 +776,14 @@ impl ExplorerPanel {
                             .on_click(cx.listener(move |this, _, _, cx| {
                                 this.delete_collection_item(path_for_delete.clone(), cx);
                             }))
-                            .child(
-                                icon(ICON_DELETE, ICON_MD, theme.colors.status_client_error)
-                            )
+                            .child(icon(ICON_DELETE, ICON_MD, theme.colors.status_client_error))
                             .child(
                                 div()
                                     .text_size(px(12.0))
                                     .text_color(theme.colors.status_client_error)
-                                    .child(if is_folder { "Delete Folder" } else { "Delete" })
-                            )
-                    )
+                                    .child(if is_folder { "Delete Folder" } else { "Delete" }),
+                            ),
+                    ),
             )
     }
 
@@ -744,7 +794,12 @@ impl ExplorerPanel {
         }
     }
 
-    fn start_editing(&mut self, target: EnvEditTarget, window: &mut Window, cx: &mut Context<Self>) {
+    fn start_editing(
+        &mut self,
+        target: EnvEditTarget,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         self.active_edit = Some(target);
         let text_len = self.get_edit_text(target).chars().count();
         self.edit_selection = text_len..text_len;
@@ -778,14 +833,24 @@ impl ExplorerPanel {
     }
 
     /// Handle mouse down for text input fields
-    fn handle_edit_mouse_down(&mut self, event: &MouseDownEvent, target: EnvEditTarget, char_width: f32, cx: &mut Context<Self>) {
+    fn handle_edit_mouse_down(
+        &mut self,
+        event: &MouseDownEvent,
+        target: EnvEditTarget,
+        char_width: f32,
+        cx: &mut Context<Self>,
+    ) {
         self.edit_is_selecting = true;
         let text_start_x = self.edit_input_origins.get(&target).copied().unwrap_or(0.0);
         let click_x = (f32::from(event.position.x) - text_start_x).max(0.0);
         let index = self.edit_index_for_x(click_x.max(0.0), char_width);
 
         // Cycle: 1=cursor, 2=word, 3=all, 4+=cursor
-        let effective_click = if event.click_count >= 4 { 1 } else { event.click_count };
+        let effective_click = if event.click_count >= 4 {
+            1
+        } else {
+            event.click_count
+        };
 
         match effective_click {
             2 => {
@@ -811,9 +876,15 @@ impl ExplorerPanel {
     }
 
     /// Handle mouse move for text selection
-    fn handle_edit_mouse_move(&mut self, event: &MouseMoveEvent, char_width: f32, cx: &mut Context<Self>) {
+    fn handle_edit_mouse_move(
+        &mut self,
+        event: &MouseMoveEvent,
+        char_width: f32,
+        cx: &mut Context<Self>,
+    ) {
         if self.edit_is_selecting {
-            let text_start_x = self.active_edit
+            let text_start_x = self
+                .active_edit
                 .and_then(|t| self.edit_input_origins.get(&t).copied())
                 .unwrap_or(0.0);
             let click_x = f32::from(event.position.x) - text_start_x;
@@ -830,16 +901,16 @@ impl ExplorerPanel {
 
     fn get_edit_text(&self, target: EnvEditTarget) -> String {
         match target {
-            EnvEditTarget::VarKey(i) => {
-                self.env_state.active()
-                    .and_then(|e| e.variables.keys().nth(i).cloned())
-                    .unwrap_or_default()
-            }
-            EnvEditTarget::VarValue(i) => {
-                self.env_state.active()
-                    .and_then(|e| e.variables.values().nth(i).cloned())
-                    .unwrap_or_default()
-            }
+            EnvEditTarget::VarKey(i) => self
+                .env_state
+                .active()
+                .and_then(|e| e.variables.keys().nth(i).cloned())
+                .unwrap_or_default(),
+            EnvEditTarget::VarValue(i) => self
+                .env_state
+                .active()
+                .and_then(|e| e.variables.values().nth(i).cloned())
+                .unwrap_or_default(),
             EnvEditTarget::NewEnvName => self.new_env_name.clone(),
         }
     }
@@ -849,7 +920,12 @@ impl ExplorerPanel {
             EnvEditTarget::VarKey(i) => {
                 if let Some(env) = self.env_state.active_mut() {
                     // Get old key and value
-                    if let Some((old_key, value)) = env.variables.iter().nth(i).map(|(k, v)| (k.clone(), v.clone())) {
+                    if let Some((old_key, value)) = env
+                        .variables
+                        .iter()
+                        .nth(i)
+                        .map(|(k, v)| (k.clone(), v.clone()))
+                    {
                         env.variables.remove(&old_key);
                         if !text.is_empty() {
                             env.variables.insert(text, value);
@@ -873,7 +949,8 @@ impl ExplorerPanel {
     fn save_edit_state(&mut self) {
         if let Some(target) = self.active_edit {
             let text = self.get_edit_text(target);
-            self.edit_undo_stack.push((target, text, self.edit_selection.clone()));
+            self.edit_undo_stack
+                .push((target, text, self.edit_selection.clone()));
             if self.edit_undo_stack.len() > 100 {
                 self.edit_undo_stack.remove(0);
             }
@@ -884,7 +961,8 @@ impl ExplorerPanel {
     fn edit_undo(&mut self, cx: &mut Context<Self>) {
         if let Some((target, text, selection)) = self.edit_undo_stack.pop() {
             let current_text = self.get_edit_text(target);
-            self.edit_redo_stack.push((target, current_text, self.edit_selection.clone()));
+            self.edit_redo_stack
+                .push((target, current_text, self.edit_selection.clone()));
             self.set_edit_text(target, text);
             self.edit_selection = selection;
             cx.notify();
@@ -894,7 +972,8 @@ impl ExplorerPanel {
     fn edit_redo(&mut self, cx: &mut Context<Self>) {
         if let Some((target, text, selection)) = self.edit_redo_stack.pop() {
             let current_text = self.get_edit_text(target);
-            self.edit_undo_stack.push((target, current_text, self.edit_selection.clone()));
+            self.edit_undo_stack
+                .push((target, current_text, self.edit_selection.clone()));
             self.set_edit_text(target, text);
             self.edit_selection = selection;
             cx.notify();
@@ -948,7 +1027,9 @@ impl ExplorerPanel {
                         let text = self.get_edit_text(target);
                         let start = self.edit_selection.start.min(self.edit_selection.end);
                         let end = self.edit_selection.start.max(self.edit_selection.end);
-                        cx.write_to_clipboard(ClipboardItem::new_string(text[start..end].to_string()));
+                        cx.write_to_clipboard(ClipboardItem::new_string(
+                            text[start..end].to_string(),
+                        ));
                     }
                     return;
                 }
@@ -1059,7 +1140,11 @@ impl ExplorerPanel {
     }
 
     /// Flatten collection items into a list with depth information for rendering
-    fn flatten_collection_items(&self, items: &[CollectionItem], depth: usize) -> Vec<(CollectionItem, usize)> {
+    fn flatten_collection_items(
+        &self,
+        items: &[CollectionItem],
+        depth: usize,
+    ) -> Vec<(CollectionItem, usize)> {
         let mut result = Vec::new();
         for item in items {
             result.push((item.clone(), depth));
@@ -1074,7 +1159,9 @@ impl ExplorerPanel {
         let theme = theme::current(cx);
         let has_collections = !self.collection_items.is_empty();
         let collections_expanded = self.collections_expanded;
-        let workspace_name = self.workspace_path.as_ref()
+        let workspace_name = self
+            .workspace_path
+            .as_ref()
             .and_then(|p| p.file_name())
             .map(|n| n.to_string_lossy().to_string())
             .unwrap_or_else(|| "Collections".to_string());
@@ -1112,23 +1199,19 @@ impl ExplorerPanel {
                             .flex()
                             .items_center()
                             .gap(px(6.0))
-                            .child(
-                                if collections_expanded {
-                                    icon(ICON_CHEVRON_DOWN, ICON_SM, theme.colors.text_muted)
-                                } else {
-                                    icon(ICON_CHEVRON_RIGHT, ICON_SM, theme.colors.text_muted)
-                                }
-                            )
-                            .child(
-                                icon(ICON_FOLDER, ICON_MD, theme.colors.text_muted)
-                            )
+                            .child(if collections_expanded {
+                                icon(ICON_CHEVRON_DOWN, ICON_SM, theme.colors.text_muted)
+                            } else {
+                                icon(ICON_CHEVRON_RIGHT, ICON_SM, theme.colors.text_muted)
+                            })
+                            .child(icon(ICON_FOLDER, ICON_MD, theme.colors.text_muted))
                             .child(
                                 div()
                                     .text_size(px(12.0))
                                     .font_weight(gpui::FontWeight::MEDIUM)
                                     .text_color(theme.colors.text_secondary)
-                                    .child(workspace_name)
-                            )
+                                    .child(workspace_name),
+                            ),
                     )
                     // Action buttons grouped on the right
                     .child(
@@ -1145,11 +1228,14 @@ impl ExplorerPanel {
                                     .justify_center()
                                     .cursor_pointer()
                                     .text_color(theme.colors.text_muted)
-                                    .hover(|s| s.bg(theme.colors.bg_tertiary).text_color(theme.colors.text_primary))
+                                    .hover(|s| {
+                                        s.bg(theme.colors.bg_tertiary)
+                                            .text_color(theme.colors.text_primary)
+                                    })
                                     .on_click(cx.listener(|this, _, _, cx| {
                                         this.refresh_collections(cx);
                                     }))
-                                    .child(icon(ICON_REFRESH, ICON_MD, theme.colors.text_muted))
+                                    .child(icon(ICON_REFRESH, ICON_MD, theme.colors.text_muted)),
                             )
                             .child(
                                 div()
@@ -1160,11 +1246,18 @@ impl ExplorerPanel {
                                     .justify_center()
                                     .cursor_pointer()
                                     .text_color(theme.colors.text_muted)
-                                    .hover(|s| s.bg(theme.colors.bg_tertiary).text_color(theme.colors.text_primary))
+                                    .hover(|s| {
+                                        s.bg(theme.colors.bg_tertiary)
+                                            .text_color(theme.colors.text_primary)
+                                    })
                                     .on_click(cx.listener(|this, _, _, cx| {
                                         this.open_folder(cx);
                                     }))
-                                    .child(icon(ICON_FOLDER_OPEN, ICON_MD, theme.colors.text_muted))
+                                    .child(icon(
+                                        ICON_FOLDER_OPEN,
+                                        ICON_MD,
+                                        theme.colors.text_muted,
+                                    )),
                             )
                             .child(
                                 div()
@@ -1175,11 +1268,14 @@ impl ExplorerPanel {
                                     .justify_center()
                                     .cursor_pointer()
                                     .text_color(theme.colors.text_muted)
-                                    .hover(|s| s.bg(theme.colors.bg_tertiary).text_color(theme.colors.text_primary))
+                                    .hover(|s| {
+                                        s.bg(theme.colors.bg_tertiary)
+                                            .text_color(theme.colors.text_primary)
+                                    })
                                     .on_click(cx.listener(|this, _, _, cx| {
                                         this.import_collection(cx);
                                     }))
-                                    .child(icon(ICON_ARROW_DOWN, ICON_MD, theme.colors.text_muted))
+                                    .child(icon(ICON_ARROW_DOWN, ICON_MD, theme.colors.text_muted)),
                             )
                             .when(self.workspace_path.is_some(), |el| {
                                 el.child(
@@ -1191,14 +1287,17 @@ impl ExplorerPanel {
                                         .justify_center()
                                         .cursor_pointer()
                                         .text_color(theme.colors.text_muted)
-                                        .hover(|s| s.bg(theme.colors.bg_tertiary).text_color(theme.colors.text_primary))
+                                        .hover(|s| {
+                                            s.bg(theme.colors.bg_tertiary)
+                                                .text_color(theme.colors.text_primary)
+                                        })
                                         .on_click(cx.listener(|this, _, _, cx| {
                                             this.export_docs(cx);
                                         }))
-                                        .child(icon(ICON_FILE, ICON_MD, theme.colors.text_muted))
+                                        .child(icon(ICON_FILE, ICON_MD, theme.colors.text_muted)),
                                 )
-                            })
-                    )
+                            }),
+                    ),
             )
             // Content
             .when(collections_expanded, |el| {
@@ -1210,9 +1309,11 @@ impl ExplorerPanel {
                             .flex_col()
                             .px(px(4.0))
                             .pt(px(4.0))
-                            .children(flattened_items.into_iter().enumerate().map(|(idx, (item, depth))| {
-                                self.render_collection_item_row(item, depth, idx, cx)
-                            }))
+                            .children(flattened_items.into_iter().enumerate().map(
+                                |(idx, (item, depth))| {
+                                    self.render_collection_item_row(item, depth, idx, cx)
+                                },
+                            )),
                     )
                 } else {
                     // Empty state for collections
@@ -1232,15 +1333,13 @@ impl ExplorerPanel {
                                     .flex()
                                     .items_center()
                                     .justify_center()
-                                    .child(
-                                        icon(ICON_FOLDER, ICON_MD, theme.colors.text_muted)
-                                    )
+                                    .child(icon(ICON_FOLDER, ICON_MD, theme.colors.text_muted)),
                             )
                             .child(
                                 div()
                                     .text_size(px(12.0))
                                     .text_color(theme.colors.text_secondary)
-                                    .child("No collections")
+                                    .child("No collections"),
                             )
                             .child(
                                 div()
@@ -1258,15 +1357,21 @@ impl ExplorerPanel {
                                     .on_click(cx.listener(|this, _, _, cx| {
                                         this.open_folder(cx);
                                     }))
-                                    .child("Open Folder")
-                            )
+                                    .child("Open Folder"),
+                            ),
                     )
                 }
             })
     }
 
     /// Render a single collection item row (non-recursive)
-    fn render_collection_item_row(&self, item: CollectionItem, depth: usize, idx: usize, cx: &Context<Self>) -> impl IntoElement {
+    fn render_collection_item_row(
+        &self,
+        item: CollectionItem,
+        depth: usize,
+        idx: usize,
+        cx: &Context<Self>,
+    ) -> impl IntoElement {
         let theme = theme::current(cx);
         let indent = px((depth * 16 + 8) as f32);
         let path = item.path.clone();
@@ -1290,7 +1395,9 @@ impl ExplorerPanel {
             .gap(px(6.0))
             .cursor_pointer()
             .when(is_selected, |el| el.bg(theme.colors.accent.opacity(0.1)))
-            .when(!is_selected, |el| el.hover(|s| s.bg(theme.colors.bg_tertiary)))
+            .when(!is_selected, |el| {
+                el.hover(|s| s.bg(theme.colors.bg_tertiary))
+            })
             // Left click - select and load/toggle
             .on_click({
                 cx.listener(move |this, _, _, cx| {
@@ -1322,21 +1429,17 @@ impl ExplorerPanel {
                             icon(ICON_CHEVRON_DOWN, ICON_SM, theme.colors.text_muted)
                         } else {
                             icon(ICON_CHEVRON_RIGHT, ICON_SM, theme.colors.text_muted)
-                        })
+                        }),
                 )
             })
             // Spacer for files to align with folders
-            .when(!is_folder, |el| {
-                el.child(div().w(px(10.0)))
-            })
+            .when(!is_folder, |el| el.child(div().w(px(10.0))))
             // Icon
-            .child(
-                if is_folder {
-                    icon(ICON_FOLDER, ICON_MD, theme.colors.text_muted)
-                } else {
-                    icon(ICON_FILE, ICON_MD, theme.colors.accent)
-                }
-            )
+            .child(if is_folder {
+                icon(ICON_FOLDER, ICON_MD, theme.colors.text_muted)
+            } else {
+                icon(ICON_FILE, ICON_MD, theme.colors.accent)
+            })
             // Method badge (for .http files)
             .when_some(method, |el, method| {
                 let method_color = theme.method_color(&method);
@@ -1353,8 +1456,8 @@ impl ExplorerPanel {
                                 .text_size(px(9.0))
                                 .font_weight(gpui::FontWeight::SEMIBOLD)
                                 .text_color(method_color)
-                                .child(method)
-                        )
+                                .child(method),
+                        ),
                 )
             })
             // Name (or rename input)
@@ -1366,7 +1469,7 @@ impl ExplorerPanel {
                         .overflow_hidden()
                         .text_size(px(12.0))
                         .text_color(theme.colors.text_primary)
-                        .child(display_name)
+                        .child(display_name),
                 )
             })
             .when(is_renaming, |el| {
@@ -1385,7 +1488,7 @@ impl ExplorerPanel {
                         .overflow_hidden()
                         .text_size(px(12.0))
                         .text_color(theme.colors.text_primary)
-                        .child(rename_text)
+                        .child(rename_text),
                 )
             })
     }
@@ -1406,7 +1509,7 @@ impl ExplorerPanel {
                 div()
                     .mx(px(12.0))
                     .h(px(1.0))
-                    .bg(theme.colors.border.opacity(0.5))
+                    .bg(theme.colors.border.opacity(0.5)),
             )
             // History header
             .child(
@@ -1429,23 +1532,19 @@ impl ExplorerPanel {
                             .flex()
                             .items_center()
                             .gap(px(6.0))
-                            .child(
-                                if self.history_expanded {
-                                    icon(ICON_CHEVRON_DOWN, ICON_SM, theme.colors.text_muted)
-                                } else {
-                                    icon(ICON_CHEVRON_RIGHT, ICON_SM, theme.colors.text_muted)
-                                }
-                            )
-                            .child(
-                                icon(ICON_TIMER, ICON_MD, theme.colors.text_muted)
-                            )
+                            .child(if self.history_expanded {
+                                icon(ICON_CHEVRON_DOWN, ICON_SM, theme.colors.text_muted)
+                            } else {
+                                icon(ICON_CHEVRON_RIGHT, ICON_SM, theme.colors.text_muted)
+                            })
+                            .child(icon(ICON_TIMER, ICON_MD, theme.colors.text_muted))
                             .child(
                                 div()
                                     .text_size(px(12.0))
                                     .font_weight(gpui::FontWeight::MEDIUM)
                                     .text_color(theme.colors.text_secondary)
-                                    .child("History")
-                            )
+                                    .child("History"),
+                            ),
                     )
                     // Count badge
                     .when(entry_count > 0, |el| {
@@ -1457,9 +1556,9 @@ impl ExplorerPanel {
                                 .text_size(px(10.0))
                                 .font_weight(gpui::FontWeight::MEDIUM)
                                 .text_color(theme.colors.accent)
-                                .child(format!("{}", entry_count))
+                                .child(format!("{}", entry_count)),
                         )
-                    })
+                    }),
             )
             // History items
             .when(self.history_expanded, |el| {
@@ -1488,20 +1587,24 @@ impl ExplorerPanel {
                                             .flex()
                                             .items_center()
                                             .justify_center()
-                                            .child(icon(ICON_FILE, ICON_MD, theme.colors.text_muted))
+                                            .child(icon(
+                                                ICON_FILE,
+                                                ICON_MD,
+                                                theme.colors.text_muted,
+                                            )),
                                     )
                                     .child(
                                         div()
                                             .text_size(px(12.0))
                                             .text_color(theme.colors.text_secondary)
-                                            .child("No history yet")
+                                            .child("No history yet"),
                                     )
                                     .child(
                                         div()
                                             .text_size(px(11.0))
                                             .text_color(theme.colors.text_muted)
-                                            .child("Requests will appear here after sending")
-                                    )
+                                            .child("Requests will appear here after sending"),
+                                    ),
                             )
                         })
                         .children(entries.into_iter().map(|entry| {
@@ -1513,7 +1616,9 @@ impl ExplorerPanel {
                             let status_color = status.map(|s| theme.status_color(s));
 
                             div()
-                                .id(gpui::ElementId::Name(format!("history-{}", entry_id).into()))
+                                .id(gpui::ElementId::Name(
+                                    format!("history-{}", entry_id).into(),
+                                ))
                                 .w_full()
                                 .h(px(32.0))
                                 .flex()
@@ -1539,8 +1644,8 @@ impl ExplorerPanel {
                                                 .text_size(px(10.0))
                                                 .font_weight(gpui::FontWeight::SEMIBOLD)
                                                 .text_color(method_color)
-                                                .child(method)
-                                        )
+                                                .child(method),
+                                        ),
                                 )
                                 // URL
                                 .child(
@@ -1550,31 +1655,30 @@ impl ExplorerPanel {
                                         .overflow_hidden()
                                         .text_size(px(12.0))
                                         .text_color(theme.colors.text_primary)
-                                        .child(display_url)
+                                        .child(display_url),
                                 )
                                 // Status indicator
                                 .when_some(status_color, |el, color| {
-                                    el.child(
-                                        div()
-                                            .size(px(7.0))
-                                            
-                                            .bg(color)
-                                    )
+                                    el.child(div().size(px(7.0)).bg(color))
                                 })
-                        }))
+                        })),
                 )
             })
     }
 
     fn render_environment_section(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = theme::current(cx);
-        let active_env_name = self.env_state.active()
+        let active_env_name = self
+            .env_state
+            .active()
             .map(|e| e.name.clone())
             .unwrap_or_else(|| "No Environment".to_string());
         let env_dropdown_open = self.env_dropdown_open;
         let env_editor_open = self.env_editor_open;
         let has_active_env = self.env_state.active_index.is_some();
-        let var_count = self.env_state.active()
+        let var_count = self
+            .env_state
+            .active()
             .map(|e| e.variables.len())
             .unwrap_or(0);
 
@@ -1601,16 +1705,14 @@ impl ExplorerPanel {
                             .flex()
                             .items_center()
                             .gap(px(6.0))
-                            .child(
-                                icon(ICON_SETTINGS, ICON_MD, theme.colors.text_muted)
-                            )
+                            .child(icon(ICON_SETTINGS, ICON_MD, theme.colors.text_muted))
                             .child(
                                 div()
                                     .text_size(px(12.0))
                                     .font_weight(gpui::FontWeight::MEDIUM)
                                     .text_color(theme.colors.text_secondary)
-                                    .child("ENVIRONMENT")
-                            )
+                                    .child("ENVIRONMENT"),
+                            ),
                     )
                     // Variable count badge
                     .when(var_count > 0, |el| {
@@ -1622,9 +1724,9 @@ impl ExplorerPanel {
                                 .text_size(px(9.0))
                                 .font_weight(gpui::FontWeight::MEDIUM)
                                 .text_color(theme.colors.status_success)
-                                .child(format!("{} vars", var_count))
+                                .child(format!("{} vars", var_count)),
                         )
-                    })
+                    }),
             )
             // Environment selector row
             .child(
@@ -1663,16 +1765,11 @@ impl ExplorerPanel {
                                     .items_center()
                                     .gap(px(8.0))
                                     // Status indicator
-                                    .child(
-                                        div()
-                                            .size(px(6.0))
-                                            
-                                            .bg(if has_active_env {
-                                                theme.colors.status_success
-                                            } else {
-                                                theme.colors.text_muted.opacity(0.5)
-                                            })
-                                    )
+                                    .child(div().size(px(6.0)).bg(if has_active_env {
+                                        theme.colors.status_success
+                                    } else {
+                                        theme.colors.text_muted.opacity(0.5)
+                                    }))
                                     // Env name
                                     .child(
                                         div()
@@ -1683,17 +1780,15 @@ impl ExplorerPanel {
                                             } else {
                                                 theme.colors.text_muted
                                             })
-                                            .child(active_env_name.clone())
-                                    )
+                                            .child(active_env_name.clone()),
+                                    ),
                             )
                             // Chevron
-                            .child(
-                                if env_dropdown_open {
-                                    icon(ICON_CHEVRON_UP, ICON_SM, theme.colors.text_muted)
-                                } else {
-                                    icon(ICON_CHEVRON_DOWN, ICON_SM, theme.colors.text_muted)
-                                }
-                            )
+                            .child(if env_dropdown_open {
+                                icon(ICON_CHEVRON_UP, ICON_SM, theme.colors.text_muted)
+                            } else {
+                                icon(ICON_CHEVRON_DOWN, ICON_SM, theme.colors.text_muted)
+                            }),
                     )
                     // Right: edit button
                     .child(
@@ -1711,8 +1806,10 @@ impl ExplorerPanel {
                                     .text_color(theme.colors.accent)
                             })
                             .when(!env_editor_open, |el| {
-                                el.text_color(theme.colors.text_muted)
-                                    .hover(|s| s.bg(theme.colors.bg_tertiary).text_color(theme.colors.text_primary))
+                                el.text_color(theme.colors.text_muted).hover(|s| {
+                                    s.bg(theme.colors.bg_tertiary)
+                                        .text_color(theme.colors.text_primary)
+                                })
                             })
                             .on_click(cx.listener(|this, _, _, cx| {
                                 this.toggle_env_editor(cx);
@@ -1721,23 +1818,23 @@ impl ExplorerPanel {
                                 icon(ICON_EDIT, ICON_MD, theme.colors.accent)
                             } else {
                                 icon(ICON_EDIT, ICON_MD, theme.colors.text_muted)
-                            })
-                    )
+                            }),
+                    ),
             )
             // Dropdown menu
             .when(env_dropdown_open, |el| {
                 el.child(self.render_env_dropdown(cx))
             })
             // Editor panel
-            .when(env_editor_open, |el| {
-                el.child(self.render_env_editor(cx))
-            })
+            .when(env_editor_open, |el| el.child(self.render_env_editor(cx)))
     }
 
     fn render_env_dropdown(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = theme::current(cx);
         let active_index = self.env_state.active_index;
-        let envs: Vec<(usize, String, usize)> = self.env_state.environments
+        let envs: Vec<(usize, String, usize)> = self
+            .env_state
+            .environments
             .iter()
             .enumerate()
             .map(|(i, e)| (i, e.name.clone(), e.variables.len()))
@@ -1778,72 +1875,75 @@ impl ExplorerPanel {
                         this.select_environment(None, cx);
                     }))
                     // Icon
-                    .child(
-                        div()
-                            .size(px(6.0))
-                            
-                            .bg(theme.colors.text_muted.opacity(0.4))
-                    )
+                    .child(div().size(px(6.0)).bg(theme.colors.text_muted.opacity(0.4)))
                     .child(
                         div()
                             .text_size(px(11.0))
                             .text_color(theme.colors.text_muted)
-                            .child("No Environment")
-                    )
+                            .child("No Environment"),
+                    ),
             )
             // Environment options
-            .children(envs.into_iter().enumerate().map(|(idx, (i, name, var_count))| {
-                let is_active = active_index == Some(i);
-                let is_last = idx == self.env_state.environments.len() - 1;
-                div()
-                    .id(SharedString::from(format!("env-option-{}", i)))
-                    .w_full()
-                    .px(px(12.0))
-                    .py(px(8.0))
-                    .cursor_pointer()
-                    .flex()
-                    .items_center()
-                    .justify_between()
-                    .when(!is_last, |el| el.border_b_1().border_color(theme.colors.border.opacity(0.5)))
-                    .when(is_active, |el| {
-                        el.bg(theme.colors.accent.opacity(0.08))
-                    })
-                    .when(!is_active, |el| {
-                        el.hover(|s| s.bg(theme.colors.bg_tertiary))
-                    })
-                    .on_click(cx.listener(move |this, _, _, cx| {
-                        this.select_environment(Some(i), cx);
-                    }))
-                    // Left: icon + name
-                    .child(
+            .children(
+                envs.into_iter()
+                    .enumerate()
+                    .map(|(idx, (i, name, var_count))| {
+                        let is_active = active_index == Some(i);
+                        let is_last = idx == self.env_state.environments.len() - 1;
                         div()
+                            .id(SharedString::from(format!("env-option-{}", i)))
+                            .w_full()
+                            .px(px(12.0))
+                            .py(px(8.0))
+                            .cursor_pointer()
                             .flex()
                             .items_center()
-                            .gap(px(8.0))
+                            .justify_between()
+                            .when(!is_last, |el| {
+                                el.border_b_1()
+                                    .border_color(theme.colors.border.opacity(0.5))
+                            })
+                            .when(is_active, |el| el.bg(theme.colors.accent.opacity(0.08)))
+                            .when(!is_active, |el| {
+                                el.hover(|s| s.bg(theme.colors.bg_tertiary))
+                            })
+                            .on_click(cx.listener(move |this, _, _, cx| {
+                                this.select_environment(Some(i), cx);
+                            }))
+                            // Left: icon + name
                             .child(
                                 div()
-                                    .size(px(6.0))
-                                    
-                                    .bg(theme.colors.status_success)
+                                    .flex()
+                                    .items_center()
+                                    .gap(px(8.0))
+                                    .child(div().size(px(6.0)).bg(theme.colors.status_success))
+                                    .child(
+                                        div()
+                                            .text_size(px(11.0))
+                                            .font_weight(if is_active {
+                                                gpui::FontWeight::MEDIUM
+                                            } else {
+                                                gpui::FontWeight::NORMAL
+                                            })
+                                            .text_color(if is_active {
+                                                theme.colors.text_primary
+                                            } else {
+                                                theme.colors.text_secondary
+                                            })
+                                            .child(name),
+                                    ),
                             )
-                            .child(
-                                div()
-                                    .text_size(px(11.0))
-                                    .font_weight(if is_active { gpui::FontWeight::MEDIUM } else { gpui::FontWeight::NORMAL })
-                                    .text_color(if is_active { theme.colors.text_primary } else { theme.colors.text_secondary })
-                                    .child(name)
-                            )
-                    )
-                    // Right: var count
-                    .when(var_count > 0, |el| {
-                        el.child(
-                            div()
-                                .text_size(px(10.0))
-                                .text_color(theme.colors.text_muted)
-                                .child(format!("{} vars", var_count))
-                        )
-                    })
-            }))
+                            // Right: var count
+                            .when(var_count > 0, |el| {
+                                el.child(
+                                    div()
+                                        .text_size(px(10.0))
+                                        .text_color(theme.colors.text_muted)
+                                        .child(format!("{} vars", var_count)),
+                                )
+                            })
+                    }),
+            )
             // Add new environment button
             .child(
                 div()
@@ -1868,14 +1968,14 @@ impl ExplorerPanel {
                         div()
                             .text_size(px(11.0))
                             .text_color(theme.colors.accent)
-                            .child("+")
+                            .child("+"),
                     )
                     .child(
                         div()
                             .text_size(px(11.0))
                             .text_color(theme.colors.accent)
-                            .child("New Environment")
-                    )
+                            .child("New Environment"),
+                    ),
             )
     }
 
@@ -1886,11 +1986,16 @@ impl ExplorerPanel {
         let is_editing_new_env = self.active_edit == Some(EnvEditTarget::NewEnvName);
         let edit_selection = self.edit_selection.clone();
 
-        let vars: Vec<(usize, String, String)> = self.env_state.active()
-            .map(|e| e.variables.iter()
-                .enumerate()
-                .map(|(i, (k, v))| (i, k.clone(), v.clone()))
-                .collect())
+        let vars: Vec<(usize, String, String)> = self
+            .env_state
+            .active()
+            .map(|e| {
+                e.variables
+                    .iter()
+                    .enumerate()
+                    .map(|(i, (k, v))| (i, k.clone(), v.clone()))
+                    .collect()
+            })
             .unwrap_or_default();
 
         let env_count = self.env_state.environments.len();
@@ -1900,7 +2005,7 @@ impl ExplorerPanel {
         div()
             .id("env-editor")
             .w_full()
-            .max_h(px(300.0))
+            .h(px(self.env_h))
             .overflow_scroll()
             .px(px(12.0))
             .pb(px(12.0))
@@ -1924,7 +2029,7 @@ impl ExplorerPanel {
                                 .text_size(px(11.0))
                                 .font_weight(gpui::FontWeight::MEDIUM)
                                 .text_color(theme.colors.text_secondary)
-                                .child("Create New Environment")
+                                .child("Create New Environment"),
                         )
                         .child(
                             div()
@@ -1932,17 +2037,19 @@ impl ExplorerPanel {
                                 .flex()
                                 .items_center()
                                 .gap(px(6.0))
-                                .child(
-                                    self.render_text_input(
-                                        "new-env-name",
-                                        EnvEditTarget::NewEnvName,
-                                        &new_env_name,
-                                        "Environment name",
-                                        is_editing_new_env,
-                                        if is_editing_new_env { edit_selection.clone() } else { 0..0 },
-                                        cx,
-                                    )
-                                )
+                                .child(self.render_text_input(
+                                    "new-env-name",
+                                    EnvEditTarget::NewEnvName,
+                                    &new_env_name,
+                                    "Environment name",
+                                    is_editing_new_env,
+                                    if is_editing_new_env {
+                                        edit_selection.clone()
+                                    } else {
+                                        0..0
+                                    },
+                                    cx,
+                                ))
                                 .child(
                                     div()
                                         .id("create-env-btn")
@@ -1959,7 +2066,7 @@ impl ExplorerPanel {
                                         .on_click(cx.listener(|this, _, _, cx| {
                                             this.create_new_env(cx);
                                         }))
-                                        .child("Create")
+                                        .child("Create"),
                                 )
                                 .child(
                                     div()
@@ -1977,9 +2084,9 @@ impl ExplorerPanel {
                                         .on_click(cx.listener(|this, _, _, cx| {
                                             this.cancel_new_env(cx);
                                         }))
-                                        .child("Cancel")
-                                )
-                        )
+                                        .child("Cancel"),
+                                ),
+                        ),
                 )
             })
             // Variables section card
@@ -2017,7 +2124,7 @@ impl ExplorerPanel {
                                                 .text_size(px(10.0))
                                                 .font_weight(gpui::FontWeight::SEMIBOLD)
                                                 .text_color(theme.colors.text_muted)
-                                                .child("KEY")
+                                                .child("KEY"),
                                         )
                                         .child(self.render_env_col_drag_handle(cx))
                                         .child(
@@ -2026,8 +2133,8 @@ impl ExplorerPanel {
                                                 .text_size(px(10.0))
                                                 .font_weight(gpui::FontWeight::SEMIBOLD)
                                                 .text_color(theme.colors.text_muted)
-                                                .child("VALUE")
-                                        )
+                                                .child("VALUE"),
+                                        ),
                                 )
                                 // Trash icon to delete environment (only when >1 env exists)
                                 .when(env_count > 1 && active_index.is_some(), |el| {
@@ -2040,18 +2147,25 @@ impl ExplorerPanel {
                                             .items_center()
                                             .justify_center()
                                             .cursor_pointer()
-                                            .hover(|s| s.bg(theme.colors.status_client_error.opacity(0.1)))
+                                            .hover(|s| {
+                                                s.bg(theme.colors.status_client_error.opacity(0.1))
+                                            })
                                             .on_click(cx.listener(move |this, _, _, cx| {
                                                 this.delete_environment(idx, cx);
                                             }))
-                                            .child(icon(ICON_DELETE, ICON_SM, theme.colors.text_muted.opacity(0.5)))
+                                            .child(icon(
+                                                ICON_DELETE,
+                                                ICON_SM,
+                                                theme.colors.text_muted.opacity(0.5),
+                                            )),
                                     )
-                                })
+                                }),
                         )
                         // Variables list
                         .children(vars.into_iter().enumerate().map(|(idx, (i, key, value))| {
                             let is_editing_key = self.active_edit == Some(EnvEditTarget::VarKey(i));
-                            let is_editing_value = self.active_edit == Some(EnvEditTarget::VarValue(i));
+                            let is_editing_value =
+                                self.active_edit == Some(EnvEditTarget::VarValue(i));
                             let key_for_remove = key.clone();
 
                             div()
@@ -2061,33 +2175,39 @@ impl ExplorerPanel {
                                 .gap(px(4.0))
                                 .px(px(10.0))
                                 .py(px(6.0))
-                                .when(idx % 2 == 0, |el| el.bg(theme.colors.bg_tertiary.opacity(0.2)))
+                                .when(idx % 2 == 0, |el| {
+                                    el.bg(theme.colors.bg_tertiary.opacity(0.2))
+                                })
                                 // Key input
-                                .child(
-                                    self.render_text_input_w(
-                                        format!("var-key-{}", i),
-                                        EnvEditTarget::VarKey(i),
-                                        &key,
-                                        "Key",
-                                        is_editing_key,
-                                        if is_editing_key { edit_selection.clone() } else { 0..0 },
-                                        self.env_col_key_w,
-                                        cx,
-                                    )
-                                )
+                                .child(self.render_text_input_w(
+                                    format!("var-key-{}", i),
+                                    EnvEditTarget::VarKey(i),
+                                    &key,
+                                    "Key",
+                                    is_editing_key,
+                                    if is_editing_key {
+                                        edit_selection.clone()
+                                    } else {
+                                        0..0
+                                    },
+                                    self.env_col_key_w,
+                                    cx,
+                                ))
                                 .child(div().w(px(4.0)))
                                 // Value input
-                                .child(
-                                    self.render_text_input(
-                                        format!("var-value-{}", i),
-                                        EnvEditTarget::VarValue(i),
-                                        &value,
-                                        "Value",
-                                        is_editing_value,
-                                        if is_editing_value { edit_selection.clone() } else { 0..0 },
-                                        cx,
-                                    )
-                                )
+                                .child(self.render_text_input(
+                                    format!("var-value-{}", i),
+                                    EnvEditTarget::VarValue(i),
+                                    &value,
+                                    "Value",
+                                    is_editing_value,
+                                    if is_editing_value {
+                                        edit_selection.clone()
+                                    } else {
+                                        0..0
+                                    },
+                                    cx,
+                                ))
                                 // Remove button
                                 .child(
                                     div()
@@ -2099,11 +2219,18 @@ impl ExplorerPanel {
                                         .cursor_pointer()
                                         .text_size(px(12.0))
                                         .text_color(theme.colors.text_muted.opacity(0.5))
-                                        .hover(|s| s.bg(theme.colors.status_client_error.opacity(0.1)).text_color(theme.colors.status_client_error))
+                                        .hover(|s| {
+                                            s.bg(theme.colors.status_client_error.opacity(0.1))
+                                                .text_color(theme.colors.status_client_error)
+                                        })
                                         .on_click(cx.listener(move |this, _, _, cx| {
                                             this.remove_variable(&key_for_remove, cx);
                                         }))
-                                        .child(icon(ICON_CLOSE, ICON_SM, theme.colors.text_muted.opacity(0.5)))
+                                        .child(icon(
+                                            ICON_CLOSE,
+                                            ICON_SM,
+                                            theme.colors.text_muted.opacity(0.5),
+                                        )),
                                 )
                         }))
                         // Ghost "+ Add variable" row at bottom of list
@@ -2124,13 +2251,17 @@ impl ExplorerPanel {
                                     .on_click(cx.listener(|this, _, _, cx| {
                                         this.add_variable(cx);
                                     }))
-                                    .child(icon(ICON_PLUS, ICON_SM, theme.colors.accent.opacity(0.6)))
+                                    .child(icon(
+                                        ICON_PLUS,
+                                        ICON_SM,
+                                        theme.colors.accent.opacity(0.6),
+                                    ))
                                     .child(
                                         div()
                                             .text_size(px(11.0))
                                             .text_color(theme.colors.accent.opacity(0.6))
-                                            .child("Add variable")
-                                    )
+                                            .child("Add variable"),
+                                    ),
                             )
                         })
                         // Empty state inside card
@@ -2147,13 +2278,13 @@ impl ExplorerPanel {
                                         div()
                                             .text_size(px(18.0))
                                             .text_color(theme.colors.text_muted.opacity(0.5))
-                                            .child("{ }")
+                                            .child("{ }"),
                                     )
                                     .child(
                                         div()
                                             .text_size(px(11.0))
                                             .text_color(theme.colors.text_muted)
-                                            .child("No variables defined")
+                                            .child("No variables defined"),
                                     )
                                     .child(
                                         div()
@@ -2170,41 +2301,42 @@ impl ExplorerPanel {
                                             .on_click(cx.listener(|this, _, _, cx| {
                                                 this.add_variable(cx);
                                             }))
-                                            .child("+ Add Variable")
-                                    )
+                                            .child("+ Add Variable"),
+                                    ),
                             )
-                        })
+                        }),
                 )
             })
             // No environment selected state
-            .when(self.env_state.active_index.is_none() && !show_new_env_input, |el| {
-                el.child(
-                    div()
-                        .w_full()
-                        .py(px(16.0))
-                        .flex()
-                        .flex_col()
-                        .items_center()
-                        .gap(px(8.0))
-                        .child(
-                            div()
-                                .size(px(36.0))
-                                .bg(theme.colors.bg_tertiary)
-                                .flex()
-                                .items_center()
-                                .justify_center()
-                                .child(
-                                    icon(ICON_SETTINGS, ICON_MD, theme.colors.text_muted)
-                                )
-                        )
-                        .child(
-                            div()
-                                .text_size(px(11.0))
-                                .text_color(theme.colors.text_muted)
-                                .child("Select an environment to edit")
-                        )
-                )
-            })
+            .when(
+                self.env_state.active_index.is_none() && !show_new_env_input,
+                |el| {
+                    el.child(
+                        div()
+                            .w_full()
+                            .py(px(16.0))
+                            .flex()
+                            .flex_col()
+                            .items_center()
+                            .gap(px(8.0))
+                            .child(
+                                div()
+                                    .size(px(36.0))
+                                    .bg(theme.colors.bg_tertiary)
+                                    .flex()
+                                    .items_center()
+                                    .justify_center()
+                                    .child(icon(ICON_SETTINGS, ICON_MD, theme.colors.text_muted)),
+                            )
+                            .child(
+                                div()
+                                    .text_size(px(11.0))
+                                    .text_color(theme.colors.text_muted)
+                                    .child("Select an environment to edit"),
+                            ),
+                    )
+                },
+            )
             // Usage hint
             .child(
                 div()
@@ -2216,16 +2348,14 @@ impl ExplorerPanel {
                     .flex()
                     .items_start()
                     .gap(px(6.0))
-                    .child(
-                        icon(ICON_INFO, ICON_MD, theme.colors.text_muted)
-                    )
+                    .child(icon(ICON_INFO, ICON_MD, theme.colors.text_muted))
                     .child(
                         div()
                             .flex_1()
                             .text_size(px(10.0))
                             .text_color(theme.colors.text_muted)
-                            .child("Use {{var}} in URL, headers, body, or auth")
-                    )
+                            .child("Use {{var}} in URL, headers, body, or auth"),
+                    ),
             )
     }
 
@@ -2239,10 +2369,13 @@ impl ExplorerPanel {
             .cursor_col_resize()
             .bg(theme.colors.border.opacity(0.3))
             .hover(|s| s.bg(theme.colors.accent.opacity(0.5)))
-            .on_mouse_down(MouseButton::Left, cx.listener(move |this, event: &MouseDownEvent, _, cx| {
-                this.env_col_drag = Some((f32::from(event.position.x), start_w));
-                cx.notify();
-            }))
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(move |this, event: &MouseDownEvent, _, cx| {
+                    this.env_col_drag = Some((f32::from(event.position.x), start_w));
+                    cx.notify();
+                }),
+            )
     }
 
     fn render_text_input_w(
@@ -2296,12 +2429,16 @@ impl ExplorerPanel {
                     move |bounds, _, cx| {
                         let _ = entity.update(cx, |this, _| {
                             // canvas at padding edge; padding(6) to text content
-                            this.edit_input_origins.insert(target, f32::from(bounds.origin.x) + 6.0);
+                            this.edit_input_origins
+                                .insert(target, f32::from(bounds.origin.x) + 6.0);
                         });
                     },
                     |_, _, _, _| {},
                 )
-                .absolute().top_0().left_0().size_full()
+                .absolute()
+                .top_0()
+                .left_0()
+                .size_full()
             })
             .child({
                 // char_width = 11px * 0.6 = 6.6, padding = 2 * 6px = 12px
@@ -2371,12 +2508,16 @@ impl ExplorerPanel {
                     move |bounds, _, cx| {
                         let _ = entity.update(cx, |this, _| {
                             // canvas at padding edge; padding(6) to text content
-                            this.edit_input_origins.insert(target, f32::from(bounds.origin.x) + 6.0);
+                            this.edit_input_origins
+                                .insert(target, f32::from(bounds.origin.x) + 6.0);
                         });
                     },
                     |_, _, _, _| {},
                 )
-                .absolute().top_0().left_0().size_full()
+                .absolute()
+                .top_0()
+                .left_0()
+                .size_full()
             })
             .child(self.render_text_content(&text, placeholder, is_editing, selection, cx))
     }
@@ -2452,15 +2593,15 @@ impl Render for ExplorerPanel {
                                             }
                                         })
                                     })
-                                    .child(icon(ICON_MENU, ICON_MD, theme.colors.text_muted))
+                                    .child(icon(ICON_MENU, ICON_MD, theme.colors.text_muted)),
                             )
                             .child(
                                 div()
                                     .text_size(px(12.0))
                                     .font_weight(gpui::FontWeight::SEMIBOLD)
                                     .text_color(theme.colors.text_primary)
-                                    .child("Explorer")
-                            )
+                                    .child("Explorer"),
+                            ),
                     )
                     // New request button
                     .child(
@@ -2473,45 +2614,157 @@ impl Render for ExplorerPanel {
                             .cursor_pointer()
                             .text_size(px(14.0))
                             .text_color(theme.colors.text_muted)
-                            .hover(|s| s.bg(theme.colors.bg_tertiary).text_color(theme.colors.text_primary))
+                            .hover(|s| {
+                                s.bg(theme.colors.bg_tertiary)
+                                    .text_color(theme.colors.text_primary)
+                            })
                             .on_click(cx.listener(|this, _, _, cx| {
                                 this.create_new_request(cx);
                             }))
-                            .child("+")
-                    )
+                            .child("+"),
+                    ),
             )
-            // Content
+            // Collections section (fixed height, resizable)
             .child(
                 div()
-                    .id("explorer-content")
+                    .w_full()
+                    .h(px(if self.collections_expanded { self.collections_h } else { 48.0 }))
+                    .overflow_hidden()
+                    .child(self.render_collections_section(cx)),
+            )
+            // Drag handle: collections / history
+            .when(self.collections_expanded, |el| {
+                el.child(
+                    div()
+                        .id("drag-handle-coll")
+                        .w_full()
+                        .h(px(4.0))
+                        .cursor_row_resize()
+                        .hover(|s| s.bg(theme.colors.accent.opacity(0.25)))
+                        .on_mouse_down(
+                            MouseButton::Left,
+                            cx.listener(|this, event: &MouseDownEvent, _, _| {
+                                this.drag_coll =
+                                    Some((f32::from(event.position.y), this.collections_h));
+                            }),
+                        ),
+                )
+            })
+            // History section (flex_1, scrollable)
+            .child(
+                div()
+                    .id("explorer-history-area")
                     .flex_1()
                     .overflow_scroll()
-                    // Collections section
-                    .child(self.render_collections_section(cx))
-                    // History section
-                    .child(self.render_history_section(cx))
+                    .child(self.render_history_section(cx)),
             )
+            // Drag handle: history / environment
+            .when(self.env_editor_open, |el| {
+                el.child(
+                    div()
+                        .id("drag-handle-env")
+                        .w_full()
+                        .h(px(4.0))
+                        .cursor_row_resize()
+                        .hover(|s| s.bg(theme.colors.accent.opacity(0.25)))
+                        .on_mouse_down(
+                            MouseButton::Left,
+                            cx.listener(|this, event: &MouseDownEvent, _, _| {
+                                this.drag_env = Some((f32::from(event.position.y), this.env_h));
+                            }),
+                        ),
+                )
+            })
             // Environment section
             .child(self.render_environment_section(cx))
             // Env column resize overlay
             .when(self.env_col_drag.is_some(), |el| {
-                el.child(deferred(
-                    div()
-                        .id("env-col-resize-overlay")
-                        .absolute().top_0().left_0().w_full().h_full()
-                        .cursor_col_resize()
-                        .on_mouse_move(cx.listener(|this, event: &MouseMoveEvent, _, cx| {
-                            if let Some((start_x, start_w)) = this.env_col_drag {
-                                let delta = f32::from(event.position.x) - start_x;
-                                this.env_col_key_w = (start_w + delta).max(40.0).min(300.0);
-                                cx.notify();
-                            }
-                        }))
-                        .on_mouse_up(MouseButton::Left, cx.listener(|this, _, _, cx| {
-                            this.env_col_drag = None;
-                            cx.notify();
-                        }))
-                ).with_priority(1))
+                el.child(
+                    deferred(
+                        div()
+                            .id("env-col-resize-overlay")
+                            .absolute()
+                            .top_0()
+                            .left_0()
+                            .w_full()
+                            .h_full()
+                            .cursor_col_resize()
+                            .on_mouse_move(cx.listener(|this, event: &MouseMoveEvent, _, cx| {
+                                if let Some((start_x, start_w)) = this.env_col_drag {
+                                    let delta = f32::from(event.position.x) - start_x;
+                                    this.env_col_key_w = (start_w + delta).max(40.0).min(300.0);
+                                    cx.notify();
+                                }
+                            }))
+                            .on_mouse_up(
+                                MouseButton::Left,
+                                cx.listener(|this, _, _, cx| {
+                                    this.env_col_drag = None;
+                                    cx.notify();
+                                }),
+                            ),
+                    )
+                    .with_priority(1),
+                )
+            })
+            // Collections drag overlay
+            .when(self.drag_coll.is_some(), |el| {
+                el.child(
+                    deferred(
+                        div()
+                            .id("drag-coll-overlay")
+                            .absolute()
+                            .inset_0()
+                            .cursor_row_resize()
+                            .on_mouse_move(cx.listener(|this, event: &MouseMoveEvent, _, cx| {
+                                if let Some((start_y, start_h)) = this.drag_coll {
+                                    let delta = f32::from(event.position.y) - start_y;
+                                    this.collections_h = (start_h + delta).max(48.0).min(600.0);
+                                    cx.notify();
+                                }
+                            }))
+                            .on_mouse_up(
+                                MouseButton::Left,
+                                cx.listener(|this, _, _, cx| {
+                                    this.drag_coll = None;
+                                    crate::prefs::set_f32(
+                                        "explorer.collections_h",
+                                        this.collections_h,
+                                    );
+                                    cx.notify();
+                                }),
+                            ),
+                    )
+                    .with_priority(2),
+                )
+            })
+            // Env drag overlay
+            .when(self.drag_env.is_some(), |el| {
+                el.child(
+                    deferred(
+                        div()
+                            .id("drag-env-overlay")
+                            .absolute()
+                            .inset_0()
+                            .cursor_row_resize()
+                            .on_mouse_move(cx.listener(|this, event: &MouseMoveEvent, _, cx| {
+                                if let Some((start_y, start_h)) = this.drag_env {
+                                    let delta = f32::from(event.position.y) - start_y;
+                                    this.env_h = (start_h - delta).max(80.0).min(500.0);
+                                    cx.notify();
+                                }
+                            }))
+                            .on_mouse_up(
+                                MouseButton::Left,
+                                cx.listener(|this, _, _, cx| {
+                                    this.drag_env = None;
+                                    crate::prefs::set_f32("explorer.env_h", this.env_h);
+                                    cx.notify();
+                                }),
+                            ),
+                    )
+                    .with_priority(2),
+                )
             })
             // Context menu overlay
             .when_some(self.context_menu.clone(), |el, (path, position)| {
@@ -2520,12 +2773,18 @@ impl Render for ExplorerPanel {
                         .id("context-menu-backdrop")
                         .absolute()
                         .inset_0()
-                        .on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| {
-                            this.close_context_menu(cx);
-                        }))
-                        .on_mouse_down(MouseButton::Right, cx.listener(|this, _, _, cx| {
-                            this.close_context_menu(cx);
-                        }))
+                        .on_mouse_down(
+                            MouseButton::Left,
+                            cx.listener(|this, _, _, cx| {
+                                this.close_context_menu(cx);
+                            }),
+                        )
+                        .on_mouse_down(
+                            MouseButton::Right,
+                            cx.listener(|this, _, _, cx| {
+                                this.close_context_menu(cx);
+                            }),
+                        ),
                 )
                 .child(self.render_context_menu(path, position, cx))
             })
@@ -2555,7 +2814,10 @@ fn request_to_http_content(request: &http_parser::Request) -> Result<String, Str
 
     // Add description annotation if present
     if let Some(desc) = &request.meta.description {
-        content.push_str(&format!("# @description {}\n", desc.lines().next().unwrap_or("")));
+        content.push_str(&format!(
+            "# @description {}\n",
+            desc.lines().next().unwrap_or("")
+        ));
     }
 
     // Add blank line if we have annotations
