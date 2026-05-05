@@ -401,20 +401,25 @@ buttons to the **right** using a `flex_1` spacer, **not** `justify_between`.
 
 ```rust
 div()
-    .w_full().flex().items_center()
+    .w_full().flex().items_center().relative()
     // Left: info content (badges, counts, labels)
     .child(div().flex().items_center().gap(px(8.0))
         .child(badge)
         .child(caption_text)
     )
-    // flex_1 spacer — pushes everything after it to the right
-    .child(div().flex_1())
-    // Right: action button(s)
-    .child(copy_button)
+    // Right: action button — absolute right_0, not flex-based
+    .child(
+        div()
+            .absolute().right_0()
+            .flex().items_center()
+            .bg(bg_primary)   // cover left content if row is narrow
+            .child(copy_button)
+    )
 ```
 
-**Never use `justify_between`** for this pattern — GPUI's flex layout does not
-reliably apply it when the container is inside an `overflow_scroll` region.
+**Never use `justify_between` or `flex_1` spacer** for this — flex child widths
+do not resolve reliably inside `overflow_scroll` regions in GPUI. Absolute
+positioning is the only guaranteed approach.
 
 ### Input Field
 
@@ -513,4 +518,4 @@ Tests header (36px, collapsible)
 | `accent.opacity(0.12)` for badge bg | Full accent background on badges |
 | `text_muted` for placeholder text | `text_secondary` or lower |
 | `border_1()` + `border_color(border)` for default input border | Custom border widths |
-| `div().flex_1()` spacer to right-align toolbar actions | `justify_between` (unreliable inside overflow_scroll) |
+| `absolute().right_0()` to right-align toolbar actions | `justify_between` or `flex_1` spacer (unreliable inside overflow_scroll) |

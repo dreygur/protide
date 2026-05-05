@@ -821,13 +821,15 @@ impl ResponsePanel {
             .flex()
             .flex_col()
             .gap(px(8.0))
-            // Toolbar row
-            .child(
+            // Toolbar row — relative so Copy button can anchor to right_0
+            .child({
+                let is_copied = self.copy_feedback == Some(CopyFeedback::Body);
                 div()
                     .w_full()
                     .flex()
                     .items_center()
-                    // Left: Format badge
+                    .relative()
+                    // Left: Format badge + line count
                     .child(
                         div()
                             .flex()
@@ -850,13 +852,12 @@ impl ResponsePanel {
                                     .child(format!("{} lines", line_count))
                             )
                     )
-                    // Spacer pushes Copy to the right
-                    .child(div().flex_1())
-                    // Right: Copy button
-                    .child({
-                        let is_copied = self.copy_feedback == Some(CopyFeedback::Body);
+                    // Right: Copy button — absolutely pinned to right edge
+                    .child(
                         div()
                             .id("copy-body-btn")
+                            .absolute()
+                            .right_0()
                             .flex()
                             .items_center()
                             .gap(px(4.0))
@@ -867,6 +868,7 @@ impl ResponsePanel {
                             .when(!is_copied, |el| el.text_color(theme.colors.text_secondary).border_color(theme.colors.border))
                             .cursor_pointer()
                             .border_1()
+                            .bg(theme.colors.bg_primary)
                             .hover(|s| s.bg(theme.colors.bg_tertiary).border_color(theme.colors.text_muted))
                             .on_click(cx.listener(move |this, _, _, cx| {
                                 let content = this.body_viewer.read(cx).content().to_string();
@@ -881,8 +883,8 @@ impl ResponsePanel {
                                     .when(!is_copied, |el| el.child(icon(ICON_COPY, ICON_MD, theme.colors.text_secondary)))
                             )
                             .child(if is_copied { "Copied!" } else { "Copy" })
-                    })
-            )
+                    )
+            })
             // Body content using CodeEditor
             .child(
                 div()
@@ -932,11 +934,18 @@ impl ResponsePanel {
             .flex_col()
             .gap(px(8.0))
             // Header toolbar
-            .child(
+            .child({
+                let header_is_copied = self.copy_feedback == Some(CopyFeedback::Headers);
+                let headers_text: String = response.headers
+                    .iter()
+                    .map(|(k, v)| format!("{}: {}", k, v))
+                    .collect::<Vec<_>>()
+                    .join("\n");
                 div()
                     .w_full()
                     .flex()
                     .items_center()
+                    .relative()
                     .child(
                         div()
                             .flex()
@@ -959,28 +968,23 @@ impl ResponsePanel {
                                     .child("response headers")
                             )
                     )
-                    // Spacer pushes Copy to the right
-                    .child(div().flex_1())
-                    // Copy headers button
-                    .child({
-                        let headers_text: String = response.headers
-                            .iter()
-                            .map(|(k, v)| format!("{}: {}", k, v))
-                            .collect::<Vec<_>>()
-                            .join("\n");
-                        let is_copied = self.copy_feedback == Some(CopyFeedback::Headers);
+                    // Copy headers button — absolutely pinned to right
+                    .child(
                         div()
                             .id("copy-headers-btn")
+                            .absolute()
+                            .right_0()
                             .flex()
                             .items_center()
                             .gap(px(4.0))
                             .px(px(10.0))
                             .py(px(5.0))
                             .text_size(px(11.0))
-                            .when(is_copied, |el| el.text_color(theme.colors.status_success).border_color(theme.colors.status_success))
-                            .when(!is_copied, |el| el.text_color(theme.colors.text_secondary).border_color(theme.colors.border))
+                            .when(header_is_copied, |el| el.text_color(theme.colors.status_success).border_color(theme.colors.status_success))
+                            .when(!header_is_copied, |el| el.text_color(theme.colors.text_secondary).border_color(theme.colors.border))
                             .cursor_pointer()
                             .border_1()
+                            .bg(theme.colors.bg_primary)
                             .hover(|s| s.bg(theme.colors.bg_tertiary).border_color(theme.colors.text_muted))
                             .on_click(cx.listener(move |this, _, _, cx| {
                                 cx.write_to_clipboard(gpui::ClipboardItem::new_string(headers_text.clone()));
@@ -990,12 +994,12 @@ impl ResponsePanel {
                                 div()
                                     .flex()
                                     .items_center()
-                                    .when(is_copied, |el| el.child(icon(ICON_CHECK, ICON_SM, theme.colors.status_success)))
-                                    .when(!is_copied, |el| el.child(icon(ICON_COPY, ICON_MD, theme.colors.text_secondary)))
+                                    .when(header_is_copied, |el| el.child(icon(ICON_CHECK, ICON_SM, theme.colors.status_success)))
+                                    .when(!header_is_copied, |el| el.child(icon(ICON_COPY, ICON_MD, theme.colors.text_secondary)))
                             )
-                            .child(if is_copied { "Copied!" } else { "Copy" })
-                    })
-            )
+                            .child(if header_is_copied { "Copied!" } else { "Copy" })
+                    )
+            })
             // Headers table
             .child(
                 div()
