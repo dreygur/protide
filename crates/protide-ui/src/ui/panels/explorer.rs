@@ -14,6 +14,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use protide_core::models::{Environment, EnvironmentState};
+use crate::last_paths;
 use crate::theme;
 use crate::ui::components::render_text_view_with_max;
 use crate::ui::components::icons::{
@@ -263,11 +264,12 @@ impl ExplorerPanel {
 
     /// Open folder dialog and load collection
     pub fn open_folder(&mut self, cx: &mut Context<Self>) {
-        // Use blocking file dialog (runs on main thread)
-        if let Some(folder) = rfd::FileDialog::new()
-            .set_title("Open Collection Folder")
-            .pick_folder()
-        {
+        let mut dialog = rfd::FileDialog::new().set_title("Open Collection Folder");
+        if let Some(dir) = last_paths::last_dir("open_folder") {
+            dialog = dialog.set_directory(dir);
+        }
+        if let Some(folder) = dialog.pick_folder() {
+            last_paths::save_last_dir("open_folder", &folder);
             self.load_collection_from_path(folder, cx);
         }
     }
@@ -278,16 +280,18 @@ impl ExplorerPanel {
         let default_dir = self.workspace_path.clone()
             .or_else(|| dirs::home_dir());
 
+        let start_dir = last_paths::last_dir("save_request").or(default_dir);
         let mut dialog = rfd::FileDialog::new()
             .set_title("Create New Request")
             .set_file_name("new-request.http")
             .add_filter("HTTP Request", &["http"]);
 
-        if let Some(dir) = default_dir {
+        if let Some(dir) = start_dir {
             dialog = dialog.set_directory(dir);
         }
 
         if let Some(path) = dialog.save_file() {
+            last_paths::save_last_dir("save_request", &path);
             // Ensure .http extension
             let path = if path.extension().is_none() || path.extension().unwrap() != "http" {
                 path.with_extension("http")
@@ -341,7 +345,7 @@ impl ExplorerPanel {
 
     /// Import collection from Postman, cURL, or OpenAPI file
     pub fn import_collection(&mut self, cx: &mut Context<Self>) {
-        let dialog = rfd::FileDialog::new()
+        let mut dialog = rfd::FileDialog::new()
             .set_title("Import Collection")
             .add_filter("All Supported", &["json", "yaml", "yml", "bru", "txt", "curl"])
             .add_filter("Postman Collection", &["json"])
@@ -349,7 +353,12 @@ impl ExplorerPanel {
             .add_filter("Bruno Collection", &["bru"])
             .add_filter("cURL Command", &["txt", "curl"]);
 
+        if let Some(dir) = last_paths::last_dir("import_collection") {
+            dialog = dialog.set_directory(dir);
+        }
+
         if let Some(file_path) = dialog.pick_file() {
+            last_paths::save_last_dir("import_collection", &file_path);
             if let Ok(content) = fs::read_to_string(&file_path) {
                 match protide_core::import::import(&content) {
                     Ok(result) => {

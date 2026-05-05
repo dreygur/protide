@@ -30,6 +30,7 @@ use protide_core::chaining;
 use protide_core::codegen::{self, CodegenRequest, Language as CodegenLanguage};
 use protide_core::import;
 use http_parser::VariableExtraction;
+use crate::last_paths;
 
 /// Helper to render text with selection highlighting
 fn render_text_view(
@@ -577,13 +578,16 @@ impl RequestPanel {
     pub(super) fn load_proto_file(&mut self, cx: &mut Context<Self>) {
         use rfd::FileDialog;
 
-        // Open file dialog for proto files
-        let path = FileDialog::new()
+        let mut dialog = FileDialog::new()
             .add_filter("Proto Files", &["proto"])
-            .set_title("Select Proto File")
-            .pick_file();
+            .set_title("Select Proto File");
+        if let Some(dir) = last_paths::last_dir("proto_file") {
+            dialog = dialog.set_directory(dir);
+        }
+        let path = dialog.pick_file();
 
         if let Some(path) = path {
+            last_paths::save_last_dir("proto_file", &path);
             // Read proto file content
             match std::fs::read_to_string(&path) {
                 Ok(content) => {
@@ -1322,7 +1326,12 @@ impl RequestPanel {
     }
 
     fn select_form_file(&mut self, index: usize, cx: &mut Context<Self>) {
-        if let Some(path) = rfd::FileDialog::new().pick_file() {
+        let mut dialog = rfd::FileDialog::new();
+        if let Some(dir) = last_paths::last_dir("form_file") {
+            dialog = dialog.set_directory(dir);
+        }
+        if let Some(path) = dialog.pick_file() {
+            last_paths::save_last_dir("form_file", &path);
             if let Some(field) = self.form_data.get_mut(index) {
                 field.value = path.file_name()
                     .and_then(|n| n.to_str())
@@ -2082,16 +2091,19 @@ impl RequestPanel {
             format!("{}.http", name)
         };
 
+        let start_dir = last_paths::last_dir("save_request")
+            .or_else(dirs::home_dir);
         let mut dialog = rfd::FileDialog::new()
             .set_title("Save Request")
             .set_file_name(&default_name)
             .add_filter("HTTP Request", &["http"]);
 
-        if let Some(home) = dirs::home_dir() {
-            dialog = dialog.set_directory(home);
+        if let Some(dir) = start_dir {
+            dialog = dialog.set_directory(dir);
         }
 
         if let Some(path) = dialog.save_file() {
+            last_paths::save_last_dir("save_request", &path);
             let path = if path.extension().map_or(true, |ext| ext != "http") {
                 path.with_extension("http")
             } else {
@@ -2266,6 +2278,8 @@ impl RequestPanel {
 
     /// Browse for a file to import (Postman collection, Bruno, OpenAPI, etc.)
     pub(super) fn browse_import_file(&mut self, cx: &mut Context<Self>) {
+        let start_dir = last_paths::last_dir("import_collection")
+            .or_else(dirs::home_dir);
         let mut dialog = rfd::FileDialog::new()
             .set_title("Import Collection")
             .add_filter("All Supported", &["json", "yaml", "yml", "bru", "txt", "curl"])
@@ -2275,11 +2289,12 @@ impl RequestPanel {
             .add_filter("cURL Command", &["txt", "curl"])
             .add_filter("All Files", &["*"]);
 
-        if let Some(home) = dirs::home_dir() {
-            dialog = dialog.set_directory(home);
+        if let Some(dir) = start_dir {
+            dialog = dialog.set_directory(dir);
         }
 
         if let Some(path) = dialog.pick_file() {
+            last_paths::save_last_dir("import_collection", &path);
             match std::fs::read_to_string(&path) {
                 Ok(content) => {
                     self.import_text = content;

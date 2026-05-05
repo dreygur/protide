@@ -122,7 +122,10 @@ cargo test            # 146 tests total
 
 ## Coding Rules
 
-- **DRY**: Never write the same line of code twice. Extract shared logic into functions, constants, or type aliases.
+- **Minimum code**: Write the least code that correctly solves the problem. No extra abstraction, no speculative generality, no padding.
+- **DRY**: Never write the same logic twice. Extract shared logic into functions, constants, or type aliases immediately — don't wait for a third occurrence.
+- **Reuse first**: Before writing anything new, look for an existing function, constant, or component that already does it. Prefer extending what exists over adding new things.
+- **No dead code**: Remove unused functions, fields, imports, and variables. Don't leave things "just in case."
 
 ## Remaining Phases
 
