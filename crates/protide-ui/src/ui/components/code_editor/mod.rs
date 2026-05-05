@@ -515,6 +515,7 @@ impl Render for CodeEditor {
             .flex()
             .flex_col()
             .overflow_hidden()
+            .cursor_text()
             .bg(theme.colors.bg_secondary)
             .border_1()
             .border_color(if is_focused { theme.colors.accent } else { gpui::transparent_white() })

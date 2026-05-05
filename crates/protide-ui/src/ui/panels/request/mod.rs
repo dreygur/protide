@@ -81,6 +81,8 @@ pub struct RequestPanel {
     pub(super) url_focus: FocusHandle,
     pub(super) is_selecting: bool,
     pub(super) url_input_left: f32,
+    pub(super) url_input_width: f32,
+    pub(super) url_scroll_offset: f32,
     _edit_blur_sub: Option<Subscription>,
     pub(super) response_panel: Entity<ResponsePanel>,
     pub(super) loading: bool,
@@ -129,7 +131,7 @@ pub struct RequestPanel {
     /// Read-only editor for generated code display
     pub codegen_editor: Entity<CodeEditor>,
     /// Import modal open state
-    pub(super) import_modal_open: bool,
+    pub import_modal_open: bool,
     /// Import text input content
     pub(super) import_text: String,
     /// Import error message
@@ -192,6 +194,8 @@ pub struct RequestPanel {
     pub(super) drag_script_post: Option<(f32, f32)>,
     /// Current file path (set when a .http file is loaded; enables save-in-place)
     pub(super) current_file: Option<std::path::PathBuf>,
+    /// Shows "Saved!" briefly after in-place save
+    pub(super) save_feedback: bool,
     /// Draft text for custom HTTP method input
     pub(super) custom_method_input: String,
     pub(super) custom_method_focus: FocusHandle,
@@ -273,6 +277,8 @@ impl RequestPanel {
             url_focus: cx.focus_handle(),
             is_selecting: false,
             url_input_left: 0.0,
+            url_input_width: 400.0,
+            url_scroll_offset: 0.0,
             _edit_blur_sub: None,
             response_panel,
             loading: false,
@@ -283,8 +289,13 @@ impl RequestPanel {
                     enabled: true,
                 },
                 KeyValuePair::default(),
+                KeyValuePair::default(),
             ],
-            params: vec![KeyValuePair::default()],
+            params: vec![
+                KeyValuePair::default(),
+                KeyValuePair::default(),
+                KeyValuePair::default(),
+            ],
             form_data: vec![FormField::default()],
             body: initial_body.to_string(),
             body_type: BodyType::Json,
@@ -353,6 +364,7 @@ impl RequestPanel {
             drag_script_pre: None,
             drag_script_post: None,
             current_file: None,
+            save_feedback: false,
             custom_method_input: String::new(),
             custom_method_focus: cx.focus_handle(),
         }
@@ -1481,15 +1493,18 @@ impl RequestPanel {
                 });
             }
 
-            // Always keep at least one empty param row
             if new_params.is_empty() {
                 new_params.push(KeyValuePair::default());
             }
 
             self.params = new_params;
         } else {
-            // No query string - reset to single empty param
             self.params = vec![KeyValuePair::default()];
+        }
+
+        // Always show at least 3 rows
+        while self.params.len() < 3 {
+            self.params.push(KeyValuePair::default());
         }
 
         self.syncing_params = false;
@@ -1746,15 +1761,47 @@ impl RequestPanel {
             self.edit_delete_selection_no_save(cx);
             let char_pos = self.edit_selection.start;
             if let Some(text) = self.get_edit_text_mut(target) {
-                // Convert character index to byte offset for string operation
                 let byte_pos = char_to_byte_offset(text, char_pos);
                 text.insert_str(byte_pos, insert);
-                // New position is after the inserted text (in character indices)
                 let new_char_pos = char_pos + insert.chars().count();
                 self.edit_selection = new_char_pos..new_char_pos;
-                // Sync URL <-> params
                 self.sync_after_edit(target, cx);
                 cx.notify();
+            }
+            // Auto-enable and auto-grow KV rows after text insertion
+            match target {
+                EditTarget::ParamKey(i) | EditTarget::ParamValue(i) => {
+                    let (key_empty, val_empty) = self.params.get(i)
+                        .map_or((true, true), |p| (p.key.is_empty(), p.value.is_empty()));
+                    if let Some(param) = self.params.get_mut(i) {
+                        if !param.enabled && (!key_empty || !val_empty) {
+                            param.enabled = true;
+                            self.sync_url_from_params(cx);
+                        }
+                    }
+                    if i + 1 == self.params.len()
+                        && self.params.last().map_or(false, |p| !p.key.is_empty() || !p.value.is_empty())
+                    {
+                        self.params.push(KeyValuePair::default());
+                        cx.notify();
+                    }
+                }
+                EditTarget::HeaderKey(i) | EditTarget::HeaderValue(i) => {
+                    let (key_empty, val_empty) = self.headers.get(i)
+                        .map_or((true, true), |h| (h.key.is_empty(), h.value.is_empty()));
+                    if let Some(header) = self.headers.get_mut(i) {
+                        if !header.enabled && (!key_empty || !val_empty) {
+                            header.enabled = true;
+                        }
+                    }
+                    if i + 1 == self.headers.len()
+                        && self.headers.last().map_or(false, |h| !h.key.is_empty() || !h.value.is_empty())
+                    {
+                        self.headers.push(KeyValuePair::default());
+                        cx.notify();
+                    }
+                }
+                _ => {}
             }
         }
     }
@@ -2149,8 +2196,18 @@ impl RequestPanel {
 
         // Save in-place if a file is already loaded
         if let Some(ref path) = self.current_file.clone() {
-            if let Err(e) = std::fs::write(path, content) {
+            if let Err(e) = std::fs::write(path, &content) {
                 eprintln!("Failed to save request: {}", e);
+            } else {
+                self.save_feedback = true;
+                cx.notify();
+                cx.spawn(async move |this, cx| {
+                    cx.background_executor().timer(std::time::Duration::from_millis(1500)).await;
+                    this.update(cx, |this, cx| {
+                        this.save_feedback = false;
+                        cx.notify();
+                    }).ok();
+                }).detach();
             }
             return;
         }
@@ -2332,7 +2389,7 @@ impl RequestPanel {
     }
 
     /// Open import modal
-    pub(super) fn open_import_modal(&mut self, cx: &mut Context<Self>) {
+    pub fn open_import_modal(&mut self, cx: &mut Context<Self>) {
         self.import_modal_open = true;
         self.import_text.clear();
         self.import_error = None;
@@ -2341,7 +2398,7 @@ impl RequestPanel {
     }
 
     /// Close import modal
-    pub(super) fn close_import_modal(&mut self, cx: &mut Context<Self>) {
+    pub fn close_import_modal(&mut self, cx: &mut Context<Self>) {
         self.import_modal_open = false;
         self.import_text.clear();
         self.import_error = None;
@@ -3211,6 +3268,23 @@ impl RequestPanel {
                 }
             }
         }
+        self.update_url_scroll();
+    }
+
+    pub(super) fn update_url_scroll(&mut self) {
+        let char_width = 13.0 * 0.6; // font_size 13 * 0.6 monospace ratio
+        let padding = 14.0 * 2.0;    // px(14) each side
+        let visible_width = (self.url_input_width - padding).max(60.0);
+        let cursor_px = self.url_selection.end as f32 * char_width;
+
+        if cursor_px < self.url_scroll_offset {
+            self.url_scroll_offset = cursor_px;
+        } else if cursor_px > self.url_scroll_offset + visible_width - char_width {
+            self.url_scroll_offset = cursor_px - visible_width + char_width;
+        }
+        if self.url_scroll_offset < 0.0 {
+            self.url_scroll_offset = 0.0;
+        }
     }
 }
 
@@ -3227,6 +3301,12 @@ impl Render for RequestPanel {
             .relative()
             .track_focus(&self.body_focus)
             .capture_key_down(cx.listener(|this, event: &KeyDownEvent, _, cx| {
+                // Ctrl+S = Save
+                if event.keystroke.modifiers.control && event.keystroke.key == "s" {
+                    this.save_request(cx);
+                    return;
+                }
+
                 // Close dropdowns on Escape key
                 if event.keystroke.key == "escape" {
                     if this.mode_dropdown_open {
@@ -3283,9 +3363,6 @@ impl Render for RequestPanel {
             .when(self.mode_dropdown_open, |el| {
                 el.child(deferred(self.render_mode_dropdown_overlay(cx)).with_priority(1))
             })
-            .when(self.import_modal_open, |el| {
-                el.child(deferred(self.render_import_modal(cx)).with_priority(1))
-            })
             // KV column resize overlay
             .when(self.kv_col_drag.is_some(), |el| {
                 el.child(deferred(
@@ -3307,6 +3384,7 @@ impl Render for RequestPanel {
                 ).with_priority(1))
             })
     }
+
 }
 
 

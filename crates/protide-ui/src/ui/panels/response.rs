@@ -11,7 +11,10 @@ use protide_core::chaining;
 use protide_core::scripting::results::TestResult;
 use crate::theme;
 use crate::ui::components::code_editor::{CodeEditor, Language};
-use crate::ui::components::icons::{icon, ICON_SM, ICON_MD, ICON_CLOSE, ICON_CHECK, ICON_CIRCLE_CHECK, ICON_ARROW_DOWN, ICON_COPY, ICON_GLOBE, ICON_TIMER};
+use crate::ui::components::icons::{
+    icon, ICON_SM, ICON_MD, ICON_CLOSE, ICON_CHECK, ICON_CIRCLE_CHECK,
+    ICON_ARROW_DOWN, ICON_COPY, ICON_GLOBE, ICON_CHEVRON_DOWN, ICON_CHEVRON_RIGHT,
+};
 use crate::ui::components::TextInput;
 
 /// Response data from an HTTP request
@@ -114,6 +117,10 @@ pub struct ResponsePanel {
     copy_feedback: Option<CopyFeedback>,
     /// CodeEditor for viewing response body
     body_viewer: Entity<CodeEditor>,
+    /// Parsed JSON value for tree rendering (Some when body is valid JSON)
+    json_value: Option<serde_json::Value>,
+    /// Set of collapsed JSON paths (using "/" as separator, root = "")
+    json_tree_collapsed: std::collections::HashSet<String>,
     /// Test results from script execution
     test_results: Vec<TestResult>,
     /// JSONPath expression input for extraction
@@ -154,6 +161,8 @@ impl ResponsePanel {
             error: None,
             copy_feedback: None,
             body_viewer,
+            json_value: None,
+            json_tree_collapsed: std::collections::HashSet::new(),
             test_results: Vec::new(),
             jsonpath_input,
             extraction_result: None,
@@ -226,6 +235,10 @@ impl ResponsePanel {
             editor.set_language(language, cx);
         });
 
+        // Store parsed JSON for tree rendering
+        self.json_value = serde_json::from_str::<serde_json::Value>(&response.body).ok();
+        self.json_tree_collapsed.clear();
+
         self.response = Some(response);
         self.loading = false;
         self.error = None;
@@ -249,6 +262,193 @@ impl ResponsePanel {
             }
         } else {
             (body.to_string(), Language::Plain)
+        }
+    }
+
+    fn toggle_json_collapse(&mut self, path: String, cx: &mut Context<Self>) {
+        if self.json_tree_collapsed.contains(&path) {
+            self.json_tree_collapsed.remove(&path);
+        } else {
+            self.json_tree_collapsed.insert(path);
+        }
+        cx.notify();
+    }
+
+    fn render_json_node(
+        &self,
+        value: &serde_json::Value,
+        path: String,
+        depth: usize,
+        cx: &Context<Self>,
+    ) -> gpui::AnyElement {
+        let theme = theme::current(cx);
+        let indent = (depth * 16) as f32;
+        let is_collapsed = self.json_tree_collapsed.contains(&path);
+
+        match value {
+            serde_json::Value::Null => div()
+                .pl(px(indent))
+                .text_color(theme.colors.text_muted)
+                .child("null")
+                .into_any_element(),
+
+            serde_json::Value::Bool(b) => div()
+                .pl(px(indent))
+                .text_color(theme.colors.method_delete)
+                .child(if *b { "true" } else { "false" })
+                .into_any_element(),
+
+            serde_json::Value::Number(n) => div()
+                .pl(px(indent))
+                .text_color(theme.colors.method_put)
+                .child(n.to_string())
+                .into_any_element(),
+
+            serde_json::Value::String(s) => div()
+                .pl(px(indent))
+                .text_color(theme.colors.status_success)
+                .child(format!("\"{}\"", s.replace('\"', "\\\"")))
+                .into_any_element(),
+
+            serde_json::Value::Array(arr) => {
+                let count = arr.len();
+                if count == 0 {
+                    return div()
+                        .pl(px(indent))
+                        .text_color(theme.colors.text_muted)
+                        .child("[]")
+                        .into_any_element();
+                }
+                let path_clone = path.clone();
+                if is_collapsed {
+                    return div()
+                        .id(SharedString::from(format!("json-arr-{}", path)))
+                        .pl(px(indent))
+                        .flex()
+                        .items_center()
+                        .gap(px(4.0))
+                        .cursor_pointer()
+                        .hover(|s| s.bg(theme.colors.bg_tertiary))
+                        .on_click(cx.listener(move |this, _, _, cx| {
+                            this.toggle_json_collapse(path_clone.clone(), cx);
+                        }))
+                        .child(icon(ICON_CHEVRON_RIGHT, ICON_SM, theme.colors.text_muted))
+                        .child(div().text_color(theme.colors.text_secondary)
+                            .child(format!("[ {} items ]", count)))
+                        .into_any_element();
+                }
+                let mut container = div().flex().flex_col();
+                let path_clone2 = path.clone();
+                container = container.child(
+                    div()
+                        .id(SharedString::from(format!("json-arr-{}", path)))
+                        .pl(px(indent))
+                        .flex()
+                        .items_center()
+                        .gap(px(4.0))
+                        .cursor_pointer()
+                        .hover(|s| s.bg(theme.colors.bg_tertiary))
+                        .on_click(cx.listener(move |this, _, _, cx| {
+                            this.toggle_json_collapse(path_clone2.clone(), cx);
+                        }))
+                        .child(icon(ICON_CHEVRON_DOWN, ICON_SM, theme.colors.text_muted))
+                        .child(div().text_color(theme.colors.text_muted).child("["))
+                );
+                for (i, item) in arr.iter().enumerate() {
+                    container = container.child(
+                        self.render_json_node(item, format!("{}/{}", path, i), depth + 1, cx)
+                    );
+                }
+                container = container.child(
+                    div()
+                        .pl(px(indent))
+                        .flex()
+                        .items_center()
+                        .gap(px(4.0))
+                        .text_color(theme.colors.text_muted)
+                        .child(format!("]  ({} items)", count))
+                );
+                container.into_any_element()
+            }
+
+            serde_json::Value::Object(obj) => {
+                let count = obj.len();
+                if count == 0 {
+                    return div()
+                        .pl(px(indent))
+                        .text_color(theme.colors.text_muted)
+                        .child("{}")
+                        .into_any_element();
+                }
+                let path_clone = path.clone();
+                if is_collapsed {
+                    return div()
+                        .id(SharedString::from(format!("json-obj-{}", path)))
+                        .pl(px(indent))
+                        .flex()
+                        .items_center()
+                        .gap(px(4.0))
+                        .cursor_pointer()
+                        .hover(|s| s.bg(theme.colors.bg_tertiary))
+                        .on_click(cx.listener(move |this, _, _, cx| {
+                            this.toggle_json_collapse(path_clone.clone(), cx);
+                        }))
+                        .child(icon(ICON_CHEVRON_RIGHT, ICON_SM, theme.colors.text_muted))
+                        .child(div().text_color(theme.colors.text_secondary)
+                            .child(format!("{{ {} keys }}", count)))
+                        .into_any_element();
+                }
+                let mut container = div().flex().flex_col();
+                let path_clone2 = path.clone();
+                container = container.child(
+                    div()
+                        .id(SharedString::from(format!("json-obj-{}", path)))
+                        .pl(px(indent))
+                        .flex()
+                        .items_center()
+                        .gap(px(4.0))
+                        .cursor_pointer()
+                        .hover(|s| s.bg(theme.colors.bg_tertiary))
+                        .on_click(cx.listener(move |this, _, _, cx| {
+                            this.toggle_json_collapse(path_clone2.clone(), cx);
+                        }))
+                        .child(icon(ICON_CHEVRON_DOWN, ICON_SM, theme.colors.text_muted))
+                        .child(div().text_color(theme.colors.text_muted).child("{"))
+                );
+                for (key, val) in obj {
+                    let child_path = format!("{}/{}", path, key);
+                    if val.is_object() || val.is_array() {
+                        container = container.child(
+                            div()
+                                .pl(px(indent + 16.0))
+                                .flex()
+                                .gap(px(4.0))
+                                .child(div().text_color(theme.colors.accent)
+                                    .child(format!("\"{}\":", key)))
+                        );
+                        container = container.child(
+                            self.render_json_node(val, child_path, depth + 2, cx)
+                        );
+                    } else {
+                        container = container.child(
+                            div()
+                                .pl(px(indent + 16.0))
+                                .flex()
+                                .gap(px(4.0))
+                                .child(div().text_color(theme.colors.accent)
+                                    .child(format!("\"{}\":", key)))
+                                .child(self.render_json_node(val, child_path, depth + 2, cx))
+                        );
+                    }
+                }
+                container = container.child(
+                    div()
+                        .pl(px(indent))
+                        .text_color(theme.colors.text_muted)
+                        .child("}")
+                );
+                container.into_any_element()
+            }
         }
     }
 
@@ -407,6 +607,11 @@ impl ResponsePanel {
                 )
         } else if let Some(response) = &self.response {
             let status_color = theme.status_color(response.status);
+            let time_color = if response.status == 0 {
+                theme.colors.text_muted
+            } else {
+                theme.status_color(response.status)
+            };
             let description = status_description(response.status);
 
             div()
@@ -443,18 +648,17 @@ impl ResponsePanel {
                             )
                         })
                 )
-                // Time with icon
+                // Time
                 .child(
                     div()
                         .flex()
                         .items_center()
                         .gap(px(4.0))
                         .text_size(px(11.0))
-                        .text_color(theme.colors.text_muted)
-                        .child(icon(ICON_TIMER, ICON_SM, theme.colors.text_muted))
+                        .text_color(time_color)
                         .child(format!("{}ms", response.time.as_millis()))
                 )
-                // Size with icon
+                // Size
                 .child(
                     div()
                         .flex()
@@ -462,7 +666,6 @@ impl ResponsePanel {
                         .gap(px(4.0))
                         .text_size(px(11.0))
                         .text_color(theme.colors.text_muted)
-                        .child(icon(ICON_CIRCLE_CHECK, ICON_SM, theme.colors.text_muted))
                         .child(format_size(response.size))
                 )
         } else {
@@ -478,12 +681,14 @@ impl ResponsePanel {
         let passed_count = self.test_results.iter().filter(|t| t.passed).count();
 
         div()
+            .id("response-tabs")
             .h(px(40.0))
             .w_full()
             .flex()
             .items_center()
             .px(px(16.0))
             .gap(px(0.0))
+            .overflow_scroll()
             .border_b_1()
             .border_color(theme.colors.border)
             .bg(theme.colors.bg_primary)
@@ -894,13 +1099,26 @@ impl ResponsePanel {
                             .child(if is_copied { "Copied!" } else { "Copy" })
                     )
             })
-            // Body content using CodeEditor
+            // Body content: JSON tree if parseable, else CodeEditor
             .child(
-                div()
-                    .flex_1()
-                    .w_full()
-                    .overflow_hidden()
-                    .child(self.body_viewer.clone())
+                if let Some(json_val) = &self.json_value {
+                    div()
+                        .flex_1()
+                        .w_full()
+                        .id("json-tree-scroll")
+                        .overflow_scroll()
+                        .p(px(12.0))
+                        .text_size(px(12.0))
+                        .child(self.render_json_node(json_val, String::new(), 0, cx))
+                        .into_any_element()
+                } else {
+                    div()
+                        .flex_1()
+                        .w_full()
+                        .overflow_hidden()
+                        .child(self.body_viewer.clone())
+                        .into_any_element()
+                }
             )
             .into_any_element()
     }

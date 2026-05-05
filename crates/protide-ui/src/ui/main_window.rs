@@ -184,6 +184,11 @@ impl Render for MainWindow {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = theme::current(cx);
         let show_codegen = self.request_panel.read(cx).codegen_content.is_some();
+        let import_modal: Option<gpui::AnyElement> = if self.request_panel.read(cx).import_modal_open {
+            Some(self.request_panel.update(cx, |p, cx| p.render_import_modal(cx)))
+        } else {
+            None
+        };
         let is_dragging = self.drag_sidebar.is_some()
             || self.drag_response.is_some()
             || self.drag_mock_server.is_some()
@@ -642,6 +647,7 @@ impl Render for MainWindow {
                 )
                 .child(gpui::deferred(self.render_menu_dropdown(cx)).with_priority(10))
             )
+            .when_some(import_modal, |el, modal| el.child(modal))
             .when(self.show_help, |el| el.child(self.render_help_overlay(cx)))
             .when(self.show_about, |el| {
                 el.child(self.render_about_overlay(cx))

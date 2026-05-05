@@ -18,10 +18,10 @@ use crate::last_paths;
 use crate::theme;
 use crate::ui::components::icons::{
     ICON_ARROW_DOWN, ICON_CHEVRON_DOWN, ICON_CHEVRON_RIGHT, ICON_CHEVRON_UP, ICON_CLOSE,
-    ICON_DELETE, ICON_EDIT, ICON_FILE, ICON_FOLDER, ICON_FOLDER_OPEN, ICON_INFO, ICON_MD,
-    ICON_MENU, ICON_PLUS, ICON_REFRESH, ICON_SETTINGS, ICON_SM, ICON_TIMER, icon,
+    ICON_DELETE, ICON_EDIT, ICON_EXTERNAL, ICON_FILE, ICON_FOLDER, ICON_FOLDER_OPEN, ICON_INFO,
+    ICON_MD, ICON_MENU, ICON_PLUS, ICON_REFRESH, ICON_SETTINGS, ICON_SM, ICON_TIMER, icon,
 };
-use crate::ui::components::render_text_view_with_max;
+use crate::ui::components::{icon_btn, render_text_view_with_max_scrolled};
 use protide_core::models::{Environment, EnvironmentState};
 
 /// Represents an item in the collection tree (either a folder or a .http file)
@@ -87,6 +87,10 @@ pub struct ExplorerPanel {
     edit_is_selecting: bool,
     /// Per-target text-start x (window coords) captured by canvas overlays
     edit_input_origins: std::collections::HashMap<EnvEditTarget, f32>,
+    /// Per-target horizontal scroll offset (pixels) for focused text inputs
+    edit_scroll_offsets: std::collections::HashMap<EnvEditTarget, f32>,
+    /// Per-target input container width (pixels) for scroll computation
+    edit_input_widths: std::collections::HashMap<EnvEditTarget, f32>,
     /// Subscription that clears active_edit when edit_focus loses focus
     _edit_blur_sub: Option<Subscription>,
     /// Currently selected collection item path
@@ -136,6 +140,8 @@ impl ExplorerPanel {
             edit_redo_stack: Vec::new(),
             edit_is_selecting: false,
             edit_input_origins: std::collections::HashMap::new(),
+            edit_scroll_offsets: std::collections::HashMap::new(),
+            edit_input_widths: std::collections::HashMap::new(),
             _edit_blur_sub: None,
             selected_item: None,
             context_menu: None,
@@ -1128,6 +1134,7 @@ impl ExplorerPanel {
                     text.replace_range(start..end, "");
                     self.edit_selection = start..start;
                     self.set_edit_text(target, text);
+                    self.update_env_scroll(target);
                     cx.notify();
                 } else if self.edit_selection.end > 0 {
                     self.save_edit_state();
@@ -1135,6 +1142,7 @@ impl ExplorerPanel {
                     text.remove(pos);
                     self.edit_selection = pos..pos;
                     self.set_edit_text(target, text);
+                    self.update_env_scroll(target);
                     cx.notify();
                 }
             }
@@ -1144,6 +1152,7 @@ impl ExplorerPanel {
                     if !event.keystroke.modifiers.shift {
                         self.edit_selection.start = self.edit_selection.end;
                     }
+                    self.update_env_scroll(target);
                     cx.notify();
                 }
             }
@@ -1154,6 +1163,7 @@ impl ExplorerPanel {
                     if !event.keystroke.modifiers.shift {
                         self.edit_selection.start = self.edit_selection.end;
                     }
+                    self.update_env_scroll(target);
                     cx.notify();
                 }
             }
@@ -1182,7 +1192,27 @@ impl ExplorerPanel {
         let new_pos = pos + text.len();
         self.edit_selection = new_pos..new_pos;
         self.set_edit_text(target, current);
+        self.update_env_scroll(target);
         cx.notify();
+    }
+
+    fn update_env_scroll(&mut self, target: EnvEditTarget) {
+        let char_width = 11.0 * 0.6; // font_size 11 * 0.6 monospace ratio
+        let padding = 6.0 * 2.0;     // px(6) each side
+        let container_width = self.edit_input_widths.get(&target).copied().unwrap_or(200.0);
+        let visible_width = (container_width - padding).max(40.0);
+        let cursor_pos = self.edit_selection.end;
+        let cursor_px = cursor_pos as f32 * char_width;
+        let current_offset = self.edit_scroll_offsets.entry(target).or_insert(0.0);
+
+        if cursor_px < *current_offset {
+            *current_offset = cursor_px;
+        } else if cursor_px > *current_offset + visible_width - char_width {
+            *current_offset = cursor_px - visible_width + char_width;
+        }
+        if *current_offset < 0.0 {
+            *current_offset = 0.0;
+        }
     }
 
     /// Flatten collection items into a list with depth information for rendering
@@ -1266,81 +1296,29 @@ impl ExplorerPanel {
                             .items_center()
                             .gap(px(2.0))
                             .child(
-                                div()
-                                    .id("refresh-collections-btn")
-                                    .size(px(22.0))
-                                    .flex()
-                                    .items_center()
-                                    .justify_center()
-                                    .cursor_pointer()
-                                    .text_color(theme.colors.text_muted)
-                                    .hover(|s| {
-                                        s.bg(theme.colors.bg_tertiary)
-                                            .text_color(theme.colors.text_primary)
-                                    })
+                                icon_btn("refresh-collections-btn", ICON_REFRESH, cx)
                                     .on_click(cx.listener(|this, _, _, cx| {
                                         this.refresh_collections(cx);
-                                    }))
-                                    .child(icon(ICON_REFRESH, ICON_MD, theme.colors.text_muted)),
+                                    })),
                             )
                             .child(
-                                div()
-                                    .id("open-folder-btn")
-                                    .size(px(22.0))
-                                    .flex()
-                                    .items_center()
-                                    .justify_center()
-                                    .cursor_pointer()
-                                    .text_color(theme.colors.text_muted)
-                                    .hover(|s| {
-                                        s.bg(theme.colors.bg_tertiary)
-                                            .text_color(theme.colors.text_primary)
-                                    })
+                                icon_btn("open-folder-btn", ICON_FOLDER_OPEN, cx)
                                     .on_click(cx.listener(|this, _, _, cx| {
                                         this.open_folder(cx);
-                                    }))
-                                    .child(icon(
-                                        ICON_FOLDER_OPEN,
-                                        ICON_MD,
-                                        theme.colors.text_muted,
-                                    )),
+                                    })),
                             )
                             .child(
-                                div()
-                                    .id("import-collection-btn")
-                                    .size(px(22.0))
-                                    .flex()
-                                    .items_center()
-                                    .justify_center()
-                                    .cursor_pointer()
-                                    .text_color(theme.colors.text_muted)
-                                    .hover(|s| {
-                                        s.bg(theme.colors.bg_tertiary)
-                                            .text_color(theme.colors.text_primary)
-                                    })
+                                icon_btn("import-collection-btn", ICON_ARROW_DOWN, cx)
                                     .on_click(cx.listener(|this, _, _, cx| {
                                         this.import_collection(cx);
-                                    }))
-                                    .child(icon(ICON_ARROW_DOWN, ICON_MD, theme.colors.text_muted)),
+                                    })),
                             )
                             .when(self.workspace_path.is_some(), |el| {
                                 el.child(
-                                    div()
-                                        .id("export-docs-btn")
-                                        .size(px(22.0))
-                                        .flex()
-                                        .items_center()
-                                        .justify_center()
-                                        .cursor_pointer()
-                                        .text_color(theme.colors.text_muted)
-                                        .hover(|s| {
-                                            s.bg(theme.colors.bg_tertiary)
-                                                .text_color(theme.colors.text_primary)
-                                        })
+                                    icon_btn("export-docs-btn", ICON_EXTERNAL, cx)
                                         .on_click(cx.listener(|this, _, _, cx| {
                                             this.export_docs(cx);
-                                        }))
-                                        .child(icon(ICON_FILE, ICON_MD, theme.colors.text_muted)),
+                                        })),
                                 )
                                 .child(
                                     div()
@@ -2496,6 +2474,8 @@ impl ExplorerPanel {
                             // canvas at padding edge; padding(6) to text content
                             this.edit_input_origins
                                 .insert(target, f32::from(bounds.origin.x) + 6.0);
+                            this.edit_input_widths
+                                .insert(target, f32::from(bounds.size.width));
                         });
                     },
                     |_, _, _, _| {},
@@ -2508,7 +2488,8 @@ impl ExplorerPanel {
             .child({
                 // char_width = 11px * 0.6 = 6.6, padding = 2 * 6px = 12px
                 let max_chars = (((width - 12.0) / 6.6).max(1.0)) as usize;
-                render_text_view_with_max(
+                let scroll = if is_editing { self.edit_scroll_offsets.get(&target).copied().unwrap_or(0.0) } else { 0.0 };
+                render_text_view_with_max_scrolled(
                     &text,
                     &selection,
                     is_editing,
@@ -2518,6 +2499,7 @@ impl ExplorerPanel {
                     theme.colors.text_muted,
                     Some(max_chars),
                     theme.colors.accent.opacity(0.25),
+                    scroll,
                 )
             })
     }
@@ -2575,6 +2557,8 @@ impl ExplorerPanel {
                             // canvas at padding edge; padding(6) to text content
                             this.edit_input_origins
                                 .insert(target, f32::from(bounds.origin.x) + 6.0);
+                            this.edit_input_widths
+                                .insert(target, f32::from(bounds.size.width));
                         });
                     },
                     |_, _, _, _| {},
@@ -2584,19 +2568,23 @@ impl ExplorerPanel {
                 .left_0()
                 .size_full()
             })
-            .child(self.render_text_content(&text, placeholder, is_editing, selection, cx))
+            .child({
+                let scroll = if is_editing { self.edit_scroll_offsets.get(&target).copied().unwrap_or(0.0) } else { 0.0 };
+                self.render_text_content_scrolled(&text, placeholder, is_editing, selection, scroll, cx)
+            })
     }
 
-    fn render_text_content(
+    fn render_text_content_scrolled(
         &self,
         text: &str,
         placeholder: &'static str,
         is_focused: bool,
         selection: Range<usize>,
+        scroll_offset_x: f32,
         cx: &Context<Self>,
     ) -> gpui::AnyElement {
         let theme = theme::current(cx);
-        render_text_view_with_max(
+        render_text_view_with_max_scrolled(
             text,
             &selection,
             is_focused,
@@ -2606,6 +2594,7 @@ impl ExplorerPanel {
             theme.colors.text_muted,
             None,
             theme.colors.accent.opacity(0.25),
+            scroll_offset_x,
         )
     }
 }

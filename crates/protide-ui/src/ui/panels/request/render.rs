@@ -10,7 +10,7 @@ use gpui::{
 
 use crate::theme;
 use protide_core::codegen::Language as CodegenLanguage;
-use crate::ui::components::render_text_view_with_max;
+use crate::ui::components::{render_text_view_with_max, render_text_view_with_max_scrolled, toolbar_btn};
 use crate::ui::components::icons::{
     icon, ICON_SM, ICON_MD,
     ICON_CLOSE, ICON_CHECK, ICON_CHEVRON_DOWN, ICON_CHEVRON_UP,
@@ -20,7 +20,7 @@ use crate::ui::components::icons::{
     ICON_FORM, ICON_PLAY, ICON_CIRCLE_X, ICON_CODE,
 };
 use super::super::request_types::{ApiKeyLocation, AuthType, BodyType, EditTarget, FormFieldType, GrpcMethodInfo, GrpcStreamingType, HttpMethod, RequestMode, WsConnectionState, WsMessageDirection};
-use super::{render_text_view, RequestPanel};
+use super::RequestPanel;
 
 impl RequestPanel {
     pub(super) fn render_url_bar(&mut self, window: &Window, cx: &mut Context<Self>) -> impl IntoElement {
@@ -180,6 +180,7 @@ impl RequestPanel {
                                 let _ = entity.update(cx, |this, _| {
                                     // canvas at padding edge; padding(14) to text content
                                     this.url_input_left = f32::from(bounds.origin.x) + 14.0;
+                                    this.url_input_width = f32::from(bounds.size.width);
                                 });
                             },
                             |_, _, _, _| {},
@@ -230,42 +231,24 @@ impl RequestPanel {
                             .child(send_label)
                     })
                     // Save button
-                    .child(
-                        div()
-                            .id("save-button")
-                            .h(px(32.0))
-                            .px(px(10.0))
-                            .flex()
-                            .items_center()
-                            .justify_center()
-                            .gap(px(4.0))
-                            .text_size(px(11.0))
-                            .text_color(theme.colors.text_secondary)
-                            .cursor_pointer()
-                            .border_1()
-                            .border_color(theme.colors.border)
-                            .hover(|s| s.bg(theme.colors.bg_tertiary).border_color(theme.colors.text_muted))
+                    .child({
+                        let is_saved = self.save_feedback;
+                        toolbar_btn("save-button", cx)
+                            .when(is_saved, |el| el
+                                .text_color(theme.colors.status_success)
+                                .border_color(theme.colors.status_success.opacity(0.4))
+                            )
+                            .when(!is_saved, |el| el
+                                .hover(|s| s.bg(theme.colors.bg_tertiary).border_color(theme.colors.text_muted))
+                            )
                             .on_click(cx.listener(|this, _, _, cx| {
                                 this.save_request(cx);
                             }))
-                            .child("Save")
-                    )
+                            .child(if is_saved { "Saved!" } else { "Save" })
+                    })
                     // Code generation button
                     .child(
-                        div()
-                            .id("code-button")
-                            .h(px(32.0))
-                            .px(px(10.0))
-                            .flex()
-                            .items_center()
-                            .justify_center()
-                            .gap(px(4.0))
-                            .text_size(px(11.0))
-                            .text_color(theme.colors.text_secondary)
-                            .cursor_pointer()
-                            .border_1()
-                            .border_color(theme.colors.border)
-                            .hover(|s| s.bg(theme.colors.bg_tertiary).border_color(theme.colors.text_muted))
+                        toolbar_btn("code-button", cx)
                             .on_click(cx.listener(|this, _, _, cx| {
                                 this.generate_code(this.codegen_language, cx);
                             }))
@@ -274,20 +257,7 @@ impl RequestPanel {
                     )
                     // Import button
                     .child(
-                        div()
-                            .id("import-button")
-                            .h(px(32.0))
-                            .px(px(10.0))
-                            .flex()
-                            .items_center()
-                            .justify_center()
-                            .gap(px(4.0))
-                            .text_size(px(11.0))
-                            .text_color(theme.colors.text_secondary)
-                            .cursor_pointer()
-                            .border_1()
-                            .border_color(theme.colors.border)
-                            .hover(|s| s.bg(theme.colors.bg_tertiary).border_color(theme.colors.text_muted))
+                        toolbar_btn("import-button", cx)
                             .on_click(cx.listener(|this, _, _, cx| {
                                 this.open_import_modal(cx);
                             }))
@@ -299,7 +269,8 @@ impl RequestPanel {
 
     pub(super) fn render_url_text(&self, is_focused: bool, cx: &Context<Self>) -> gpui::AnyElement {
         let theme = theme::current(cx);
-        render_text_view(
+        let scroll = if is_focused { self.url_scroll_offset } else { 0.0 };
+        render_text_view_with_max_scrolled(
             &self.url,
             &self.url_selection,
             is_focused,
@@ -307,7 +278,9 @@ impl RequestPanel {
             theme.colors.text_primary,
             Some("Enter request URL..."),
             theme.colors.text_muted,
+            None,
             theme.colors.accent.opacity(0.25),
+            scroll,
         )
     }
 
@@ -662,16 +635,13 @@ impl RequestPanel {
             .flex()
             .flex_col()
             .gap(px(2.0))
-            .track_focus(&self.edit_focus)
-            .on_key_down(cx.listener(|this, event: &KeyDownEvent, _, cx| {
-                this.handle_edit_key(event, cx);
-            }));
+            .track_focus(&self.edit_focus);
 
         container = container.child(self.render_kv_table_header("KEY", "VALUE", enabled_count, cx));
 
         // Params list
         for (i, is_enabled, key, value) in params_data {
-            let can_remove = params_len > 1;
+            let can_remove = !key.is_empty() || !value.is_empty();
             let is_editing_key = active_edit == Some(EditTarget::ParamKey(i));
             let is_editing_value = active_edit == Some(EditTarget::ParamValue(i));
             let is_row_editing = is_editing_key || is_editing_value;
@@ -722,13 +692,6 @@ impl RequestPanel {
             );
         }
 
-        container = container.child(
-            div().w_full().pt(px(8.0)).child(
-                self.render_kv_add_btn("add-param-btn", "+ Add Parameter", cx)
-                    .on_click(cx.listener(|this, _, _, cx| this.add_param(cx)))
-            )
-        );
-
         container.into_any_element()
     }
 
@@ -749,16 +712,13 @@ impl RequestPanel {
             .flex()
             .flex_col()
             .gap(px(2.0))
-            .track_focus(&self.edit_focus)
-            .on_key_down(cx.listener(|this, event: &KeyDownEvent, _, cx| {
-                this.handle_edit_key(event, cx);
-            }));
+            .track_focus(&self.edit_focus);
 
         container = container.child(self.render_kv_table_header("HEADER", "VALUE", enabled_count, cx));
 
         // Headers list
         for (i, is_enabled, key, value) in headers_data {
-            let can_remove = headers_len > 1;
+            let can_remove = !key.is_empty() || !value.is_empty();
             let is_editing_key = active_edit == Some(EditTarget::HeaderKey(i));
             let is_editing_value = active_edit == Some(EditTarget::HeaderValue(i));
             let is_row_editing = is_editing_key || is_editing_value;
@@ -812,13 +772,6 @@ impl RequestPanel {
             );
         }
 
-        container = container.child(
-            div().w_full().pt(px(8.0)).child(
-                self.render_kv_add_btn("add-header-btn", "+ Add Header", cx)
-                    .on_click(cx.listener(|this, _, _, cx| { this.add_header(cx); }))
-            )
-        );
-
         container.into_any_element()
     }
 
@@ -838,10 +791,7 @@ impl RequestPanel {
             .flex()
             .flex_col()
             .gap(px(2.0))
-            .track_focus(&self.edit_focus)
-            .on_key_down(cx.listener(|this, event: &KeyDownEvent, _, cx| {
-                this.handle_edit_key(event, cx);
-            }));
+            .track_focus(&self.edit_focus);
 
         // Toolbar row with body type buttons
         container = container.child(
@@ -1653,9 +1603,6 @@ impl RequestPanel {
             .flex_col()
             .gap(px(12.0))
             .track_focus(&self.edit_focus)
-            .on_key_down(cx.listener(|this, event: &KeyDownEvent, _, cx| {
-                this.handle_edit_key(event, cx);
-            }))
             // Auth type selector - same style as main tab bar
             .child(
                 div()
@@ -3020,10 +2967,7 @@ impl RequestPanel {
             .flex()
             .flex_col()
             .gap(px(2.0))
-            .track_focus(&self.edit_focus)
-            .on_key_down(cx.listener(|this, event: &KeyDownEvent, _, cx| {
-                this.handle_edit_key(event, cx);
-            }));
+            .track_focus(&self.edit_focus);
 
         container = container.child(self.render_kv_table_header("KEY", "VALUE", enabled_count, cx));
 
@@ -3214,7 +3158,7 @@ impl RequestPanel {
     }
 
     /// Render import modal
-    pub(super) fn render_import_modal(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
+    pub fn render_import_modal(&mut self, cx: &mut Context<Self>) -> gpui::AnyElement {
         let theme = theme::current(cx);
         let import_text = self.import_text.clone();
         let import_error = self.import_error.clone();
@@ -3395,6 +3339,7 @@ impl RequestPanel {
                             )
                     )
             )
+            .into_any_element()
     }
 
     fn render_trpc_procedure_tab(&mut self, cx: &mut Context<Self>) -> gpui::AnyElement {
@@ -3412,9 +3357,6 @@ impl RequestPanel {
             .gap(px(16.0))
             .p(px(16.0))
             .track_focus(&self.edit_focus)
-            .on_key_down(cx.listener(|this, event: &KeyDownEvent, _, cx| {
-                this.handle_edit_key(event, cx);
-            }))
             .child(
                 div()
                     .flex()

@@ -756,6 +756,7 @@ pub fn render_text_view(
 
 /// Render text with optional max character limit for truncation
 /// When focused, expands to multiple lines if chars_per_line is provided
+/// `scroll_offset_x`: horizontal pixel scroll offset (0.0 = no scroll)
 pub fn render_text_view_with_max(
     text: &str,
     selection: &std::ops::Range<usize>,
@@ -766,6 +767,21 @@ pub fn render_text_view_with_max(
     placeholder_color: Hsla,
     max_chars: Option<usize>,
     selection_bg: Hsla,
+) -> gpui::AnyElement {
+    render_text_view_with_max_scrolled(text, selection, is_focused, font_size, text_color, placeholder, placeholder_color, max_chars, selection_bg, 0.0)
+}
+
+pub fn render_text_view_with_max_scrolled(
+    text: &str,
+    selection: &std::ops::Range<usize>,
+    is_focused: bool,
+    font_size: f32,
+    text_color: Hsla,
+    placeholder: Option<&str>,
+    placeholder_color: Hsla,
+    max_chars: Option<usize>,
+    selection_bg: Hsla,
+    scroll_offset_x: f32,
 ) -> gpui::AnyElement {
     // Use default chars_per_line based on max_chars for multi-line when focused
     let chars_per_line = max_chars.map(|m| m.max(10));
@@ -780,12 +796,14 @@ pub fn render_text_view_with_max(
         max_chars,
         chars_per_line,
         selection_bg,
+        scroll_offset_x,
     )
 }
 
 /// Render text with multi-line support when focused
 /// - `max_chars`: truncation limit when unfocused
 /// - `chars_per_line`: characters per line when focused (enables multi-line wrapping)
+/// - `scroll_offset_x`: horizontal pixel offset for single-line scroll (0.0 = no scroll)
 pub fn render_text_view_multiline(
     text: &str,
     selection: &std::ops::Range<usize>,
@@ -797,6 +815,7 @@ pub fn render_text_view_multiline(
     max_chars: Option<usize>,
     chars_per_line: Option<usize>,
     selection_bg: Hsla,
+    scroll_offset_x: f32,
 ) -> gpui::AnyElement {
     use gpui::IntoElement;
 
@@ -873,6 +892,7 @@ pub fn render_text_view_multiline(
                 .items_center()
                 .h_full()
                 .relative()
+                .left(px(-scroll_offset_x))
                 // Selection highlight (absolute positioned)
                 .when(has_sel, |el| {
                     let sel_x = sel_start as f32 * char_width;
