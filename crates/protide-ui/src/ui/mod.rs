@@ -4,4 +4,8 @@ mod main_window;
 pub mod panels;
 mod components;
 
-pub use main_window::MainWindow;
+pub use main_window::{
+    MainWindow, register_keybindings,
+    SendRequest, SaveRequest, ToggleSidebar, ToggleMockServer,
+    ShowHelp, ShowAbout, DismissOverlay, Quit,
+};

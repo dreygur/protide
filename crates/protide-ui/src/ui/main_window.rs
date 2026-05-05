@@ -3,15 +3,45 @@
 use std::path::PathBuf;
 
 use gpui::{
-    div, prelude::*, px, Entity, FontWeight, InteractiveElement,
-    IntoElement, ParentElement, Render, SharedString, Styled, WeakEntity, Window, Context, App,
-    MouseButton,
+    App, Context, Entity, FocusHandle, FontWeight, InteractiveElement, IntoElement, KeyBinding,
+    MouseButton, ParentElement, Render, SharedString, Styled, WeakEntity, Window, div, prelude::*,
+    px,
 };
 
-use crate::theme;
-use crate::ui::components::icons::{icon, ICON_MD, ICON_SM, ICON_MENU, ICON_MINIMIZE, ICON_MAXIMIZE, ICON_WINDOW_CLOSE, ICON_CLOSE, ICON_COPY};
-use crate::ui::components::modal::{ModalKind, ModalState, render_modal_shell};
+gpui::actions!(
+    main_window,
+    [
+        SendRequest,
+        SaveRequest,
+        ToggleSidebar,
+        ToggleMockServer,
+        ShowHelp,
+        ShowAbout,
+        DismissOverlay,
+        Quit
+    ]
+);
+
+pub fn register_keybindings(cx: &mut gpui::App) {
+    cx.bind_keys([
+        KeyBinding::new("ctrl-enter", SendRequest, None),
+        KeyBinding::new("ctrl-s", SaveRequest, None),
+        KeyBinding::new("ctrl-b", ToggleSidebar, None),
+        KeyBinding::new("ctrl-shift-m", ToggleMockServer, None),
+        KeyBinding::new("f1", ShowHelp, None),
+        KeyBinding::new("ctrl-shift-a", ShowAbout, None),
+        KeyBinding::new("escape", DismissOverlay, None),
+        KeyBinding::new("ctrl-q", Quit, None),
+    ]);
+}
+
 use super::panels::{ExplorerPanel, MockServerPanel, RequestPanel, ResponsePanel};
+use crate::theme;
+use crate::ui::components::icons::{
+    ICON_CLOSE, ICON_COPY, ICON_FOLDER, ICON_MAXIMIZE, ICON_MD, ICON_MENU, ICON_MINIMIZE,
+    ICON_REFRESH, ICON_SETTINGS, ICON_SM, ICON_WINDOW_CLOSE, icon,
+};
+use crate::ui::components::modal::{ModalKind, ModalState, render_modal_shell};
 
 /// Pending action for confirm modals
 #[derive(Clone, Debug, Default)]
@@ -33,12 +63,17 @@ pub struct MainWindow {
     request_height: f32,
     mock_server_width: f32,
     codegen_panel_width: f32,
-    drag_sidebar: Option<(f32, f32)>,      // (start_mouse_x, start_sidebar_width)
-    drag_response: Option<(f32, f32)>,     // (start_mouse_y, start_request_height)
-    drag_mock_server: Option<(f32, f32)>,  // (start_mouse_x, start_mock_server_width)
-    drag_codegen: Option<(f32, f32)>,      // (start_mouse_x, start_codegen_width)
+    drag_sidebar: Option<(f32, f32)>,
+    drag_response: Option<(f32, f32)>,
+    drag_mock_server: Option<(f32, f32)>,
+    drag_codegen: Option<(f32, f32)>,
     modal: Option<ModalState>,
     modal_pending: ModalPending,
+    show_help: bool,
+    show_about: bool,
+    focus: FocusHandle,
+    /// Which title-bar menu is open (0=Protide, 1=Request, 2=View, 3=Help)
+    open_menu: Option<u8>,
 }
 
 impl MainWindow {
@@ -79,6 +114,10 @@ impl MainWindow {
             drag_codegen: None,
             modal: None,
             modal_pending: ModalPending::None,
+            show_help: false,
+            show_about: false,
+            focus: cx.focus_handle(),
+            open_menu: None,
         }
     }
 
@@ -98,7 +137,12 @@ impl MainWindow {
         cx.notify();
     }
 
-    pub fn show_confirm_delete(&mut self, state: ModalState, path: PathBuf, cx: &mut Context<Self>) {
+    pub fn show_confirm_delete(
+        &mut self,
+        state: ModalState,
+        path: PathBuf,
+        cx: &mut Context<Self>,
+    ) {
         self.modal = Some(state);
         self.modal_pending = ModalPending::ExplorerDelete(path);
         cx.notify();
@@ -110,12 +154,25 @@ impl MainWindow {
         cx.notify();
     }
 
+    fn dismiss_overlay(&mut self, cx: &mut Context<Self>) {
+        if self.modal.is_some() {
+            self.modal = None;
+            self.modal_pending = ModalPending::None;
+        } else if self.show_help {
+            self.show_help = false;
+        } else if self.show_about {
+            self.show_about = false;
+        }
+        cx.notify();
+    }
+
     fn confirm_modal_action(&mut self, cx: &mut Context<Self>) {
         let pending = std::mem::replace(&mut self.modal_pending, ModalPending::None);
         self.modal = None;
         match pending {
             ModalPending::ExplorerDelete(path) => {
-                self.explorer.update(cx, |panel, cx| panel.execute_delete(path, cx));
+                self.explorer
+                    .update(cx, |panel, cx| panel.execute_delete(path, cx));
             }
             ModalPending::None => {}
         }
@@ -127,8 +184,13 @@ impl Render for MainWindow {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = theme::current(cx);
         let show_codegen = self.request_panel.read(cx).codegen_content.is_some();
-        let is_dragging = self.drag_sidebar.is_some() || self.drag_response.is_some() || self.drag_mock_server.is_some() || self.drag_codegen.is_some();
-        let is_col_drag = self.drag_sidebar.is_some() || self.drag_mock_server.is_some() || self.drag_codegen.is_some();
+        let is_dragging = self.drag_sidebar.is_some()
+            || self.drag_response.is_some()
+            || self.drag_mock_server.is_some()
+            || self.drag_codegen.is_some();
+        let is_col_drag = self.drag_sidebar.is_some()
+            || self.drag_mock_server.is_some()
+            || self.drag_codegen.is_some();
 
         div()
             .size_full()
@@ -136,6 +198,34 @@ impl Render for MainWindow {
             .flex_col()
             .bg(theme.colors.bg_primary)
             .text_color(theme.colors.text_primary)
+            .track_focus(&self.focus)
+            .key_context("MainWindow")
+            .on_action(cx.listener(|this, _: &SendRequest, _, cx| {
+                this.request_panel.update(cx, |p, cx| p.send_request(cx));
+            }))
+            .on_action(cx.listener(|this, _: &SaveRequest, _, cx| {
+                this.request_panel.update(cx, |p, cx| p.save_request(cx));
+            }))
+            .on_action(cx.listener(|this, _: &ToggleSidebar, _, cx| {
+                this.toggle_sidebar(cx);
+            }))
+            .on_action(cx.listener(|this, _: &ToggleMockServer, _, cx| {
+                this.toggle_mock_server(cx);
+            }))
+            .on_action(cx.listener(|this, _: &ShowHelp, _, cx| {
+                this.show_help = true;
+                cx.notify();
+            }))
+            .on_action(cx.listener(|this, _: &ShowAbout, _, cx| {
+                this.show_about = true;
+                cx.notify();
+            }))
+            .on_action(cx.listener(|this, _: &DismissOverlay, _, cx| {
+                this.dismiss_overlay(cx);
+            }))
+            .on_action(|_: &Quit, _, cx: &mut App| {
+                cx.quit();
+            })
             .child(self.render_title_bar(cx))
             .child(
                 div()
@@ -156,41 +246,134 @@ impl Render for MainWindow {
                                 .flex()
                                 .flex_col()
                                 .items_center()
-                                .pt(px(12.0))
-                                .cursor_pointer()
-                                .on_click(cx.listener(|this, _, _, cx| {
-                                    this.toggle_sidebar(cx);
-                                }))
-                                .child(icon(ICON_MENU, ICON_MD, theme.colors.text_muted))
+                                .gap(px(2.0))
+                                .pt(px(8.0))
+                                // Hamburger: expand sidebar
+                                .child(
+                                    div()
+                                        .id("collapse-toggle")
+                                        .w(px(28.0))
+                                        .h(px(28.0))
+                                        .flex()
+                                        .items_center()
+                                        .justify_center()
+                                        .rounded(px(4.0))
+                                        .cursor_pointer()
+                                        .hover(|s| s.bg(theme.colors.bg_tertiary))
+                                        .on_click(cx.listener(|this, _, _, cx| {
+                                            this.toggle_sidebar(cx);
+                                        }))
+                                        .child(icon(ICON_MENU, ICON_MD, theme.colors.text_muted)),
+                                )
+                                .child(
+                                    div()
+                                        .w_full()
+                                        .h(px(1.0))
+                                        .bg(theme.colors.border)
+                                        .mx_auto()
+                                        .mt(px(2.0))
+                                        .mb(px(2.0)),
+                                )
+                                // Collections icon
+                                .child({
+                                    let explorer = self.explorer.clone();
+                                    div()
+                                        .id("collapsed-collections")
+                                        .w(px(28.0))
+                                        .h(px(28.0))
+                                        .flex()
+                                        .items_center()
+                                        .justify_center()
+                                        .rounded(px(4.0))
+                                        .cursor_pointer()
+                                        .hover(|s| s.bg(theme.colors.bg_tertiary))
+                                        .on_click(cx.listener(move |this, _, _, cx| {
+                                            this.toggle_sidebar(cx);
+                                            explorer.update(cx, |p, cx| {
+                                                p.expand_section_collections(cx)
+                                            });
+                                        }))
+                                        .child(icon(ICON_FOLDER, ICON_MD, theme.colors.text_muted))
+                                })
+                                // History icon
+                                .child({
+                                    let explorer = self.explorer.clone();
+                                    div()
+                                        .id("collapsed-history")
+                                        .w(px(28.0))
+                                        .h(px(28.0))
+                                        .flex()
+                                        .items_center()
+                                        .justify_center()
+                                        .rounded(px(4.0))
+                                        .cursor_pointer()
+                                        .hover(|s| s.bg(theme.colors.bg_tertiary))
+                                        .on_click(cx.listener(move |this, _, _, cx| {
+                                            this.toggle_sidebar(cx);
+                                            explorer
+                                                .update(cx, |p, cx| p.expand_section_history(cx));
+                                        }))
+                                        .child(icon(ICON_REFRESH, ICON_MD, theme.colors.text_muted))
+                                })
+                                // Environments icon
+                                .child({
+                                    let explorer = self.explorer.clone();
+                                    div()
+                                        .id("collapsed-env")
+                                        .w(px(28.0))
+                                        .h(px(28.0))
+                                        .flex()
+                                        .items_center()
+                                        .justify_center()
+                                        .rounded(px(4.0))
+                                        .cursor_pointer()
+                                        .hover(|s| s.bg(theme.colors.bg_tertiary))
+                                        .on_click(cx.listener(move |this, _, _, cx| {
+                                            this.toggle_sidebar(cx);
+                                            explorer.update(cx, |p, cx| p.expand_section_env(cx));
+                                        }))
+                                        .child(icon(
+                                            ICON_SETTINGS,
+                                            ICON_MD,
+                                            theme.colors.text_muted,
+                                        ))
+                                }),
                         )
                     })
                     // Full sidebar
                     .when(!self.sidebar_collapsed, |el| {
-                        el
-                            .child(
-                                div()
-                                    .w(px(self.sidebar_width))
-                                    .h_full()
-                                    .flex_shrink_0()
-                                    .bg(theme.colors.bg_secondary)
-                                    .overflow_hidden()
-                                    .child(self.explorer.clone())
-                            )
-                            // Sidebar resize handle
-                            .child(
-                                div()
-                                    .id("sidebar-resize-handle")
-                                    .w(px(4.0))
-                                    .h_full()
-                                    .flex_shrink_0()
-                                    .border_l_1()
-                                    .border_color(theme.colors.border)
-                                    .cursor_col_resize()
-                                    .hover(|s| s.bg(theme.colors.accent.opacity(0.25)))
-                                    .on_mouse_down(MouseButton::Left, cx.listener(|this, event: &gpui::MouseDownEvent, _window, _cx| {
-                                        this.drag_sidebar = Some((f32::from(event.position.x), this.sidebar_width));
-                                    }))
-                            )
+                        el.child(
+                            div()
+                                .w(px(self.sidebar_width))
+                                .h_full()
+                                .flex_shrink_0()
+                                .bg(theme.colors.bg_secondary)
+                                .overflow_hidden()
+                                .child(self.explorer.clone()),
+                        )
+                        // Sidebar resize handle
+                        .child(
+                            div()
+                                .id("sidebar-resize-handle")
+                                .w(px(4.0))
+                                .h_full()
+                                .flex_shrink_0()
+                                .border_l_1()
+                                .border_color(theme.colors.border)
+                                .cursor_col_resize()
+                                .hover(|s| s.bg(theme.colors.accent.opacity(0.25)))
+                                .on_mouse_down(
+                                    MouseButton::Left,
+                                    cx.listener(
+                                        |this, event: &gpui::MouseDownEvent, _window, _cx| {
+                                            this.drag_sidebar = Some((
+                                                f32::from(event.position.x),
+                                                this.sidebar_width,
+                                            ));
+                                        },
+                                    ),
+                                ),
+                        )
                     })
                     // Main content area
                     .child(
@@ -209,7 +392,7 @@ impl Render for MainWindow {
                                     .h(px(self.request_height))
                                     .w_full()
                                     .overflow_hidden()
-                                    .child(self.request_panel.clone())
+                                    .child(self.request_panel.clone()),
                             )
                             // Response resize handle
                             .child(
@@ -222,9 +405,17 @@ impl Render for MainWindow {
                                     .border_color(theme.colors.border)
                                     .cursor_row_resize()
                                     .hover(|s| s.bg(theme.colors.accent.opacity(0.25)))
-                                    .on_mouse_down(MouseButton::Left, cx.listener(|this, event: &gpui::MouseDownEvent, _window, _cx| {
-                                        this.drag_response = Some((f32::from(event.position.y), this.request_height));
-                                    }))
+                                    .on_mouse_down(
+                                        MouseButton::Left,
+                                        cx.listener(
+                                            |this, event: &gpui::MouseDownEvent, _window, _cx| {
+                                                this.drag_response = Some((
+                                                    f32::from(event.position.y),
+                                                    this.request_height,
+                                                ));
+                                            },
+                                        ),
+                                    ),
                             )
                             // Response panel
                             .child(
@@ -233,40 +424,47 @@ impl Render for MainWindow {
                                     .min_h(px(150.0))
                                     .w_full()
                                     .overflow_hidden()
-                                    .child(self.response_panel.clone())
-                            )
+                                    .child(self.response_panel.clone()),
+                            ),
                     )
                     // Mock Server panel (optional right sidebar)
                     .when(self.show_mock_server, |el| {
                         el
-                        // Mock server resize handle (left edge)
-                        .child(
-                            div()
-                                .id("mock-server-resize-handle")
-                                .w(px(4.0))
-                                .h_full()
-                                .flex_shrink_0()
-                                .border_r_1()
-                                .border_color(theme.colors.border)
-                                .cursor_col_resize()
-                                .hover(|s| s.bg(theme.colors.accent.opacity(0.25)))
-                                .on_mouse_down(MouseButton::Left, cx.listener(|this, event: &gpui::MouseDownEvent, _window, _cx| {
-                                    this.drag_mock_server = Some((f32::from(event.position.x), this.mock_server_width));
-                                }))
-                        )
-                        .child(
-                            div()
-                                .w(px(self.mock_server_width))
-                                .h_full()
-                                .flex_shrink_0()
-                                .overflow_hidden()
-                                .child(self.mock_server_panel.clone())
-                        )
+                            // Mock server resize handle (left edge)
+                            .child(
+                                div()
+                                    .id("mock-server-resize-handle")
+                                    .w(px(4.0))
+                                    .h_full()
+                                    .flex_shrink_0()
+                                    .border_r_1()
+                                    .border_color(theme.colors.border)
+                                    .cursor_col_resize()
+                                    .hover(|s| s.bg(theme.colors.accent.opacity(0.25)))
+                                    .on_mouse_down(
+                                        MouseButton::Left,
+                                        cx.listener(
+                                            |this, event: &gpui::MouseDownEvent, _window, _cx| {
+                                                this.drag_mock_server = Some((
+                                                    f32::from(event.position.x),
+                                                    this.mock_server_width,
+                                                ));
+                                            },
+                                        ),
+                                    ),
+                            )
+                            .child(
+                                div()
+                                    .w(px(self.mock_server_width))
+                                    .h_full()
+                                    .flex_shrink_0()
+                                    .overflow_hidden()
+                                    .child(self.mock_server_panel.clone()),
+                            )
                     })
                     // Codegen panel (optional right sidebar)
                     .when(show_codegen, |el| {
-                        el
-                        .child(
+                        el.child(
                             div()
                                 .id("codegen-resize-handle")
                                 .w(px(4.0))
@@ -276,9 +474,17 @@ impl Render for MainWindow {
                                 .border_color(theme.colors.border)
                                 .cursor_col_resize()
                                 .hover(|s| s.bg(theme.colors.accent.opacity(0.25)))
-                                .on_mouse_down(MouseButton::Left, cx.listener(|this, event: &gpui::MouseDownEvent, _window, _cx| {
-                                    this.drag_codegen = Some((f32::from(event.position.x), this.codegen_panel_width));
-                                }))
+                                .on_mouse_down(
+                                    MouseButton::Left,
+                                    cx.listener(
+                                        |this, event: &gpui::MouseDownEvent, _window, _cx| {
+                                            this.drag_codegen = Some((
+                                                f32::from(event.position.x),
+                                                this.codegen_panel_width,
+                                            ));
+                                        },
+                                    ),
+                                ),
                         )
                         .child(self.render_codegen_panel(cx))
                     })
@@ -294,45 +500,70 @@ impl Render for MainWindow {
                                 .h_full()
                                 .when(is_col_drag, |el| el.cursor_col_resize())
                                 .when(!is_col_drag, |el| el.cursor_row_resize())
-                                .on_mouse_move(cx.listener(|this, event: &gpui::MouseMoveEvent, _window, cx| {
-                                    let mouse_x = f32::from(event.position.x);
-                                    let mouse_y = f32::from(event.position.y);
-                                    if let Some((start_x, start_w)) = this.drag_sidebar {
-                                        this.sidebar_width = (start_w + mouse_x - start_x).max(150.0).min(600.0);
+                                .on_mouse_move(cx.listener(
+                                    |this, event: &gpui::MouseMoveEvent, _window, cx| {
+                                        let mouse_x = f32::from(event.position.x);
+                                        let mouse_y = f32::from(event.position.y);
+                                        if let Some((start_x, start_w)) = this.drag_sidebar {
+                                            this.sidebar_width =
+                                                (start_w + mouse_x - start_x).max(150.0).min(600.0);
+                                            cx.notify();
+                                        }
+                                        if let Some((start_y, start_h)) = this.drag_response {
+                                            this.request_height =
+                                                (start_h + mouse_y - start_y).max(150.0).min(800.0);
+                                            cx.notify();
+                                        }
+                                        if let Some((start_x, start_w)) = this.drag_mock_server {
+                                            // dragging left edge: moving left increases width
+                                            this.mock_server_width = (start_w
+                                                - (mouse_x - start_x))
+                                                .max(200.0)
+                                                .min(700.0);
+                                            cx.notify();
+                                        }
+                                        if let Some((start_x, start_w)) = this.drag_codegen {
+                                            // dragging left edge: moving left increases width
+                                            this.codegen_panel_width = (start_w
+                                                - (mouse_x - start_x))
+                                                .max(250.0)
+                                                .min(800.0);
+                                            cx.notify();
+                                        }
+                                    },
+                                ))
+                                .on_mouse_up(
+                                    MouseButton::Left,
+                                    cx.listener(|this, _, _window, cx| {
+                                        if this.drag_sidebar.take().is_some() {
+                                            crate::prefs::set_f32(
+                                                "main.sidebar_width",
+                                                this.sidebar_width,
+                                            );
+                                        }
+                                        if this.drag_response.take().is_some() {
+                                            crate::prefs::set_f32(
+                                                "main.request_height",
+                                                this.request_height,
+                                            );
+                                        }
+                                        if this.drag_mock_server.take().is_some() {
+                                            crate::prefs::set_f32(
+                                                "main.mock_server_width",
+                                                this.mock_server_width,
+                                            );
+                                        }
+                                        if this.drag_codegen.take().is_some() {
+                                            crate::prefs::set_f32(
+                                                "main.codegen_panel_width",
+                                                this.codegen_panel_width,
+                                            );
+                                        }
                                         cx.notify();
-                                    }
-                                    if let Some((start_y, start_h)) = this.drag_response {
-                                        this.request_height = (start_h + mouse_y - start_y).max(150.0).min(800.0);
-                                        cx.notify();
-                                    }
-                                    if let Some((start_x, start_w)) = this.drag_mock_server {
-                                        // dragging left edge: moving left increases width
-                                        this.mock_server_width = (start_w - (mouse_x - start_x)).max(200.0).min(700.0);
-                                        cx.notify();
-                                    }
-                                    if let Some((start_x, start_w)) = this.drag_codegen {
-                                        // dragging left edge: moving left increases width
-                                        this.codegen_panel_width = (start_w - (mouse_x - start_x)).max(250.0).min(800.0);
-                                        cx.notify();
-                                    }
-                                }))
-                                .on_mouse_up(MouseButton::Left, cx.listener(|this, _, _window, cx| {
-                                    if this.drag_sidebar.take().is_some() {
-                                        crate::prefs::set_f32("main.sidebar_width", this.sidebar_width);
-                                    }
-                                    if this.drag_response.take().is_some() {
-                                        crate::prefs::set_f32("main.request_height", this.request_height);
-                                    }
-                                    if this.drag_mock_server.take().is_some() {
-                                        crate::prefs::set_f32("main.mock_server_width", this.mock_server_width);
-                                    }
-                                    if this.drag_codegen.take().is_some() {
-                                        crate::prefs::set_f32("main.codegen_panel_width", this.codegen_panel_width);
-                                    }
-                                    cx.notify();
-                                }))
+                                    }),
+                                ),
                         )
-                    })
+                    }),
             )
             .child(self.render_status_bar(cx))
             // Full-window modal overlay (always on top)
@@ -341,11 +572,15 @@ impl Render for MainWindow {
                 let is_confirm = modal.kind == ModalKind::Confirm;
                 let buttons = if is_confirm {
                     div()
-                        .flex().justify_end().gap(px(8.0)).mt(px(4.0))
+                        .flex()
+                        .justify_end()
+                        .gap(px(8.0))
+                        .mt(px(4.0))
                         .child(
                             div()
                                 .id("modal-cancel")
-                                .px(px(20.0)).py(px(8.0))
+                                .px(px(20.0))
+                                .py(px(8.0))
                                 .bg(theme.colors.bg_tertiary)
                                 .border_1()
                                 .border_color(theme.colors.border)
@@ -354,29 +589,35 @@ impl Render for MainWindow {
                                 .cursor_pointer()
                                 .hover(|s| s.bg(theme.colors.bg_elevated))
                                 .on_click(cx.listener(|this, _, _, cx| this.dismiss_modal(cx)))
-                                .child("Cancel")
+                                .child("Cancel"),
                         )
                         .child(
                             div()
                                 .id("modal-confirm")
-                                .px(px(20.0)).py(px(8.0))
+                                .px(px(20.0))
+                                .py(px(8.0))
                                 .bg(theme.colors.error)
                                 .text_color(theme.colors.bg_primary)
                                 .text_size(px(12.0))
                                 .font_weight(FontWeight::SEMIBOLD)
                                 .cursor_pointer()
                                 .hover(|s| s.opacity(0.85))
-                                .on_click(cx.listener(|this, _, _, cx| this.confirm_modal_action(cx)))
-                                .child("Delete")
+                                .on_click(
+                                    cx.listener(|this, _, _, cx| this.confirm_modal_action(cx)),
+                                )
+                                .child("Delete"),
                         )
                         .into_any_element()
                 } else {
                     div()
-                        .flex().justify_end().mt(px(4.0))
+                        .flex()
+                        .justify_end()
+                        .mt(px(4.0))
                         .child(
                             div()
                                 .id("modal-ok")
-                                .px(px(24.0)).py(px(8.0))
+                                .px(px(24.0))
+                                .py(px(8.0))
                                 .bg(theme.colors.accent)
                                 .text_color(theme.colors.bg_primary)
                                 .text_size(px(12.0))
@@ -384,11 +625,26 @@ impl Render for MainWindow {
                                 .cursor_pointer()
                                 .hover(|s| s.bg(theme.colors.accent_hover))
                                 .on_click(cx.listener(|this, _, _, cx| this.dismiss_modal(cx)))
-                                .child("OK")
+                                .child("OK"),
                         )
                         .into_any_element()
                 };
                 el.child(render_modal_shell(&modal, &theme, buttons))
+            })
+            .when(self.open_menu.is_some(), |el| el
+                .child(
+                    div()
+                        .absolute().top_0().left_0().w_full().h_full()
+                        .on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| {
+                            this.open_menu = None;
+                            cx.notify();
+                        }))
+                )
+                .child(gpui::deferred(self.render_menu_dropdown(cx)).with_priority(10))
+            )
+            .when(self.show_help, |el| el.child(self.render_help_overlay(cx)))
+            .when(self.show_about, |el| {
+                el.child(self.render_about_overlay(cx))
             })
     }
 }
@@ -433,8 +689,8 @@ impl MainWindow {
                                     .text_size(px(10.0))
                                     .font_weight(gpui::FontWeight::BOLD)
                                     .text_color(theme.colors.bg_primary)
-                                    .child("A")
-                            )
+                                    .child("P"),
+                            ),
                     )
                     // Title
                     .child(
@@ -442,18 +698,45 @@ impl MainWindow {
                             .text_size(px(12.0))
                             .font_weight(gpui::FontWeight::BOLD)
                             .text_color(theme.colors.text_primary)
-                            .child("Protide")
-                    )
+                            .child("Protide"),
+                    ),
             )
-            // Drag region (fills remaining space)
-            .child(
+            // Menu bar buttons
+            .child({
+                let open = self.open_menu;
+                let menus: &[(u8, &str)] = &[(0, "Protide"), (1, "Request"), (2, "View"), (3, "Help")];
                 div()
-                    .flex_1()
-                    .h_full()
-                    .on_mouse_down(gpui::MouseButton::Left, |_, window, _cx: &mut App| {
-                        window.start_window_move();
-                    })
-            )
+                    .flex().items_center().h_full()
+                    .children(menus.iter().map(|&(id, label)| {
+                        let is_open = open == Some(id);
+                        div()
+                            .id(("menu-btn", id as usize))
+                            .h_full().px(px(10.0))
+                            .flex().items_center()
+                            .cursor_pointer()
+                            .text_size(px(12.0))
+                            .when(is_open, |el| el
+                                .bg(theme.colors.bg_tertiary)
+                                .text_color(theme.colors.text_primary)
+                            )
+                            .when(!is_open, |el| el
+                                .text_color(theme.colors.text_secondary)
+                                .hover(|s| s.bg(theme.colors.bg_elevated).text_color(theme.colors.text_primary))
+                            )
+                            .child(label)
+                            .on_click(cx.listener(move |this, _, _, cx| {
+                                this.open_menu = if this.open_menu == Some(id) { None } else { Some(id) };
+                                cx.notify();
+                            }))
+                    }))
+            })
+            // Drag region (fills remaining space)
+            .child(div().flex_1().h_full().on_mouse_down(
+                gpui::MouseButton::Left,
+                |_, window, _cx: &mut App| {
+                    window.start_window_move();
+                },
+            ))
             // Mock server toggle
             .child(
                 div()
@@ -488,8 +771,8 @@ impl MainWindow {
                             } else {
                                 theme.colors.text_secondary
                             })
-                            .child("Mock Server")
-                    )
+                            .child("Mock Server"),
+                    ),
             )
             // Window controls
             .child(
@@ -513,7 +796,7 @@ impl MainWindow {
                             .on_click(|_, window, _cx: &mut App| {
                                 window.minimize_window();
                             })
-                            .child(icon(ICON_MINIMIZE, 12.0, theme.colors.text_secondary))
+                            .child(icon(ICON_MINIMIZE, 12.0, theme.colors.text_secondary)),
                     )
                     .child(
                         div()
@@ -529,7 +812,7 @@ impl MainWindow {
                             .on_click(|_, window, _cx: &mut App| {
                                 window.toggle_fullscreen();
                             })
-                            .child(icon(ICON_MAXIMIZE, 12.0, theme.colors.text_secondary))
+                            .child(icon(ICON_MAXIMIZE, 12.0, theme.colors.text_secondary)),
                     )
                     .child(
                         div()
@@ -545,8 +828,8 @@ impl MainWindow {
                             .on_click(|_, _window, cx: &mut App| {
                                 cx.quit();
                             })
-                            .child(icon(ICON_WINDOW_CLOSE, 12.0, theme.colors.text_secondary))
-                    )
+                            .child(icon(ICON_WINDOW_CLOSE, 12.0, theme.colors.text_secondary)),
+                    ),
             )
     }
 
@@ -561,11 +844,13 @@ impl MainWindow {
         let response_info = self.response_panel.read(cx).last_response_summary();
         let is_loading = self.response_panel.read(cx).is_loading();
 
-        let sep = || div()
-            .w(px(1.0))
-            .h(px(10.0))
-            .bg(theme.colors.border)
-            .mx(px(6.0));
+        let sep = || {
+            div()
+                .w(px(1.0))
+                .h(px(10.0))
+                .bg(theme.colors.border)
+                .mx(px(6.0))
+        };
 
         div()
             .id("status-bar")
@@ -585,17 +870,13 @@ impl MainWindow {
                     .flex()
                     .items_center()
                     .gap(px(5.0))
-                    .child(
-                        div()
-                            .size(px(6.0))
-                            .bg(theme.colors.accent)
-                    )
+                    .child(div().size(px(6.0)).bg(theme.colors.accent))
                     .child(
                         div()
                             .text_size(px(10.0))
                             .text_color(theme.colors.text_secondary)
-                            .child("Local Dev")
-                    )
+                            .child("Local Dev"),
+                    ),
             )
             .child(sep())
             // Protocol badge
@@ -604,7 +885,7 @@ impl MainWindow {
                     .text_size(px(10.0))
                     .font_weight(gpui::FontWeight::SEMIBOLD)
                     .text_color(protocol_color)
-                    .child(protocol)
+                    .child(protocol),
             )
             .child(sep())
             // Response info or ready state
@@ -617,7 +898,7 @@ impl MainWindow {
                         div()
                             .text_size(px(10.0))
                             .text_color(theme.colors.text_muted)
-                            .child("Sending…")
+                            .child("Sending…"),
                     )
                     .into_any_element()
             } else if let Some((status, _, time_ms, size_bytes)) = response_info {
@@ -638,31 +919,31 @@ impl MainWindow {
                             .text_size(px(10.0))
                             .font_weight(gpui::FontWeight::BOLD)
                             .text_color(status_color)
-                            .child(format!("{}", status))
+                            .child(format!("{}", status)),
                     )
                     .child(
                         div()
                             .text_size(px(10.0))
                             .text_color(theme.colors.text_muted)
-                            .child("·")
+                            .child("·"),
                     )
                     .child(
                         div()
                             .text_size(px(10.0))
                             .text_color(theme.colors.text_secondary)
-                            .child(format!("{}ms", time_ms))
+                            .child(format!("{}ms", time_ms)),
                     )
                     .child(
                         div()
                             .text_size(px(10.0))
                             .text_color(theme.colors.text_muted)
-                            .child("·")
+                            .child("·"),
                     )
                     .child(
                         div()
                             .text_size(px(10.0))
                             .text_color(theme.colors.text_secondary)
-                            .child(size_str)
+                            .child(size_str),
                     )
                     .into_any_element()
             } else {
@@ -712,37 +993,35 @@ impl MainWindow {
                     .border_b_1()
                     .border_color(theme.colors.border)
                     // Language tabs
-                    .child(
-                        div()
-                            .flex()
-                            .items_center()
-                            .gap(px(2.0))
-                            .flex_1()
-                            .children(languages.iter().map(|&(lang, label)| {
-                                let is_active = lang == current_lang;
-                                div()
-                                    .id(SharedString::from(format!("codegen-tab-{}", label)))
-                                    .px(px(8.0))
-                                    .py(px(3.0))
-                                    .text_size(px(11.0))
-                                    .font_weight(FontWeight::MEDIUM)
-                                    .cursor_pointer()
-                                    .when(is_active, |el| {
-                                        el.bg(theme.colors.accent.opacity(0.15))
-                                          .text_color(theme.colors.accent)
-                                          .border_1()
-                                          .border_color(theme.colors.accent.opacity(0.3))
+                    .child(div().flex().items_center().gap(px(2.0)).flex_1().children(
+                        languages.iter().map(|&(lang, label)| {
+                            let is_active = lang == current_lang;
+                            div()
+                                .id(SharedString::from(format!("codegen-tab-{}", label)))
+                                .px(px(8.0))
+                                .py(px(3.0))
+                                .text_size(px(11.0))
+                                .font_weight(FontWeight::MEDIUM)
+                                .cursor_pointer()
+                                .when(is_active, |el| {
+                                    el.bg(theme.colors.accent.opacity(0.15))
+                                        .text_color(theme.colors.accent)
+                                        .border_1()
+                                        .border_color(theme.colors.accent.opacity(0.3))
+                                })
+                                .when(!is_active, |el| {
+                                    el.text_color(theme.colors.text_secondary).hover(|s| {
+                                        s.bg(theme.colors.bg_tertiary)
+                                            .text_color(theme.colors.text_primary)
                                     })
-                                    .when(!is_active, |el| {
-                                        el.text_color(theme.colors.text_secondary)
-                                          .hover(|s| s.bg(theme.colors.bg_tertiary).text_color(theme.colors.text_primary))
-                                    })
-                                    .on_click(cx.listener(move |this, _, _, cx| {
-                                        this.request_panel.update(cx, |panel, cx| panel.generate_code(lang, cx));
-                                    }))
-                                    .child(label)
-                            }))
-                    )
+                                })
+                                .on_click(cx.listener(move |this, _, _, cx| {
+                                    this.request_panel
+                                        .update(cx, |panel, cx| panel.generate_code(lang, cx));
+                                }))
+                                .child(label)
+                        }),
+                    ))
                     // Copy button
                     .child(
                         div()
@@ -760,10 +1039,11 @@ impl MainWindow {
                             .border_color(theme.colors.border)
                             .hover(|s| s.bg(theme.colors.bg_tertiary))
                             .on_click(cx.listener(|this, _, _, cx| {
-                                this.request_panel.update(cx, |panel, cx| panel.copy_generated_code(cx));
+                                this.request_panel
+                                    .update(cx, |panel, cx| panel.copy_generated_code(cx));
                             }))
                             .child(icon(ICON_COPY, ICON_SM, theme.colors.text_secondary))
-                            .child("Copy")
+                            .child("Copy"),
                     )
                     // Close button
                     .child(
@@ -775,19 +1055,401 @@ impl MainWindow {
                             .justify_center()
                             .cursor_pointer()
                             .text_color(theme.colors.text_muted)
-                            .hover(|s| s.bg(theme.colors.bg_elevated).text_color(theme.colors.text_primary))
+                            .hover(|s| {
+                                s.bg(theme.colors.bg_elevated)
+                                    .text_color(theme.colors.text_primary)
+                            })
                             .on_click(cx.listener(|this, _, _, cx| {
-                                this.request_panel.update(cx, |panel, cx| panel.close_codegen_panel(cx));
+                                this.request_panel
+                                    .update(cx, |panel, cx| panel.close_codegen_panel(cx));
                             }))
-                            .child(icon(ICON_CLOSE, ICON_SM, theme.colors.text_muted))
-                    )
+                            .child(icon(ICON_CLOSE, ICON_SM, theme.colors.text_muted)),
+                    ),
             )
             // Code editor
+            .child(div().flex_1().overflow_hidden().child(editor))
+    }
+
+    fn render_menu_dropdown(&self, cx: &Context<Self>) -> impl IntoElement {
+        let theme = theme::current(cx);
+        let toolbar_h = 40.0f32;
+
+        // (label, shortcut_hint, action_fn)
+        type ActionFn = Box<dyn Fn(&mut gpui::Window, &mut gpui::App)>;
+        let items: Vec<(&str, &str, ActionFn)> = match self.open_menu {
+            Some(0) => vec![
+                ("About Protide",     "",          Box::new(|w, cx| w.dispatch_action(Box::new(ShowAbout), cx))),
+                ("---",               "",          Box::new(|_, _| {})),
+                ("Quit",              "Ctrl+Q",    Box::new(|w, cx| w.dispatch_action(Box::new(Quit), cx))),
+            ],
+            Some(1) => vec![
+                ("Send Request",      "Ctrl+Enter", Box::new(|w, cx| w.dispatch_action(Box::new(SendRequest), cx))),
+                ("Save Request",      "Ctrl+S",     Box::new(|w, cx| w.dispatch_action(Box::new(SaveRequest), cx))),
+            ],
+            Some(2) => vec![
+                ("Toggle Sidebar",    "Ctrl+B",     Box::new(|w, cx| w.dispatch_action(Box::new(ToggleSidebar), cx))),
+                ("Toggle Mock Server","Ctrl+Shift+M",Box::new(|w, cx| w.dispatch_action(Box::new(ToggleMockServer), cx))),
+            ],
+            Some(3) => vec![
+                ("Keyboard Shortcuts","F1",          Box::new(|w, cx| w.dispatch_action(Box::new(ShowHelp), cx))),
+            ],
+            _ => vec![],
+        };
+
+        // Horizontal offset per menu id (approximate, based on title bar layout)
+        let left_px = match self.open_menu {
+            Some(0) => 88.0,
+            Some(1) => 148.0,
+            Some(2) => 220.0,
+            Some(3) => 272.0,
+            _       => 88.0,
+        };
+
+        div()
+            .id("menu-dropdown")
+            .absolute()
+            .top(px(toolbar_h))
+            .left(px(left_px))
+            .min_w(px(200.0))
+            .py(px(4.0))
+            .bg(theme.colors.bg_elevated)
+            .border_1()
+            .border_color(theme.colors.border)
+            .shadow_lg()
+            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+            .children(items.into_iter().enumerate().map(|(i, (label, hint, action))| {
+                if label == "---" {
+                    return div()
+                        .id(("menu-sep", i))
+                        .my(px(3.0))
+                        .mx(px(6.0))
+                        .h(px(1.0))
+                        .bg(theme.colors.border)
+                        .into_any_element();
+                }
+                div()
+                    .id(("menu-item", i))
+                    .px(px(12.0)).py(px(7.0))
+                    .flex().items_center().justify_between()
+                    .cursor_pointer()
+                    .hover(|s| s.bg(theme.colors.bg_tertiary))
+                    .on_click(cx.listener(move |this, _, window, cx| {
+                        this.open_menu = None;
+                        cx.notify();
+                        action(window, cx);
+                    }))
+                    .child(
+                        div().text_size(px(12.0)).text_color(theme.colors.text_primary).child(label)
+                    )
+                    .when(!hint.is_empty(), |el| el.child(
+                        div().text_size(px(10.0)).text_color(theme.colors.text_muted).ml(px(24.0)).child(hint)
+                    ))
+                    .into_any_element()
+            }))
+    }
+
+    fn render_help_overlay(&self, cx: &Context<Self>) -> impl IntoElement {
+        let theme = theme::current(cx);
+
+        let shortcuts: &[(&str, &str, &str)] = &[
+            ("Request", "Ctrl+Enter", "Send request"),
+            ("Request", "Ctrl+S", "Save request"),
+            ("View", "Ctrl+B", "Toggle sidebar"),
+            ("View", "Ctrl+Shift+M", "Toggle mock server"),
+            ("Help", "F1", "Show keyboard shortcuts"),
+            ("Help", "Ctrl+Shift+A", "About Protide"),
+            ("General", "Escape", "Close dialog / overlay"),
+        ];
+
+        div()
+            .absolute()
+            .top_0()
+            .left_0()
+            .w_full()
+            .h_full()
+            .flex()
+            .items_center()
+            .justify_center()
+            .bg(theme.colors.bg_primary.opacity(0.7))
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(|this, _, _, cx| {
+                    this.show_help = false;
+                    cx.notify();
+                }),
+            )
             .child(
                 div()
-                    .flex_1()
-                    .overflow_hidden()
-                    .child(editor)
+                    .w(px(480.0))
+                    .bg(theme.colors.bg_elevated)
+                    .border_1()
+                    .border_color(theme.colors.border)
+                    .shadow_lg()
+                    .on_mouse_down(MouseButton::Left, |_, _, _| {}) // stop propagation
+                    .child(
+                        // Header
+                        div()
+                            .px(px(20.0))
+                            .py(px(14.0))
+                            .border_b_1()
+                            .border_color(theme.colors.border)
+                            .flex()
+                            .items_center()
+                            .justify_between()
+                            .child(
+                                div()
+                                    .text_size(px(14.0))
+                                    .font_weight(FontWeight::SEMIBOLD)
+                                    .text_color(theme.colors.text_primary)
+                                    .child("Keyboard Shortcuts"),
+                            )
+                            .child(
+                                div()
+                                    .id("help-close")
+                                    .px(px(8.0))
+                                    .py(px(4.0))
+                                    .text_size(px(11.0))
+                                    .text_color(theme.colors.text_muted)
+                                    .cursor_pointer()
+                                    .hover(|s| s.text_color(theme.colors.text_primary))
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        this.show_help = false;
+                                        cx.notify();
+                                    }))
+                                    .child("✕"),
+                            ),
+                    )
+                    .child(
+                        // Shortcut rows
+                        div()
+                            .px(px(20.0))
+                            .py(px(12.0))
+                            .flex()
+                            .flex_col()
+                            .gap(px(2.0))
+                            .children(shortcuts.iter().map(|(group, key, desc)| {
+                                div()
+                                    .flex()
+                                    .items_center()
+                                    .justify_between()
+                                    .py(px(5.0))
+                                    .border_b_1()
+                                    .border_color(theme.colors.border.opacity(0.4))
+                                    .child(
+                                        div()
+                                            .flex()
+                                            .items_center()
+                                            .gap(px(10.0))
+                                            .child(
+                                                div()
+                                                    .w(px(60.0))
+                                                    .text_size(px(10.0))
+                                                    .text_color(theme.colors.text_muted)
+                                                    .child(*group),
+                                            )
+                                            .child(
+                                                div()
+                                                    .text_size(px(12.0))
+                                                    .text_color(theme.colors.text_secondary)
+                                                    .child(*desc),
+                                            ),
+                                    )
+                                    .child(div().flex().items_center().gap(px(3.0)).children(
+                                        key.split('+').map(|k| {
+                                            div()
+                                                .px(px(7.0))
+                                                .py(px(3.0))
+                                                .bg(theme.colors.bg_tertiary)
+                                                .border_1()
+                                                .border_color(theme.colors.border)
+                                                .text_size(px(10.0))
+                                                .font_weight(FontWeight::MEDIUM)
+                                                .text_color(theme.colors.text_primary)
+                                                .child(k.trim())
+                                        }),
+                                    ))
+                            })),
+                    )
+                    .child(
+                        div()
+                            .px(px(20.0))
+                            .py(px(10.0))
+                            .border_t_1()
+                            .border_color(theme.colors.border)
+                            .text_size(px(10.0))
+                            .text_color(theme.colors.text_muted)
+                            .child("Press Escape or click outside to close"),
+                    ),
+            )
+    }
+
+    fn render_about_overlay(&self, cx: &Context<Self>) -> impl IntoElement {
+        let theme = theme::current(cx);
+
+        div()
+            .absolute()
+            .top_0()
+            .left_0()
+            .w_full()
+            .h_full()
+            .flex()
+            .items_center()
+            .justify_center()
+            .bg(theme.colors.bg_primary.opacity(0.7))
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(|this, _, _, cx| {
+                    this.show_about = false;
+                    cx.notify();
+                }),
+            )
+            .child(
+                div()
+                    .w(px(360.0))
+                    .bg(theme.colors.bg_elevated)
+                    .border_1()
+                    .border_color(theme.colors.border)
+                    .shadow_lg()
+                    .on_mouse_down(MouseButton::Left, |_, _, _| {})
+                    .child(
+                        // Header with close
+                        div()
+                            .px(px(20.0))
+                            .py(px(14.0))
+                            .border_b_1()
+                            .border_color(theme.colors.border)
+                            .flex()
+                            .items_center()
+                            .justify_between()
+                            .child(
+                                div()
+                                    .text_size(px(13.0))
+                                    .font_weight(FontWeight::SEMIBOLD)
+                                    .text_color(theme.colors.text_primary)
+                                    .child("About"),
+                            )
+                            .child(
+                                div()
+                                    .id("about-close")
+                                    .px(px(8.0))
+                                    .py(px(4.0))
+                                    .text_size(px(11.0))
+                                    .text_color(theme.colors.text_muted)
+                                    .cursor_pointer()
+                                    .hover(|s| s.text_color(theme.colors.text_primary))
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        this.show_about = false;
+                                        cx.notify();
+                                    }))
+                                    .child("✕"),
+                            ),
+                    )
+                    .child(
+                        div()
+                            .px(px(28.0))
+                            .py(px(24.0))
+                            .flex()
+                            .flex_col()
+                            .items_center()
+                            .gap(px(14.0))
+                            // Logo badge
+                            .child(
+                                div()
+                                    .size(px(56.0))
+                                    .bg(theme.colors.accent)
+                                    .flex()
+                                    .items_center()
+                                    .justify_center()
+                                    .child(
+                                        div()
+                                            .text_size(px(28.0))
+                                            .font_weight(FontWeight::BOLD)
+                                            .text_color(theme.colors.bg_primary)
+                                            .child("P"),
+                                    ),
+                            )
+                            // Name + version
+                            .child(
+                                div()
+                                    .flex()
+                                    .flex_col()
+                                    .items_center()
+                                    .gap(px(4.0))
+                                    .child(
+                                        div()
+                                            .text_size(px(20.0))
+                                            .font_weight(FontWeight::BOLD)
+                                            .text_color(theme.colors.text_primary)
+                                            .child("Protide"),
+                                    )
+                                    .child(
+                                        div()
+                                            .text_size(px(11.0))
+                                            .text_color(theme.colors.text_muted)
+                                            .child(format!(
+                                                "Version {}",
+                                                env!("CARGO_PKG_VERSION")
+                                            )),
+                                    ),
+                            )
+                            // Description
+                            .child(
+                                div()
+                                    .text_size(px(12.0))
+                                    .text_color(theme.colors.text_secondary)
+                                    .text_center()
+                                    .child("Free and open-source API testing tool"),
+                            )
+                            // Divider
+                            .child(div().w_full().h(px(1.0)).bg(theme.colors.border))
+                            // Developer
+                            .child(
+                                div()
+                                    .flex()
+                                    .flex_col()
+                                    .items_center()
+                                    .gap(px(3.0))
+                                    .child(
+                                        div()
+                                            .text_size(px(11.0))
+                                            .text_color(theme.colors.text_muted)
+                                            .child("Developed by"),
+                                    )
+                                    .child(
+                                        div()
+                                            .text_size(px(13.0))
+                                            .font_weight(FontWeight::MEDIUM)
+                                            .text_color(theme.colors.text_primary)
+                                            .child("Rakibul Yeasin"),
+                                    ),
+                            ),
+                    )
+                    .child(
+                        div()
+                            .px(px(20.0))
+                            .py(px(10.0))
+                            .border_t_1()
+                            .border_color(theme.colors.border)
+                            .flex()
+                            .justify_center()
+                            .child(
+                                div()
+                                    .id("about-ok")
+                                    .px(px(28.0))
+                                    .py(px(7.0))
+                                    .bg(theme.colors.accent)
+                                    .text_color(theme.colors.bg_primary)
+                                    .text_size(px(12.0))
+                                    .font_weight(FontWeight::SEMIBOLD)
+                                    .cursor_pointer()
+                                    .hover(|s| s.bg(theme.colors.accent_hover))
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        this.show_about = false;
+                                        cx.notify();
+                                    }))
+                                    .child("Close"),
+                            ),
+                    ),
             )
     }
 }

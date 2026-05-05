@@ -72,7 +72,7 @@ pub enum ApiKeyLocation {
 }
 
 /// HTTP request method
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub enum HttpMethod {
     #[default]
     Get,
@@ -80,27 +80,31 @@ pub enum HttpMethod {
     Put,
     Patch,
     Delete,
+    Custom(String),
 }
 
 impl HttpMethod {
-    pub fn as_str(&self) -> &'static str {
+    pub fn as_str(&self) -> &str {
         match self {
             HttpMethod::Get => "GET",
             HttpMethod::Post => "POST",
             HttpMethod::Put => "PUT",
             HttpMethod::Patch => "PATCH",
             HttpMethod::Delete => "DELETE",
+            HttpMethod::Custom(s) => s.as_str(),
         }
     }
 
     pub fn from_str(s: &str) -> Option<Self> {
-        match s.to_uppercase().as_str() {
+        let upper = s.to_uppercase();
+        match upper.as_str() {
             "GET" => Some(HttpMethod::Get),
             "POST" => Some(HttpMethod::Post),
             "PUT" => Some(HttpMethod::Put),
             "PATCH" => Some(HttpMethod::Patch),
             "DELETE" => Some(HttpMethod::Delete),
-            _ => None,
+            "" => None,
+            _ => Some(HttpMethod::Custom(upper)),
         }
     }
 
@@ -120,8 +124,10 @@ impl HttpMethod {
 pub enum BodyType {
     #[default]
     Json,
+    Xml,
     Raw,
     Form,
+    Binary,
 }
 
 /// Request mode (HTTP, GraphQL, WebSocket, gRPC, or tRPC)

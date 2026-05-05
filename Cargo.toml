@@ -49,6 +49,9 @@ tokio = { version = "1", features = ["full"] }
 # HTTP client
 reqwest = { version = "0.12", features = ["json", "rustls-tls", "blocking", "multipart", "http2", "stream"] }
 
+# Image loading (for app icon)
+image = { version = "0.25", default-features = false, features = ["png"] }
+
 # Utils
 uuid = { version = "1", features = ["v4", "serde"] }
 chrono = { version = "0.4", features = ["serde"] }

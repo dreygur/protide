@@ -89,6 +89,7 @@ pub struct RequestPanel {
     pub(super) form_data: Vec<FormField>,
     pub(super) body: String,
     pub(super) body_type: BodyType,
+    pub(super) binary_file_path: Option<std::path::PathBuf>,
     pub(super) syncing_params: bool,
     pub(super) auth_type: AuthType,
     pub(super) bearer_token: String,
@@ -133,6 +134,8 @@ pub struct RequestPanel {
     pub(super) import_text: String,
     /// Import error message
     pub(super) import_error: Option<String>,
+    /// Code editor for import modal text area
+    pub(super) import_editor: Entity<CodeEditor>,
     /// Request mode (HTTP or GraphQL)
     pub(super) request_mode: RequestMode,
     /// GraphQL query editor
@@ -187,6 +190,11 @@ pub struct RequestPanel {
     /// Active script drag: (start_mouse_y, start_height)
     pub(super) drag_script_pre: Option<(f32, f32)>,
     pub(super) drag_script_post: Option<(f32, f32)>,
+    /// Current file path (set when a .http file is loaded; enables save-in-place)
+    pub(super) current_file: Option<std::path::PathBuf>,
+    /// Draft text for custom HTTP method input
+    pub(super) custom_method_input: String,
+    pub(super) custom_method_focus: FocusHandle,
 }
 
 impl RequestPanel {
@@ -250,6 +258,11 @@ impl RequestPanel {
                 .with_read_only(true)
                 .with_line_numbers(true)
         });
+        let import_editor = cx.new(|cx| {
+            CodeEditor::new(cx)
+                .with_language(Language::Plain)
+                .with_line_numbers(false)
+        });
         Self {
             active_tab: 0,
             method: HttpMethod::Post,
@@ -275,6 +288,7 @@ impl RequestPanel {
             form_data: vec![FormField::default()],
             body: initial_body.to_string(),
             body_type: BodyType::Json,
+            binary_file_path: None,
             syncing_params: false,
             auth_type: AuthType::None,
             bearer_token: String::new(),
@@ -309,6 +323,7 @@ impl RequestPanel {
             import_modal_open: false,
             import_text: String::new(),
             import_error: None,
+            import_editor,
             request_mode: RequestMode::Http,
             graphql_query_editor,
             graphql_variables_editor,
@@ -337,6 +352,9 @@ impl RequestPanel {
             script_post_h: crate::prefs::get_f32("request.script_post_h", 160.0),
             drag_script_pre: None,
             drag_script_post: None,
+            current_file: None,
+            custom_method_input: String::new(),
+            custom_method_focus: cx.focus_handle(),
         }
     }
 
@@ -619,6 +637,21 @@ impl RequestPanel {
                 Err(e) => {
                     eprintln!("Failed to read proto file: {}", e);
                 }
+            }
+        }
+    }
+
+    /// Load a proto file directly from a path (used when restoring from .http file)
+    pub(super) fn load_grpc_proto_from_path(&mut self, path: std::path::PathBuf, cx: &mut Context<Self>) {
+        match std::fs::read_to_string(&path) {
+            Ok(content) => {
+                self.grpc_proto_path = Some(path);
+                self.grpc_proto_content = content.clone();
+                self.parse_proto_services(&content);
+                cx.notify();
+            }
+            Err(e) => {
+                eprintln!("Failed to read proto file: {}", e);
             }
         }
     }
@@ -1192,13 +1225,21 @@ impl RequestPanel {
 
     fn set_body_type(&mut self, body_type: BodyType, cx: &mut Context<Self>) {
         self.body_type = body_type;
-        // Update Content-Type header based on body type
-        let content_type = match body_type {
-            BodyType::Json => "application/json",
-            BodyType::Form => "application/x-www-form-urlencoded",
-            BodyType::Raw => "text/plain",
+        // Update CodeEditor language
+        let lang = match body_type {
+            BodyType::Json => Language::Json,
+            BodyType::Xml  => Language::Xml,
+            _              => Language::Plain,
         };
-        // Update existing Content-Type header or add one
+        self.body_editor.update(cx, |ed, cx| ed.set_language(lang, cx));
+        // Update Content-Type header
+        let content_type = match body_type {
+            BodyType::Json   => "application/json",
+            BodyType::Xml    => "application/xml",
+            BodyType::Form   => "application/x-www-form-urlencoded",
+            BodyType::Raw    => "text/plain",
+            BodyType::Binary => return cx.notify(), // no content-type update for binary
+        };
         if let Some(header) = self.headers.iter_mut().find(|h| h.key.eq_ignore_ascii_case("content-type")) {
             header.value = content_type.to_string();
         } else {
@@ -1209,6 +1250,18 @@ impl RequestPanel {
             });
         }
         cx.notify();
+    }
+
+    pub(super) fn browse_binary_file(&mut self, cx: &mut Context<Self>) {
+        let mut dialog = rfd::FileDialog::new().set_title("Select Binary File");
+        if let Some(dir) = last_paths::last_dir("binary_file").or_else(dirs::home_dir) {
+            dialog = dialog.set_directory(dir);
+        }
+        if let Some(path) = dialog.pick_file() {
+            last_paths::save_last_dir("binary_file", &path);
+            self.binary_file_path = Some(path);
+            cx.notify();
+        }
     }
 
     fn toggle_header(&mut self, index: usize, cx: &mut Context<Self>) {
@@ -2091,30 +2144,33 @@ impl RequestPanel {
     }
 
     /// Save the current request to a .http file
-    fn save_request(&mut self, cx: &mut Context<Self>) {
-        // Generate .http file content
+    pub fn save_request(&mut self, cx: &mut Context<Self>) {
         let content = self.generate_http_content(cx);
 
-        // Open save dialog
+        // Save in-place if a file is already loaded
+        if let Some(ref path) = self.current_file.clone() {
+            if let Err(e) = std::fs::write(path, content) {
+                eprintln!("Failed to save request: {}", e);
+            }
+            return;
+        }
+
+        // Otherwise open save dialog
         let default_name = if self.url.is_empty() {
             "new-request.http".to_string()
         } else {
-            // Extract path from URL for filename
-            let url = &self.url;
-            let name = url.split('/')
+            let name = self.url.split('/')
                 .filter(|s| !s.is_empty() && !s.contains("://") && !s.contains('.'))
                 .last()
                 .unwrap_or("request");
             format!("{}.http", name)
         };
 
-        let start_dir = last_paths::last_dir("save_request")
-            .or_else(dirs::home_dir);
+        let start_dir = last_paths::last_dir("save_request").or_else(dirs::home_dir);
         let mut dialog = rfd::FileDialog::new()
             .set_title("Save Request")
             .set_file_name(&default_name)
             .add_filter("HTTP Request", &["http"]);
-
         if let Some(dir) = start_dir {
             dialog = dialog.set_directory(dir);
         }
@@ -2126,9 +2182,10 @@ impl RequestPanel {
             } else {
                 path
             };
-
-            if let Err(e) = std::fs::write(&path, content) {
+            if let Err(e) = std::fs::write(&path, &content) {
                 eprintln!("Failed to save request: {}", e);
+            } else {
+                self.current_file = Some(path);
             }
         }
     }
@@ -2146,9 +2203,13 @@ impl RequestPanel {
         lines.push(format!("### {}", name));
         lines.push(String::new());
 
+        // Proto file annotation (gRPC)
+        if let Some(ref proto_path) = self.grpc_proto_path {
+            lines.push(format!("# @proto {}", proto_path.display()));
+        }
+
         // Method and URL
-        let method = format!("{:?}", self.method).to_uppercase();
-        lines.push(format!("{} {}", method, self.url));
+        lines.push(format!("{} {}", self.method.as_str(), self.url));
 
         // Headers
         for header in &self.headers {
@@ -2224,7 +2285,7 @@ impl RequestPanel {
         let body = if body.trim().is_empty() { None } else { Some(body) };
 
         let request = CodegenRequest {
-            method: format!("{:?}", self.method).to_uppercase(),
+            method: self.method.as_str().to_string(),
             url: self.url.clone(),
             headers,
             body,
@@ -2275,6 +2336,7 @@ impl RequestPanel {
         self.import_modal_open = true;
         self.import_text.clear();
         self.import_error = None;
+        self.import_editor.update(cx, |ed, cx| ed.set_content("", cx));
         cx.notify();
     }
 
@@ -2288,6 +2350,7 @@ impl RequestPanel {
 
     /// Update import text
     pub(super) fn set_import_text(&mut self, text: String, cx: &mut Context<Self>) {
+        self.import_editor.update(cx, |ed, cx| ed.set_content(&text, cx));
         self.import_text = text;
         self.import_error = None;
         cx.notify();
@@ -2314,8 +2377,7 @@ impl RequestPanel {
             last_paths::save_last_dir("import_collection", &path);
             match std::fs::read_to_string(&path) {
                 Ok(content) => {
-                    self.import_text = content;
-                    self.import_error = None;
+                    self.set_import_text(content, cx);
                 }
                 Err(e) => {
                     self.import_error = Some(format!("Failed to read file: {}", e));
@@ -2327,6 +2389,11 @@ impl RequestPanel {
 
     /// Execute import from the current import_text
     pub(super) fn execute_import(&mut self, cx: &mut Context<Self>) {
+        // Sync editor content into import_text before parsing
+        let editor_content = self.import_editor.read(cx).content().to_string();
+        if !editor_content.is_empty() {
+            self.import_text = editor_content;
+        }
         if self.import_text.trim().is_empty() {
             self.import_error = Some("Please paste a cURL command or request data".to_string());
             cx.notify();
@@ -2392,7 +2459,7 @@ impl RequestPanel {
         cx.notify();
     }
 
-    fn send_request(&mut self, cx: &mut Context<Self>) {
+    pub fn send_request(&mut self, cx: &mut Context<Self>) {
         if self.loading || self.url.is_empty() {
             return;
         }
@@ -2442,7 +2509,7 @@ impl RequestPanel {
 
         // Substitute variables in URL
         let url = substitute(&self.url);
-        let method = self.method;
+        let method = self.method.clone();
         let response_panel = self.response_panel.clone();
         let variable_extractions = self.variable_extractions.clone();
         let explorer_panel = self.explorer_panel.clone();
@@ -2488,6 +2555,8 @@ impl RequestPanel {
             }
         }
 
+        let binary_file_path = self.binary_file_path.clone();
+
         // Substitute variables in body and collect form data
         let has_files = self.body_type == BodyType::Form
             && self.form_data.iter().any(|f| f.enabled && f.field_type == FormFieldType::File && f.file_path.is_some());
@@ -2528,10 +2597,9 @@ impl RequestPanel {
             }
 
             Some(graphql_body.to_string())
-        } else if matches!(method, HttpMethod::Post | HttpMethod::Put | HttpMethod::Patch) {
+        } else if matches!(method, HttpMethod::Post | HttpMethod::Put | HttpMethod::Patch | HttpMethod::Custom(_)) {
             match self.body_type {
                 BodyType::Form if !has_files => {
-                    // URL-encode form data (no files)
                     let form_body: String = form_fields
                         .iter()
                         .filter(|(_, _, _, is_file)| !is_file)
@@ -2543,6 +2611,16 @@ impl RequestPanel {
                     if form_body.is_empty() { None } else { Some(form_body) }
                 }
                 BodyType::Form => None, // Will use multipart
+                BodyType::Binary => {
+                    // Read binary file and send raw bytes encoded as latin-1 string
+                    binary_file_path.as_ref().and_then(|p| {
+                        std::fs::read(p).ok().map(|bytes| {
+                            // Wrap bytes in a String for transport via the existing String body path
+                            // reqwest will send raw bytes when the body is set as String
+                            bytes.iter().map(|&b| b as char).collect::<String>()
+                        })
+                    })
+                }
                 _ => Some(substitute(&body_content)),
             }
         } else {
@@ -2654,6 +2732,8 @@ impl RequestPanel {
                     HttpMethod::Put => reqwest::Method::PUT,
                     HttpMethod::Patch => reqwest::Method::PATCH,
                     HttpMethod::Delete => reqwest::Method::DELETE,
+                    HttpMethod::Custom(ref s) => reqwest::Method::from_bytes(s.as_bytes())
+                        .unwrap_or(reqwest::Method::GET),
                 };
 
                 let mut req_builder = client.request(req_method, &final_url);
@@ -3191,13 +3271,14 @@ impl Render for RequestPanel {
                 div()
                     .id("tab-content")
                     .flex_1()
+                    .w_full()
                     .p(px(12.0))
                     .overflow_scroll()
                     .child(self.render_tab_content(cx)),
             )
             // Floating dropdown overlays — wrapped in deferred() to paint above overflow_scroll
             .when(self.method_dropdown_open, |el| {
-                el.child(deferred(self.render_method_dropdown_overlay(cx)).with_priority(1))
+                el.child(deferred(self.render_method_dropdown_overlay(window, cx)).with_priority(1))
             })
             .when(self.mode_dropdown_open, |el| {
                 el.child(deferred(self.render_mode_dropdown_overlay(cx)).with_priority(1))

@@ -7,7 +7,7 @@ use gpui::{
 
 use protide_core::mock_server::{HttpMethod, MockResponse, MockRoute, MockServer};
 use crate::theme;
-use crate::ui::components::{modal::ModalState, TextInput};
+use crate::ui::components::{modal::ModalState, TextInput, TextInputStyle};
 use crate::ui::main_window::MainWindow;
 
 /// Mock server panel
@@ -16,7 +16,7 @@ pub struct MockServerPanel {
     #[allow(dead_code)]
     focus: FocusHandle,
     new_route_method: HttpMethod,
-    new_route_status: u16,
+    status_input: Entity<TextInput>,
     proxy_path_input: Entity<TextInput>,
     proxy_target_input: Entity<TextInput>,
     main_window: WeakEntity<MainWindow>,
@@ -24,13 +24,14 @@ pub struct MockServerPanel {
 
 impl MockServerPanel {
     pub fn new(cx: &mut Context<Self>, main_window: WeakEntity<MainWindow>) -> Self {
+        let status_input = cx.new(|cx| TextInput::new(cx, "mock-status").text("200").style(TextInputStyle::compact()).placeholder("200"));
         let proxy_path_input = cx.new(|cx| TextInput::new(cx, "proxy-path").placeholder("/api/*"));
         let proxy_target_input = cx.new(|cx| TextInput::new(cx, "proxy-target").placeholder("https://api.example.com"));
         Self {
             server: MockServer::new(8080),
             focus: cx.focus_handle(),
             new_route_method: HttpMethod::Get,
-            new_route_status: 200,
+            status_input,
             proxy_path_input,
             proxy_target_input,
             main_window,
@@ -47,7 +48,8 @@ impl MockServerPanel {
     }
 
     fn add_route(&mut self, cx: &mut Context<Self>) {
-        let response = MockResponse::new(self.new_route_status, r#"{"message":"mock response"}"#)
+        let status = self.status_input.read(cx).get_text().trim().parse::<u16>().unwrap_or(200);
+        let response = MockResponse::new(status, r#"{"message":"mock response"}"#)
             .with_header("Content-Type", "application/json");
         let route = MockRoute::new(self.new_route_method, "/api/mock", response);
         self.server.add_route(route);
@@ -83,11 +85,6 @@ impl MockServerPanel {
         self.new_route_method = method;
         cx.notify();
     }
-
-    fn set_status(&mut self, status: u16, cx: &mut Context<Self>) {
-        self.new_route_status = status;
-        cx.notify();
-    }
 }
 
 impl Render for MockServerPanel {
@@ -97,7 +94,6 @@ impl Render for MockServerPanel {
         let base_url = self.server.base_url();
         let routes = self.server.routes();
         let new_method = self.new_route_method;
-        let new_status = self.new_route_status;
 
         div()
             .id("mock-server-panel")
@@ -180,6 +176,7 @@ impl Render for MockServerPanel {
                 div()
                     .id("routes-list")
                     .flex_1()
+                    .w_full()
                     .overflow_scroll()
                     .child(
                         div()
@@ -288,46 +285,29 @@ impl Render for MockServerPanel {
                     .child(
                         div()
                             .flex()
+                            .flex_wrap()
                             .items_center()
                             .gap_1()
-                            .child(
+                            .children(HttpMethod::all().iter().copied().enumerate().map(|(i, m)| {
+                                let is_selected = new_method == m;
+                                let color = match m {
+                                    HttpMethod::Get => theme.colors.method_get,
+                                    HttpMethod::Post => theme.colors.method_post,
+                                    HttpMethod::Put => theme.colors.method_put,
+                                    HttpMethod::Patch => theme.colors.method_patch,
+                                    HttpMethod::Delete => theme.colors.method_delete,
+                                    _ => theme.colors.text_secondary,
+                                };
                                 div()
-                                    .id("method-get")
+                                    .id(("method-btn", i))
                                     .px_2().py_1().cursor_pointer().text_xs().border_1()
-                                    .when(new_method == HttpMethod::Get, |el| el.border_color(theme.colors.method_get.opacity(0.6)).bg(theme.colors.method_get.opacity(0.12)).text_color(theme.colors.method_get))
-                                    .when(new_method != HttpMethod::Get, |el| el.border_color(theme.colors.border).bg(theme.colors.bg_secondary).text_color(theme.colors.text_secondary))
-                                    .child("GET")
-                                    .on_click(cx.listener(|this, _, _, cx| this.set_method(HttpMethod::Get, cx)))
-                            )
-                            .child(
-                                div()
-                                    .id("method-post")
-                                    .px_2().py_1().cursor_pointer().text_xs().border_1()
-                                    .when(new_method == HttpMethod::Post, |el| el.border_color(theme.colors.method_post.opacity(0.6)).bg(theme.colors.method_post.opacity(0.12)).text_color(theme.colors.method_post))
-                                    .when(new_method != HttpMethod::Post, |el| el.border_color(theme.colors.border).bg(theme.colors.bg_secondary).text_color(theme.colors.text_secondary))
-                                    .child("POST")
-                                    .on_click(cx.listener(|this, _, _, cx| this.set_method(HttpMethod::Post, cx)))
-                            )
-                            .child(
-                                div()
-                                    .id("method-put")
-                                    .px_2().py_1().cursor_pointer().text_xs().border_1()
-                                    .when(new_method == HttpMethod::Put, |el| el.border_color(theme.colors.method_put.opacity(0.6)).bg(theme.colors.method_put.opacity(0.12)).text_color(theme.colors.method_put))
-                                    .when(new_method != HttpMethod::Put, |el| el.border_color(theme.colors.border).bg(theme.colors.bg_secondary).text_color(theme.colors.text_secondary))
-                                    .child("PUT")
-                                    .on_click(cx.listener(|this, _, _, cx| this.set_method(HttpMethod::Put, cx)))
-                            )
-                            .child(
-                                div()
-                                    .id("method-delete")
-                                    .px_2().py_1().cursor_pointer().text_xs().border_1()
-                                    .when(new_method == HttpMethod::Delete, |el| el.border_color(theme.colors.method_delete.opacity(0.6)).bg(theme.colors.method_delete.opacity(0.12)).text_color(theme.colors.method_delete))
-                                    .when(new_method != HttpMethod::Delete, |el| el.border_color(theme.colors.border).bg(theme.colors.bg_secondary).text_color(theme.colors.text_secondary))
-                                    .child("DELETE")
-                                    .on_click(cx.listener(|this, _, _, cx| this.set_method(HttpMethod::Delete, cx)))
-                            )
+                                    .when(is_selected, |el| el.border_color(color.opacity(0.6)).bg(color.opacity(0.12)).text_color(color))
+                                    .when(!is_selected, |el| el.border_color(theme.colors.border).bg(theme.colors.bg_secondary).text_color(theme.colors.text_secondary))
+                                    .child(m.as_str())
+                                    .on_click(cx.listener(move |this, _, _, cx| this.set_method(m, cx)))
+                            }))
                     )
-                    // Status selector
+                    // Status code input
                     .child(
                         div()
                             .flex()
@@ -336,39 +316,8 @@ impl Render for MockServerPanel {
                             .child(div().text_xs().text_color(theme.colors.text_secondary).child("Status:"))
                             .child(
                                 div()
-                                    .id("status-200")
-                                    .px_2().py_1().cursor_pointer().text_xs().border_1()
-                                    .when(new_status == 200, |el| el.border_color(theme.colors.status_success.opacity(0.6)).bg(theme.colors.status_success.opacity(0.12)).text_color(theme.colors.status_success))
-                                    .when(new_status != 200, |el| el.border_color(theme.colors.border).bg(theme.colors.bg_secondary).text_color(theme.colors.text_secondary))
-                                    .child("200")
-                                    .on_click(cx.listener(|this, _, _, cx| this.set_status(200, cx)))
-                            )
-                            .child(
-                                div()
-                                    .id("status-400")
-                                    .px_2().py_1().cursor_pointer().text_xs().border_1()
-                                    .when(new_status == 400, |el| el.border_color(theme.colors.status_client_error.opacity(0.6)).bg(theme.colors.status_client_error.opacity(0.12)).text_color(theme.colors.status_client_error))
-                                    .when(new_status != 400, |el| el.border_color(theme.colors.border).bg(theme.colors.bg_secondary).text_color(theme.colors.text_secondary))
-                                    .child("400")
-                                    .on_click(cx.listener(|this, _, _, cx| this.set_status(400, cx)))
-                            )
-                            .child(
-                                div()
-                                    .id("status-404")
-                                    .px_2().py_1().cursor_pointer().text_xs().border_1()
-                                    .when(new_status == 404, |el| el.border_color(theme.colors.status_client_error.opacity(0.6)).bg(theme.colors.status_client_error.opacity(0.12)).text_color(theme.colors.status_client_error))
-                                    .when(new_status != 404, |el| el.border_color(theme.colors.border).bg(theme.colors.bg_secondary).text_color(theme.colors.text_secondary))
-                                    .child("404")
-                                    .on_click(cx.listener(|this, _, _, cx| this.set_status(404, cx)))
-                            )
-                            .child(
-                                div()
-                                    .id("status-500")
-                                    .px_2().py_1().cursor_pointer().text_xs().border_1()
-                                    .when(new_status == 500, |el| el.border_color(theme.colors.status_server_error.opacity(0.6)).bg(theme.colors.status_server_error.opacity(0.12)).text_color(theme.colors.status_server_error))
-                                    .when(new_status != 500, |el| el.border_color(theme.colors.border).bg(theme.colors.bg_secondary).text_color(theme.colors.text_secondary))
-                                    .child("500")
-                                    .on_click(cx.listener(|this, _, _, cx| this.set_status(500, cx)))
+                                    .w(px(80.0))
+                                    .child(self.status_input.clone())
                             )
                     )
                     // Proxy route inputs
@@ -400,6 +349,7 @@ impl Render for MockServerPanel {
                         div()
                             .mt_2()
                             .flex()
+                            .flex_wrap()
                             .gap_2()
                             .child(
                                 div()

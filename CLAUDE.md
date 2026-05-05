@@ -105,9 +105,11 @@ api-dash/
 ### GPUI Reference
 - **Zed editor is the authoritative GPUI example source.** GPUI was invented and built by Zed. Always look at Zed's source code for correct GPUI patterns, event handling, rendering APIs, and idioms before guessing or inventing approaches.
 - Zed source: `~/.cargo/git/checkouts/zed-a70e2ad075855582/db5a9be/crates/`
+- **Rule: Before writing or fixing any GPUI layout/UI code, search Zed's source first.** Never guess, never trial-and-error. Find the canonical pattern in Zed, then apply it.
 
 ### GPUI Gotchas
 - `overflow_scroll()` requires `.id()` on the element — but prefer custom scroll with `on_scroll_wheel` + viewport virtualization for large content (avoid rendering thousands of nodes)
+- `overflow_scroll()` must have explicit dimensions (`w_full()` + `flex_1()`, or `size_full()`) — without `w_full()`, percentage-based child widths don't resolve to the panel width, breaking `ml_auto()`, `w_full()` on children, and `absolute().right_0()` alignment
 - No `overflow_y_scroll()` or `overflow_x_scroll()` - only `overflow_scroll()`
 - Theme colors accessed via `theme::current(cx).colors.*`
 - Method colors: `theme.method_color("GET")` returns colored Hsla

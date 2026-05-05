@@ -1,9 +1,21 @@
+use std::sync::Arc;
 use anyhow::Result;
-use gpui::{WindowOptions, size, px, AppContext as _};
+use gpui::{Menu, MenuItem, WindowOptions, size, px, AppContext as _};
 use gpui_component::Root;
 use gpui_component_assets::Assets;
-use protide_ui::ui::MainWindow;
+use protide_ui::ui::{
+    MainWindow, register_keybindings,
+    SendRequest, SaveRequest, ToggleSidebar, ToggleMockServer,
+    ShowHelp, ShowAbout, Quit,
+};
 use protide_ui::ui::panels::RequestHistory;
+
+const APP_ICON_PNG: &[u8] = include_bytes!("../assets/protide-logo.png");
+
+fn load_app_icon() -> Option<Arc<image::RgbaImage>> {
+    let img = image::load_from_memory(APP_ICON_PNG).ok()?;
+    Some(Arc::new(img.to_rgba8()))
+}
 
 fn main() -> Result<()> {
     gpui_platform::application()
@@ -21,6 +33,26 @@ fn main() -> Result<()> {
                 .expect("Failed to load JetBrains Mono fonts");
 
             protide_ui::theme::init(cx);
+            register_keybindings(cx);
+
+            cx.set_menus([
+                Menu::new("Protide").items([
+                    MenuItem::action("About Protide", ShowAbout),
+                    MenuItem::separator(),
+                    MenuItem::action("Quit Protide", Quit),
+                ]),
+                Menu::new("Request").items([
+                    MenuItem::action("Send Request", SendRequest),
+                    MenuItem::action("Save Request", SaveRequest),
+                ]),
+                Menu::new("View").items([
+                    MenuItem::action("Toggle Sidebar", ToggleSidebar),
+                    MenuItem::action("Toggle Mock Server", ToggleMockServer),
+                ]),
+                Menu::new("Help").items([
+                    MenuItem::action("Keyboard Shortcuts", ShowHelp),
+                ]),
+            ]);
 
             cx.set_global(RequestHistory::new());
 
@@ -34,6 +66,7 @@ fn main() -> Result<()> {
                     appears_transparent: false,
                     traffic_light_position: None,
                 }),
+                icon: load_app_icon(),
                 ..Default::default()
             };
 

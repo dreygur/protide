@@ -111,6 +111,8 @@ pub struct ExplorerPanel {
     drag_env: Option<(f32, f32)>,
     /// Handle to main window for showing full-screen modals
     main_window: WeakEntity<MainWindow>,
+    /// Panel bounds (origin + size) captured each frame via canvas
+    panel_bounds: gpui::Bounds<Pixels>,
 }
 
 impl ExplorerPanel {
@@ -146,6 +148,7 @@ impl ExplorerPanel {
             drag_coll: None,
             drag_env: None,
             main_window,
+            panel_bounds: gpui::Bounds::default(),
         }
     }
 
@@ -276,6 +279,21 @@ impl ExplorerPanel {
         cx.notify();
     }
 
+    pub fn expand_section_collections(&mut self, cx: &mut Context<Self>) {
+        self.collections_expanded = true;
+        cx.notify();
+    }
+
+    pub fn expand_section_history(&mut self, cx: &mut Context<Self>) {
+        self.history_expanded = true;
+        cx.notify();
+    }
+
+    pub fn expand_section_env(&mut self, cx: &mut Context<Self>) {
+        self.env_editor_open = true;
+        cx.notify();
+    }
+
     /// Open folder dialog and load collection
     pub fn open_folder(&mut self, cx: &mut Context<Self>) {
         let mut dialog = rfd::FileDialog::new().set_title("Open Collection Folder");
@@ -293,7 +311,7 @@ impl ExplorerPanel {
         // Default directory is workspace path or home
         let default_dir = self.workspace_path.clone().or_else(|| dirs::home_dir());
 
-        let start_dir = last_paths::last_dir("save_request").or(default_dir);
+        let start_dir = last_paths::last_dir("new_request").or_else(|| last_paths::last_dir("save_request")).or(default_dir);
         let mut dialog = rfd::FileDialog::new()
             .set_title("Create New Request")
             .set_file_name("new-request.http")
@@ -304,6 +322,7 @@ impl ExplorerPanel {
         }
 
         if let Some(path) = dialog.save_file() {
+            last_paths::save_last_dir("new_request", &path);
             last_paths::save_last_dir("save_request", &path);
             // Ensure .http extension
             let path = if path.extension().is_none() || path.extension().unwrap() != "http" {
@@ -595,6 +614,14 @@ impl ExplorerPanel {
         cx.notify();
     }
 
+    /// Close the open project / workspace folder
+    fn close_project(&mut self, cx: &mut Context<Self>) {
+        self.workspace_path = None;
+        self.collection_items.clear();
+        self.collections_expanded = true;
+        cx.notify();
+    }
+
     /// Refresh collections by rescanning the workspace directory
     fn refresh_collections(&mut self, cx: &mut Context<Self>) {
         if let Some(workspace) = &self.workspace_path {
@@ -609,7 +636,7 @@ impl ExplorerPanel {
             if let Ok(requests) = http_parser::parse(&content) {
                 if let Some(req) = requests.first() {
                     if let Some(request_panel) = &self.request_panel {
-                        let method = format!("{:?}", req.method).to_uppercase();
+                        let method = req.method.as_str().to_string();
                         let url = req.url.clone();
                         let headers: Vec<(String, String)> = req
                             .headers
@@ -619,12 +646,16 @@ impl ExplorerPanel {
                             .collect();
                         let body = req.body.clone();
                         let variable_extractions = req.meta.variable_extractions.clone();
+                        let proto_path = req.meta.proto_path.clone().map(std::path::PathBuf::from);
 
                         request_panel.update(cx, |panel, cx| {
                             panel.load_from_history(method, url, headers, body, cx);
-                            // Set variable extractions from @set annotations
                             if !variable_extractions.is_empty() {
                                 panel.set_variable_extractions(variable_extractions, cx);
+                            }
+                            panel.current_file = Some(path.clone());
+                            if let Some(pp) = proto_path {
+                                panel.load_grpc_proto_from_path(pp, cx);
                             }
                         });
                     }
@@ -724,16 +755,31 @@ impl ExplorerPanel {
         let path_for_delete = path.clone();
         let is_folder = path.is_dir();
 
+        const MENU_W: f32 = 140.0;
+        const MENU_H: f32 = 64.0; // 2 items × 28px + 8px padding
+        // event.position is in window coords; subtract panel origin to get panel-local coords
+        let x = f32::from(position.x) - f32::from(self.panel_bounds.origin.x);
+        let y = f32::from(position.y) - f32::from(self.panel_bounds.origin.y);
+        let panel_w = f32::from(self.panel_bounds.size.width);
+        let panel_h = f32::from(self.panel_bounds.size.height);
+        // Flip left if would overflow right edge; flip up if would overflow bottom edge
+        let left = if x + MENU_W > panel_w { px((x - MENU_W).max(0.0)) } else { px(x) };
+        let top  = if y + MENU_H > panel_h { px((y - MENU_H).max(0.0)) } else { px(y) };
+
         div()
             .absolute()
-            .left(position.x)
-            .top(position.y)
-            .w(px(120.0))
+            .left(left)
+            .top(top)
+            .w(px(MENU_W))
             .bg(theme.colors.bg_secondary)
             .border_1()
             .border_color(theme.colors.border)
             .shadow_lg()
             .overflow_hidden()
+            // Stop propagation so backdrop's on_mouse_down doesn't close menu before items fire
+            .on_mouse_down(MouseButton::Left, cx.listener(|_, _, _, cx| {
+                cx.stop_propagation();
+            }))
             .child(
                 div()
                     .flex()
@@ -750,7 +796,7 @@ impl ExplorerPanel {
                             .gap(px(8.0))
                             .cursor_pointer()
                             .hover(|s| s.bg(theme.colors.bg_tertiary))
-                            .on_click(cx.listener(move |this, _, _, cx| {
+                            .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, _, cx| {
                                 this.start_rename_item(path_for_rename.clone(), cx);
                             }))
                             .child(icon(ICON_EDIT, ICON_MD, theme.colors.text_muted))
@@ -773,7 +819,7 @@ impl ExplorerPanel {
                             .gap(px(8.0))
                             .cursor_pointer()
                             .hover(|s| s.bg(theme.colors.status_client_error.opacity(0.1)))
-                            .on_click(cx.listener(move |this, _, _, cx| {
+                            .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, _, cx| {
                                 this.delete_collection_item(path_for_delete.clone(), cx);
                             }))
                             .child(icon(ICON_DELETE, ICON_MD, theme.colors.status_client_error))
@@ -1295,6 +1341,24 @@ impl ExplorerPanel {
                                             this.export_docs(cx);
                                         }))
                                         .child(icon(ICON_FILE, ICON_MD, theme.colors.text_muted)),
+                                )
+                                .child(
+                                    div()
+                                        .id("close-project-btn")
+                                        .size(px(22.0))
+                                        .flex()
+                                        .items_center()
+                                        .justify_center()
+                                        .cursor_pointer()
+                                        .text_color(theme.colors.text_muted)
+                                        .hover(|s| {
+                                            s.bg(theme.colors.bg_tertiary)
+                                                .text_color(theme.colors.status_client_error)
+                                        })
+                                        .on_click(cx.listener(|this, _, _, cx| {
+                                            this.close_project(cx);
+                                        }))
+                                        .child(icon(ICON_CLOSE, ICON_MD, theme.colors.text_muted)),
                                 )
                             }),
                     ),
@@ -2554,10 +2618,23 @@ impl Render for ExplorerPanel {
 
         div()
             .size_full()
+            .relative()
             .flex()
             .flex_col()
             .bg(theme.colors.bg_secondary)
             .track_focus(&self.edit_focus)
+            .child({
+                let entity = cx.entity();
+                canvas(
+                    move |bounds, _, cx| {
+                        let _ = entity.update(cx, |this, _| {
+                            this.panel_bounds = bounds;
+                        });
+                    },
+                    |_, _, _, _| {},
+                )
+                .absolute().top_0().left_0().size_full()
+            })
             .on_key_down(cx.listener(|this, event: &KeyDownEvent, _, cx| {
                 this.handle_edit_key(event, cx);
             }))
@@ -2656,6 +2733,7 @@ impl Render for ExplorerPanel {
                 div()
                     .id("explorer-history-area")
                     .flex_1()
+                    .w_full()
                     .overflow_scroll()
                     .child(self.render_history_section(cx)),
             )

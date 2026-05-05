@@ -1,0 +1,55 @@
+syntax = "proto3";
+
+package e2e.testing;
+
+option go_package = "github.com/protide/e2e/testing";
+
+message Employee {
+  int32 id = 1;
+  string name = 2;
+  string email = 3;
+  string department = 4;
+}
+
+message GetEmployeeRequest {
+  int32 id = 1;
+}
+
+message GetEmployeeResponse {
+  Employee employee = 1;
+}
+
+message ListEmployeesRequest {}
+
+message ListEmployeesResponse {
+  repeated Employee employees = 1;
+}
+
+message CreateEmployeeRequest {
+  string name = 1;
+  string email = 2;
+  string department = 3;
+}
+
+message UpdateEmployeeRequest {
+  int32 id = 1;
+  string name = 2;
+  string email = 3;
+  string department = 4;
+}
+
+message DeleteEmployeeRequest {
+  int32 id = 1;
+}
+
+message DeleteEmployeeResponse {
+  bool success = 1;
+}
+
+service EmployeeService {
+  rpc GetEmployee(GetEmployeeRequest) returns (GetEmployeeResponse);
+  rpc ListEmployees(ListEmployeesRequest) returns (ListEmployeesResponse);
+  rpc CreateEmployee(CreateEmployeeRequest) returns (GetEmployeeResponse);
+  rpc UpdateEmployee(UpdateEmployeeRequest) returns (GetEmployeeResponse);
+  rpc DeleteEmployee(DeleteEmployeeRequest) returns (DeleteEmployeeResponse);
+}

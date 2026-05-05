@@ -16,7 +16,7 @@ use crate::ui::components::icons::{
     ICON_CLOSE, ICON_CHECK, ICON_CHEVRON_DOWN, ICON_CHEVRON_UP,
     ICON_CHEVRON_LEFT, ICON_CHEVRON_RIGHT, ICON_ARROW_DOWN,
     ICON_ARROW_LEFT, ICON_ARROW_RIGHT,
-    ICON_COPY, ICON_FOLDER, ICON_USER, ICON_KEY,
+    ICON_COPY, ICON_FILE, ICON_FOLDER, ICON_USER, ICON_KEY,
     ICON_FORM, ICON_PLAY, ICON_CIRCLE_X, ICON_CODE,
 };
 use super::super::request_types::{ApiKeyLocation, AuthType, BodyType, EditTarget, FormFieldType, GrpcMethodInfo, GrpcStreamingType, HttpMethod, RequestMode, WsConnectionState, WsMessageDirection};
@@ -25,7 +25,7 @@ use super::{render_text_view, RequestPanel};
 impl RequestPanel {
     pub(super) fn render_url_bar(&mut self, window: &Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = theme::current(cx);
-        let method = self.method;
+        let method = self.method.clone();
         let method_color = theme.method_color(method.as_str());
         let is_url_focused = self.url_focus.is_focused(window);
 
@@ -115,7 +115,7 @@ impl RequestPanel {
                             this.skip_blur = true;
                             this.toggle_method_dropdown(cx);
                         }))
-                        .child(method.as_str())
+                        .child(method.as_str().to_string())
                         .child(
                             div()
                                 .flex()
@@ -311,15 +311,15 @@ impl RequestPanel {
         )
     }
 
-    pub(super) fn render_method_dropdown_overlay(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
+    pub(super) fn render_method_dropdown_overlay(&mut self, window: &Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = theme::current(cx);
 
-        // Positioned at top-left of panel, below the URL bar
+        // Positioned below mode selector + gap, under the URL bar
         div()
             .id("method-dropdown-overlay")
             .absolute()
-            .top(px(46.0))  // Below URL bar
-            .left(px(16.0)) // Same padding as URL bar
+            .top(px(64.0))   // URL bar height
+            .left(px(142.0)) // 20px padding + 110px mode selector + 12px gap
             .min_w(px(100.0))
             .py(px(6.0))
             .bg(theme.colors.bg_elevated)
@@ -330,7 +330,8 @@ impl RequestPanel {
                 this.skip_blur = true;
                 cx.stop_propagation();
             }))
-            .children(HttpMethod::all().iter().map(|&m| {
+            .children(HttpMethod::all().iter().map(|m| {
+                let m = m.clone();
                 let method_color = theme.method_color(m.as_str());
                 let is_selected = m == self.method;
 
@@ -345,11 +346,7 @@ impl RequestPanel {
                     .cursor_pointer()
                     .when(is_selected, |el| {
                         el.bg(method_color.opacity(0.1))
-                            .child(
-                                div()
-                                    .size(px(6.0))
-                                    .bg(method_color)
-                            )
+                            .child(div().size(px(6.0)).bg(method_color))
                     })
                     .when(!is_selected, |el| {
                         el.hover(|s| s.bg(theme.colors.bg_tertiary))
@@ -360,12 +357,86 @@ impl RequestPanel {
                             .text_size(px(12.0))
                             .font_weight(gpui::FontWeight::BOLD)
                             .text_color(method_color)
-                            .child(m.as_str())
+                            .child(m.as_str().to_string())
                     )
                     .on_click(cx.listener(move |this, _, _, cx| {
-                        this.select_method(m, cx);
+                        this.select_method(m.clone(), cx);
                     }))
             }))
+            // Custom method input row
+            .child(
+                div()
+                    .id("custom-method-divider")
+                    .mx(px(4.0))
+                    .mt(px(4.0))
+                    .border_t_1()
+                    .border_color(theme.colors.border)
+            )
+            .child(
+                div()
+                    .id("custom-method-input")
+                    .mx(px(4.0))
+                    .px(px(12.0))
+                    .my(px(4.0))
+                    .h(px(28.0))
+                    .bg(theme.colors.bg_primary)
+                    .border_1()
+                    .border_color(if self.custom_method_focus.is_focused(window) {
+                        theme.colors.border_focused
+                    } else {
+                        theme.colors.border
+                    })
+                    .flex()
+                    .items_center()
+                    .track_focus(&self.custom_method_focus)
+                    .on_mouse_down(gpui::MouseButton::Left, cx.listener(|this, _, window, cx| {
+                        this.skip_blur = true;
+                        window.focus(&this.custom_method_focus, cx);
+                        cx.stop_propagation();
+                    }))
+                    .on_key_down(cx.listener(|this, event: &KeyDownEvent, _, cx| {
+                        let key = event.keystroke.key.as_str();
+                        match key {
+                            "return" => {
+                                let val = this.custom_method_input.trim().to_uppercase();
+                                if !val.is_empty() {
+                                    this.select_method(HttpMethod::Custom(val), cx);
+                                } else {
+                                    this.method_dropdown_open = false;
+                                }
+                                cx.notify();
+                            }
+                            "escape" => {
+                                this.method_dropdown_open = false;
+                                cx.notify();
+                            }
+                            "backspace" => {
+                                this.custom_method_input.pop();
+                                cx.notify();
+                            }
+                            k if k.len() == 1 && !event.keystroke.modifiers.control && !event.keystroke.modifiers.platform => {
+                                this.custom_method_input.push_str(&k.to_uppercase());
+                                cx.notify();
+                            }
+                            _ => {}
+                        }
+                    }))
+                    .child(
+                        div()
+                            .text_size(px(12.0))
+                            .font_weight(gpui::FontWeight::BOLD)
+                            .text_color(if self.custom_method_input.is_empty() {
+                                theme.colors.text_muted
+                            } else {
+                                theme.colors.text_primary
+                            })
+                            .child(if self.custom_method_input.is_empty() {
+                                "Custom method...".to_string()
+                            } else {
+                                self.custom_method_input.clone()
+                            })
+                    )
+            )
     }
 
     pub(super) fn render_mode_dropdown_overlay(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
@@ -818,6 +889,23 @@ impl RequestPanel {
                 )
                 .child(
                     div()
+                        .id("body-type-xml-form")
+                        .h_full()
+                        .px(px(16.0))
+                        .flex()
+                        .items_center()
+                        .cursor_pointer()
+                        .border_b_2()
+                        .when(self.body_type == BodyType::Xml, |el| el.border_color(theme.colors.accent))
+                        .when(self.body_type != BodyType::Xml, |el| el.border_color(gpui::transparent_black()).hover(|s| s.bg(theme.colors.hover_overlay)))
+                        .on_click(cx.listener(|this, _, _, cx| { this.set_body_type(BodyType::Xml, cx); }))
+                        .child(div().text_size(px(13.0))
+                            .font_weight(if self.body_type == BodyType::Xml { gpui::FontWeight::MEDIUM } else { gpui::FontWeight::NORMAL })
+                            .text_color(if self.body_type == BodyType::Xml { theme.colors.text_primary } else { theme.colors.text_secondary })
+                            .child("XML"))
+                )
+                .child(
+                    div()
                         .id("body-type-form-form")
                         .h_full()
                         .px(px(16.0))
@@ -832,6 +920,23 @@ impl RequestPanel {
                             .font_weight(if self.body_type == BodyType::Form { gpui::FontWeight::MEDIUM } else { gpui::FontWeight::NORMAL })
                             .text_color(if self.body_type == BodyType::Form { theme.colors.text_primary } else { theme.colors.text_secondary })
                             .child("Form"))
+                )
+                .child(
+                    div()
+                        .id("body-type-binary-form")
+                        .h_full()
+                        .px(px(16.0))
+                        .flex()
+                        .items_center()
+                        .cursor_pointer()
+                        .border_b_2()
+                        .when(self.body_type == BodyType::Binary, |el| el.border_color(theme.colors.accent))
+                        .when(self.body_type != BodyType::Binary, |el| el.border_color(gpui::transparent_black()).hover(|s| s.bg(theme.colors.hover_overlay)))
+                        .on_click(cx.listener(|this, _, _, cx| { this.set_body_type(BodyType::Binary, cx); }))
+                        .child(div().text_size(px(13.0))
+                            .font_weight(if self.body_type == BodyType::Binary { gpui::FontWeight::MEDIUM } else { gpui::FontWeight::NORMAL })
+                            .text_color(if self.body_type == BodyType::Binary { theme.colors.text_primary } else { theme.colors.text_secondary })
+                            .child("Binary"))
                 )
                 .child(div().flex_1())
                 .child(
@@ -1040,9 +1145,11 @@ impl RequestPanel {
     }
 
     fn render_body_tab(&mut self, cx: &mut Context<Self>) -> gpui::AnyElement {
-        // For Form type, render KV editor instead of text editor
         if self.body_type == BodyType::Form {
             return self.render_form_body(cx);
+        }
+        if self.body_type == BodyType::Binary {
+            return self.render_binary_body(cx);
         }
 
         let theme = theme::current(cx);
@@ -1099,6 +1206,23 @@ impl RequestPanel {
                     )
                     .child(
                         div()
+                            .id("body-type-xml")
+                            .h_full()
+                            .px(px(16.0))
+                            .flex()
+                            .items_center()
+                            .cursor_pointer()
+                            .border_b_2()
+                            .when(self.body_type == BodyType::Xml, |el| el.border_color(theme.colors.accent))
+                            .when(self.body_type != BodyType::Xml, |el| el.border_color(gpui::transparent_black()).hover(|s| s.bg(theme.colors.hover_overlay)))
+                            .on_click(cx.listener(|this, _, _, cx| { this.set_body_type(BodyType::Xml, cx); }))
+                            .child(div().text_size(px(13.0))
+                                .font_weight(if self.body_type == BodyType::Xml { gpui::FontWeight::MEDIUM } else { gpui::FontWeight::NORMAL })
+                                .text_color(if self.body_type == BodyType::Xml { theme.colors.text_primary } else { theme.colors.text_secondary })
+                                .child("XML"))
+                    )
+                    .child(
+                        div()
                             .id("body-type-form")
                             .h_full()
                             .px(px(16.0))
@@ -1113,6 +1237,23 @@ impl RequestPanel {
                                 .font_weight(if self.body_type == BodyType::Form { gpui::FontWeight::MEDIUM } else { gpui::FontWeight::NORMAL })
                                 .text_color(if self.body_type == BodyType::Form { theme.colors.text_primary } else { theme.colors.text_secondary })
                                 .child("Form"))
+                    )
+                    .child(
+                        div()
+                            .id("body-type-binary")
+                            .h_full()
+                            .px(px(16.0))
+                            .flex()
+                            .items_center()
+                            .cursor_pointer()
+                            .border_b_2()
+                            .when(self.body_type == BodyType::Binary, |el| el.border_color(theme.colors.accent))
+                            .when(self.body_type != BodyType::Binary, |el| el.border_color(gpui::transparent_black()).hover(|s| s.bg(theme.colors.hover_overlay)))
+                            .on_click(cx.listener(|this, _, _, cx| { this.set_body_type(BodyType::Binary, cx); }))
+                            .child(div().text_size(px(13.0))
+                                .font_weight(if self.body_type == BodyType::Binary { gpui::FontWeight::MEDIUM } else { gpui::FontWeight::NORMAL })
+                                .text_color(if self.body_type == BodyType::Binary { theme.colors.text_primary } else { theme.colors.text_secondary })
+                                .child("Binary"))
                     )
                     .child(div().flex_1())
                     .child(
@@ -1130,6 +1271,88 @@ impl RequestPanel {
                     .w_full()
                     .overflow_hidden()
                     .child(self.body_editor.clone())
+            )
+            .into_any_element()
+    }
+
+    fn render_binary_body(&mut self, cx: &mut Context<Self>) -> gpui::AnyElement {
+        let theme = theme::current(cx);
+        let file_name = self.binary_file_path.as_ref()
+            .and_then(|p| p.file_name())
+            .map(|n| n.to_string_lossy().to_string());
+        let file_size = self.binary_file_path.as_ref()
+            .and_then(|p| std::fs::metadata(p).ok())
+            .map(|m| {
+                let bytes = m.len();
+                if bytes < 1024 { format!("{} B", bytes) }
+                else if bytes < 1024 * 1024 { format!("{:.1} KB", bytes as f64 / 1024.0) }
+                else { format!("{:.1} MB", bytes as f64 / (1024.0 * 1024.0)) }
+            });
+
+        div()
+            .size_full()
+            .flex()
+            .items_center()
+            .justify_center()
+            .child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .items_center()
+                    .gap(px(12.0))
+                    .when_some(file_name, |el, name| {
+                        el.child(
+                            div()
+                                .flex()
+                                .items_center()
+                                .gap(px(8.0))
+                                .child(icon(ICON_FILE, ICON_MD, theme.colors.accent))
+                                .child(
+                                    div()
+                                        .text_size(px(13.0))
+                                        .text_color(theme.colors.text_primary)
+                                        .child(name)
+                                )
+                                .when_some(file_size, |el, size| {
+                                    el.child(
+                                        div()
+                                            .text_size(px(11.0))
+                                            .text_color(theme.colors.text_muted)
+                                            .child(size)
+                                    )
+                                })
+                        )
+                    })
+                    .when(self.binary_file_path.is_none(), |el| {
+                        el.child(
+                            div()
+                                .text_size(px(12.0))
+                                .text_color(theme.colors.text_muted)
+                                .child("No file selected")
+                        )
+                    })
+                    .child(
+                        div()
+                            .id("browse-binary-btn")
+                            .px(px(16.0))
+                            .py(px(8.0))
+                            .bg(theme.colors.bg_tertiary)
+                            .border_1()
+                            .border_color(theme.colors.border)
+                            .flex()
+                            .items_center()
+                            .gap(px(6.0))
+                            .cursor_pointer()
+                            .hover(|s| s.border_color(theme.colors.accent))
+                            .on_click(cx.listener(|this, _, _, cx| this.browse_binary_file(cx)))
+                            .child(icon(ICON_FOLDER, ICON_MD, theme.colors.text_secondary))
+                            .child(
+                                div()
+                                    .text_size(px(12.0))
+                                    .text_color(theme.colors.text_secondary)
+                                    .child(if self.binary_file_path.is_some() { "Change File" } else { "Browse File" })
+                            )
+                    )
             )
             .into_any_element()
     }
@@ -2957,6 +3180,7 @@ impl RequestPanel {
                         div()
                             .id("proto-content-scroll")
                             .flex_1()
+                            .w_full()
                             .border_1()
                             .border_color(theme.colors.border)
                             .bg(theme.colors.bg_secondary)
@@ -3017,6 +3241,9 @@ impl RequestPanel {
                     .shadow_lg()
                     .flex()
                     .flex_col()
+                    .on_mouse_down(gpui::MouseButton::Left, cx.listener(|_, _, _, cx| {
+                        cx.stop_propagation();
+                    }))
                     .on_click(cx.listener(|_, _, _, cx| {
                         cx.stop_propagation();
                     }))
@@ -3084,6 +3311,9 @@ impl RequestPanel {
                                             .cursor_pointer()
                                             .border_1()
                                             .border_color(theme.colors.border)
+                                            .flex()
+                                            .items_center()
+                                            .gap(px(5.0))
                                             .hover(|s| s.bg(theme.colors.bg_tertiary))
                                             .on_click(cx.listener(|this, _, _, cx| {
                                                 this.browse_import_file(cx);
@@ -3092,46 +3322,16 @@ impl RequestPanel {
                                             .child("Browse...")
                                     )
                             )
-                            // Text area
+                            // Code editor (replaces plain textarea)
                             .child(
                                 div()
-                                    .id("import-textarea")
+                                    .id("import-editor-wrap")
                                     .w_full()
-                                    .h(px(200.0))
-                                    .p(px(12.0))
-                                    .bg(theme.colors.bg_secondary)
+                                    .h(px(220.0))
                                     .border_1()
                                     .border_color(theme.colors.border)
-                                    .overflow_scroll()
-                                    .font_family("JetBrains Mono")
-                                    .text_size(px(12.0))
-                                    .text_color(theme.colors.text_primary)
-                                    .child(
-                                        div()
-                                            .id("import-input")
-                                            .size_full()
-                                            .cursor_text()
-                                            .on_click(cx.listener(|this, _, _window, cx| {
-                                                // Read from clipboard on click if empty
-                                                if this.import_text.is_empty() {
-                                                    if let Some(clipboard) = cx.read_from_clipboard() {
-                                                        if let Some(text) = clipboard.text() {
-                                                            this.set_import_text(text.to_string(), cx);
-                                                        }
-                                                    }
-                                                }
-                                            }))
-                                            .when(import_text.is_empty(), |el| {
-                                                el.child(
-                                                    div()
-                                                        .text_color(theme.colors.text_muted)
-                                                        .child("Click to paste from clipboard...")
-                                                )
-                                            })
-                                            .when(!import_text.is_empty(), |el| {
-                                                el.child(import_text.clone())
-                                            })
-                                    )
+                                    .overflow_hidden()
+                                    .child(self.import_editor.clone())
                             )
                             // Error message
                             .when(import_error.is_some(), |el| {

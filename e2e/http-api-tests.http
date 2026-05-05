@@ -1,0 +1,69 @@
+### Get All Posts
+# @name get-posts
+# @description Retrieve all posts from JSONPlaceholder
+GET https://jsonplaceholder.typicode.com/posts
+
+### Get Single Post
+# @name get-post
+# @description Retrieve a single post by ID
+GET https://jsonplaceholder.typicode.com/posts/1
+
+### Get Posts by User
+# @name get-posts-by-user
+# @description Get posts filtered by userId
+GET https://jsonplaceholder.typicode.com/posts?userId=1
+
+### Create Post
+# @name create-post
+# @description Create a new post
+POST https://jsonplaceholder.typicode.com/posts
+Content-Type: application/json
+
+{
+  "title": "Test Post",
+  "body": "This is a test post content",
+  "userId": 1
+}
+
+### Update Post
+# @name update-post
+# @description Update an existing post
+PUT https://jsonplaceholder.typicode.com/posts/1
+Content-Type: application/json
+
+{
+  "id": 1,
+  "title": "Updated Post",
+  "body": "Updated content",
+  "userId": 1
+}
+
+### Patch Post
+# @name patch-post
+# @description Partial update of a post
+PATCH https://jsonplaceholder.typicode.com/posts/1
+Content-Type: application/json
+
+{
+  "title": "Patched Title"
+}
+
+### Delete Post
+# @name delete-post
+# @description Delete a post
+DELETE https://jsonplaceholder.typicode.com/posts/1
+
+### Get Comments for Post
+# @name get-comments
+# @description Get comments for a specific post
+GET https://jsonplaceholder.typicode.com/posts/1/comments
+
+### Get All Users
+# @name get-users
+# @description Retrieve all users
+GET https://jsonplaceholder.typicode.com/users
+
+### Get User Posts
+# @name get-user-posts
+# @description Get all posts for a user
+GET https://jsonplaceholder.typicode.com/users/1/posts

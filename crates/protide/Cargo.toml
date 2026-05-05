@@ -19,3 +19,4 @@ gpui-component = { workspace = true }
 gpui-component-assets = { workspace = true }
 
 anyhow = { workspace = true }
+image = { workspace = true }

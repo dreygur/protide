@@ -120,6 +120,8 @@ pub struct ResponsePanel {
     jsonpath_input: Entity<TextInput>,
     /// Result of JSONPath extraction
     extraction_result: Option<Result<String, String>>,
+    /// Read-only editor for displaying extracted value with syntax highlighting
+    extraction_editor: Entity<CodeEditor>,
     /// Column widths for resizable tables
     resp_header_col1_w: f32,   // response headers: NAME column
     cookie_col1_w: f32,        // cookies: NAME column
@@ -140,6 +142,11 @@ impl ResponsePanel {
         let jsonpath_input = cx.new(|cx| {
             TextInput::new(cx, "$.data.id")
         });
+        let extraction_editor = cx.new(|cx| {
+            CodeEditor::new(cx)
+                .with_read_only(true)
+                .with_line_numbers(false)
+        });
         Self {
             active_tab: 0,
             response: None,
@@ -150,6 +157,7 @@ impl ResponsePanel {
             test_results: Vec::new(),
             jsonpath_input,
             extraction_result: None,
+            extraction_editor,
             resp_header_col1_w: 180.0,
             cookie_col1_w: 150.0,
             cookie_col3_w: 100.0,
@@ -283,6 +291,7 @@ impl Render for ResponsePanel {
                 div()
                     .id("response-content")
                     .flex_1()
+                    .w_full()
                     .p(px(12.0))
                     .overflow_scroll()
                     .child(self.render_content(cx)),
@@ -852,7 +861,7 @@ impl ResponsePanel {
                                     .child(format!("{} lines", line_count))
                             )
                     )
-                    // Right: Copy button — absolutely pinned to right edge
+                    // Right: Copy button — absolute right_0 (ml_auto unreliable in overflow_scroll)
                     .child(
                         div()
                             .id("copy-body-btn")
@@ -968,7 +977,7 @@ impl ResponsePanel {
                                     .child("response headers")
                             )
                     )
-                    // Copy headers button — absolutely pinned to right
+                    // Copy headers button — absolute right_0 (ml_auto unreliable in overflow_scroll)
                     .child(
                         div()
                             .id("copy-headers-btn")
@@ -1628,20 +1637,13 @@ impl ResponsePanel {
                                                     .child("Copy")
                                             )
                                     )
-                                    // Value display
+                                    // Value display with syntax highlighting
                                     .child(
                                         div()
                                             .id("extract-value")
                                             .flex_1()
-                                            .p(px(12.0))
-                                            .overflow_scroll()
-                                            .child(
-                                                div()
-                                                    .text_size(px(12.0))
-                                                    .font_family("JetBrains Mono")
-                                                    .text_color(theme.colors.text_primary)
-                                                    .child(value.clone())
-                                            )
+                                            .overflow_hidden()
+                                            .child(self.extraction_editor.clone())
                                     )
                                     .into_any_element()
                             }
@@ -1735,6 +1737,21 @@ impl ResponsePanel {
         }
 
         let result = chaining::extract_jsonpath(&response.body, &jsonpath);
+        if let Ok(ref value) = result {
+            let (content, lang) = if value.trim().starts_with('{') || value.trim().starts_with('[') {
+                let pretty = serde_json::from_str::<serde_json::Value>(value)
+                    .ok()
+                    .and_then(|v| serde_json::to_string_pretty(&v).ok())
+                    .unwrap_or_else(|| value.clone());
+                (pretty, Language::Json)
+            } else {
+                (value.clone(), Language::Json)
+            };
+            self.extraction_editor.update(cx, |editor, cx| {
+                editor.set_content(&content, cx);
+                editor.set_language(lang, cx);
+            });
+        }
         self.extraction_result = Some(result);
         cx.notify();
     }

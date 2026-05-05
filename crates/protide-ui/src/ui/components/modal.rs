@@ -69,10 +69,12 @@ pub fn render_modal_shell(state: &ModalState, theme: &Theme, buttons: AnyElement
         .bg(Hsla { h: 0.0, s: 0.0, l: 0.0, a: 0.6 })
         .child(
             div()
-                .flex_1()
+                .w(px(480.0))
+                .max_w_full()
                 .bg(theme.colors.bg_elevated)
                 .border_1()
                 .border_color(theme.colors.border)
+                .shadow_lg()
                 .flex()
                 .flex_col()
                 .p(px(20.0))
