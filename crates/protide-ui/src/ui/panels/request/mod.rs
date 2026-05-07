@@ -29,6 +29,7 @@ use protide_core::execution::sio::{
     SocketIoExecutor, TungsteniteSocketIoExecutor, SioCommand, SioConnectionParams, SioUiEvent, SioRingBuffer,
 };
 
+use super::console::{ConsoleEntry, ConsolePanel, LogLevel};
 use super::explorer::ExplorerPanel;
 use super::request_types::{ApiKeyLocation, AuthType, BodyType, EditTarget, FormField, FormFieldType, GrpcMethodInfo, GrpcStreamingType, HttpMethod, KeyValuePair, RequestMode, SioConnectionState, WsConnectionState};
 use super::request_utils::{base64_encode, status_text, url_decode, url_encode};
@@ -39,6 +40,24 @@ use protide_core::codegen::{self, CodegenRequest, Language as CodegenLanguage};
 use protide_core::import;
 use http_parser::VariableExtraction;
 use crate::last_paths;
+
+/// Summary of a single type from a GraphQL schema introspection response.
+#[derive(Clone, Debug)]
+pub struct GqlSchemaType {
+    pub name: String,
+    pub kind: String,
+    pub description: Option<String>,
+}
+
+/// State of the GraphQL schema for the current endpoint.
+#[derive(Clone, Debug, Default)]
+pub enum GraphqlSchemaState {
+    #[default]
+    Idle,
+    Loading,
+    Loaded(Vec<GqlSchemaType>),
+    Error(String),
+}
 
 /// Helper to render text with selection highlighting
 fn render_text_view(
@@ -218,6 +237,12 @@ pub struct RequestPanel<E: WebSocketExecutor = TungsteniteExecutor> {
     /// Draft text for custom HTTP method input
     pub(super) custom_method_input: String,
     pub(super) custom_method_focus: FocusHandle,
+    /// GraphQL schema fetched via introspection or imported from file.
+    pub(super) graphql_schema: GraphqlSchemaState,
+    /// Filter string for the Schema type list.
+    pub(super) graphql_schema_search: String,
+    /// Optional console panel for logging all outbound requests.
+    pub(super) console_panel: Option<Entity<ConsolePanel>>,
     /// Zero-size marker binding the executor type to the panel.
     _executor: PhantomData<E>,
 }
@@ -401,6 +426,9 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             save_feedback: false,
             custom_method_input: String::new(),
             custom_method_focus: cx.focus_handle(),
+            graphql_schema: GraphqlSchemaState::Idle,
+            graphql_schema_search: String::new(),
+            console_panel: None,
             _executor: PhantomData,
         }
     }
@@ -408,6 +436,12 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
     /// Set the explorer panel reference for environment variable substitution
     pub fn set_explorer_panel(&mut self, explorer_panel: Entity<ExplorerPanel>, cx: &mut Context<Self>) {
         self.explorer_panel = Some(explorer_panel);
+        cx.notify();
+    }
+
+    /// Connect the shared console panel so every request is logged.
+    pub fn set_console_panel(&mut self, console: Entity<ConsolePanel>, cx: &mut Context<Self>) {
+        self.console_panel = Some(console);
         cx.notify();
     }
 
@@ -499,6 +533,12 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             .map(|env| env.variables.clone())
             .unwrap_or_default();
         let explorer_panel = self.explorer_panel.clone();
+        let ws_console_panel = self.console_panel.clone();
+        let ws_log_url = url.clone();
+        let ws_protocol = match self.request_mode {
+            RequestMode::SocketIo => "Socket.IO",
+            _ => "WebSocket",
+        }.to_string();
 
         let handle = E::connect(WsConnectionParams {
             url,
@@ -545,6 +585,22 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                     }
                     Ok(WsEvent::Error(e)) => {
                         let _ = cx.update(|cx| {
+                            let hint = dns_troubleshoot_hint(&e);
+                            if let Some(ref console) = ws_console_panel {
+                                let entry = ConsoleEntry {
+                                    timestamp: chrono::Local::now(),
+                                    level: LogLevel::Error,
+                                    protocol: ws_protocol.clone(),
+                                    method: "CONNECT".to_string(),
+                                    url: ws_log_url.clone(),
+                                    status: 0,
+                                    duration_ms: 0,
+                                    error: Some(e.clone()),
+                                    response_body: String::new(),
+                                    troubleshoot_hint: hint,
+                                };
+                                console.update(cx, |panel, cx| panel.log(entry, cx));
+                            }
                             let _ = this.update(cx, |this, cx| {
                                 this.ws_state = WsConnectionState::Error;
                                 this.ws_send_tx = None;
@@ -784,6 +840,57 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
     }
 
     /// Load a proto file directly from a path (used when restoring from .http file)
+    /// Fetch the GraphQL schema via an introspection query to `self.url`.
+    pub(super) fn fetch_graphql_schema(&mut self, cx: &mut Context<Self>) {
+        let url = if let Some(ref exp) = self.explorer_panel {
+            exp.read(cx).env_state().substitute(&self.url)
+        } else {
+            self.url.clone()
+        };
+        if url.is_empty() {
+            return;
+        }
+
+        self.graphql_schema = GraphqlSchemaState::Loading;
+        cx.notify();
+
+        cx.spawn(async move |this, mut cx| {
+            let result = cx.background_executor()
+                .spawn(async move {
+                    run_graphql_introspection(&url)
+                })
+                .await;
+            let _ = cx.update(|cx| {
+                let _ = this.update(cx, |panel, cx| {
+                    panel.graphql_schema = result;
+                    cx.notify();
+                });
+            });
+        }).detach();
+    }
+
+    /// Import a GraphQL schema from a local .graphql or .json file.
+    pub(super) fn import_graphql_schema_file(&mut self, cx: &mut Context<Self>) {
+        cx.spawn(async move |this, mut cx| {
+            let picked = rfd::AsyncFileDialog::new()
+                .add_filter("GraphQL Schema", &["graphql", "gql", "json"])
+                .pick_file()
+                .await;
+            if let Some(file) = picked {
+                let path = file.path().to_path_buf();
+                let result = cx.background_executor()
+                    .spawn(async move { parse_schema_file(&path) })
+                    .await;
+                let _ = cx.update(|cx| {
+                    let _ = this.update(cx, |panel, cx| {
+                        panel.graphql_schema = result;
+                        cx.notify();
+                    });
+                });
+            }
+        }).detach();
+    }
+
     pub(super) fn load_grpc_proto_from_path(&mut self, path: std::path::PathBuf, cx: &mut Context<Self>) {
         match std::fs::read_to_string(&path) {
             Ok(content) => {
@@ -1627,6 +1734,17 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                 self.url_selection = len..len;
             }
         }
+
+        // Load scripts into editors
+        let pre = req.scripts.pre_script.as_deref().unwrap_or("");
+        let post = req.scripts.post_script.as_deref().unwrap_or("");
+        let tests = req.scripts.tests.as_deref().unwrap_or("");
+        self.pre_script_editor.update(cx, |ed, cx| ed.set_content(pre, cx));
+        self.post_script_editor.update(cx, |ed, cx| ed.set_content(post, cx));
+        self.tests_editor.update(cx, |ed, cx| ed.set_content(tests, cx));
+        self.pre_script = pre.to_string();
+        self.post_script = post.to_string();
+        self.tests = tests.to_string();
 
         cx.notify();
     }
@@ -3142,9 +3260,20 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             )
         });
 
+        let console_panel = self.console_panel.clone();
+        let log_protocol = match self.request_mode {
+            RequestMode::Http     => "HTTP",
+            RequestMode::GraphQL  => "GraphQL",
+            RequestMode::WebSocket => "WebSocket",
+            RequestMode::Grpc     => "gRPC",
+            RequestMode::Trpc     => "tRPC",
+            RequestMode::SocketIo => "Socket.IO",
+        };
+        let log_method = method.as_str().to_string();
+
         let req = ExecutionRequest {
             method: method.as_str().to_string(),
-            url: final_url,
+            url: final_url.clone(),
             headers,
             body: exec_body,
             mode: exec_mode,
@@ -3154,6 +3283,8 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             env_vars,
             variable_extractions,
         };
+
+        let log_url = final_url.clone();
 
         cx.spawn(async move |this: gpui::WeakEntity<Self>, cx: &mut gpui::AsyncApp| {
             let result = std::thread::spawn(move || protide_core::execution::execute(req))
@@ -3179,6 +3310,26 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                             }
                         }
 
+                        if let Some(console) = &console_panel {
+                            let duration_ms = data.time.as_millis() as u64;
+                            let status = data.status;
+                            let body_preview = data.body.clone();
+                            console.update(cx, |panel, cx| {
+                                panel.log(ConsoleEntry {
+                                    timestamp: chrono::Local::now(),
+                                    level: LogLevel::Info,
+                                    protocol: log_protocol.to_string(),
+                                    method: log_method.clone(),
+                                    url: log_url.clone(),
+                                    status,
+                                    duration_ms,
+                                    error: None,
+                                    response_body: body_preview,
+                                    troubleshoot_hint: None,
+                                }, cx);
+                            });
+                        }
+
                         response_panel.update(cx, |panel, cx| {
                             panel.set_response(
                                 ResponseData {
@@ -3199,6 +3350,24 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                 }
                 Err(e) => {
                     let _ = cx.update(|cx| {
+                        if let Some(console) = &console_panel {
+                            let err = e.clone();
+                            let hint = dns_troubleshoot_hint(&err);
+                            console.update(cx, |panel, cx| {
+                                panel.log(ConsoleEntry {
+                                    timestamp: chrono::Local::now(),
+                                    level: LogLevel::Error,
+                                    protocol: log_protocol.to_string(),
+                                    method: log_method.clone(),
+                                    url: log_url.clone(),
+                                    status: 0,
+                                    duration_ms: 0,
+                                    error: Some(err),
+                                    response_body: String::new(),
+                                    troubleshoot_hint: hint,
+                                }, cx);
+                            });
+                        }
                         response_panel.update(cx, |panel, cx| {
                             panel.set_error(e, cx);
                         });
@@ -3640,6 +3809,133 @@ impl<E: WebSocketExecutor> Render for RequestPanel<E> {
             })
     }
 
+}
+
+// ── GraphQL schema helpers ────────────────────────────────────────────────────
+
+/// Send the introspection query to `url` and return a `GraphqlSchemaState`.
+/// Runs on the background executor (blocking reqwest).
+fn run_graphql_introspection(url: &str) -> GraphqlSchemaState {
+    const INTROSPECTION: &str = r#"{"query":"{__schema{types{name kind description}}}"}"#;
+
+    let client = match reqwest::blocking::Client::builder()
+        .timeout(std::time::Duration::from_secs(15))
+        .build()
+    {
+        Ok(c) => c,
+        Err(e) => return GraphqlSchemaState::Error(e.to_string()),
+    };
+
+    let resp = client
+        .post(url)
+        .header("Content-Type", "application/json")
+        .body(INTROSPECTION)
+        .send();
+
+    match resp {
+        Err(e) => GraphqlSchemaState::Error(e.to_string()),
+        Ok(r) => match r.json::<serde_json::Value>() {
+            Err(e) => GraphqlSchemaState::Error(format!("Parse error: {e}")),
+            Ok(json) => extract_schema_types(&json),
+        },
+    }
+}
+
+fn extract_schema_types(json: &serde_json::Value) -> GraphqlSchemaState {
+    let types = json
+        .pointer("/data/__schema/types")
+        .and_then(|v| v.as_array());
+
+    match types {
+        None => GraphqlSchemaState::Error("Unexpected introspection response shape".into()),
+        Some(arr) => {
+            let types: Vec<GqlSchemaType> = arr
+                .iter()
+                .filter_map(|t| {
+                    let name = t.get("name")?.as_str()?.to_string();
+                    // Skip built-in introspection types
+                    if name.starts_with("__") {
+                        return None;
+                    }
+                    Some(GqlSchemaType {
+                        name,
+                        kind: t.get("kind").and_then(|k| k.as_str()).unwrap_or("").to_string(),
+                        description: t.get("description").and_then(|d| d.as_str()).map(|s| s.to_string()),
+                    })
+                })
+                .collect();
+            GraphqlSchemaState::Loaded(types)
+        }
+    }
+}
+
+/// Parse a local .graphql/.gql or .json file into a `GraphqlSchemaState`.
+fn parse_schema_file(path: &std::path::Path) -> GraphqlSchemaState {
+    let content = match std::fs::read_to_string(path) {
+        Ok(s) => s,
+        Err(e) => return GraphqlSchemaState::Error(e.to_string()),
+    };
+
+    // Try JSON introspection result first
+    if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
+        return extract_schema_types(&json);
+    }
+
+    // For .graphql SDL files, extract type definitions by name
+    let types: Vec<GqlSchemaType> = content
+        .lines()
+        .filter_map(|line| {
+            let t = line.trim();
+            for prefix in &["type ", "interface ", "enum ", "union ", "input ", "scalar "] {
+                if t.starts_with(prefix) {
+                    let rest = t[prefix.len()..].split_whitespace().next()?;
+                    let name = rest.trim_end_matches('{').to_string();
+                    if !name.starts_with("__") {
+                        return Some(GqlSchemaType {
+                            name,
+                            kind: prefix.trim().to_uppercase(),
+                            description: None,
+                        });
+                    }
+                }
+            }
+            None
+        })
+        .collect();
+
+    if types.is_empty() {
+        GraphqlSchemaState::Error("No type definitions found in file".into())
+    } else {
+        GraphqlSchemaState::Loaded(types)
+    }
+}
+
+/// Return an actionable troubleshooting hint when `err` looks like a DNS or
+/// network-reachability failure, or `None` for ordinary HTTP errors.
+fn dns_troubleshoot_hint(err: &str) -> Option<String> {
+    let lower = err.to_lowercase();
+    if lower.contains("resolve")
+        || lower.contains("no such host")
+        || lower.contains("dns")
+        || lower.contains("name or service not known")
+        || lower.contains("nodename nor servname")
+        || lower.contains("unable to resolve")
+        || lower.contains("failed to lookup")
+        || lower.contains("connection refused")
+        || lower.contains("network unreachable")
+        || lower.contains("timed out")
+    {
+        Some(
+            "1) Verify the hostname spelling in the URL.\n\
+             2) Run: nslookup <hostname>  (or dig <hostname>)\n\
+             3) Test basic connectivity: ping 8.8.8.8\n\
+             4) For private/local hosts, check /etc/hosts or your VPN config.\n\
+             5) If using a custom port, confirm the service is running: nc -zv <host> <port>"
+                .to_string(),
+        )
+    } else {
+        None
+    }
 }
 
 

@@ -1,0 +1,12 @@
+[Desktop Entry]
+Name=Protide
+GenericName=API Testing Tool
+Comment=Native API client for HTTP, GraphQL, WebSocket, and gRPC
+Exec=protide
+Icon=protide
+Terminal=false
+Type=Application
+Categories=Development;WebDevelopment;Network;
+Keywords=api;rest;graphql;websocket;grpc;http;testing;
+StartupNotify=true
+StartupWMClass=Protide
