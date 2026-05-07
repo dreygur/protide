@@ -5037,6 +5037,7 @@ dependencies = [
  "gpui_platform",
  "http-parser",
  "protide-core",
+ "reqwest",
  "rfd",
  "serde",
  "serde_json",

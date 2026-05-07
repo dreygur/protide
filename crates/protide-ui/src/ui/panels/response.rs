@@ -3,8 +3,9 @@
 use std::time::Duration;
 
 use gpui::{
-    deferred, div, prelude::*, px, uniform_list, Context, Entity, IntoElement,
-    MouseButton, Render, SharedString, Styled, UniformListScrollHandle, WeakEntity, Window,
+    deferred, div, prelude::*, px, uniform_list, ClipboardItem, Context, Entity, IntoElement,
+    MouseButton, MouseDownEvent, Render, ScrollHandle, SharedString, Styled,
+    UniformListScrollHandle, WeakEntity, Window,
 };
 
 const GUTTER_W: f32 = 44.0;
@@ -13,6 +14,10 @@ const CHEVRON_W: f32 = 16.0;
 const ROW_H: f32 = 20.0;
 const ROW_FONT: f32 = 12.5;
 const GUTTER_FONT: f32 = 11.0;
+// Strings longer than COLLAPSE_CHARS get a "show more" toggle in wrap mode.
+const COLLAPSE_CHARS: usize = 300;
+// Responses with more rows than this fall back to uniform_list (no wrapping).
+const WRAP_MODE_MAX_ROWS: usize = 2_000;
 
 use protide_core::chaining;
 use protide_core::scripting::results::TestResult;
@@ -100,110 +105,170 @@ fn flatten_json(
 }
 
 fn render_json_row(
-    line_num: usize,
-    row:      &JsonRow,
-    colors:   &crate::theme::Colors,
-    weak:     WeakEntity<ResponsePanel>,
+    line_num:  usize,
+    row:       &JsonRow,
+    colors:    &crate::theme::Colors,
+    weak:      WeakEntity<ResponsePanel>,
+    wrap_mode: bool, // true → variable-height layout; false → fixed ROW_H (uniform_list)
+    expanded:  bool, // whether the long-string at this row is expanded (wrap_mode only)
 ) -> gpui::AnyElement {
     let guide_color = colors.border;
     let hover_bg    = colors.hover_overlay;
     let depth       = row.depth;
 
     // Gutter: right-aligned line number
-    let gutter = div()
-        .w(px(GUTTER_W))
-        .h(px(ROW_H))
-        .flex_shrink_0()
-        .flex()
-        .items_center()
-        .justify_end()
-        .pr(px(8.0))
-        .text_size(px(GUTTER_FONT))
-        .text_color(colors.text_muted)
-        .child(SharedString::from(line_num.to_string()));
-
-    // One indent-guide pillar per depth level
-    let guides: Vec<gpui::AnyElement> = (0..depth).map(|_| {
+    // In wrap mode: top-padded so the number aligns with the first text line.
+    let gutter = if wrap_mode {
         div()
-            .w(px(INDENT_W))
-            .h(px(ROW_H))
-            .flex_shrink_0()
-            .flex()
-            .justify_center()
-            .child(
-                div()
-                    .w(px(1.0))
-                    .h(px(ROW_H))
-                    .flex_shrink_0()
-                    .bg(guide_color),
-            )
-            .into_any_element()
+            .w(px(GUTTER_W)).flex_shrink_0()
+            .flex().items_start().justify_end()
+            .pt(px(4.0)).pr(px(8.0))
+            .text_size(px(GUTTER_FONT)).text_color(colors.text_muted)
+            .child(SharedString::from(line_num.to_string()))
+    } else {
+        div()
+            .w(px(GUTTER_W)).h(px(ROW_H)).flex_shrink_0()
+            .flex().items_center().justify_end().pr(px(8.0))
+            .text_size(px(GUTTER_FONT)).text_color(colors.text_muted)
+            .child(SharedString::from(line_num.to_string()))
+    };
+
+    // Indent-guide pillars: one per depth level.
+    // In wrap mode each pillar uses self_stretch() so it fills the full (variable) row height,
+    // and the 1px inner line uses h_full() to span that stretched height.
+    let guides: Vec<gpui::AnyElement> = (0..depth).map(|_| {
+        let g = div().w(px(INDENT_W)).flex_shrink_0().flex().justify_center();
+        let g = if wrap_mode { g.self_stretch() } else { g.h(px(ROW_H)) };
+        g.child(
+            div().w(px(1.0)).h_full().flex_shrink_0().bg(guide_color),
+        )
+        .into_any_element()
     }).collect();
 
-    // Chevron column
+    // Chevron column — top-aligned in wrap mode so it sits next to the first text line
     let is_open   = matches!(&row.kind, RowKind::Open { .. });
     let is_folded = matches!(&row.kind, RowKind::Folded { .. });
-    let chevron = div()
-        .w(px(CHEVRON_W))
-        .h(px(ROW_H))
-        .flex_shrink_0()
-        .flex()
-        .items_center()
-        .justify_center()
-        .when(is_open,   |el| el.child(icon(ICON_CHEVRON_DOWN,  ICON_SM, colors.text_secondary)))
-        .when(is_folded, |el| el.child(icon(ICON_CHEVRON_RIGHT, ICON_SM, colors.text_secondary)));
+    let chevron = {
+        let c = div().w(px(CHEVRON_W)).flex_shrink_0().flex().justify_center();
+        let c = if wrap_mode {
+            c.items_start().pt(px(2.0))
+        } else {
+            c.items_center().h(px(ROW_H))
+        };
+        c.when(is_open,   |el| el.child(icon(ICON_CHEVRON_DOWN,  ICON_SM, colors.text_secondary)))
+         .when(is_folded, |el| el.child(icon(ICON_CHEVRON_RIGHT, ICON_SM, colors.text_secondary)))
+    };
 
-    // Key prefix helper: copies color values (Hsla is Copy)
-    let key_color  = colors.info;
+    // Key prefix helper (Hsla is Copy)
+    let key_color   = colors.info;
     let colon_color = colors.text_secondary.opacity(0.45);
     let key_span = move |k: &str| -> gpui::AnyElement {
         div()
-            .flex_shrink_0()
-            .flex()
-            .items_center()
+            .flex_shrink_0().flex().items_center().whitespace_nowrap()
             .child(div().flex_shrink_0().text_color(key_color)
                 .child(SharedString::from(format!("\"{}\"", k))))
-            .child(div().flex_shrink_0().text_color(colon_color)
-                .child(": "))
+            .child(div().flex_shrink_0().text_color(colon_color).child(": "))
             .into_any_element()
     };
 
-    // Content area, built per row kind — all values copied (Hsla is Copy)
     let c_secondary = colors.text_secondary;
     let c_patch     = colors.method_patch;
     let c_put       = colors.method_put;
     let c_success   = colors.status_success;
+    let c_accent    = colors.accent;
+
     let content: gpui::AnyElement = match &row.kind {
         RowKind::Leaf { key, val } => {
-            let (txt, col) = match val {
-                PrimVal::Null     => ("null".into(),                                    c_secondary),
-                PrimVal::Bool(b)  => (if *b { "true" } else { "false" }.into(),         c_patch),
-                PrimVal::Num(n)   => (n.clone(),                                        c_put),
+            // Sanitize control characters so GPUI never sees hard newlines inside a value.
+            // Soft-wrap is achieved by removing whitespace_nowrap — the browser-style
+            // word-wrap kicks in automatically within the flex-1 value container.
+            let (txt, col, is_str) = match val {
+                PrimVal::Null     => ("null".to_string(),                                          c_secondary, false),
+                PrimVal::Bool(b)  => (if *b { "true" } else { "false" }.to_string(),              c_patch,     false),
+                PrimVal::Num(n)   => (n.clone(),                                                   c_put,       false),
                 PrimVal::Str(s)   => {
-                    // Replace ALL control chars (including \n, \r, \t) with a space so
-                    // the value always occupies exactly one visual line.
-                    // CSS white-space:nowrap does NOT suppress \n-induced breaks —
-                    // only removing them at source guarantees single-line rendering.
-                    let single_line: String = s.chars()
-                        .map(|c| if c.is_control() { ' ' } else { c })
-                        .collect();
-                    (format!("\"{}\"", single_line), c_success)
+                    let san: String = s.chars().map(|c| if c.is_control() { ' ' } else { c }).collect();
+                    (format!("\"{}\"", san),                                                       c_success,   true)
                 }
-                PrimVal::EmptyArr => ("[]".into(),                                      c_secondary),
-                PrimVal::EmptyObj => ("{}".into(),                                      c_secondary),
+                PrimVal::EmptyArr => ("[]".to_string(),                                            c_secondary, false),
+                PrimVal::EmptyObj => ("{}".to_string(),                                            c_secondary, false),
             };
-            div()
-                // min_w(0) is required: without it, flex children refuse to shrink below
-                // their intrinsic text width, which breaks overflow:hidden + text-ellipsis.
-                .flex_1().min_w(px(0.)).overflow_hidden().flex().items_center().whitespace_nowrap()
-                .when_some(key.as_deref(), |el, k| el.child(key_span(k)))
-                .child(
-                    div().flex_1().min_w(px(0.)).overflow_hidden().text_ellipsis().whitespace_nowrap()
-                        .text_color(col)
-                        .child(SharedString::from(txt)),
-                )
-                .into_any_element()
+
+            // Long strings in wrap mode: show truncated text + expand/collapse toggle
+            if wrap_mode && is_str && txt.len() > COLLAPSE_CHARS + 3 {
+                let row_idx  = line_num - 1;
+                let weak_str = weak.clone();
+                let display  = if expanded {
+                    txt.clone()
+                } else {
+                    // Safe byte boundary: stay within ASCII quotes wrapping
+                    let cut = txt.char_indices()
+                        .nth(COLLAPSE_CHARS + 1)
+                        .map(|(i, _)| i)
+                        .unwrap_or(txt.len());
+                    format!("{}…\"", &txt[..cut])
+                };
+                let btn_label: &'static str = if expanded { "▲ collapse" } else { "▼ show more" };
+
+                let value_block = div()
+                    .flex_1().min_w(px(0.))
+                    .flex().flex_col().gap(px(2.0))
+                    .child(div().whitespace_normal().text_color(col).child(SharedString::from(display)))
+                    .child(
+                        div()
+                            .id(SharedString::from(format!("str-toggle-{}", row_idx)))
+                            .cursor_pointer()
+                            .text_size(px(9.0))
+                            .text_color(c_secondary.opacity(0.6))
+                            .hover(|s| s.text_color(c_accent))
+                            .on_click(move |_, _, cx| {
+                                weak_str.update(cx, |this, cx| {
+                                    if expanded {
+                                        this.expanded_strings.remove(&row_idx);
+                                    } else {
+                                        this.expanded_strings.insert(row_idx);
+                                    }
+                                    cx.notify();
+                                }).ok();
+                            })
+                            .child(btn_label)
+                    );
+
+                div()
+                    .flex_1().min_w(px(0.)).flex().items_start()
+                    .when_some(key.as_deref(), |el, k| el.child(key_span(k)))
+                    .child(value_block)
+                    .into_any_element()
+
+            } else if wrap_mode {
+                // Short/medium string or non-string in wrap mode: explicit soft-wrap
+                let value_div = div()
+                    .flex_1().min_w(px(0.))
+                    .whitespace_normal()   // explicitly enable word-wrap
+                    .text_color(col)
+                    .child(SharedString::from(txt));
+
+                div()
+                    .flex_1().min_w(px(0.)).flex().items_start()
+                    .whitespace_normal()
+                    .when_some(key.as_deref(), |el, k| el.child(key_span(k)))
+                    .child(value_div)
+                    .into_any_element()
+
+            } else {
+                // Perf / uniform_list mode: single line, truncate with ellipsis
+                div()
+                    .flex_1().min_w(px(0.)).overflow_hidden().flex().items_center().whitespace_nowrap()
+                    .when_some(key.as_deref(), |el, k| el.child(key_span(k)))
+                    .child(
+                        div().flex_1().min_w(px(0.)).overflow_hidden().text_ellipsis().whitespace_nowrap()
+                            .text_color(col)
+                            .child(SharedString::from(txt)),
+                    )
+                    .into_any_element()
+            }
         }
+
         RowKind::Open { key, arr, .. } => {
             let bracket = if *arr { "[" } else { "{" };
             div()
@@ -235,7 +300,7 @@ fn render_json_row(
         }
     };
 
-    // Click path for Open / Folded rows
+    // Click path for collapsible rows
     let click_path: Option<String> = match &row.kind {
         RowKind::Open   { path, .. } => Some(path.clone()),
         RowKind::Folded { path, .. } => Some(path.clone()),
@@ -243,19 +308,23 @@ fn render_json_row(
     };
     let can_click = click_path.is_some();
 
-    let row_div = div()
-        .id(line_num)
-        .w_full()
-        .h(px(ROW_H))
-        .flex()
-        .items_center()
-        .overflow_hidden()
-        .when(can_click, |el| el.cursor_pointer())
-        .hover(|s| s.bg(hover_bg))
-        .child(gutter)
-        .children(guides)
-        .child(chevron)
-        .child(content);
+    // Outer row: variable height in wrap mode, fixed in perf mode.
+    // items_start keeps gutter/chevron top-aligned; guide pillars override via self_stretch().
+    let row_div = if wrap_mode {
+        div()
+            .id(line_num).w_full().min_h(px(ROW_H))
+            .flex().items_start()
+            .when(can_click, |el| el.cursor_pointer())
+            .hover(|s| s.bg(hover_bg))
+    } else {
+        div()
+            .id(line_num).w_full().h(px(ROW_H))
+            .flex().items_center().overflow_hidden()
+            .when(can_click, |el| el.cursor_pointer())
+            .hover(|s| s.bg(hover_bg))
+    };
+
+    let row_div = row_div.child(gutter).children(guides).child(chevron).child(content);
 
     if let Some(path) = click_path {
         let weak_c = weak;
@@ -379,8 +448,12 @@ pub struct ResponsePanel {
     json_tree_collapsed: std::collections::HashSet<String>,
     /// Flat pre-computed row list for the JSON tree (rebuilt on every collapse change)
     json_rows: Vec<JsonRow>,
-    /// Scroll position for the JSON tree uniform_list
+    /// Scroll position for the JSON tree uniform_list (perf mode, >2000 rows)
     json_scroll_handle: UniformListScrollHandle,
+    /// Scroll position for the JSON tree div (wrap mode, ≤2000 rows)
+    json_scroll_handle_div: ScrollHandle,
+    /// Row indices (0-based) of long strings the user has expanded via "show more"
+    expanded_strings: std::collections::HashSet<usize>,
     /// Test results from script execution
     test_results: Vec<TestResult>,
     /// JSONPath expression input for extraction
@@ -397,6 +470,8 @@ pub struct ResponsePanel {
     /// Active column drag: (drag_id, start_x, start_width)
     /// drag_id: 0=resp_header_col1, 1=cookie_col1, 2=cookie_col3, 3=cookie_col4
     resp_col_drag: Option<(u8, f32, f32)>,
+    /// Right-click context menu position (window coords)
+    context_menu_pos: Option<gpui::Point<gpui::Pixels>>,
 }
 
 impl ResponsePanel {
@@ -425,6 +500,8 @@ impl ResponsePanel {
             json_tree_collapsed: std::collections::HashSet::new(),
             json_rows: Vec::new(),
             json_scroll_handle: UniformListScrollHandle::new(),
+            json_scroll_handle_div: ScrollHandle::new(),
+            expanded_strings: std::collections::HashSet::new(),
             test_results: Vec::new(),
             jsonpath_input,
             extraction_result: None,
@@ -434,6 +511,7 @@ impl ResponsePanel {
             cookie_col3_w: 100.0,
             cookie_col4_w: 80.0,
             resp_col_drag: None,
+            context_menu_pos: None,
         }
     }
 
@@ -500,6 +578,7 @@ impl ResponsePanel {
         // Store parsed JSON for tree rendering
         self.json_value = serde_json::from_str::<serde_json::Value>(&response.body).ok();
         self.json_tree_collapsed.clear();
+        self.expanded_strings.clear();
         self.rebuild_json_rows();
 
         self.response = Some(response);
@@ -550,11 +629,35 @@ impl ResponsePanel {
         if row_count == 0 {
             return div().into_any_element();
         }
+
+        let use_wrap = row_count <= WRAP_MODE_MAX_ROWS;
+
         div()
             .flex_1()
             .w_full()
             .overflow_hidden()
-            .child(
+            .child(if use_wrap {
+                // ── Wrap mode: plain scrollable div, variable row heights ──────────
+                let colors   = theme::current(cx).colors.clone();
+                let weak     = cx.weak_entity();
+                let expanded = &self.expanded_strings;
+                let rows: Vec<gpui::AnyElement> = self.json_rows.iter().enumerate()
+                    .map(|(i, row)| render_json_row(
+                        i + 1, row, &colors, weak.clone(),
+                        true, expanded.contains(&i),
+                    ))
+                    .collect();
+                div()
+                    .id("json-tree")
+                    .size_full()
+                    .overflow_scroll()
+                    .font_family(SharedString::from("JetBrains Mono"))
+                    .text_size(px(ROW_FONT))
+                    .track_scroll(&self.json_scroll_handle_div)
+                    .children(rows)
+                    .into_any_element()
+            } else {
+                // ── Perf mode: uniform_list (fixed ROW_H, no wrapping) ────────────
                 uniform_list(
                     "json-tree",
                     row_count,
@@ -563,7 +666,7 @@ impl ResponsePanel {
                         let weak   = cx.weak_entity();
                         range.map(|i| {
                             let row = this.json_rows[i].clone();
-                            render_json_row(i + 1, &row, &colors, weak.clone())
+                            render_json_row(i + 1, &row, &colors, weak.clone(), false, false)
                         })
                         .collect::<Vec<_>>()
                     }),
@@ -571,8 +674,9 @@ impl ResponsePanel {
                 .font_family(SharedString::from("JetBrains Mono"))
                 .text_size(px(ROW_FONT))
                 .size_full()
-                .track_scroll(&self.json_scroll_handle),
-            )
+                .track_scroll(&self.json_scroll_handle)
+                .into_any_element()
+            })
             .into_any_element()
     }
 
@@ -602,6 +706,9 @@ impl Render for ResponsePanel {
         let theme = theme::current(cx);
         let is_col_dragging = self.resp_col_drag.is_some();
 
+        let has_response = self.response.is_some();
+        let context_menu_pos = self.context_menu_pos;
+
         div()
             .id("response-panel-root")
             .size_full()
@@ -609,6 +716,13 @@ impl Render for ResponsePanel {
             .flex_col()
             .relative()
             .bg(theme.colors.bg_primary)
+            // Dismiss context menu on left-click anywhere
+            .when(context_menu_pos.is_some(), |el| {
+                el.on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| {
+                    this.context_menu_pos = None;
+                    cx.notify();
+                }))
+            })
             .child(self.render_header(cx))
             .child(self.render_tabs(cx))
             .child(
@@ -618,8 +732,80 @@ impl Render for ResponsePanel {
                     .w_full()
                     .p(px(12.0))
                     .overflow_scroll()
+                    // Right-click to show copy context menu
+                    .when(has_response, |el| {
+                        el.on_mouse_down(
+                            MouseButton::Right,
+                            cx.listener(|this, event: &MouseDownEvent, _, cx| {
+                                this.context_menu_pos = Some(event.position);
+                                cx.stop_propagation();
+                                cx.notify();
+                            }),
+                        )
+                    })
                     .child(self.render_content(cx)),
             )
+            // Right-click context menu
+            .when_some(context_menu_pos, |el, pos| {
+                let body = self.response.as_ref().map(|r| r.body.clone()).unwrap_or_default();
+                let x = f32::from(pos.x);
+                let y = f32::from(pos.y);
+                el.child(deferred(
+                    div()
+                        .absolute()
+                        .left(px(x))
+                        .top(px(y))
+                        .w(px(160.0))
+                        .bg(theme.colors.bg_secondary)
+                        .border_1()
+                        .border_color(theme.colors.border)
+                        .shadow_lg()
+                        .overflow_hidden()
+                        .on_mouse_down(MouseButton::Left, cx.listener(|_, _, _, cx| {
+                            cx.stop_propagation();
+                        }))
+                        .child(
+                            div()
+                                .flex()
+                                .flex_col()
+                                // Copy response body
+                                .child({
+                                    let b = body.clone();
+                                    div()
+                                        .id("resp-ctx-copy")
+                                        .w_full().h(px(28.0))
+                                        .flex().items_center()
+                                        .px(px(12.0)).gap(px(8.0))
+                                        .cursor_pointer()
+                                        .hover(|s| s.bg(theme.colors.bg_tertiary))
+                                        .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, _, cx| {
+                                            cx.write_to_clipboard(ClipboardItem::new_string(b.clone()));
+                                            this.context_menu_pos = None;
+                                            cx.notify();
+                                        }))
+                                        .child(icon(ICON_COPY, ICON_SM, theme.colors.text_muted))
+                                        .child(div().text_size(px(12.0)).text_color(theme.colors.text_primary).child("Copy Response"))
+                                })
+                                // Clear response
+                                .child(
+                                    div()
+                                        .id("resp-ctx-clear")
+                                        .w_full().h(px(28.0))
+                                        .flex().items_center()
+                                        .px(px(12.0)).gap(px(8.0))
+                                        .cursor_pointer()
+                                        .hover(|s| s.bg(theme.colors.bg_tertiary))
+                                        .on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| {
+                                            this.response = None;
+                                            this.context_menu_pos = None;
+                                            cx.notify();
+                                        }))
+                                        .child(icon(ICON_CLOSE, ICON_SM, theme.colors.text_muted))
+                                        .child(div().text_size(px(12.0)).text_color(theme.colors.text_primary).child("Clear"))
+                                )
+                        )
+                ).with_priority(10))
+            })
             // Column resize overlay
             .when(is_col_dragging, |el| el.child(
                 deferred(
@@ -1190,8 +1376,8 @@ impl ResponsePanel {
                                     .child(format!("{} lines", line_count))
                             )
                     )
-                    // Right: Copy button — absolute right_0 (ml_auto unreliable in overflow_scroll)
-                    .child(
+                    // Right: Copy button — deferred so it paints above the JSON tree below
+                    .child(deferred(
                         div()
                             .id("copy-body-btn")
                             .absolute()
@@ -1221,7 +1407,7 @@ impl ResponsePanel {
                                     .when(!is_copied, |el| el.child(icon(ICON_COPY, ICON_MD, theme.colors.text_secondary)))
                             )
                             .child(if is_copied { "Copied!" } else { "Copy" })
-                    )
+                    ).with_priority(1))
             })
             // Body content: JSON tree (uniform_list) if parseable, else CodeEditor
             .child(
@@ -1311,8 +1497,8 @@ impl ResponsePanel {
                                     .child("response headers")
                             )
                     )
-                    // Copy headers button — absolute right_0 (ml_auto unreliable in overflow_scroll)
-                    .child(
+                    // Copy headers button — deferred so it paints above the headers table below
+                    .child(deferred(
                         div()
                             .id("copy-headers-btn")
                             .absolute()
@@ -1341,7 +1527,7 @@ impl ResponsePanel {
                                     .when(!header_is_copied, |el| el.child(icon(ICON_COPY, ICON_MD, theme.colors.text_secondary)))
                             )
                             .child(if header_is_copied { "Copied!" } else { "Copy" })
-                    )
+                    ).with_priority(1))
             })
             // Headers table
             .child(

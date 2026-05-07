@@ -1434,13 +1434,14 @@ impl ExplorerPanel {
                         div()
                             .flex()
                             .items_center()
-                            .gap(px(6.0))
                             .child(if collections_expanded {
                                 icon(ICON_CHEVRON_DOWN, ICON_SM, theme.colors.text_muted)
                             } else {
                                 icon(ICON_CHEVRON_RIGHT, ICON_SM, theme.colors.text_muted)
                             })
+                            .child(div().w(px(crate::theme::sizes::CHEVRON_ICON_GAP)))
                             .child(icon(ICON_FOLDER, ICON_MD, theme.colors.text_muted))
+                            .child(div().w(px(crate::theme::sizes::ICON_TEXT_GAP)))
                             .child(
                                 div()
                                     .text_size(px(12.0))
@@ -1691,14 +1692,16 @@ impl ExplorerPanel {
             })
             // Spacer for files to align with folders
             .when(!is_folder, |el| el.child(div().w(px(10.0))))
+            // Gap: chevron → icon
+            .child(div().w(px(crate::theme::sizes::CHEVRON_ICON_GAP)))
             // Icon
             .child(if is_folder {
                 icon(ICON_FOLDER, ICON_MD, theme.colors.text_muted)
             } else {
                 icon(ICON_FILE, ICON_MD, theme.colors.accent)
             })
-            // 4px spacer before badge
-            .when(has_badge, |el| el.child(div().w(px(4.0))))
+            // Gap: icon → badge/label
+            .child(div().w(px(crate::theme::sizes::ICON_TEXT_GAP)))
             // Protocol/method badge (for .http files)
             .when_some(method, |el, method| {
                 let color = theme.method_color(&method);
@@ -1723,8 +1726,8 @@ impl ExplorerPanel {
                         ),
                 )
             })
-            // 8px spacer before label
-            .when(has_badge, |el| el.child(div().w(px(8.0))))
+            // 4px gap after badge before label
+            .when(has_badge, |el| el.child(div().w(px(4.0))))
             // Name (or rename input) - folders are bold to stand out
             .when(!is_renaming, |el| {
                 el.child(
@@ -1797,13 +1800,14 @@ impl ExplorerPanel {
                         div()
                             .flex()
                             .items_center()
-                            .gap(px(6.0))
                             .child(if self.history_expanded {
                                 icon(ICON_CHEVRON_DOWN, ICON_SM, theme.colors.text_muted)
                             } else {
                                 icon(ICON_CHEVRON_RIGHT, ICON_SM, theme.colors.text_muted)
                             })
+                            .child(div().w(px(crate::theme::sizes::CHEVRON_ICON_GAP)))
                             .child(icon(ICON_TIMER, ICON_MD, theme.colors.text_muted))
+                            .child(div().w(px(crate::theme::sizes::ICON_TEXT_GAP)))
                             .child(
                                 div()
                                     .text_size(px(12.0))
@@ -1975,8 +1979,8 @@ impl ExplorerPanel {
                         div()
                             .flex()
                             .items_center()
-                            .gap(px(6.0))
                             .child(icon(ICON_SETTINGS, ICON_MD, theme.colors.text_muted))
+                            .child(div().w(px(crate::theme::sizes::ICON_TEXT_GAP)))
                             .child(
                                 div()
                                     .text_size(px(12.0))

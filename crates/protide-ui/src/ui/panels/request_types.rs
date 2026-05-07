@@ -179,6 +179,7 @@ pub enum WsConnectionState {
     Disconnected,
     Connecting,
     Connected,
+    Error,
 }
 
 /// Socket.IO connection state

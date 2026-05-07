@@ -14,7 +14,7 @@ pub use selection::Selection;
 use std::collections::{HashMap, HashSet};
 
 use gpui::{
-    div, font, prelude::*, px, canvas, ClipboardItem, Context, FocusHandle,
+    deferred, div, font, prelude::*, px, canvas, ClipboardItem, Context, FocusHandle,
     IntoElement, KeyDownEvent, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent,
     ParentElement, Render, ScrollWheelEvent, StyledText, TextRun, Styled, Window, Bounds, Pixels,
 };
@@ -539,9 +539,9 @@ impl Render for CodeEditor {
                 .left_0()
                 .size_full()
             )
-            // Toolbar with beautify button (top right)
+            // Toolbar with beautify button (top right) — deferred so it paints above siblings
             .when(show_beautify, |el| {
-                el.child(
+                el.child(deferred(
                     div()
                         .absolute()
                         .top(px(4.0))
@@ -561,7 +561,7 @@ impl Render for CodeEditor {
                                 }))
                                 .child("{ } Beautify")
                         )
-                )
+                ).with_priority(1))
             })
             .child(self.render_editor(window, cx))
     }

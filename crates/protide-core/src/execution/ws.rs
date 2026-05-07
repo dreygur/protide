@@ -152,13 +152,27 @@ async fn run_connection(
     let conn = connect_async(&params.url).await;
     match conn {
         Err(e) => {
-            let _ = event_tx.send(WsEvent::Error(e.to_string()));
+            let msg = friendly_ws_error(&e);
+            let _ = event_tx.send(WsEvent::Error(msg));
         }
         Ok((ws_stream, _)) => {
             let _ = event_tx.send(WsEvent::Connected);
             let (mut write, mut read) = ws_stream.split();
 
+            // Send a ping every 30 s to prevent idle-connection drops by routers/NAT.
+            const PING_INTERVAL: std::time::Duration = std::time::Duration::from_secs(30);
+            let mut last_ping = std::time::Instant::now();
+
             loop {
+                // ── Keepalive ping ────────────────────────────────────────
+                if last_ping.elapsed() >= PING_INTERVAL {
+                    let ping = tokio_tungstenite::tungstenite::Message::Ping(vec![].into());
+                    if write.send(ping).await.is_err() {
+                        break;
+                    }
+                    last_ping = std::time::Instant::now();
+                }
+
                 // ── Outgoing ──────────────────────────────────────────────
                 match cmd_rx.try_recv() {
                     Ok(WsCommand::Send(text)) => {
@@ -209,17 +223,38 @@ async fn run_connection(
                             env_changes,
                         });
                     }
+                    Ok(Some(Ok(tokio_tungstenite::tungstenite::Message::Ping(data)))) => {
+                        // Auto-respond to server pings to keep connection alive
+                        let pong = tokio_tungstenite::tungstenite::Message::Pong(data);
+                        let _ = write.send(pong).await;
+                    }
                     Ok(Some(Ok(tokio_tungstenite::tungstenite::Message::Close(_)))) | Ok(None) => {
                         break
                     }
                     Ok(Some(Err(_))) => break,
-                    Ok(Some(Ok(_))) => {} // binary, ping, pong — ignore
+                    Ok(Some(Ok(_))) => {} // binary, pong — ignore
                     Err(_) => {}          // timeout, loop again
                 }
             }
 
             let _ = event_tx.send(WsEvent::Disconnected);
         }
+    }
+}
+
+// ── Error formatting ──────────────────────────────────────────────────────────
+
+fn friendly_ws_error(e: &tokio_tungstenite::tungstenite::Error) -> String {
+    let msg = e.to_string().to_lowercase();
+    if msg.contains("failed to lookup")
+        || msg.contains("no such host")
+        || msg.contains("nodename nor servname")
+        || msg.contains("name or service not known")
+        || msg.contains("could not resolve")
+    {
+        "Unable to resolve host. Check your internet connection.".to_string()
+    } else {
+        e.to_string()
     }
 }
 

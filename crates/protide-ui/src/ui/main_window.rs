@@ -15,6 +15,7 @@ gpui::actions!(
         SaveRequest,
         ToggleSidebar,
         ToggleMockServer,
+        ToggleConsole,
         ShowHelp,
         ShowAbout,
         DismissOverlay,
@@ -28,6 +29,7 @@ pub fn register_keybindings(cx: &mut gpui::App) {
         KeyBinding::new("ctrl-s", SaveRequest, None),
         KeyBinding::new("ctrl-b", ToggleSidebar, None),
         KeyBinding::new("ctrl-shift-m", ToggleMockServer, None),
+        KeyBinding::new("ctrl-shift-c", ToggleConsole, None),
         KeyBinding::new("f1", ShowHelp, None),
         KeyBinding::new("ctrl-shift-a", ShowAbout, None),
         KeyBinding::new("escape", DismissOverlay, None),
@@ -35,7 +37,7 @@ pub fn register_keybindings(cx: &mut gpui::App) {
     ]);
 }
 
-use super::panels::{ExplorerPanel, MockServerPanel, RequestPanel, ResponsePanel};
+use super::panels::{ConsolePanel, ExplorerPanel, MockServerPanel, RequestPanel, ResponsePanel};
 use crate::theme;
 use crate::ui::components::icons::{
     ICON_CLOSE, ICON_COPY, ICON_FOLDER, ICON_MAXIMIZE, ICON_MD, ICON_MENU, ICON_MINIMIZE,
@@ -57,6 +59,10 @@ pub struct MainWindow {
     request_panel: Entity<RequestPanel>,
     response_panel: Entity<ResponsePanel>,
     mock_server_panel: Entity<MockServerPanel>,
+    console_panel: Entity<ConsolePanel>,
+    show_console: bool,
+    console_height: f32,
+    drag_console: Option<(f32, f32)>,
     show_mock_server: bool,
     sidebar_collapsed: bool,
     sidebar_width: f32,
@@ -86,6 +92,7 @@ impl MainWindow {
         let response_panel_clone = response_panel.clone();
         let request_panel = cx.new(|cx| RequestPanel::new(cx, response_panel_clone));
         let mock_server_panel = cx.new(|cx| MockServerPanel::new(cx, main_window_weak));
+        let console_panel = cx.new(|cx| ConsolePanel::new(cx));
 
         // Connect explorer to request panel for history loading
         let request_panel_clone = request_panel.clone();
@@ -97,6 +104,12 @@ impl MainWindow {
         let explorer_clone = explorer.clone();
         request_panel.update(cx, |panel, cx| {
             panel.set_explorer_panel(explorer_clone, cx);
+        });
+
+        // Connect console panel to request panel for request logging
+        let console_clone = console_panel.clone();
+        request_panel.update(cx, |panel, cx| {
+            panel.set_console_panel(console_clone, cx);
         });
 
         // ── Session restore ──────────────────────────────────────────────────
@@ -123,6 +136,10 @@ impl MainWindow {
             request_panel,
             response_panel,
             mock_server_panel,
+            console_panel,
+            show_console: false,
+            console_height: 160.0,
+            drag_console: None,
             show_mock_server: false,
             sidebar_collapsed: false,
             sidebar_width: crate::prefs::get_f32("main.sidebar_width", 250.0),
@@ -141,6 +158,11 @@ impl MainWindow {
             open_menu: None,
             _quit_sub: quit_sub,
         }
+    }
+
+    fn toggle_console(&mut self, cx: &mut Context<Self>) {
+        self.show_console = !self.show_console;
+        cx.notify();
     }
 
     /// Build a full SessionState snapshot from the current live editor state.
@@ -233,7 +255,8 @@ impl Render for MainWindow {
         let is_dragging = self.drag_sidebar.is_some()
             || self.drag_response.is_some()
             || self.drag_mock_server.is_some()
-            || self.drag_codegen.is_some();
+            || self.drag_codegen.is_some()
+            || self.drag_console.is_some();
         let is_col_drag = self.drag_sidebar.is_some()
             || self.drag_mock_server.is_some()
             || self.drag_codegen.is_some();
@@ -257,6 +280,9 @@ impl Render for MainWindow {
             }))
             .on_action(cx.listener(|this, _: &ToggleMockServer, _, cx| {
                 this.toggle_mock_server(cx);
+            }))
+            .on_action(cx.listener(|this, _: &ToggleConsole, _, cx| {
+                this.toggle_console(cx);
             }))
             .on_action(cx.listener(|this, _: &ShowHelp, _, cx| {
                 this.show_help = true;
@@ -467,11 +493,43 @@ impl Render for MainWindow {
                             .child(
                                 div()
                                     .flex_1()
-                                    .min_h(px(150.0))
+                                    .min_h(px(100.0))
                                     .w_full()
                                     .overflow_hidden()
                                     .child(self.response_panel.clone()),
-                            ),
+                            )
+                            // Console resize handle + panel (toggled with Ctrl+Shift+C)
+                            .when(self.show_console, |el| {
+                                el
+                                    .child(
+                                        div()
+                                            .id("console-resize-handle")
+                                            .w_full()
+                                            .h(px(4.0))
+                                            .flex_shrink_0()
+                                            .border_t_1()
+                                            .border_color(theme.colors.border)
+                                            .cursor_row_resize()
+                                            .hover(|s| s.bg(theme.colors.accent.opacity(0.25)))
+                                            .on_mouse_down(
+                                                MouseButton::Left,
+                                                cx.listener(|this, event: &gpui::MouseDownEvent, _, _| {
+                                                    this.drag_console = Some((
+                                                        f32::from(event.position.y),
+                                                        this.console_height,
+                                                    ));
+                                                }),
+                                            )
+                                    )
+                                    .child(
+                                        div()
+                                            .w_full()
+                                            .h(px(self.console_height))
+                                            .flex_shrink_0()
+                                            .overflow_hidden()
+                                            .child(self.console_panel.clone()),
+                                    )
+                            }),
                     )
                     // Mock Server panel (optional right sidebar)
                     .when(self.show_mock_server, |el| {
@@ -576,6 +634,13 @@ impl Render for MainWindow {
                                                 .min(800.0);
                                             cx.notify();
                                         }
+                                        if let Some((start_y, start_h)) = this.drag_console {
+                                            // dragging top edge of console: moving up increases height
+                                            this.console_height = (start_h - (mouse_y - start_y))
+                                                .max(80.0)
+                                                .min(500.0);
+                                            cx.notify();
+                                        }
                                     },
                                 ))
                                 .on_mouse_up(
@@ -605,6 +670,7 @@ impl Render for MainWindow {
                                                 this.codegen_panel_width,
                                             );
                                         }
+                                        this.drag_console.take();
                                         cx.notify();
                                     }),
                                 ),
@@ -999,6 +1065,45 @@ impl MainWindow {
                     .text_color(theme.colors.text_muted)
                     .child("Ready")
                     .into_any_element()
+            })
+            .child(div().flex_1())
+            // Console toggle (right side of status bar)
+            .child({
+                let show_console = self.show_console;
+                let count = self.console_panel.read(cx).entry_count();
+                div()
+                    .id("toggle-console-btn")
+                    .h_full()
+                    .px(px(8.0))
+                    .flex()
+                    .items_center()
+                    .gap(px(5.0))
+                    .cursor_pointer()
+                    .when(show_console, |el| el.bg(theme.colors.accent.opacity(0.12)))
+                    .hover(|s| s.bg(theme.colors.bg_tertiary))
+                    .on_click(cx.listener(|this, _, _, cx| this.toggle_console(cx)))
+                    .child(
+                        div()
+                            .text_size(px(10.0))
+                            .font_weight(gpui::FontWeight::MEDIUM)
+                            .text_color(if show_console {
+                                theme.colors.accent
+                            } else {
+                                theme.colors.text_muted
+                            })
+                            .child("Console")
+                    )
+                    .when(count > 0, |el| {
+                        el.child(
+                            div()
+                                .px(px(4.0))
+                                .py(px(1.0))
+                                .bg(theme.colors.accent.opacity(0.15))
+                                .text_size(px(9.0))
+                                .text_color(theme.colors.accent)
+                                .child(SharedString::from(format!("{}", count)))
+                        )
+                    })
             })
     }
 

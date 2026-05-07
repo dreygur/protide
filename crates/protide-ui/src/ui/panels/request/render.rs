@@ -21,7 +21,7 @@ use crate::ui::components::icons::{
 use protide_core::execution::ws::{WsDirection, WebSocketExecutor};
 use protide_core::execution::sio::SioDirection;
 use super::super::request_types::{ApiKeyLocation, AuthType, BodyType, EditTarget, FormFieldType, GrpcStreamingType, HttpMethod, RequestMode, SioConnectionState, WsConnectionState};
-use super::RequestPanel;
+use super::{GraphqlSchemaState, RequestPanel};
 
 impl<E: WebSocketExecutor> RequestPanel<E> {
     pub(super) fn render_url_bar(&mut self, window: &Window, cx: &mut Context<Self>) -> impl IntoElement {
@@ -199,18 +199,30 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                     .gap(px(8.0))
                     .child({
                         let is_loading = self.loading;
-                        let send_label = match self.request_mode {
-                            RequestMode::WebSocket => if matches!(self.ws_state, WsConnectionState::Connected) {
-                                "Disconnect"
-                            } else {
-                                "Connect"
+                        let ws_connecting = self.request_mode == RequestMode::WebSocket
+                            && matches!(self.ws_state, WsConnectionState::Connecting);
+                        let sio_connecting = self.request_mode == RequestMode::SocketIo
+                            && matches!(self.sio_state, SioConnectionState::Connecting);
+                        let is_blocked = is_loading || ws_connecting || sio_connecting;
+
+                        let (send_label, btn_bg) = match self.request_mode {
+                            RequestMode::WebSocket => match self.ws_state {
+                                WsConnectionState::Connected =>
+                                    ("Disconnect", theme.colors.method_delete),
+                                WsConnectionState::Connecting =>
+                                    ("Connecting...", theme.colors.text_muted),
+                                _ =>
+                                    ("Connect", theme.colors.accent),
                             },
-                            RequestMode::SocketIo => if matches!(self.sio_state, SioConnectionState::Connected) {
-                                "Disconnect"
-                            } else {
-                                "Connect"
+                            RequestMode::SocketIo => match self.sio_state {
+                                SioConnectionState::Connected =>
+                                    ("Disconnect", theme.colors.method_delete),
+                                SioConnectionState::Connecting =>
+                                    ("Connecting...", theme.colors.text_muted),
+                                _ =>
+                                    ("Connect", theme.colors.accent),
                             },
-                            _ => "Send",
+                            _ => ("Send", theme.colors.accent),
                         };
                         div()
                             .id("send-button")
@@ -220,32 +232,39 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                             .items_center()
                             .justify_center()
                             .cursor_pointer()
-                            .bg(theme.colors.accent.opacity(if is_loading { 0.5 } else { 1.0 }))
+                            .bg(btn_bg.opacity(if is_blocked { 0.5 } else { 1.0 }))
                             .text_color(theme.colors.bg_primary)
                             .text_size(px(12.0))
                             .font_weight(gpui::FontWeight::SEMIBOLD)
-                            .when(!is_loading, |el| el.hover(|s| s.bg(theme.colors.accent_hover)))
+                            .when(!is_blocked, |el| el.hover(|s| s.opacity(0.85)))
                             .on_click(cx.listener(|this, _, _, cx| {
-                                if !this.loading {
-                                    match this.request_mode {
-                                        RequestMode::Http | RequestMode::GraphQL => this.send_request(cx),
-                                        RequestMode::WebSocket => {
-                                            if matches!(this.ws_state, WsConnectionState::Connected) {
-                                                this.disconnect_websocket(cx);
-                                            } else {
-                                                this.connect_websocket(cx);
-                                            }
+                                if this.loading {
+                                    return;
+                                }
+                                match this.request_mode {
+                                    RequestMode::Http | RequestMode::GraphQL => this.send_request(cx),
+                                    RequestMode::WebSocket => {
+                                        if matches!(this.ws_state, WsConnectionState::Connecting) {
+                                            return;
                                         }
-                                        RequestMode::SocketIo => {
-                                            if matches!(this.sio_state, SioConnectionState::Connected) {
-                                                this.disconnect_socketio(cx);
-                                            } else {
-                                                this.connect_socketio(cx);
-                                            }
+                                        if matches!(this.ws_state, WsConnectionState::Connected) {
+                                            this.disconnect_websocket(cx);
+                                        } else {
+                                            this.connect_websocket(cx);
                                         }
-                                        RequestMode::Grpc => this.send_grpc_request(cx),
-                                        RequestMode::Trpc => this.send_trpc_request(cx),
                                     }
+                                    RequestMode::SocketIo => {
+                                        if matches!(this.sio_state, SioConnectionState::Connecting) {
+                                            return;
+                                        }
+                                        if matches!(this.sio_state, SioConnectionState::Connected) {
+                                            this.disconnect_socketio(cx);
+                                        } else {
+                                            this.connect_socketio(cx);
+                                        }
+                                    }
+                                    RequestMode::Grpc => this.send_grpc_request(cx),
+                                    RequestMode::Trpc => this.send_trpc_request(cx),
                                 }
                             }))
                             .child(send_label)
@@ -506,7 +525,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
     pub(super) fn render_tabs(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = theme::current(cx);
         let tab_labels: &[&str] = match self.request_mode {
-            RequestMode::GraphQL => &["Query", "Variables", "Headers", "Auth"],
+            RequestMode::GraphQL => &["Query", "Variables", "Headers", "Auth", "Schema"],
             RequestMode::WebSocket => &["Messages", "Headers"],
             RequestMode::SocketIo => &["Events", "Headers"],
             RequestMode::Grpc => &["Message", "Metadata", "Proto"],
@@ -591,12 +610,13 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
     pub(super) fn render_tab_content(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
         match self.request_mode {
             RequestMode::GraphQL => {
-                // GraphQL tabs: Query, Variables, Headers, Auth
+                // GraphQL tabs: Query, Variables, Headers, Auth, Schema
                 match self.active_tab {
                     0 => self.render_graphql_query_tab(cx),
                     1 => self.render_graphql_variables_tab(cx),
                     2 => self.render_headers_tab(cx),
                     3 => self.render_auth_tab(cx),
+                    4 => self.render_graphql_schema_tab(cx),
                     _ => div().into_any_element(),
                 }
             }
@@ -2588,13 +2608,292 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             .into_any_element()
     }
 
+    /// Render GraphQL schema explorer tab
+    fn render_graphql_schema_tab(&mut self, cx: &mut Context<Self>) -> gpui::AnyElement {
+        use crate::ui::components::icons::{ICON_REFRESH, ICON_FILE, ICON_SEARCH, ICON_LOADER};
+        let theme = theme::current(cx);
+        let schema = self.graphql_schema.clone();
+        let search = self.graphql_schema_search.clone();
+
+        let toolbar = div()
+            .flex()
+            .items_center()
+            .gap(px(8.0))
+            .px(px(4.0))
+            .pb(px(8.0))
+            // Refresh Schema button
+            .child(
+                div()
+                    .id("gql-schema-refresh")
+                    .h(px(28.0))
+                    .px(px(12.0))
+                    .flex()
+                    .items_center()
+                    .gap(px(6.0))
+                    .bg(theme.colors.accent.opacity(0.1))
+                    .border_1()
+                    .border_color(theme.colors.accent.opacity(0.3))
+                    .cursor_pointer()
+                    .hover(|s| s.bg(theme.colors.accent.opacity(0.18)))
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.fetch_graphql_schema(cx);
+                    }))
+                    .child(icon(ICON_REFRESH, ICON_SM, theme.colors.accent))
+                    .child(
+                        div()
+                            .text_size(px(12.0))
+                            .text_color(theme.colors.accent)
+                            .child("Refresh Schema"),
+                    )
+            )
+            // Import from file button
+            .child(
+                div()
+                    .id("gql-schema-import")
+                    .h(px(28.0))
+                    .px(px(12.0))
+                    .flex()
+                    .items_center()
+                    .gap(px(6.0))
+                    .bg(theme.colors.bg_secondary)
+                    .border_1()
+                    .border_color(theme.colors.border)
+                    .cursor_pointer()
+                    .hover(|s| s.bg(theme.colors.bg_tertiary))
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.import_graphql_schema_file(cx);
+                    }))
+                    .child(icon(ICON_FILE, ICON_SM, theme.colors.text_muted))
+                    .child(
+                        div()
+                            .text_size(px(12.0))
+                            .text_color(theme.colors.text_secondary)
+                            .child("Import File"),
+                    )
+            );
+
+        let body: gpui::AnyElement = match &schema {
+            GraphqlSchemaState::Idle => div()
+                .w_full()
+                .flex_1()
+                .flex()
+                .items_center()
+                .justify_center()
+                .child(
+                    div()
+                        .flex()
+                        .flex_col()
+                        .items_center()
+                        .gap(px(8.0))
+                        .child(
+                            div()
+                                .text_size(px(13.0))
+                                .text_color(theme.colors.text_muted)
+                                .child("No schema loaded."),
+                        )
+                        .child(
+                            div()
+                                .text_size(px(11.0))
+                                .text_color(theme.colors.text_muted.opacity(0.7))
+                                .child("Use \"Refresh Schema\" to fetch via introspection,"),
+                        )
+                        .child(
+                            div()
+                                .text_size(px(11.0))
+                                .text_color(theme.colors.text_muted.opacity(0.7))
+                                .child("or \"Import File\" to load a .graphql / .json schema."),
+                        )
+                )
+                .into_any_element(),
+
+            GraphqlSchemaState::Loading => div()
+                .w_full()
+                .flex_1()
+                .flex()
+                .items_center()
+                .justify_center()
+                .gap(px(8.0))
+                .child(icon(ICON_LOADER, ICON_MD, theme.colors.accent))
+                .child(
+                    div()
+                        .text_size(px(13.0))
+                        .text_color(theme.colors.text_muted)
+                        .child("Fetching schema…"),
+                )
+                .into_any_element(),
+
+            GraphqlSchemaState::Error(msg) => {
+                let msg = msg.clone();
+                div()
+                    .w_full()
+                    .flex_1()
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .child(
+                        div()
+                            .flex()
+                            .flex_col()
+                            .items_center()
+                            .gap(px(4.0))
+                            .child(
+                                div()
+                                    .text_size(px(12.0))
+                                    .font_weight(gpui::FontWeight::SEMIBOLD)
+                                    .text_color(theme.colors.error)
+                                    .child("Introspection failed"),
+                            )
+                            .child(
+                                div()
+                                    .text_size(px(11.0))
+                                    .text_color(theme.colors.text_muted)
+                                    .child(SharedString::from(msg)),
+                            )
+                    )
+                    .into_any_element()
+            }
+
+            GraphqlSchemaState::Loaded(types) => {
+                let types = types.clone();
+                let search_lower = search.to_lowercase();
+                let filtered: Vec<_> = types
+                    .iter()
+                    .filter(|t| search_lower.is_empty() || t.name.to_lowercase().contains(&search_lower))
+                    .cloned()
+                    .collect();
+
+                div()
+                    .w_full()
+                    .flex_1()
+                    .flex()
+                    .flex_col()
+                    .gap(px(4.0))
+                    // Search box (read-only display; search filter is set programmatically)
+                    .child(
+                        div()
+                            .id("gql-schema-search-box")
+                            .w_full()
+                            .h(px(28.0))
+                            .flex()
+                            .items_center()
+                            .gap(px(6.0))
+                            .px(px(8.0))
+                            .bg(theme.colors.bg_secondary)
+                            .border_1()
+                            .border_color(theme.colors.border)
+                            .child(icon(ICON_SEARCH, ICON_SM, theme.colors.text_muted))
+                            .child(
+                                div()
+                                    .flex_1()
+                                    .text_size(px(12.0))
+                                    .text_color(if search.is_empty() {
+                                        theme.colors.text_muted
+                                    } else {
+                                        theme.colors.text_primary
+                                    })
+                                    .child(if search.is_empty() {
+                                        SharedString::from("Filter types…")
+                                    } else {
+                                        SharedString::from(search.clone())
+                                    })
+                            )
+                    )
+                    // Type count
+                    .child(
+                        div()
+                            .px(px(4.0))
+                            .text_size(px(10.0))
+                            .text_color(theme.colors.text_muted)
+                            .child(SharedString::from(format!(
+                                "{} type{}",
+                                filtered.len(),
+                                if filtered.len() == 1 { "" } else { "s" }
+                            )))
+                    )
+                    // Type list
+                    .child(
+                        div()
+                            .w_full()
+                            .flex_1()
+                            .flex()
+                            .flex_col()
+                            .id("gql-schema-type-list")
+                            .overflow_scroll()
+                            .children(filtered.iter().enumerate().map(|(i, t)| {
+                                let kind_color = match t.kind.as_str() {
+                                    "OBJECT"    => theme.colors.method_post,
+                                    "INTERFACE" => theme.colors.accent,
+                                    "ENUM"      => theme.colors.method_patch,
+                                    "INPUT_OBJECT" | "INPUT" => theme.colors.method_put,
+                                    "SCALAR"    => theme.colors.text_muted,
+                                    _           => theme.colors.text_secondary,
+                                };
+                                div()
+                                    .id(SharedString::from(format!("gql-type-{}", i)))
+                                    .w_full()
+                                    .h(px(26.0))
+                                    .flex()
+                                    .items_center()
+                                    .px(px(8.0))
+                                    .gap(px(8.0))
+                                    .hover(|s| s.bg(theme.colors.hover_overlay))
+                                    // Kind badge
+                                    .child(
+                                        div()
+                                            .px(px(4.0))
+                                            .py(px(1.0))
+                                            .min_w(px(52.0))
+                                            .flex()
+                                            .justify_center()
+                                            .bg(kind_color.opacity(0.12))
+                                            .text_size(px(9.0))
+                                            .font_weight(gpui::FontWeight::BOLD)
+                                            .text_color(kind_color)
+                                            .child(SharedString::from(t.kind.clone()))
+                                    )
+                                    // Type name
+                                    .child(
+                                        div()
+                                            .flex_1()
+                                            .text_size(px(12.0))
+                                            .text_color(theme.colors.text_primary)
+                                            .child(SharedString::from(t.name.clone()))
+                                    )
+                            }))
+                    )
+                    .into_any_element()
+            }
+        };
+
+        div()
+            .id("graphql-schema-tab")
+            .w_full()
+            .h_full()
+            .flex()
+            .flex_col()
+            .gap(px(4.0))
+            .child(toolbar)
+            .child(body)
+            .into_any_element()
+    }
+
     /// Render WebSocket messages tab with connection controls and message history
     fn render_websocket_messages_tab(&mut self, cx: &mut Context<Self>) -> gpui::AnyElement {
         let theme = theme::current(cx);
         let ws_state = self.ws_state;
         let is_connected = ws_state == WsConnectionState::Connected;
-        let is_connecting = ws_state == WsConnectionState::Connecting;
         let messages = self.ws_messages.clone();
+
+        let (badge_label, badge_fg, badge_bg) = match ws_state {
+            WsConnectionState::Connected =>
+                ("CONNECTED", theme.colors.method_get, theme.colors.method_get.opacity(0.12)),
+            WsConnectionState::Connecting =>
+                ("CONNECTING", theme.colors.accent, theme.colors.accent.opacity(0.12)),
+            WsConnectionState::Error =>
+                ("ERROR", theme.colors.error, theme.colors.error.opacity(0.12)),
+            WsConnectionState::Disconnected =>
+                ("DISCONNECTED", theme.colors.text_muted, theme.colors.text_muted.opacity(0.12)),
+        };
 
         div()
             .id("websocket-messages-tab")
@@ -2603,101 +2902,49 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             .flex()
             .flex_col()
             .gap(px(8.0))
-            // Connection status & controls
+            // Connection status row (no connect button — toolbar is source of truth)
             .child(
                 div()
                     .flex()
                     .items_center()
-                    .justify_between()
                     .px(px(4.0))
+                    .gap(px(8.0))
                     .child(
                         div()
+                            .size(px(20.0))
+                            .bg(if is_connected {
+                                theme.colors.method_get.opacity(0.15)
+                            } else {
+                                theme.colors.text_muted.opacity(0.15)
+                            })
                             .flex()
                             .items_center()
-                            .gap(px(8.0))
-                            .child(
-                                div()
-                                    .size(px(20.0))
-                                    .bg(if is_connected {
-                                        theme.colors.method_get.opacity(0.15)
-                                    } else {
-                                        theme.colors.text_muted.opacity(0.15)
-                                    })
-                                    .flex()
-                                    .items_center()
-                                    .justify_center()
-                                    .child(icon(
-                                        ICON_PLAY,
-                                        ICON_MD,
-                                        if is_connected { theme.colors.method_get } else { theme.colors.text_muted },
-                                    ))
-                            )
-                            .child(
-                                div()
-                                    .text_size(px(12.0))
-                                    .font_weight(gpui::FontWeight::SEMIBOLD)
-                                    .text_color(theme.colors.text_primary)
-                                    .child("WebSocket")
-                            )
-                            .child(
-                                div()
-                                    .px(px(8.0))
-                                    .py(px(2.0))
-                                    .bg(if is_connected {
-                                        theme.colors.method_get.opacity(0.15)
-                                    } else if is_connecting {
-                                        theme.colors.accent.opacity(0.15)
-                                    } else {
-                                        theme.colors.text_muted.opacity(0.15)
-                                    })
-                                    .text_size(px(10.0))
-                                    .text_color(if is_connected {
-                                        theme.colors.method_get
-                                    } else if is_connecting {
-                                        theme.colors.accent
-                                    } else {
-                                        theme.colors.text_muted
-                                    })
-                                    .child(match ws_state {
-                                        WsConnectionState::Connected => "Connected",
-                                        WsConnectionState::Connecting => "Connecting...",
-                                        WsConnectionState::Disconnected => "Disconnected",
-                                    })
-                            )
+                            .justify_center()
+                            .child(icon(
+                                ICON_PLAY,
+                                ICON_MD,
+                                if is_connected { theme.colors.method_get } else { theme.colors.text_muted },
+                            ))
                     )
-                    // Connect/Disconnect button
                     .child(
                         div()
-                            .id("ws-connect-btn")
-                            .px(px(12.0))
-                            .py(px(6.0))
-                            .cursor_pointer()
-                            .when(is_connected, |el| {
-                                el.bg(theme.colors.method_delete.opacity(0.15))
-                                    .text_color(theme.colors.method_delete)
-                            })
-                            .when(!is_connected, |el| {
-                                el.bg(theme.colors.method_get.opacity(0.15))
-                                    .text_color(theme.colors.method_get)
-                            })
-                            .when(is_connecting, |el| {
-                                el.cursor(gpui::CursorStyle::Arrow)
-                                    .opacity(0.5)
-                            })
-                            .hover(|s| s.opacity(0.8))
-                            .text_size(px(11.0))
-                            .font_weight(gpui::FontWeight::MEDIUM)
-                            .on_click(cx.listener(move |this, _, _, cx| {
-                                if is_connecting {
-                                    return;
-                                }
-                                if is_connected {
-                                    this.disconnect_websocket(cx);
-                                } else {
-                                    this.connect_websocket(cx);
-                                }
-                            }))
-                            .child(if is_connected { "Disconnect" } else { "Connect" })
+                            .text_size(px(12.0))
+                            .font_weight(gpui::FontWeight::SEMIBOLD)
+                            .text_color(theme.colors.text_primary)
+                            .child("WebSocket")
+                    )
+                    // Sharp-edged status badge
+                    .child(
+                        div()
+                            .px(px(6.0))
+                            .py(px(2.0))
+                            .bg(badge_bg)
+                            .border_1()
+                            .border_color(badge_fg.opacity(0.3))
+                            .text_size(px(9.0))
+                            .font_weight(gpui::FontWeight::BOLD)
+                            .text_color(badge_fg)
+                            .child(badge_label)
                     )
             )
             // Message history
