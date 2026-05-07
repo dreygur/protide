@@ -3,12 +3,16 @@
 use std::time::Duration;
 
 use gpui::{
-    deferred, div, prelude::*, px, Context, Entity, IntoElement, MouseButton,
-    Render, SharedString, Styled, Window,
+    deferred, div, prelude::*, px, uniform_list, Context, Entity, IntoElement,
+    MouseButton, Render, SharedString, Styled, UniformListScrollHandle, WeakEntity, Window,
 };
 
-const INDENT_STEP: f32 = 16.0;
-const ROW_HEIGHT: f32 = 20.0;
+const GUTTER_W: f32 = 44.0;
+const INDENT_W: f32 = 16.0;
+const CHEVRON_W: f32 = 16.0;
+const ROW_H: f32 = 20.0;
+const ROW_FONT: f32 = 12.5;
+const GUTTER_FONT: f32 = 11.0;
 
 use protide_core::chaining;
 use protide_core::scripting::results::TestResult;
@@ -19,6 +23,244 @@ use crate::ui::components::icons::{
     ICON_ARROW_DOWN, ICON_COPY, ICON_GLOBE, ICON_CHEVRON_DOWN, ICON_CHEVRON_RIGHT,
 };
 use crate::ui::components::TextInput;
+
+// ─── JSON tree types ────────────────────────────────────────────────────────
+
+#[derive(Clone, Debug)]
+enum PrimVal {
+    Null,
+    Bool(bool),
+    Num(String),
+    Str(String),
+    EmptyArr,
+    EmptyObj,
+}
+
+#[derive(Clone, Debug)]
+enum RowKind {
+    Leaf   { key: Option<String>, val: PrimVal },
+    Open   { key: Option<String>, arr: bool, path: String },
+    Close  { arr: bool },
+    Folded { key: Option<String>, arr: bool, count: usize, path: String },
+}
+
+#[derive(Clone, Debug)]
+struct JsonRow {
+    depth: usize,
+    kind:  RowKind,
+}
+
+fn flatten_json(
+    value:     &serde_json::Value,
+    depth:     usize,
+    key:       Option<String>,
+    path:      &str,
+    collapsed: &std::collections::HashSet<String>,
+    rows:      &mut Vec<JsonRow>,
+) {
+    use serde_json::Value;
+    match value {
+        Value::Null    => rows.push(JsonRow { depth, kind: RowKind::Leaf { key, val: PrimVal::Null } }),
+        Value::Bool(b) => rows.push(JsonRow { depth, kind: RowKind::Leaf { key, val: PrimVal::Bool(*b) } }),
+        Value::Number(n) => rows.push(JsonRow { depth, kind: RowKind::Leaf { key, val: PrimVal::Num(n.to_string()) } }),
+        Value::String(s) => rows.push(JsonRow { depth, kind: RowKind::Leaf { key, val: PrimVal::Str(s.clone()) } }),
+        Value::Array(arr) if arr.is_empty() => {
+            rows.push(JsonRow { depth, kind: RowKind::Leaf { key, val: PrimVal::EmptyArr } });
+        }
+        Value::Array(arr) => {
+            let count = arr.len();
+            let p = path.to_string();
+            if collapsed.contains(path) {
+                rows.push(JsonRow { depth, kind: RowKind::Folded { key, arr: true, count, path: p } });
+                return;
+            }
+            rows.push(JsonRow { depth, kind: RowKind::Open { key, arr: true, path: p } });
+            for (i, item) in arr.iter().enumerate() {
+                flatten_json(item, depth + 1, None, &format!("{}/{}", path, i), collapsed, rows);
+            }
+            rows.push(JsonRow { depth, kind: RowKind::Close { arr: true } });
+        }
+        Value::Object(obj) if obj.is_empty() => {
+            rows.push(JsonRow { depth, kind: RowKind::Leaf { key, val: PrimVal::EmptyObj } });
+        }
+        Value::Object(obj) => {
+            let count = obj.len();
+            let p = path.to_string();
+            if collapsed.contains(path) {
+                rows.push(JsonRow { depth, kind: RowKind::Folded { key, arr: false, count, path: p } });
+                return;
+            }
+            rows.push(JsonRow { depth, kind: RowKind::Open { key, arr: false, path: p } });
+            for (k, v) in obj {
+                flatten_json(v, depth + 1, Some(k.clone()), &format!("{}/{}", path, k), collapsed, rows);
+            }
+            rows.push(JsonRow { depth, kind: RowKind::Close { arr: false } });
+        }
+    }
+}
+
+fn render_json_row(
+    line_num: usize,
+    row:      &JsonRow,
+    colors:   &crate::theme::Colors,
+    weak:     WeakEntity<ResponsePanel>,
+) -> gpui::AnyElement {
+    let guide_color = colors.border;
+    let hover_bg    = colors.hover_overlay;
+    let depth       = row.depth;
+
+    // Gutter: right-aligned line number
+    let gutter = div()
+        .w(px(GUTTER_W))
+        .h(px(ROW_H))
+        .flex_shrink_0()
+        .flex()
+        .items_center()
+        .justify_end()
+        .pr(px(8.0))
+        .text_size(px(GUTTER_FONT))
+        .text_color(colors.text_muted)
+        .child(SharedString::from(line_num.to_string()));
+
+    // One indent-guide pillar per depth level
+    let guides: Vec<gpui::AnyElement> = (0..depth).map(|_| {
+        div()
+            .w(px(INDENT_W))
+            .h(px(ROW_H))
+            .flex_shrink_0()
+            .flex()
+            .justify_center()
+            .child(
+                div()
+                    .w(px(1.0))
+                    .h(px(ROW_H))
+                    .flex_shrink_0()
+                    .bg(guide_color),
+            )
+            .into_any_element()
+    }).collect();
+
+    // Chevron column
+    let is_open   = matches!(&row.kind, RowKind::Open { .. });
+    let is_folded = matches!(&row.kind, RowKind::Folded { .. });
+    let chevron = div()
+        .w(px(CHEVRON_W))
+        .h(px(ROW_H))
+        .flex_shrink_0()
+        .flex()
+        .items_center()
+        .justify_center()
+        .when(is_open,   |el| el.child(icon(ICON_CHEVRON_DOWN,  ICON_SM, colors.text_secondary)))
+        .when(is_folded, |el| el.child(icon(ICON_CHEVRON_RIGHT, ICON_SM, colors.text_secondary)));
+
+    // Key prefix helper: copies color values (Hsla is Copy)
+    let key_color  = colors.info;
+    let colon_color = colors.text_secondary.opacity(0.45);
+    let key_span = move |k: &str| -> gpui::AnyElement {
+        div()
+            .flex_shrink_0()
+            .flex()
+            .items_center()
+            .child(div().flex_shrink_0().text_color(key_color)
+                .child(SharedString::from(format!("\"{}\"", k))))
+            .child(div().flex_shrink_0().text_color(colon_color)
+                .child(": "))
+            .into_any_element()
+    };
+
+    // Content area, built per row kind — all values copied (Hsla is Copy)
+    let c_secondary = colors.text_secondary;
+    let c_patch     = colors.method_patch;
+    let c_put       = colors.method_put;
+    let c_success   = colors.status_success;
+    let content: gpui::AnyElement = match &row.kind {
+        RowKind::Leaf { key, val } => {
+            let (txt, col) = match val {
+                PrimVal::Null     => ("null".into(),                                    c_secondary),
+                PrimVal::Bool(b)  => (if *b { "true" } else { "false" }.into(),         c_patch),
+                PrimVal::Num(n)   => (n.clone(),                                        c_put),
+                PrimVal::Str(s)   => (format!("\"{}\"", s),                             c_success),
+                PrimVal::EmptyArr => ("[]".into(),                                      c_secondary),
+                PrimVal::EmptyObj => ("{}".into(),                                      c_secondary),
+            };
+            div()
+                .flex_1().overflow_hidden().flex().items_center().whitespace_nowrap()
+                .when_some(key.as_deref(), |el, k| el.child(key_span(k)))
+                .child(
+                    div().flex_1().overflow_hidden().text_ellipsis().whitespace_nowrap()
+                        .text_color(col)
+                        .child(SharedString::from(txt)),
+                )
+                .into_any_element()
+        }
+        RowKind::Open { key, arr, .. } => {
+            let bracket = if *arr { "[" } else { "{" };
+            div()
+                .flex_1().overflow_hidden().flex().items_center().whitespace_nowrap()
+                .when_some(key.as_deref(), |el, k| el.child(key_span(k)))
+                .child(div().flex_shrink_0().text_color(c_secondary).child(bracket))
+                .into_any_element()
+        }
+        RowKind::Close { arr, .. } => {
+            let bracket = if *arr { "]" } else { "}" };
+            div()
+                .flex_1().overflow_hidden().flex().items_center().whitespace_nowrap()
+                .child(div().flex_shrink_0().text_color(c_secondary).child(bracket))
+                .into_any_element()
+        }
+        RowKind::Folded { key, arr, count, .. } => {
+            let (open, close) = if *arr { ("[", "]") } else { ("{", "}") };
+            let summary = SharedString::from(format!(
+                " {} {} ", count, if *arr { "items" } else { "keys" }
+            ));
+            let dim = c_secondary.opacity(0.5);
+            div()
+                .flex_1().overflow_hidden().flex().items_center().whitespace_nowrap()
+                .when_some(key.as_deref(), |el, k| el.child(key_span(k)))
+                .child(div().flex_shrink_0().text_color(c_secondary).child(open))
+                .child(div().flex_shrink_0().text_color(dim).child(summary))
+                .child(div().flex_shrink_0().text_color(c_secondary).child(close))
+                .into_any_element()
+        }
+    };
+
+    // Click path for Open / Folded rows
+    let click_path: Option<String> = match &row.kind {
+        RowKind::Open   { path, .. } => Some(path.clone()),
+        RowKind::Folded { path, .. } => Some(path.clone()),
+        _ => None,
+    };
+    let can_click = click_path.is_some();
+
+    let row_div = div()
+        .id(line_num)
+        .w_full()
+        .h(px(ROW_H))
+        .flex()
+        .items_center()
+        .overflow_hidden()
+        .when(can_click, |el| el.cursor_pointer())
+        .hover(|s| s.bg(hover_bg))
+        .child(gutter)
+        .children(guides)
+        .child(chevron)
+        .child(content);
+
+    if let Some(path) = click_path {
+        let weak_c = weak;
+        row_div
+            .on_click(move |_, _, cx| {
+                weak_c.update(cx, |this, cx| {
+                    this.toggle_json_collapse(path.clone(), cx);
+                }).ok();
+            })
+            .into_any_element()
+    } else {
+        row_div.into_any_element()
+    }
+}
+
+// ─── End JSON tree types ────────────────────────────────────────────────────
 
 /// Response data from an HTTP request
 #[derive(Clone, Default)]
@@ -124,6 +366,10 @@ pub struct ResponsePanel {
     json_value: Option<serde_json::Value>,
     /// Set of collapsed JSON paths (using "/" as separator, root = "")
     json_tree_collapsed: std::collections::HashSet<String>,
+    /// Flat pre-computed row list for the JSON tree (rebuilt on every collapse change)
+    json_rows: Vec<JsonRow>,
+    /// Scroll position for the JSON tree uniform_list
+    json_scroll_handle: UniformListScrollHandle,
     /// Test results from script execution
     test_results: Vec<TestResult>,
     /// JSONPath expression input for extraction
@@ -166,6 +412,8 @@ impl ResponsePanel {
             body_viewer,
             json_value: None,
             json_tree_collapsed: std::collections::HashSet::new(),
+            json_rows: Vec::new(),
+            json_scroll_handle: UniformListScrollHandle::new(),
             test_results: Vec::new(),
             jsonpath_input,
             extraction_result: None,
@@ -241,6 +489,7 @@ impl ResponsePanel {
         // Store parsed JSON for tree rendering
         self.json_value = serde_json::from_str::<serde_json::Value>(&response.body).ok();
         self.json_tree_collapsed.clear();
+        self.rebuild_json_rows();
 
         self.response = Some(response);
         self.loading = false;
@@ -274,258 +523,46 @@ impl ResponsePanel {
         } else {
             self.json_tree_collapsed.insert(path);
         }
+        self.rebuild_json_rows();
         cx.notify();
     }
 
-    fn render_json_node(
-        &self,
-        value: &serde_json::Value,
-        path: String,
-        depth: usize,
-        cx: &Context<Self>,
-    ) -> gpui::AnyElement {
-        let theme = theme::current(cx);
-        let indent = (depth as f32) * INDENT_STEP;
-        let is_collapsed = self.json_tree_collapsed.contains(&path);
-
-        match value {
-            serde_json::Value::Null => div()
-                .pl(px(indent))
-                .h(px(ROW_HEIGHT))
-                .line_height(px(ROW_HEIGHT))
-                .flex()
-                .items_center()
-                .text_color(theme.colors.text_muted)
-                .child("null")
-                .into_any_element(),
-
-            serde_json::Value::Bool(b) => div()
-                .pl(px(indent))
-                .h(px(ROW_HEIGHT))
-                .line_height(px(ROW_HEIGHT))
-                .flex()
-                .items_center()
-                .text_color(theme.colors.method_delete)
-                .child(if *b { "true" } else { "false" })
-                .into_any_element(),
-
-            serde_json::Value::Number(n) => div()
-                .pl(px(indent))
-                .h(px(ROW_HEIGHT))
-                .line_height(px(ROW_HEIGHT))
-                .flex()
-                .items_center()
-                .text_color(theme.colors.method_put)
-                .child(n.to_string())
-                .into_any_element(),
-
-            serde_json::Value::String(s) => div()
-                .pl(px(indent))
-                .h(px(ROW_HEIGHT))
-                .line_height(px(ROW_HEIGHT))
-                .flex()
-                .items_center()
-                .text_color(theme.colors.status_success)
-                .child(format!("\"{}\"", s.replace('\"', "\\\"")))
-                .into_any_element(),
-
-            serde_json::Value::Array(arr) => {
-                let count = arr.len();
-                if count == 0 {
-                    return div()
-                        .pl(px(indent))
-                        .h(px(ROW_HEIGHT))
-                        .line_height(px(ROW_HEIGHT))
-                        .flex()
-                        .items_center()
-                        .text_color(theme.colors.text_muted)
-                        .child("[]")
-                        .into_any_element();
-                }
-                let path_clone = path.clone();
-                if is_collapsed {
-                    return div()
-                        .id(SharedString::from(format!("json-arr-{}", path)))
-                        .pl(px(indent))
-                        .h(px(ROW_HEIGHT))
-                        .line_height(px(ROW_HEIGHT))
-                        .flex()
-                        .items_center()
-                        .gap(px(4.0))
-                        .cursor_pointer()
-                        .hover(|s| s.bg(theme.colors.bg_tertiary))
-                        .on_click(cx.listener(move |this, _, _, cx| {
-                            this.toggle_json_collapse(path_clone.clone(), cx);
-                        }))
-                        .child(icon(ICON_CHEVRON_RIGHT, ICON_SM, theme.colors.text_muted))
-                        .child(div().text_color(theme.colors.text_secondary)
-                            .child(format!("[ {} items ]", count)))
-                        .into_any_element();
-                }
-                let mut container = div().flex().flex_col();
-                let path_clone2 = path.clone();
-                container = container.child(
-                    div()
-                        .id(SharedString::from(format!("json-arr-{}", path)))
-                        .pl(px(indent))
-                        .h(px(ROW_HEIGHT))
-                        .line_height(px(ROW_HEIGHT))
-                        .flex()
-                        .items_center()
-                        .gap(px(4.0))
-                        .cursor_pointer()
-                        .hover(|s| s.bg(theme.colors.bg_tertiary))
-                        .on_click(cx.listener(move |this, _, _, cx| {
-                            this.toggle_json_collapse(path_clone2.clone(), cx);
-                        }))
-                        .child(icon(ICON_CHEVRON_DOWN, ICON_SM, theme.colors.text_muted))
-                        .child(div().text_color(theme.colors.text_muted).child("["))
-                );
-                for (i, item) in arr.iter().enumerate() {
-                    container = container.child(
-                        self.render_json_node(item, format!("{}/{}", path, i), depth + 1, cx)
-                    );
-                }
-                container = container.child(
-                    div()
-                        .pl(px(indent))
-                        .h(px(ROW_HEIGHT))
-                        .line_height(px(ROW_HEIGHT))
-                        .flex()
-                        .items_center()
-                        .gap(px(4.0))
-                        .text_color(theme.colors.text_muted)
-                        .child(format!("]  ({} items)", count))
-                );
-                container.into_any_element()
-            }
-
-            serde_json::Value::Object(obj) => {
-                let count = obj.len();
-                if count == 0 {
-                    return div()
-                        .pl(px(indent))
-                        .h(px(ROW_HEIGHT))
-                        .line_height(px(ROW_HEIGHT))
-                        .flex()
-                        .items_center()
-                        .text_color(theme.colors.text_muted)
-                        .child("{}")
-                        .into_any_element();
-                }
-                let path_clone = path.clone();
-                if is_collapsed {
-                    return div()
-                        .id(SharedString::from(format!("json-obj-{}", path)))
-                        .pl(px(indent))
-                        .h(px(ROW_HEIGHT))
-                        .line_height(px(ROW_HEIGHT))
-                        .flex()
-                        .items_center()
-                        .gap(px(4.0))
-                        .cursor_pointer()
-                        .hover(|s| s.bg(theme.colors.bg_tertiary))
-                        .on_click(cx.listener(move |this, _, _, cx| {
-                            this.toggle_json_collapse(path_clone.clone(), cx);
-                        }))
-                        .child(icon(ICON_CHEVRON_RIGHT, ICON_SM, theme.colors.text_muted))
-                        .child(div().text_color(theme.colors.text_secondary)
-                            .child(format!("{{ {} keys }}", count)))
-                        .into_any_element();
-                }
-                let mut container = div().flex().flex_col();
-                let path_clone2 = path.clone();
-                container = container.child(
-                    div()
-                        .id(SharedString::from(format!("json-obj-{}", path)))
-                        .pl(px(indent))
-                        .h(px(ROW_HEIGHT))
-                        .line_height(px(ROW_HEIGHT))
-                        .flex()
-                        .items_center()
-                        .gap(px(4.0))
-                        .cursor_pointer()
-                        .hover(|s| s.bg(theme.colors.bg_tertiary))
-                        .on_click(cx.listener(move |this, _, _, cx| {
-                            this.toggle_json_collapse(path_clone2.clone(), cx);
-                        }))
-                        .child(icon(ICON_CHEVRON_DOWN, ICON_SM, theme.colors.text_muted))
-                        .child(div().text_color(theme.colors.text_muted).child("{"))
-                );
-                let child_indent = indent + INDENT_STEP;
-                for (key, val) in obj {
-                    let child_path = format!("{}/{}", path, key);
-                    if val.is_object() || val.is_array() {
-                        container = container.child(
-                            div()
-                                .pl(px(child_indent))
-                                .h(px(ROW_HEIGHT))
-                                .line_height(px(ROW_HEIGHT))
-                                .flex()
-                                .items_center()
-                                .child(
-                                    div()
-                                        .max_w(px(300.0))
-                                        .overflow_hidden()
-                                        .text_color(theme.colors.accent)
-                                        .child(format!("\"{}\":", key))
-                                )
-                        );
-                        container = container.child(
-                            self.render_json_node(val, child_path, depth + 1, cx)
-                        );
-                    } else {
-                        let value_el: gpui::AnyElement = match val {
-                            serde_json::Value::Null => div()
-                                .text_color(theme.colors.text_muted)
-                                .child("null")
-                                .into_any_element(),
-                            serde_json::Value::Bool(b) => div()
-                                .text_color(theme.colors.method_delete)
-                                .child(if *b { "true" } else { "false" })
-                                .into_any_element(),
-                            serde_json::Value::Number(n) => div()
-                                .text_color(theme.colors.method_put)
-                                .child(n.to_string())
-                                .into_any_element(),
-                            serde_json::Value::String(s) => div()
-                                .text_color(theme.colors.status_success)
-                                .child(format!("\"{}\"", s.replace('\"', "\\\"")))
-                                .into_any_element(),
-                            _ => unreachable!(),
-                        };
-                        container = container.child(
-                            div()
-                                .pl(px(child_indent))
-                                .h(px(ROW_HEIGHT))
-                                .line_height(px(ROW_HEIGHT))
-                                .flex()
-                                .items_center()
-                                .gap(px(4.0))
-                                .child(
-                                    div()
-                                        .max_w(px(300.0))
-                                        .overflow_hidden()
-                                        .text_color(theme.colors.accent)
-                                        .child(format!("\"{}\":", key))
-                                )
-                                .child(value_el)
-                        );
-                    }
-                }
-                container = container.child(
-                    div()
-                        .pl(px(indent))
-                        .h(px(ROW_HEIGHT))
-                        .line_height(px(ROW_HEIGHT))
-                        .flex()
-                        .items_center()
-                        .text_color(theme.colors.text_muted)
-                        .child("}")
-                );
-                container.into_any_element()
-            }
+    fn rebuild_json_rows(&mut self) {
+        self.json_rows.clear();
+        if let Some(json) = &self.json_value {
+            flatten_json(json, 0, None, "", &self.json_tree_collapsed, &mut self.json_rows);
         }
+    }
+
+    fn render_json_tree(&self, cx: &Context<Self>) -> gpui::AnyElement {
+        let row_count = self.json_rows.len();
+        if row_count == 0 {
+            return div().into_any_element();
+        }
+        div()
+            .flex_1()
+            .w_full()
+            .overflow_hidden()
+            .child(
+                uniform_list(
+                    "json-tree",
+                    row_count,
+                    cx.processor(|this, range: std::ops::Range<usize>, _window, cx| {
+                        let colors = theme::current(cx).colors.clone();
+                        let weak   = cx.weak_entity();
+                        range.map(|i| {
+                            let row = this.json_rows[i].clone();
+                            render_json_row(i + 1, &row, &colors, weak.clone())
+                        })
+                        .collect::<Vec<_>>()
+                    }),
+                )
+                .font_family(SharedString::from("JetBrains Mono"))
+                .text_size(px(ROW_FONT))
+                .size_full()
+                .track_scroll(&self.json_scroll_handle),
+            )
+            .into_any_element()
     }
 
     /// Returns (status, status_text, time_ms, size_bytes) for the status bar, if any response received.
@@ -1175,18 +1212,10 @@ impl ResponsePanel {
                             .child(if is_copied { "Copied!" } else { "Copy" })
                     )
             })
-            // Body content: JSON tree if parseable, else CodeEditor
+            // Body content: JSON tree (uniform_list) if parseable, else CodeEditor
             .child(
-                if let Some(json_val) = &self.json_value {
-                    div()
-                        .flex_1()
-                        .w_full()
-                        .id("json-tree-scroll")
-                        .overflow_scroll()
-                        .p(px(12.0))
-                        .text_size(px(12.0))
-                        .child(self.render_json_node(json_val, String::new(), 0, cx))
-                        .into_any_element()
+                if self.json_value.is_some() {
+                    self.render_json_tree(cx)
                 } else {
                     div()
                         .flex_1()
