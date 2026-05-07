@@ -761,6 +761,21 @@ impl ExplorerPanel {
         cx.notify();
     }
 
+    /// Recursively collapse all folders in the collection tree
+    fn collapse_all_folders(&mut self, cx: &mut Context<Self>) {
+        fn collapse(items: &mut [CollectionItem]) {
+            for item in items.iter_mut() {
+                if item.is_folder {
+                    item.expanded = false;
+                    collapse(&mut item.children);
+                }
+            }
+        }
+        collapse(&mut self.collection_items);
+        self.tree_scroll = 0.0;
+        cx.notify();
+    }
+
     /// Close the open project / workspace folder
     fn close_project(&mut self, cx: &mut Context<Self>) {
         self.workspace_path = None;
@@ -1446,6 +1461,14 @@ impl ExplorerPanel {
                                         this.refresh_collections(cx);
                                     })),
                             )
+                            .when(has_collections, |el| {
+                                el.child(
+                                    icon_btn("collapse-all-btn", ICON_CHEVRON_UP, cx)
+                                        .on_click(cx.listener(|this, _, _, cx| {
+                                            this.collapse_all_folders(cx);
+                                        })),
+                                )
+                            })
                             .child(
                                 icon_btn("open-folder-btn", ICON_FOLDER_OPEN, cx)
                                     .on_click(cx.listener(|this, _, _, cx| {
@@ -1602,10 +1625,13 @@ impl ExplorerPanel {
         let is_selected = self.selected_item.as_ref() == Some(&item.path);
         let is_renaming = self.renaming_item.as_ref() == Some(&item.path);
 
+        let guide_color = theme.colors.text_muted.opacity(0.12);
+
         div()
             .id(SharedString::from(format!("collection-item-{}", idx)))
             .w_full()
             .h(px(28.0))
+            .relative()
             .flex()
             .items_center()
             .pl(indent)
@@ -1632,6 +1658,20 @@ impl ExplorerPanel {
                     this.selected_item = Some(path_for_right_click.clone());
                     this.context_menu = Some((path_for_right_click.clone(), event.position));
                     cx.notify();
+                })
+            })
+            // Guide lines for nested items (absolute, behind content)
+            .when(depth > 0, |el| {
+                (0..depth).fold(el, |el, level| {
+                    el.child(
+                        div()
+                            .absolute()
+                            .left(px(8.0 + level as f32 * 16.0 + 7.5))
+                            .top(px(0.0))
+                            .h(px(28.0))
+                            .w(px(1.0))
+                            .bg(guide_color),
+                    )
                 })
             })
             // Expand/collapse icon for folders
@@ -1685,7 +1725,7 @@ impl ExplorerPanel {
             })
             // 8px spacer before label
             .when(has_badge, |el| el.child(div().w(px(8.0))))
-            // Name (or rename input)
+            // Name (or rename input) - folders are bold to stand out
             .when(!is_renaming, |el| {
                 el.child(
                     div()
@@ -1694,6 +1734,7 @@ impl ExplorerPanel {
                         .overflow_hidden()
                         .text_size(px(12.0))
                         .text_color(theme.colors.text_primary)
+                        .when(is_folder, |el| el.font_weight(gpui::FontWeight::SEMIBOLD))
                         .child(display_name),
                 )
             })
@@ -1855,19 +1896,23 @@ impl ExplorerPanel {
                                 .on_click(cx.listener(move |this, _, _, cx| {
                                     this.load_history_item(entry_id, cx);
                                 }))
-                                // Method badge
+                                // Method badge - sharp style matching explorer badges
                                 .child(
                                     div()
-                                        .min_w(px(44.0))
-                                        .h(px(18.0))
+                                        .min_w(px(36.0))
+                                        .h(px(16.0))
+                                        .px(px(4.0))
                                         .flex()
                                         .items_center()
                                         .justify_center()
                                         .bg(method_color.opacity(0.12))
+                                        .border_1()
+                                        .border_color(method_color.opacity(0.6))
                                         .child(
                                             div()
-                                                .text_size(px(10.0))
-                                                .font_weight(gpui::FontWeight::SEMIBOLD)
+                                                .text_size(px(9.0))
+                                                .font_weight(gpui::FontWeight::BOLD)
+                                                .font_family("JetBrains Mono")
                                                 .text_color(method_color)
                                                 .child(method),
                                         ),

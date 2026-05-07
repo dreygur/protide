@@ -2,15 +2,16 @@
 # @name trpc-health
 # @description Simple query procedure with no input. Verifies the server is reachable.
 #
-# Prerequisites:
-#   A tRPC server must be running locally. To scaffold one quickly:
-#     npx create-t3-app@latest --trpc --no-prisma --no-nextauth --no-tailwind
-#   Then start with: npm run dev
-#   Base URL: http://localhost:3000/api/trpc
+# Set trpc_base in your environment, e.g.:
+#   trpc_base = http://localhost:3000/api/trpc   (local T3 app)
+#
+# To scaffold a local tRPC server:
+#   npx create-t3-app@latest --trpc --no-prisma --no-nextauth --no-tailwind
+#   npm run dev
 #
 # @protocol trpc
 
-POST http://localhost:3000/api/trpc/health
+POST {{trpc_base}}/health
 
 ### tRPC — Get User by ID
 # @name trpc-get-user
@@ -18,7 +19,7 @@ POST http://localhost:3000/api/trpc/health
 # Assumes a `user.getById` procedure on the router.
 # @protocol trpc
 
-POST http://localhost:3000/api/trpc/user.getById
+POST {{trpc_base}}/user.getById
 
 {"id": "1"}
 
@@ -27,7 +28,7 @@ POST http://localhost:3000/api/trpc/user.getById
 # @description Query that returns a list. Assumes `user.list` procedure.
 # @protocol trpc
 
-POST http://localhost:3000/api/trpc/user.list
+POST {{trpc_base}}/user.list
 
 {}
 
@@ -37,7 +38,7 @@ POST http://localhost:3000/api/trpc/user.list
 # Assumes a `user.create` mutation.
 # @protocol trpc
 
-POST http://localhost:3000/api/trpc/user.create
+POST {{trpc_base}}/user.create
 
 {
   "name": "Protide E2E",
@@ -52,7 +53,7 @@ POST http://localhost:3000/api/trpc/user.create
 # @depends trpc-create-user
 # @protocol trpc
 
-POST http://localhost:3000/api/trpc/user.update
+POST {{trpc_base}}/user.update
 
 {
   "id": "{{created_user_id}}",
@@ -65,7 +66,7 @@ POST http://localhost:3000/api/trpc/user.update
 # @depends trpc-create-user
 # @protocol trpc
 
-POST http://localhost:3000/api/trpc/user.delete
+POST {{trpc_base}}/user.delete
 
 {"id": "{{created_user_id}}"}
 
@@ -74,24 +75,16 @@ POST http://localhost:3000/api/trpc/user.delete
 # @description Protected procedure — passes a JWT in the Authorization header.
 # @protocol trpc
 
-POST http://localhost:3000/api/trpc/post.getAll
+POST {{trpc_base}}/post.getAll
 Authorization: Bearer {{auth_token}}
 
 {}
 
-### tRPC — Environment Variable URL
-# @name trpc-env-url
-# @description Uses {{trpc_base}} environment variable for the server URL.
-# Set trpc_base = http://localhost:3000/api/trpc in your environment.
+### tRPC — Post List
+# @name trpc-post-list
+# @description Fetch all posts from the router.
 # @protocol trpc
 
-POST {{trpc_base}}/health
-
-### tRPC — Custom Server Port
-# @name trpc-custom-port
-# @description Example for a tRPC server running on a non-default port.
-# @protocol trpc
-
-POST http://localhost:4000/trpc/post.list
+POST {{trpc_base}}/post.list
 
 {}

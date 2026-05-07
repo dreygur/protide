@@ -1,8 +1,0 @@
-### https://devhubbd.com/api/v1/leaderboard?
-
-GET https://devhubbd.com/api/v1/leaderboard?
-
-{
-  "name": "Protide",
-  "version": "0.1.0"
-}

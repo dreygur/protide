@@ -472,7 +472,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
 
     /// Connect to WebSocket server
     pub(super) fn connect_websocket(&mut self, cx: &mut Context<Self>) {
-        if self.ws_state != WsConnectionState::Disconnected {
+        if !matches!(self.ws_state, WsConnectionState::Disconnected | WsConnectionState::Error) {
             return;
         }
 
@@ -546,7 +546,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                     Ok(WsEvent::Error(e)) => {
                         let _ = cx.update(|cx| {
                             let _ = this.update(cx, |this, cx| {
-                                this.ws_state = WsConnectionState::Disconnected;
+                                this.ws_state = WsConnectionState::Error;
                                 this.ws_send_tx = None;
                                 this.ws_messages.push(WsMessage {
                                     direction: WsDirection::Received,
@@ -559,15 +559,15 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                         break;
                     }
                     Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
-                        let mut disconnected = true;
+                        let mut should_stop = false;
                         let _ = cx.update(|cx| {
                             if let Ok(state) = this.update(cx, |this, _| {
-                                this.ws_state == WsConnectionState::Disconnected
+                                matches!(this.ws_state, WsConnectionState::Disconnected | WsConnectionState::Error)
                             }) {
-                                disconnected = state;
+                                should_stop = state;
                             }
                         });
-                        if disconnected {
+                        if should_stop {
                             break;
                         }
                     }
@@ -577,7 +577,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
 
             let _ = cx.update(|cx| {
                 let _ = this.update(cx, |this, cx| {
-                    if this.ws_state != WsConnectionState::Disconnected {
+                    if !matches!(this.ws_state, WsConnectionState::Disconnected | WsConnectionState::Error) {
                         this.ws_state = WsConnectionState::Disconnected;
                         this.ws_send_tx = None;
                         cx.notify();
@@ -3125,9 +3125,17 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
         };
 
         // Add to history
+        let history_badge = match self.request_mode {
+            RequestMode::Http => method.as_str().to_string(),
+            RequestMode::GraphQL => "GQL".to_string(),
+            RequestMode::WebSocket => "WS".to_string(),
+            RequestMode::Grpc => "GRPC".to_string(),
+            RequestMode::Trpc => "TRPC".to_string(),
+            RequestMode::SocketIo => "SIO".to_string(),
+        };
         let history_id = cx.update_global::<super::history::RequestHistory, _>(|history, _| {
             history.add(
-                method.as_str().to_string(),
+                history_badge,
                 final_url.clone(),
                 headers.clone(),
                 exec_body.as_text(),
