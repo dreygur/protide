@@ -1,4 +1,5 @@
 mod http;
+pub mod sio;
 pub mod ws;
 
 use std::collections::HashMap;

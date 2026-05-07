@@ -1,0 +1,153 @@
+### List All Countries
+# @name list-countries
+# @description Fetch all countries with code, name, and currency.
+# @protocol graphql
+
+POST https://countries.trevorblades.com/graphql
+Content-Type: application/json
+
+{
+  "query": "query ListCountries { countries { code name currency emoji } }"
+}
+
+# @tests
+expect(response.status).toBe(200);
+const countries = response.json().data.countries;
+expect(countries.length).toBeGreaterThan(200);
+expect(countries[0]).toHaveProperty("code");
+expect(countries[0]).toHaveProperty("name");
+
+### Get Country by Code
+# @name get-country
+# @description Fetch a single country by ISO code using a variable.
+# @protocol graphql
+
+POST https://countries.trevorblades.com/graphql
+Content-Type: application/json
+
+{
+  "query": "query GetCountry($code: ID!) { country(code: $code) { name capital currency phone languages { name native } } }",
+  "variables": { "code": "US" }
+}
+
+# @set country_name = $.data.country.name
+
+# @tests
+expect(response.status).toBe(200);
+const c = response.json().data.country;
+expect(c.name).toBe("United States");
+expect(c.capital).toBe("Washington D.C.");
+expect(c.currency).toContain("USD");
+expect(c.languages.length).toBeGreaterThan(0);
+
+### Get Country: Germany
+# @name get-country-de
+# @description Verify Germany returns correct capital and language.
+# @protocol graphql
+
+POST https://countries.trevorblades.com/graphql
+Content-Type: application/json
+
+{
+  "query": "query { country(code: \"DE\") { name capital languages { name } } }"
+}
+
+# @tests
+expect(response.status).toBe(200);
+const de = response.json().data.country;
+expect(de.name).toBe("Germany");
+expect(de.capital).toBe("Berlin");
+expect(de.languages.some(l => l.name === "German")).toBe(true);
+
+### Countries in a Continent
+# @name countries-in-continent
+# @description Fetch all countries in Europe using a continent filter.
+# @protocol graphql
+
+POST https://countries.trevorblades.com/graphql
+Content-Type: application/json
+
+{
+  "query": "query { continent(code: \"EU\") { name countries { code name } } }"
+}
+
+# @tests
+expect(response.status).toBe(200);
+const eu = response.json().data.continent;
+expect(eu.name).toBe("Europe");
+expect(eu.countries.length).toBeGreaterThan(30);
+expect(eu.countries.some(c => c.code === "DE")).toBe(true);
+expect(eu.countries.some(c => c.code === "FR")).toBe(true);
+
+### List Languages
+# @name list-languages
+# @description Fetch all languages with their code and native name.
+# @protocol graphql
+
+POST https://countries.trevorblades.com/graphql
+Content-Type: application/json
+
+{
+  "query": "query { languages { code name native rtl } }"
+}
+
+# @tests
+expect(response.status).toBe(200);
+const langs = response.json().data.languages;
+expect(langs.length).toBeGreaterThan(100);
+const english = langs.find(l => l.code === "en");
+expect(english).toBeTruthy();
+expect(english.name).toBe("English");
+
+### GraphQL With Environment Variable
+# @name graphql-with-var
+# @description Uses {{country_code}} environment variable in the query.
+# Set country_code = JP in your environment to test Japan.
+# @protocol graphql
+
+POST https://countries.trevorblades.com/graphql
+Content-Type: application/json
+
+{
+  "query": "query { country(code: \"{{country_code}}\") { name capital emoji } }"
+}
+
+# @tests
+expect(response.status).toBe(200);
+expect(response.json().data.country).toBeTruthy();
+
+### GraphQL Error Handling
+# @name graphql-bad-query
+# @description Malformed query — server should return 400 or a GraphQL errors array.
+# @protocol graphql
+
+POST https://countries.trevorblades.com/graphql
+Content-Type: application/json
+
+{
+  "query": "query { notAField { broken } }"
+}
+
+# @tests
+expect(response.status).toBe(400);
+
+### Continents List
+# @name list-continents
+# @description Fetch all seven continents.
+# @protocol graphql
+
+POST https://countries.trevorblades.com/graphql
+Content-Type: application/json
+
+{
+  "query": "query { continents { code name } }"
+}
+
+# @tests
+expect(response.status).toBe(200);
+const continents = response.json().data.continents;
+expect(continents).toHaveLength(7);
+const codes = continents.map(c => c.code);
+expect(codes).toContain("EU");
+expect(codes).toContain("AS");
+expect(codes).toContain("NA");

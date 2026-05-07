@@ -1,0 +1,34 @@
+// Proto file for grpcb.in public gRPC test server.
+// Endpoints:
+//   grpc://grpcb.in:9000  (plaintext / H2C)
+//   grpcs://grpcb.in:9001 (TLS)
+//
+// Usage in Protide: select gRPC mode, load this file, pick Hello > SayHello.
+
+syntax = "proto3";
+
+package hello;
+
+option go_package = "github.com/moul/pb/hello/go-hello";
+
+message HelloRequest {
+  string greeting = 1;
+}
+
+message HelloReply {
+  message Inner {
+    string message = 1;
+  }
+  Inner reply = 1;
+}
+
+service Hello {
+  // Unary — send one greeting, get one reply
+  rpc SayHello(HelloRequest) returns (HelloReply);
+
+  // Server streaming — receive multiple hellos from one request
+  rpc SayHellos(HelloRequest) returns (stream HelloReply);
+
+  // Unary with artificial server-side delay
+  rpc SayHelloAfterDelay(HelloRequest) returns (HelloReply);
+}

@@ -1,0 +1,75 @@
+### Socket.IO — Connect to Default Namespace
+# @name sio-connect-default
+# @description Connect to the root namespace ("/") of a Socket.IO v4 server.
+#
+# To run a local echo server:
+#   npm i -g socket.io && node -e "
+#     const { Server } = require('socket.io');
+#     const io = new Server(3000, { cors: { origin: '*' } });
+#     io.on('connection', socket => {
+#       socket.onAny((event, ...args) => socket.emit(event, ...args));
+#     });
+#   "
+# @protocol socketio
+
+POST http://localhost:3000
+
+### Socket.IO — Emit Chat Message
+# @name sio-emit-chat
+# @description Emit a "chat" event to the default namespace.
+# The echo server configured above will emit it back.
+# @protocol socketio
+
+POST http://localhost:3000
+
+{"event": "chat", "payload": {"text": "Hello from Protide!", "user": "e2e-test"}}
+
+### Socket.IO — Emit with Acknowledgement
+# @name sio-emit-ack
+# @description Emit an event and request an ACK (type 3 response from server).
+# The server must call the callback for the ACK to arrive.
+# @protocol socketio
+
+POST http://localhost:3000
+
+{"event": "ping", "payload": {"seq": 1}, "ack": true}
+
+### Socket.IO — Custom Namespace
+# @name sio-custom-namespace
+# @description Connect to a named namespace (/chat). The server must define
+# this namespace:  io.of('/chat').on('connection', ...)
+# @protocol socketio
+
+POST http://localhost:3000/chat
+
+{"event": "join", "payload": {"room": "general"}}
+
+### Socket.IO — JSON Payload Types
+# @name sio-json-types
+# @description Emit an event whose payload exercises various JSON value types.
+# @protocol socketio
+
+POST http://localhost:3000
+
+{"event": "data", "payload": {"str": "hello", "num": 42, "bool": true, "arr": [1,2,3], "obj": {"nested": "value"}}}
+
+### Socket.IO — Environment Variable URL
+# @name sio-env-url
+# @description Uses {{sio_host}} environment variable for the server URL.
+# Set sio_host = http://localhost:3000 in your environment.
+# @protocol socketio
+
+POST {{sio_host}}
+
+{"event": "probe", "payload": {"source": "protide-e2e"}}
+
+### Socket.IO — Remote Public Demo
+# @name sio-remote-demo
+# @description Connects to a publicly hosted Socket.IO demo server.
+# Replace with your own remote server URL. This entry is intentionally left
+# pointing at localhost as a safe default — edit the URL as needed.
+# @protocol socketio
+
+POST http://localhost:4000
+
+{"event": "message", "payload": "protide e2e probe"}

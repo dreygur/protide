@@ -1,69 +1,197 @@
 ### Get All Posts
 # @name get-posts
-# @description Retrieve all posts from JSONPlaceholder
+# @description Retrieve all posts — validates list shape and item structure
+
 GET https://jsonplaceholder.typicode.com/posts
+
+# @tests
+expect(response.status).toBe(200);
+expect(response.json()).toHaveLength(100);
+expect(response.json()[0]).toHaveProperty("id");
+expect(response.json()[0]).toHaveProperty("title");
+expect(response.json()[0]).toHaveProperty("userId");
 
 ### Get Single Post
 # @name get-post
-# @description Retrieve a single post by ID
+# @description Retrieve post #1 and validate its fields
+
 GET https://jsonplaceholder.typicode.com/posts/1
+
+# @tests
+expect(response.status).toBe(200);
+expect(response.json().id).toBe(1);
+expect(response.json().userId).toBe(1);
+expect(response.json().title).toBeTruthy();
+expect(response.json().body).toBeTruthy();
 
 ### Get Posts by User
 # @name get-posts-by-user
-# @description Get posts filtered by userId
+# @description Posts filtered by userId query param
+
 GET https://jsonplaceholder.typicode.com/posts?userId=1
+
+# @tests
+expect(response.status).toBe(200);
+const posts = response.json();
+expect(posts.length).toBeGreaterThan(0);
+for (const p of posts) {
+  expect(p.userId).toBe(1);
+}
 
 ### Create Post
 # @name create-post
-# @description Create a new post
+# @description Create a new post — server echoes it back with id=101
+
 POST https://jsonplaceholder.typicode.com/posts
 Content-Type: application/json
 
 {
-  "title": "Test Post",
-  "body": "This is a test post content",
+  "title": "Protide E2E Test",
+  "body": "Created via Protide end-to-end test",
   "userId": 1
 }
 
+# @set new_post_id = $.id
+
+# @tests
+expect(response.status).toBe(201);
+expect(response.json().id).toBe(101);
+expect(response.json().title).toBe("Protide E2E Test");
+
 ### Update Post
 # @name update-post
-# @description Update an existing post
+# @description Full replacement of post #1
+
 PUT https://jsonplaceholder.typicode.com/posts/1
 Content-Type: application/json
 
 {
   "id": 1,
-  "title": "Updated Post",
-  "body": "Updated content",
+  "title": "Updated via Protide",
+  "body": "Full update",
   "userId": 1
 }
 
+# @tests
+expect(response.status).toBe(200);
+expect(response.json().id).toBe(1);
+expect(response.json().title).toBe("Updated via Protide");
+
 ### Patch Post
 # @name patch-post
-# @description Partial update of a post
+# @description Partial update — only title changes
+
 PATCH https://jsonplaceholder.typicode.com/posts/1
 Content-Type: application/json
 
 {
-  "title": "Patched Title"
+  "title": "Patched via Protide"
 }
+
+# @tests
+expect(response.status).toBe(200);
+expect(response.json().title).toBe("Patched via Protide");
 
 ### Delete Post
 # @name delete-post
-# @description Delete a post
+# @description Delete post #1 — server returns empty object
+
 DELETE https://jsonplaceholder.typicode.com/posts/1
+
+# @tests
+expect(response.status).toBe(200);
 
 ### Get Comments for Post
 # @name get-comments
-# @description Get comments for a specific post
+# @description Nested resource: comments on post #1
+
 GET https://jsonplaceholder.typicode.com/posts/1/comments
+
+# @tests
+expect(response.status).toBe(200);
+const comments = response.json();
+expect(comments.length).toBeGreaterThan(0);
+expect(comments[0].postId).toBe(1);
+expect(comments[0].email).toBeTruthy();
 
 ### Get All Users
 # @name get-users
-# @description Retrieve all users
+# @description Retrieve all users — extract first user's email for later requests
+
 GET https://jsonplaceholder.typicode.com/users
+
+# @set first_user_email = $.0.email
+
+# @tests
+expect(response.status).toBe(200);
+expect(response.json()).toHaveLength(10);
+expect(response.json()[0].email).toBeTruthy();
 
 ### Get User Posts
 # @name get-user-posts
-# @description Get all posts for a user
+# @description All posts for user #1
+
 GET https://jsonplaceholder.typicode.com/users/1/posts
+
+# @tests
+expect(response.status).toBe(200);
+expect(response.json().length).toBeGreaterThan(0);
+
+### Not Found
+# @name not-found
+# @description Verify 404 handling — post 9999 does not exist
+
+GET https://jsonplaceholder.typicode.com/posts/9999
+
+# @tests
+expect(response.status).toBe(404);
+
+### Echo GET Headers
+# @name echo-headers
+# @description httpbin echoes back request headers — useful for auth debugging
+
+GET https://httpbin.org/headers
+X-Protide-Test: hello
+Accept: application/json
+
+# @tests
+expect(response.status).toBe(200);
+expect(response.json().headers["X-Protide-Test"]).toBe("hello");
+
+### Echo POST Body
+# @name echo-body
+# @description httpbin echoes back the JSON body verbatim
+
+POST https://httpbin.org/post
+Content-Type: application/json
+
+{"probe": "protide", "value": 42}
+
+# @tests
+expect(response.status).toBe(200);
+expect(response.json().json.probe).toBe("protide");
+expect(response.json().json.value).toBe(42);
+
+### Bearer Auth
+# @name bearer-auth
+# @description httpbin validates the Bearer token and returns 200 if valid
+
+GET https://httpbin.org/bearer
+Authorization: Bearer my-secret-token
+
+# @tests
+expect(response.status).toBe(200);
+expect(response.json().authenticated).toBe(true);
+expect(response.json().token).toBe("my-secret-token");
+
+### Basic Auth
+# @name basic-auth
+# @description httpbin validates Basic credentials
+
+GET https://httpbin.org/basic-auth/protide/password
+Authorization: Basic cHJvdGlkZTpwYXNzd29yZA==
+
+# @tests
+expect(response.status).toBe(200);
+expect(response.json().authenticated).toBe(true);
+expect(response.json().user).toBe("protide");

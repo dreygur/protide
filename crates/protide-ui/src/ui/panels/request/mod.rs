@@ -25,9 +25,12 @@ use protide_core::execution::ws::{
     TungsteniteExecutor, WebSocketExecutor, WsCommand, WsConnectionParams, WsDirection, WsEvent,
     WsMessage, WsRingBuffer,
 };
+use protide_core::execution::sio::{
+    SocketIoExecutor, TungsteniteSocketIoExecutor, SioCommand, SioConnectionParams, SioUiEvent, SioRingBuffer,
+};
 
 use super::explorer::ExplorerPanel;
-use super::request_types::{ApiKeyLocation, AuthType, BodyType, EditTarget, FormField, FormFieldType, GrpcMethodInfo, GrpcStreamingType, HttpMethod, KeyValuePair, RequestMode, WsConnectionState};
+use super::request_types::{ApiKeyLocation, AuthType, BodyType, EditTarget, FormField, FormFieldType, GrpcMethodInfo, GrpcStreamingType, HttpMethod, KeyValuePair, RequestMode, SioConnectionState, WsConnectionState};
 use super::request_utils::{base64_encode, status_text, url_decode, url_encode};
 use base64::Engine;
 use super::response::{ResponseData, ResponsePanel};
@@ -179,6 +182,21 @@ pub struct RequestPanel<E: WebSocketExecutor = TungsteniteExecutor> {
     pub(super) trpc_procedure: String,
     /// tRPC parameters editor
     pub(super) trpc_params_editor: Entity<CodeEditor>,
+
+    // Socket.IO fields
+    pub(super) sio_state: SioConnectionState,
+    pub(super) sio_messages: SioRingBuffer,
+    /// Socket.IO namespace (default "/")
+    pub(super) sio_namespace: String,
+    /// Event name to emit
+    pub(super) sio_event_name: String,
+    /// Whether to request an acknowledgement on the next emit
+    pub(super) sio_want_ack: bool,
+    /// Monotonically increasing ack ID for outgoing events
+    pub(super) sio_next_ack_id: u32,
+    /// JSON payload editor for the event body
+    pub(super) sio_payload_editor: Entity<CodeEditor>,
+    sio_send_tx: Option<std::sync::mpsc::Sender<SioCommand>>,
     /// Width of KEY column in KV tables (params, headers, grpc metadata)
     pub(super) kv_col_key_w: f32,
     /// Active KV column drag: (start_x, start_width)
@@ -259,6 +277,11 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                 .with_content("{}")
                 .with_language(Language::Json)
                 .with_line_numbers(true)
+        });
+        let sio_payload_editor = cx.new(|cx| {
+            CodeEditor::new(cx)
+                .with_content("{}")
+                .with_language(Language::Json)
         });
         let codegen_editor = cx.new(|cx| {
             CodeEditor::new(cx)
@@ -357,6 +380,14 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             grpc_method: None,
             trpc_procedure: String::new(),
             trpc_params_editor,
+            sio_state: SioConnectionState::Disconnected,
+            sio_messages: SioRingBuffer::default(),
+            sio_namespace: "/".to_string(),
+            sio_event_name: "message".to_string(),
+            sio_want_ack: false,
+            sio_next_ack_id: 1,
+            sio_payload_editor,
+            sio_send_tx: None,
             kv_col_key_w: 150.0,
             kv_col_drag: None,
             script_pre_open: true,
@@ -388,6 +419,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             RequestMode::WebSocket => "WebSocket",
             RequestMode::Grpc => "gRPC",
             RequestMode::Trpc => "tRPC",
+            RequestMode::SocketIo => "Socket.IO",
         }
     }
 
@@ -422,6 +454,13 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                 self.method = HttpMethod::Post;
                 if !self.url.ends_with("/trpc") {
                     self.url = "http://localhost:3000/trpc".to_string();
+                    let len = self.url.chars().count();
+                    self.url_selection = len..len;
+                }
+            }
+            RequestMode::SocketIo => {
+                if !self.url.starts_with("http://") && !self.url.starts_with("https://") {
+                    self.url = "http://localhost:3000".to_string();
                     let len = self.url.chars().count();
                     self.url_selection = len..len;
                 }
@@ -486,7 +525,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                             let _ = this.update(cx, |this, cx| {
                                 for (k, v) in &env_changes {
                                     if let Some(ref ep) = explorer_panel {
-                                        ep.update(cx, |p, cx| p.set_env_variable(k, v, cx)).ok();
+                                        ep.update(cx, |p, cx| p.set_env_variable(k, v, cx));
                                     }
                                 }
                                 this.ws_messages.push(msg);
@@ -570,6 +609,144 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
 
         if let Some(tx) = &self.ws_send_tx {
             let _ = tx.send(WsCommand::Send(message.to_string()));
+            cx.notify();
+        }
+    }
+
+    /// Connect to a Socket.IO server
+    pub(super) fn connect_socketio(&mut self, cx: &mut Context<Self>) {
+        if self.sio_state != SioConnectionState::Disconnected {
+            return;
+        }
+        self.sio_state = SioConnectionState::Connecting;
+        self.sio_messages.clear();
+        cx.notify();
+
+        let env_state = self.explorer_panel.as_ref().map(|p| p.read(cx).env_state().clone());
+        let substitute = |s: &str| -> String {
+            env_state.as_ref().map_or_else(|| s.to_string(), |e| e.substitute(s))
+        };
+
+        let headers: Vec<(String, String)> = self
+            .headers
+            .iter()
+            .filter(|h| h.enabled && !h.key.is_empty())
+            .map(|h| (substitute(&h.key), substitute(&h.value)))
+            .collect();
+
+        let handle = TungsteniteSocketIoExecutor::connect(SioConnectionParams {
+            url: substitute(&self.url),
+            namespace: self.sio_namespace.clone(),
+            headers,
+        });
+        self.sio_send_tx = Some(handle.cmd_tx);
+
+        let event_rx = handle.event_rx;
+        cx.spawn(async move |this: gpui::WeakEntity<Self>, cx: &mut gpui::AsyncApp| {
+            loop {
+                match event_rx.recv_timeout(std::time::Duration::from_millis(100)) {
+                    Ok(SioUiEvent::Connected { .. }) => {
+                        let _ = cx.update(|cx| {
+                            let _ = this.update(cx, |this, cx| {
+                                this.sio_state = SioConnectionState::Connected;
+                                cx.notify();
+                            });
+                        });
+                    }
+                    Ok(SioUiEvent::Event(event)) => {
+                        let _ = cx.update(|cx| {
+                            let _ = this.update(cx, |this, cx| {
+                                this.sio_messages.push(event);
+                                cx.notify();
+                            });
+                        });
+                    }
+                    Ok(SioUiEvent::Disconnected) => {
+                        let _ = cx.update(|cx| {
+                            let _ = this.update(cx, |this, cx| {
+                                this.sio_state = SioConnectionState::Disconnected;
+                                this.sio_send_tx = None;
+                                cx.notify();
+                            });
+                        });
+                        break;
+                    }
+                    Ok(SioUiEvent::Error(e)) => {
+                        let _ = cx.update(|cx| {
+                            let _ = this.update(cx, |this, cx| {
+                                this.sio_state = SioConnectionState::Disconnected;
+                                this.sio_send_tx = None;
+                                this.sio_messages.push(protide_core::execution::sio::SioEvent {
+                                    direction: protide_core::execution::sio::SioDirection::Received,
+                                    namespace: "/".into(),
+                                    event_name: "error".into(),
+                                    payload: format!("\"{}\"", e),
+                                    ack_id: None,
+                                    is_ack: false,
+                                    timestamp: chrono::Local::now(),
+                                });
+                                cx.notify();
+                            });
+                        });
+                        break;
+                    }
+                    Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+                        let mut disconnected = true;
+                        let _ = cx.update(|cx| {
+                            if let Ok(state) = this.update(cx, |this, _| {
+                                this.sio_state == SioConnectionState::Disconnected
+                            }) {
+                                disconnected = state;
+                            }
+                        });
+                        if disconnected {
+                            break;
+                        }
+                    }
+                    Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
+                }
+            }
+            let _ = cx.update(|cx| {
+                let _ = this.update(cx, |this, cx| {
+                    if this.sio_state != SioConnectionState::Disconnected {
+                        this.sio_state = SioConnectionState::Disconnected;
+                        this.sio_send_tx = None;
+                        cx.notify();
+                    }
+                });
+            });
+        }).detach();
+    }
+
+    /// Disconnect from Socket.IO server
+    pub(super) fn disconnect_socketio(&mut self, cx: &mut Context<Self>) {
+        if let Some(tx) = self.sio_send_tx.take() {
+            let _ = tx.send(SioCommand::Disconnect);
+        }
+        self.sio_state = SioConnectionState::Disconnected;
+        cx.notify();
+    }
+
+    /// Emit a Socket.IO event
+    pub(super) fn emit_socketio_event(&mut self, cx: &mut Context<Self>) {
+        if self.sio_state != SioConnectionState::Connected {
+            return;
+        }
+        let payload = self.sio_payload_editor.read(cx).content().to_string();
+        let ack_id = if self.sio_want_ack {
+            let id = self.sio_next_ack_id;
+            self.sio_next_ack_id = self.sio_next_ack_id.wrapping_add(1);
+            Some(id)
+        } else {
+            None
+        };
+        if let Some(tx) = &self.sio_send_tx {
+            let _ = tx.send(SioCommand::Emit {
+                namespace: self.sio_namespace.clone(),
+                event_name: self.sio_event_name.clone(),
+                payload,
+                ack_id,
+            });
             cx.notify();
         }
     }
@@ -1531,6 +1708,8 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             EditTarget::GrpcMetaKey(i) => self.grpc_metadata.get(i).map(|m| m.key.as_str()).unwrap_or(""),
             EditTarget::GrpcMetaValue(i) => self.grpc_metadata.get(i).map(|m| m.value.as_str()).unwrap_or(""),
             EditTarget::TrpcProcedure => &self.trpc_procedure,
+            EditTarget::SioNamespace => &self.sio_namespace,
+            EditTarget::SioEventName => &self.sio_event_name,
         }
     }
 
@@ -1553,6 +1732,8 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             EditTarget::GrpcMetaKey(i) => self.grpc_metadata.get_mut(i).map(|m| &mut m.key),
             EditTarget::GrpcMetaValue(i) => self.grpc_metadata.get_mut(i).map(|m| &mut m.value),
             EditTarget::TrpcProcedure => Some(&mut self.trpc_procedure),
+            EditTarget::SioNamespace => Some(&mut self.sio_namespace),
+            EditTarget::SioEventName => Some(&mut self.sio_event_name),
         }
     }
 

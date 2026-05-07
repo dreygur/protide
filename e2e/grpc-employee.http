@@ -1,0 +1,109 @@
+### gRPC — Get Employee by ID
+# @name grpc-get-employee
+# @description Fetch a single employee by ID (unary RPC).
+#
+# Prerequisites:
+#   Start the local gRPC server before running these tests.
+#   A minimal Go/Rust server implementing e2e.testing.EmployeeService is assumed at
+#   grpc://localhost:50051. Adjust the URL to match your test server.
+#
+# @protocol grpc
+# @proto e2e/employee.proto
+
+GRPC grpc://localhost:50051/e2e.testing.EmployeeService/GetEmployee
+
+{"id": 1}
+
+### gRPC — List All Employees
+# @name grpc-list-employees
+# @description Fetch all employees (unary RPC returning a list).
+# @protocol grpc
+# @proto e2e/employee.proto
+
+GRPC grpc://localhost:50051/e2e.testing.EmployeeService/ListEmployees
+
+{}
+
+### gRPC — Create Employee
+# @name grpc-create-employee
+# @description Create a new employee record.
+# @protocol grpc
+# @proto e2e/employee.proto
+
+GRPC grpc://localhost:50051/e2e.testing.EmployeeService/CreateEmployee
+
+{
+  "name": "Protide Test User",
+  "email": "test@protide.dev",
+  "department": "Engineering"
+}
+
+### gRPC — Update Employee
+# @name grpc-update-employee
+# @description Update an existing employee's details.
+# @protocol grpc
+# @proto e2e/employee.proto
+
+GRPC grpc://localhost:50051/e2e.testing.EmployeeService/UpdateEmployee
+
+{
+  "id": 1,
+  "name": "Protide Test User (Updated)",
+  "email": "updated@protide.dev",
+  "department": "Platform"
+}
+
+### gRPC — Delete Employee
+# @name grpc-delete-employee
+# @description Remove an employee record.
+# @protocol grpc
+# @proto e2e/employee.proto
+
+GRPC grpc://localhost:50051/e2e.testing.EmployeeService/DeleteEmployee
+
+{"id": 1}
+
+### gRPC — Public Server: SayHello (plaintext)
+# @name grpc-hello-h2c
+# @description Unary RPC against grpcb.in using plaintext HTTP/2 (H2C).
+# No local server required — uses the public grpcb.in test server.
+# Load grpc-hello.proto for this request.
+# @protocol grpc
+# @proto e2e/grpc-hello.proto
+
+GRPC grpc://grpcb.in:9000/hello.Hello/SayHello
+
+{"greeting": "Protide"}
+
+### gRPC — Public Server: SayHello (TLS)
+# @name grpc-hello-tls
+# @description Same unary call over TLS (grpcs:// scheme — ALPN negotiates HTTP/2).
+# @protocol grpc
+# @proto e2e/grpc-hello.proto
+
+GRPC grpcs://grpcb.in:9001/hello.Hello/SayHello
+
+{"greeting": "Protide TLS"}
+
+### gRPC — Public Server: Server Streaming
+# @name grpc-hello-streaming
+# @description Server streaming: server sends multiple HelloReply messages in response
+# to a single HelloRequest. Responses appear in the Protide response panel as they arrive.
+# @protocol grpc
+# @proto e2e/grpc-hello.proto
+
+GRPC grpc://grpcb.in:9000/hello.Hello/SayHellos
+
+{"greeting": "stream me"}
+
+### gRPC — With Metadata Headers
+# @name grpc-with-metadata
+# @description Demonstrates gRPC metadata (sent as HTTP/2 headers).
+# @protocol grpc
+# @proto e2e/grpc-hello.proto
+
+GRPC grpc://grpcb.in:9000/hello.Hello/SayHello
+x-request-id: protide-e2e-001
+authorization: Bearer demo-token
+
+{"greeting": "Protide with metadata"}

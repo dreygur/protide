@@ -209,6 +209,7 @@ pub struct StreamingChunk {
     pub is_error: bool,
 }
 
+#[allow(dead_code)]
 impl StreamingChunk {
     fn error(msg: String) -> Self {
         Self {

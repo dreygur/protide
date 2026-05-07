@@ -3,7 +3,6 @@
 use notify::{Event, RecommendedWatcher, RecursiveMode, Result as NotifyResult, Watcher};
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Receiver};
-use std::time::Duration;
 
 /// Change event from file system watcher
 #[derive(Debug, Clone)]

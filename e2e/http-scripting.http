@@ -1,0 +1,165 @@
+### Pre-Script: Inject Dynamic Headers
+# @name pre-script-headers
+# @description Pre-script adds a timestamp header and a request-ID before the request fires.
+# The post-script verifies httpbin echoed them back.
+
+POST https://httpbin.org/post
+Content-Type: application/json
+
+{"purpose": "pre-script demo"}
+
+# @pre-script
+const ts = new Date().toISOString();
+env.set("request_ts", ts);
+request.setHeader("X-Request-ID", "protide-" + Math.random().toString(36).slice(2));
+request.setHeader("X-Timestamp", ts);
+
+# @tests
+expect(response.status).toBe(200);
+expect(response.json().headers["X-Request-Id"]).toContain("protide-");
+expect(response.json().headers["X-Timestamp"]).toBeTruthy();
+
+### Pre-Script: URL Rewriting
+# @name pre-script-url
+# @description Pre-script overrides the URL at runtime — useful for dynamic routing.
+
+GET https://placeholder.example.com/
+
+# @pre-script
+request.setUrl("https://httpbin.org/get");
+request.setHeader("X-Rewritten", "yes");
+
+# @tests
+expect(response.status).toBe(200);
+expect(response.json().headers["X-Rewritten"]).toBe("yes");
+
+### Post-Script: Extract & Store Token (login simulation)
+# @name extract-token
+# @description Simulates a login response — post-script stores the token so subsequent
+# requests can use {{auth_token}} in their Authorization header.
+
+POST https://httpbin.org/post
+Content-Type: application/json
+
+{"username": "protide", "password": "secret", "token": "eyJhbGciOiJIUzI1NiJ9.demo"}
+
+# @set auth_token = $.json.token
+
+# @post-script
+const body = response.json();
+env.set("auth_token", body.json.token);
+console.log("Token stored:", env.get("auth_token").slice(0, 20) + "...");
+
+# @tests
+expect(response.status).toBe(200);
+expect(response.json().json.token).toBeTruthy();
+
+### Authenticated Request Using Stored Token
+# @name use-stored-token
+# @description Uses {{auth_token}} injected by the previous request's post-script.
+# Run "Extract & Store Token" first to populate the environment variable.
+# @depends extract-token
+
+GET https://httpbin.org/bearer
+Authorization: Bearer {{auth_token}}
+
+# @tests
+expect(response.status).toBe(200);
+expect(response.json().authenticated).toBe(true);
+
+### Variable Substitution in URL and Body
+# @name variable-substitution
+# @description Demonstrates {{variable}} substitution in URL, headers, and body.
+# Set base_url = https://httpbin.org and user_id = 42 in your environment first.
+
+GET {{base_url}}/get?userId={{user_id}}
+X-User-ID: {{user_id}}
+
+# @tests
+expect(response.status).toBe(200);
+expect(response.json().args.userId).toBeTruthy();
+
+### Request Chaining: Create then Read
+# @name chain-create
+# @description Step 1 of 2 — creates a post and stores its id for the next request.
+
+POST https://jsonplaceholder.typicode.com/posts
+Content-Type: application/json
+
+{"title": "Chain Test", "body": "Step 1", "userId": 1}
+
+# @set chained_id = $.id
+
+# @tests
+expect(response.status).toBe(201);
+expect(response.json().id).toBeTruthy();
+
+### Request Chaining: Read Using Stored ID
+# @name chain-read
+# @description Step 2 of 2 — reads the post whose id was stored by chain-create.
+# @depends chain-create
+
+GET https://jsonplaceholder.typicode.com/posts/{{chained_id}}
+
+# @tests
+expect(response.status).toBe(200);
+
+### Full Script: Assert Response Shape
+# @name assert-shape
+# @description Validates nested JSON structure and multiple field types.
+
+GET https://jsonplaceholder.typicode.com/users/1
+
+# @tests
+const u = response.json();
+expect(response.status).toBe(200);
+expect(u.id).toBe(1);
+expect(u.name).toBeTruthy();
+expect(u.email).toContain("@");
+expect(u.address).toHaveProperty("city");
+expect(u.address.geo).toHaveProperty("lat");
+expect(typeof u.phone).toBe("string");
+
+### Timing Assertion
+# @name timing
+# @description Verifies the response arrives within 5 seconds (httpbin adds a 1s delay).
+
+GET https://httpbin.org/delay/1
+
+# @tests
+expect(response.status).toBe(200);
+expect(response.time).toBeLessThan(5000);
+expect(response.time).toBeGreaterThan(800);
+
+### Post-Script: Console Logging
+# @name console-logging
+# @description post-script logs response metadata to the console output panel.
+
+GET https://httpbin.org/get
+
+# @post-script
+console.log("Status:", response.status);
+console.log("Time:", response.time + "ms");
+console.log("Size:", response.size, "bytes");
+console.log("Origin:", response.json().origin);
+
+# @tests
+expect(response.status).toBe(200);
+
+### Negative Test: Assert Error Status
+# @name assert-404
+# @description Verifies that a missing resource returns 404 — not every test is a success test.
+
+GET https://httpbin.org/status/404
+
+# @tests
+expect(response.status).toBe(404);
+
+### Negative Test: Server Error
+# @name assert-500
+# @description Verifies 500 handling.
+
+GET https://httpbin.org/status/500
+
+# @tests
+expect(response.status).toBe(500);

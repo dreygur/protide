@@ -139,7 +139,7 @@ impl ButtonStyles {
 ///         // Handle click
 ///     })
 /// ```
-pub fn button(variant: ButtonVariant, size: ButtonSize) -> Div {
+pub fn button(_variant: ButtonVariant, size: ButtonSize) -> Div {
     div()
         .flex()
         .items_center()

@@ -399,4 +399,54 @@ Content-Type: application/json
         assert_eq!(requests[0].meta.variable_extractions.len(), 2);
         assert_eq!(requests[0].meta.variable_extractions[0].name, "access_token");
     }
+
+    #[test]
+    fn parse_e2e_http_api_tests() {
+        let content = include_str!("../../../e2e/http-api-tests.http");
+        let r = parse(content).expect("http-api-tests.http failed to parse");
+        assert!(r.len() >= 13, "expected ≥13 requests, got {}", r.len());
+    }
+
+    #[test]
+    fn parse_e2e_http_scripting() {
+        let content = include_str!("../../../e2e/http-scripting.http");
+        let r = parse(content).expect("http-scripting.http failed to parse");
+        assert!(r.len() >= 10);
+    }
+
+    #[test]
+    fn parse_e2e_graphql() {
+        let content = include_str!("../../../e2e/graphql-tests.http");
+        let r = parse(content).expect("graphql-tests.http failed to parse");
+        assert!(r.iter().all(|req| req.protocol() == Protocol::GraphQL
+            || req.meta.protocol == Some(Protocol::GraphQL)));
+    }
+
+    #[test]
+    fn parse_e2e_websocket() {
+        let content = include_str!("../../../e2e/websocket-echo.http");
+        let r = parse(content).expect("websocket-echo.http failed to parse");
+        assert!(r.len() >= 5);
+    }
+
+    #[test]
+    fn parse_e2e_socketio() {
+        let content = include_str!("../../../e2e/socketio-echo.http");
+        let r = parse(content).expect("socketio-echo.http failed to parse");
+        assert!(r.len() >= 5);
+    }
+
+    #[test]
+    fn parse_e2e_grpc() {
+        let content = include_str!("../../../e2e/grpc-employee.http");
+        let r = parse(content).expect("grpc-employee.http failed to parse");
+        assert!(r.len() >= 5);
+    }
+
+    #[test]
+    fn parse_e2e_trpc() {
+        let content = include_str!("../../../e2e/trpc-example.http");
+        let r = parse(content).expect("trpc-example.http failed to parse");
+        assert!(r.len() >= 7);
+    }
 }

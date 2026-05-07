@@ -1,6 +1,6 @@
 //! Themed modal overlay — replaces OS-native rfd::MessageDialog.
 
-use gpui::{div, prelude::*, px, AnyElement, FontWeight, Hsla, IntoElement, ParentElement, Styled};
+use gpui::{div, px, AnyElement, FontWeight, Hsla, IntoElement, ParentElement, Styled};
 
 use crate::theme::Theme;
 use crate::ui::components::icons::{icon, ICON_INFO, ICON_CIRCLE_X};

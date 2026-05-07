@@ -51,6 +51,8 @@ pub enum EditTarget {
     GrpcMetaKey(usize),
     GrpcMetaValue(usize),
     TrpcProcedure,
+    SioNamespace,
+    SioEventName,
 }
 
 /// Authentication type
@@ -130,7 +132,7 @@ pub enum BodyType {
     Binary,
 }
 
-/// Request mode (HTTP, GraphQL, WebSocket, gRPC, or tRPC)
+/// Request mode
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum RequestMode {
     #[default]
@@ -139,6 +141,7 @@ pub enum RequestMode {
     WebSocket,
     Grpc,
     Trpc,
+    SocketIo,
 }
 
 /// gRPC streaming type
@@ -172,6 +175,15 @@ pub struct GrpcMethodInfo {
 /// WebSocket connection state (UI-only: tracks transitional Connecting phase)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum WsConnectionState {
+    #[default]
+    Disconnected,
+    Connecting,
+    Connected,
+}
+
+/// Socket.IO connection state
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum SioConnectionState {
     #[default]
     Disconnected,
     Connecting,
