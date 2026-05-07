@@ -179,15 +179,26 @@ fn render_json_row(
                 PrimVal::Null     => ("null".into(),                                    c_secondary),
                 PrimVal::Bool(b)  => (if *b { "true" } else { "false" }.into(),         c_patch),
                 PrimVal::Num(n)   => (n.clone(),                                        c_put),
-                PrimVal::Str(s)   => (format!("\"{}\"", s),                             c_success),
+                PrimVal::Str(s)   => {
+                    // Replace ALL control chars (including \n, \r, \t) with a space so
+                    // the value always occupies exactly one visual line.
+                    // CSS white-space:nowrap does NOT suppress \n-induced breaks —
+                    // only removing them at source guarantees single-line rendering.
+                    let single_line: String = s.chars()
+                        .map(|c| if c.is_control() { ' ' } else { c })
+                        .collect();
+                    (format!("\"{}\"", single_line), c_success)
+                }
                 PrimVal::EmptyArr => ("[]".into(),                                      c_secondary),
                 PrimVal::EmptyObj => ("{}".into(),                                      c_secondary),
             };
             div()
-                .flex_1().overflow_hidden().flex().items_center().whitespace_nowrap()
+                // min_w(0) is required: without it, flex children refuse to shrink below
+                // their intrinsic text width, which breaks overflow:hidden + text-ellipsis.
+                .flex_1().min_w(px(0.)).overflow_hidden().flex().items_center().whitespace_nowrap()
                 .when_some(key.as_deref(), |el, k| el.child(key_span(k)))
                 .child(
-                    div().flex_1().overflow_hidden().text_ellipsis().whitespace_nowrap()
+                    div().flex_1().min_w(px(0.)).overflow_hidden().text_ellipsis().whitespace_nowrap()
                         .text_color(col)
                         .child(SharedString::from(txt)),
                 )
@@ -196,7 +207,7 @@ fn render_json_row(
         RowKind::Open { key, arr, .. } => {
             let bracket = if *arr { "[" } else { "{" };
             div()
-                .flex_1().overflow_hidden().flex().items_center().whitespace_nowrap()
+                .flex_1().min_w(px(0.)).overflow_hidden().flex().items_center().whitespace_nowrap()
                 .when_some(key.as_deref(), |el, k| el.child(key_span(k)))
                 .child(div().flex_shrink_0().text_color(c_secondary).child(bracket))
                 .into_any_element()
