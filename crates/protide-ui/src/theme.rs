@@ -248,8 +248,8 @@ impl Theme {
             "DELETE" => self.colors.method_delete,
             "HEAD" => self.colors.method_head,
             "OPTIONS" => self.colors.method_options,
-            "WS" | "WEBSOCKET" => self.colors.protocol_ws,
-            "GRPC" => self.colors.protocol_grpc,
+            "WS" | "WEBSOCKET" | "SIO" => self.colors.protocol_ws,
+            "GRPC" | "TRPC" => self.colors.protocol_grpc,
             "GQL" | "GRAPHQL" => self.colors.protocol_graphql,
             _ => self.colors.text_secondary,
         }

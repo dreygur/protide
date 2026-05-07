@@ -22,6 +22,7 @@ use crate::ui::components::icons::{
     ICON_DELETE, ICON_EDIT, ICON_EXTERNAL, ICON_FILE, ICON_FOLDER, ICON_FOLDER_OPEN, ICON_INFO,
     ICON_MD, ICON_MENU, ICON_PLUS, ICON_REFRESH, ICON_SETTINGS, ICON_SM, ICON_TIMER, icon,
 };
+use http_parser::Protocol;
 use crate::ui::components::{icon_btn, render_text_view_with_max_scrolled};
 use protide_core::models::{Environment, EnvironmentState};
 
@@ -175,6 +176,83 @@ impl ExplorerPanel {
     /// Get the current environment state for variable substitution
     pub fn env_state(&self) -> &EnvironmentState {
         &self.env_state
+    }
+
+    /// Return the currently selected file path (if any).
+    pub fn selected_item(&self) -> Option<&PathBuf> {
+        self.selected_item.as_ref()
+    }
+
+    /// Return the open workspace path (if any).
+    pub fn workspace_path(&self) -> Option<&PathBuf> {
+        self.workspace_path.as_ref()
+    }
+
+    /// Collect all expanded folder paths from the collection tree.
+    pub fn collect_expanded(&self) -> Vec<PathBuf> {
+        fn gather(items: &[CollectionItem], out: &mut Vec<PathBuf>) {
+            for item in items {
+                if item.is_folder && item.expanded {
+                    out.push(item.path.clone());
+                    gather(&item.children, out);
+                }
+            }
+        }
+        let mut result = Vec::new();
+        gather(&self.collection_items, &mut result);
+        result
+    }
+
+    /// Mark the given folder paths as expanded (call after rescanning the tree).
+    fn apply_expanded(&mut self, paths: &[PathBuf]) {
+        fn mark(items: &mut [CollectionItem], paths: &[PathBuf]) {
+            for item in items.iter_mut() {
+                if item.is_folder {
+                    if paths.contains(&item.path) {
+                        item.expanded = true;
+                    }
+                    mark(&mut item.children, paths);
+                }
+            }
+        }
+        mark(&mut self.collection_items, paths);
+    }
+
+    /// Restore the session entry for a given workspace (call after scanning).
+    pub fn restore_workspace_session(
+        &mut self,
+        entry: &crate::session::WorkspaceEntry,
+        cx: &mut Context<Self>,
+    ) {
+        self.apply_expanded(&entry.expanded_folders);
+
+        // Re-select active environment
+        if let Some(ref env_name) = entry.active_env {
+            if let Some(idx) = self.env_state
+                .environments
+                .iter()
+                .position(|e| &e.name == env_name)
+            {
+                self.env_state.set_active(Some(idx));
+            }
+        }
+
+        // Re-open the last active file
+        if let Some(ref file) = entry.active_file {
+            if file.exists() {
+                self.selected_item = Some(file.clone());
+                if let Some(ref draft) = entry.draft {
+                    if let Some(ref rp) = self.request_panel {
+                        let draft = draft.clone();
+                        let file = file.clone();
+                        rp.update(cx, |panel, cx| {
+                            panel.restore_from_draft(&draft, cx);
+                            panel.current_file = Some(file);
+                        });
+                    }
+                }
+            }
+        }
     }
 
     /// Set a variable in the active environment (for @set extraction)
@@ -359,21 +437,72 @@ impl ExplorerPanel {
     }
 
     /// Load collection from a specific path
-    pub fn load_collection_from_path(&mut self, path: PathBuf, cx: &mut Context<Self>) {
-        if path.is_dir() {
-            self.workspace_path = Some(path.clone());
-            self.collection_items = self.scan_directory(&path);
-            // Start file watcher for auto-refresh
-            match protide_core::workspace::Workspace::open(&path) {
-                Ok(ws) => {
-                    self.workspace_watcher = Some(Arc::new(ws));
-                }
-                Err(e) => {
-                    eprintln!("File watcher failed: {}", e);
-                }
-            }
-            cx.notify();
+    /// Called on startup to seed the workspace without triggering the "save old state" path.
+    pub fn init_workspace(
+        &mut self,
+        path: PathBuf,
+        saved_entry: Option<crate::session::WorkspaceEntry>,
+        cx: &mut Context<Self>,
+    ) {
+        if !path.is_dir() {
+            return;
         }
+        self.workspace_path   = Some(path.clone());
+        self.collection_items = self.scan_directory(&path);
+        self.tree_scroll      = 0.0;
+        match protide_core::workspace::Workspace::open(&path) {
+            Ok(ws)  => { self.workspace_watcher = Some(Arc::new(ws)); }
+            Err(e)  => { eprintln!("Workspace watcher: {}", e); }
+        }
+        if let Some(entry) = saved_entry {
+            self.restore_workspace_session(&entry, cx);
+        }
+        cx.notify();
+    }
+
+    pub fn load_collection_from_path(&mut self, path: PathBuf, cx: &mut Context<Self>) {
+        if !path.is_dir() {
+            return;
+        }
+
+        let new_key = path.to_string_lossy().to_string();
+        let mut session = crate::session::load();
+
+        // Persist state for the workspace we're leaving
+        if let Some(ref current) = self.workspace_path.clone() {
+            let draft = self.request_panel.as_ref()
+                .map(|rp| rp.read(cx).capture_draft(cx));
+            let entry = session.workspaces
+                .entry(current.to_string_lossy().to_string())
+                .or_default();
+            entry.active_file      = self.selected_item.clone();
+            entry.draft            = draft;
+            entry.expanded_folders = self.collect_expanded();
+            entry.active_env       = self.env_state.active().map(|e| e.name.clone());
+        }
+
+        // Update current workspace and grab the saved entry for the new one
+        session.current_workspace = Some(path.clone());
+        let saved_entry = session.workspaces.get(&new_key).cloned();
+        crate::session::save_bg(session);
+
+        // Load new workspace
+        self.workspace_path    = Some(path.clone());
+        self.collection_items  = self.scan_directory(&path);
+        self.selected_item     = Option::None;
+        self.tree_scroll       = 0.0;
+
+        match protide_core::workspace::Workspace::open(&path) {
+            Ok(ws)  => { self.workspace_watcher = Some(Arc::new(ws)); }
+            Err(e)  => { eprintln!("File watcher failed: {}", e); }
+        }
+
+        // Restore any previously saved state for this workspace
+        if let Some(entry) = saved_entry {
+            self.restore_workspace_session(&entry, cx);
+        }
+
+        cx.notify();
     }
 
     /// Poll the file watcher and refresh the collection tree if changes detected.
@@ -592,13 +721,21 @@ impl ExplorerPanel {
         false
     }
 
-    /// Parse the HTTP method from a .http file
+    /// Parse the HTTP method/protocol label from a .http file
     fn parse_method_from_file(&self, path: &PathBuf) -> Option<String> {
         if let Ok(content) = fs::read_to_string(path) {
             // Use http-parser to parse the file
             if let Ok(requests) = http_parser::parse(&content) {
                 if let Some(req) = requests.first() {
-                    return Some(format!("{:?}", req.method).to_uppercase());
+                    let label = match req.protocol() {
+                        Protocol::GraphQL => "GQL",
+                        Protocol::WebSocket => "WS",
+                        Protocol::Grpc => "GRPC",
+                        Protocol::SocketIO => "SIO",
+                        Protocol::Trpc => "TRPC",
+                        Protocol::Http => req.method.as_str(),
+                    };
+                    return Some(label.to_string());
                 }
             }
         }
@@ -648,20 +785,12 @@ impl ExplorerPanel {
             if let Ok(requests) = http_parser::parse(&content) {
                 if let Some(req) = requests.first() {
                     if let Some(request_panel) = &self.request_panel {
-                        let method = req.method.as_str().to_string();
-                        let url = req.url.clone();
-                        let headers: Vec<(String, String)> = req
-                            .headers
-                            .iter()
-                            .filter(|h| h.enabled)
-                            .map(|h| (h.key.clone(), h.value.clone()))
-                            .collect();
-                        let body = req.body.clone();
                         let variable_extractions = req.meta.variable_extractions.clone();
                         let proto_path = req.meta.proto_path.clone().map(std::path::PathBuf::from);
+                        let req = req.clone();
 
                         request_panel.update(cx, |panel, cx| {
-                            panel.load_from_history(method, url, headers, body, cx);
+                            panel.load_from_parsed_request(&req, cx);
                             if !variable_extractions.is_empty() {
                                 panel.set_variable_extractions(variable_extractions, cx);
                             }
@@ -1469,6 +1598,7 @@ impl ExplorerPanel {
         let is_expanded = item.expanded;
         let display_name = item.name.trim_end_matches(".http").to_string();
         let method = item.method.clone();
+        let has_badge = method.is_some();
         let is_selected = self.selected_item.as_ref() == Some(&item.path);
         let is_renaming = self.renaming_item.as_ref() == Some(&item.path);
 
@@ -1480,7 +1610,6 @@ impl ExplorerPanel {
             .items_center()
             .pl(indent)
             .pr(px(8.0))
-            .gap(px(6.0))
             .cursor_pointer()
             .when(is_selected, |el| el.bg(theme.colors.accent.opacity(0.1)))
             .when(!is_selected, |el| {
@@ -1528,26 +1657,34 @@ impl ExplorerPanel {
             } else {
                 icon(ICON_FILE, ICON_MD, theme.colors.accent)
             })
-            // Method badge (for .http files)
+            // 4px spacer before badge
+            .when(has_badge, |el| el.child(div().w(px(4.0))))
+            // Protocol/method badge (for .http files)
             .when_some(method, |el, method| {
-                let method_color = theme.method_color(&method);
+                let color = theme.method_color(&method);
                 el.child(
                     div()
                         .min_w(px(36.0))
                         .h(px(16.0))
+                        .px(px(4.0))
                         .flex()
                         .items_center()
                         .justify_center()
-                        .bg(method_color.opacity(0.12))
+                        .bg(color.opacity(0.12))
+                        .border_1()
+                        .border_color(color.opacity(0.6))
                         .child(
                             div()
                                 .text_size(px(9.0))
-                                .font_weight(gpui::FontWeight::SEMIBOLD)
-                                .text_color(method_color)
+                                .font_weight(gpui::FontWeight::BOLD)
+                                .font_family("JetBrains Mono")
+                                .text_color(color)
                                 .child(method),
                         ),
                 )
             })
+            // 8px spacer before label
+            .when(has_badge, |el| el.child(div().w(px(8.0))))
             // Name (or rename input)
             .when(!is_renaming, |el| {
                 el.child(

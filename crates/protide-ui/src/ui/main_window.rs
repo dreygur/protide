@@ -74,6 +74,8 @@ pub struct MainWindow {
     focus: FocusHandle,
     /// Which title-bar menu is open (0=Protide, 1=Request, 2=View, 3=Help)
     open_menu: Option<u8>,
+    /// Keeps the on_app_quit subscription alive for the lifetime of the window.
+    _quit_sub: gpui::Subscription,
 }
 
 impl MainWindow {
@@ -97,6 +99,25 @@ impl MainWindow {
             panel.set_explorer_panel(explorer_clone, cx);
         });
 
+        // ── Session restore ──────────────────────────────────────────────────
+        let session = crate::session::load();
+        if let Some(workspace) = session.current_workspace.clone().filter(|p| p.is_dir()) {
+            let ws_key = workspace.to_string_lossy().to_string();
+            let saved_entry = session.workspaces.get(&ws_key).cloned();
+            explorer.update(cx, |exp, cx| {
+                exp.init_workspace(workspace, saved_entry, cx);
+            });
+        }
+
+        // ── Save session on quit ─────────────────────────────────────────────
+        // on_app_quit fires for every quit path (Ctrl+Q, window × button, OS signal).
+        // The returned Subscription must stay alive; we store it on the stack
+        // here and then move it into the Self struct below.
+        let quit_sub = cx.on_app_quit(|this: &mut Self, cx| {
+            let state = this.capture_session(cx);
+            async move { crate::session::save_sync(&state); }
+        });
+
         Self {
             explorer,
             request_panel,
@@ -118,7 +139,27 @@ impl MainWindow {
             show_about: false,
             focus: cx.focus_handle(),
             open_menu: None,
+            _quit_sub: quit_sub,
         }
+    }
+
+    /// Build a full SessionState snapshot from the current live editor state.
+    fn capture_session(&self, cx: &Context<Self>) -> crate::session::SessionState {
+        let mut session = crate::session::load();
+        let explorer = self.explorer.read(cx);
+
+        if let Some(workspace) = explorer.workspace_path().cloned() {
+            let draft = self.request_panel.read(cx).capture_draft(cx);
+            let key   = workspace.to_string_lossy().to_string();
+            let entry = session.workspaces.entry(key).or_default();
+            entry.active_file      = explorer.selected_item().cloned();
+            entry.draft            = Some(draft);
+            entry.expanded_folders = explorer.collect_expanded();
+            entry.active_env       = explorer.env_state().active().map(|e| e.name.clone());
+            session.current_workspace = Some(workspace);
+        }
+
+        session
     }
 
     pub fn toggle_sidebar(&mut self, cx: &mut Context<Self>) {

@@ -3,9 +3,12 @@
 use std::time::Duration;
 
 use gpui::{
-    deferred, div, prelude::*, px, Context, Entity, IntoElement, MouseButton, ParentElement,
+    deferred, div, prelude::*, px, Context, Entity, IntoElement, MouseButton,
     Render, SharedString, Styled, Window,
 };
+
+const INDENT_STEP: f32 = 16.0;
+const ROW_HEIGHT: f32 = 20.0;
 
 use protide_core::chaining;
 use protide_core::scripting::results::TestResult;
@@ -282,30 +285,46 @@ impl ResponsePanel {
         cx: &Context<Self>,
     ) -> gpui::AnyElement {
         let theme = theme::current(cx);
-        let indent = (depth * 16) as f32;
+        let indent = (depth as f32) * INDENT_STEP;
         let is_collapsed = self.json_tree_collapsed.contains(&path);
 
         match value {
             serde_json::Value::Null => div()
                 .pl(px(indent))
+                .h(px(ROW_HEIGHT))
+                .line_height(px(ROW_HEIGHT))
+                .flex()
+                .items_center()
                 .text_color(theme.colors.text_muted)
                 .child("null")
                 .into_any_element(),
 
             serde_json::Value::Bool(b) => div()
                 .pl(px(indent))
+                .h(px(ROW_HEIGHT))
+                .line_height(px(ROW_HEIGHT))
+                .flex()
+                .items_center()
                 .text_color(theme.colors.method_delete)
                 .child(if *b { "true" } else { "false" })
                 .into_any_element(),
 
             serde_json::Value::Number(n) => div()
                 .pl(px(indent))
+                .h(px(ROW_HEIGHT))
+                .line_height(px(ROW_HEIGHT))
+                .flex()
+                .items_center()
                 .text_color(theme.colors.method_put)
                 .child(n.to_string())
                 .into_any_element(),
 
             serde_json::Value::String(s) => div()
                 .pl(px(indent))
+                .h(px(ROW_HEIGHT))
+                .line_height(px(ROW_HEIGHT))
+                .flex()
+                .items_center()
                 .text_color(theme.colors.status_success)
                 .child(format!("\"{}\"", s.replace('\"', "\\\"")))
                 .into_any_element(),
@@ -315,6 +334,10 @@ impl ResponsePanel {
                 if count == 0 {
                     return div()
                         .pl(px(indent))
+                        .h(px(ROW_HEIGHT))
+                        .line_height(px(ROW_HEIGHT))
+                        .flex()
+                        .items_center()
                         .text_color(theme.colors.text_muted)
                         .child("[]")
                         .into_any_element();
@@ -324,6 +347,8 @@ impl ResponsePanel {
                     return div()
                         .id(SharedString::from(format!("json-arr-{}", path)))
                         .pl(px(indent))
+                        .h(px(ROW_HEIGHT))
+                        .line_height(px(ROW_HEIGHT))
                         .flex()
                         .items_center()
                         .gap(px(4.0))
@@ -343,6 +368,8 @@ impl ResponsePanel {
                     div()
                         .id(SharedString::from(format!("json-arr-{}", path)))
                         .pl(px(indent))
+                        .h(px(ROW_HEIGHT))
+                        .line_height(px(ROW_HEIGHT))
                         .flex()
                         .items_center()
                         .gap(px(4.0))
@@ -362,6 +389,8 @@ impl ResponsePanel {
                 container = container.child(
                     div()
                         .pl(px(indent))
+                        .h(px(ROW_HEIGHT))
+                        .line_height(px(ROW_HEIGHT))
                         .flex()
                         .items_center()
                         .gap(px(4.0))
@@ -376,6 +405,10 @@ impl ResponsePanel {
                 if count == 0 {
                     return div()
                         .pl(px(indent))
+                        .h(px(ROW_HEIGHT))
+                        .line_height(px(ROW_HEIGHT))
+                        .flex()
+                        .items_center()
                         .text_color(theme.colors.text_muted)
                         .child("{}")
                         .into_any_element();
@@ -385,6 +418,8 @@ impl ResponsePanel {
                     return div()
                         .id(SharedString::from(format!("json-obj-{}", path)))
                         .pl(px(indent))
+                        .h(px(ROW_HEIGHT))
+                        .line_height(px(ROW_HEIGHT))
                         .flex()
                         .items_center()
                         .gap(px(4.0))
@@ -404,6 +439,8 @@ impl ResponsePanel {
                     div()
                         .id(SharedString::from(format!("json-obj-{}", path)))
                         .pl(px(indent))
+                        .h(px(ROW_HEIGHT))
+                        .line_height(px(ROW_HEIGHT))
                         .flex()
                         .items_center()
                         .gap(px(4.0))
@@ -415,35 +452,74 @@ impl ResponsePanel {
                         .child(icon(ICON_CHEVRON_DOWN, ICON_SM, theme.colors.text_muted))
                         .child(div().text_color(theme.colors.text_muted).child("{"))
                 );
+                let child_indent = indent + INDENT_STEP;
                 for (key, val) in obj {
                     let child_path = format!("{}/{}", path, key);
                     if val.is_object() || val.is_array() {
                         container = container.child(
                             div()
-                                .pl(px(indent + 16.0))
+                                .pl(px(child_indent))
+                                .h(px(ROW_HEIGHT))
+                                .line_height(px(ROW_HEIGHT))
                                 .flex()
-                                .gap(px(4.0))
-                                .child(div().text_color(theme.colors.accent)
-                                    .child(format!("\"{}\":", key)))
+                                .items_center()
+                                .child(
+                                    div()
+                                        .max_w(px(300.0))
+                                        .overflow_hidden()
+                                        .text_color(theme.colors.accent)
+                                        .child(format!("\"{}\":", key))
+                                )
                         );
                         container = container.child(
-                            self.render_json_node(val, child_path, depth + 2, cx)
+                            self.render_json_node(val, child_path, depth + 1, cx)
                         );
                     } else {
+                        let value_el: gpui::AnyElement = match val {
+                            serde_json::Value::Null => div()
+                                .text_color(theme.colors.text_muted)
+                                .child("null")
+                                .into_any_element(),
+                            serde_json::Value::Bool(b) => div()
+                                .text_color(theme.colors.method_delete)
+                                .child(if *b { "true" } else { "false" })
+                                .into_any_element(),
+                            serde_json::Value::Number(n) => div()
+                                .text_color(theme.colors.method_put)
+                                .child(n.to_string())
+                                .into_any_element(),
+                            serde_json::Value::String(s) => div()
+                                .text_color(theme.colors.status_success)
+                                .child(format!("\"{}\"", s.replace('\"', "\\\"")))
+                                .into_any_element(),
+                            _ => unreachable!(),
+                        };
                         container = container.child(
                             div()
-                                .pl(px(indent + 16.0))
+                                .pl(px(child_indent))
+                                .h(px(ROW_HEIGHT))
+                                .line_height(px(ROW_HEIGHT))
                                 .flex()
+                                .items_center()
                                 .gap(px(4.0))
-                                .child(div().text_color(theme.colors.accent)
-                                    .child(format!("\"{}\":", key)))
-                                .child(self.render_json_node(val, child_path, depth + 2, cx))
+                                .child(
+                                    div()
+                                        .max_w(px(300.0))
+                                        .overflow_hidden()
+                                        .text_color(theme.colors.accent)
+                                        .child(format!("\"{}\":", key))
+                                )
+                                .child(value_el)
                         );
                     }
                 }
                 container = container.child(
                     div()
                         .pl(px(indent))
+                        .h(px(ROW_HEIGHT))
+                        .line_height(px(ROW_HEIGHT))
+                        .flex()
+                        .items_center()
                         .text_color(theme.colors.text_muted)
                         .child("}")
                 );

@@ -84,21 +84,26 @@ impl<'a> Parser<'a> {
         let mut meta = RequestMeta::default();
         let mut scripts = Scripts::default();
 
-        // Parse annotations before the request line
-        while let Token::Annotation(key, value) = &self.current_token {
-            self.parse_annotation(&mut meta, key.clone(), value.clone())?;
-            self.advance();
-            self.skip_empty_lines();
-        }
-
-        // Parse variable extractions
-        while let Token::SetVariable(name, expr) = &self.current_token {
-            meta.variable_extractions.push(VariableExtraction {
-                name: name.clone(),
-                expression: expr.clone(),
-            });
-            self.advance();
-            self.skip_empty_lines();
+        // Parse annotations, plain comments, and empty lines before the request line
+        loop {
+            match &self.current_token {
+                Token::Annotation(key, value) => {
+                    let (k, v) = (key.clone(), value.clone());
+                    self.parse_annotation(&mut meta, k, v)?;
+                    self.advance();
+                }
+                Token::SetVariable(name, expr) => {
+                    meta.variable_extractions.push(VariableExtraction {
+                        name: name.clone(),
+                        expression: expr.clone(),
+                    });
+                    self.advance();
+                }
+                Token::Comment(_) | Token::EmptyLine => {
+                    self.advance();
+                }
+                _ => break,
+            }
         }
 
         // Expect HTTP method

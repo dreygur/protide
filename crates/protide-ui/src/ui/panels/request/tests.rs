@@ -21,7 +21,8 @@ assert_eq!(HttpMethod::from_str("POST"), Some(HttpMethod::Post));
 assert_eq!(HttpMethod::from_str("PUT"), Some(HttpMethod::Put));
 assert_eq!(HttpMethod::from_str("PATCH"), Some(HttpMethod::Patch));
 assert_eq!(HttpMethod::from_str("DELETE"), Some(HttpMethod::Delete));
-assert_eq!(HttpMethod::from_str("INVALID"), None);
+assert_eq!(HttpMethod::from_str("INVALID"), Some(HttpMethod::Custom("INVALID".to_string())));
+assert_eq!(HttpMethod::from_str(""), None);
 }
 
 #[test]

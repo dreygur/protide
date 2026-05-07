@@ -1294,6 +1294,182 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
         cx.notify();
     }
 
+    /// Capture a serialisable snapshot of the current editor state.
+    /// Accepts any context that derefs to App (Context<MainWindow>, Context<Self>, etc.).
+    pub fn capture_draft(&self, cx: &gpui::App) -> crate::session::RequestDraft {
+        use crate::session::{HeaderEntry, RequestDraft};
+        use AuthType::*;
+        use ApiKeyLocation::*;
+
+        RequestDraft {
+            protocol: match self.request_mode {
+                RequestMode::Http      => "http",
+                RequestMode::GraphQL   => "graphql",
+                RequestMode::WebSocket => "websocket",
+                RequestMode::Grpc      => "grpc",
+                RequestMode::Trpc      => "trpc",
+                RequestMode::SocketIo  => "socketio",
+            }.to_string(),
+            active_tab: self.active_tab,
+            url: self.url.clone(),
+            method: self.method.as_str().to_string(),
+            headers: self.headers.iter()
+                .filter(|h| !h.key.is_empty())
+                .map(|h| HeaderEntry { key: h.key.clone(), value: h.value.clone(), enabled: h.enabled })
+                .collect(),
+            body: self.body_editor.read(cx).content().to_string(),
+            body_type: match self.body_type {
+                BodyType::Json   => "json",
+                BodyType::Xml    => "xml",
+                BodyType::Raw    => "raw",
+                BodyType::Form   => "form",
+                BodyType::Binary => "binary",
+            }.to_string(),
+            auth_type: match self.auth_type {
+                None    => "none",
+                Bearer  => "bearer",
+                Basic   => "basic",
+                ApiKey  => "apikey",
+            }.to_string(),
+            bearer_token:    self.bearer_token.clone(),
+            basic_username:  self.basic_username.clone(),
+            basic_password:  self.basic_password.clone(),
+            api_key_name:    self.api_key_name.clone(),
+            api_key_value:   self.api_key_value.clone(),
+            api_key_location: match self.api_key_location {
+                Header     => "header",
+                QueryParam => "query",
+            }.to_string(),
+            graphql_query:          self.graphql_query_editor.read(cx).content().to_string(),
+            graphql_variables:      self.graphql_variables_editor.read(cx).content().to_string(),
+            graphql_operation_name: self.graphql_operation_name.clone(),
+            grpc_message:    self.grpc_message_editor.read(cx).content().to_string(),
+            grpc_proto_path: self.grpc_proto_path.clone(),
+            grpc_service:    self.grpc_service.clone(),
+            grpc_method_name: self.grpc_method.as_ref().map(|m| m.full_name.clone()),
+            trpc_procedure:  self.trpc_procedure.clone(),
+            trpc_params:     self.trpc_params_editor.read(cx).content().to_string(),
+            sio_namespace:   self.sio_namespace.clone(),
+            sio_event_name:  self.sio_event_name.clone(),
+            sio_payload:     self.sio_payload_editor.read(cx).content().to_string(),
+        }
+    }
+
+    /// Restore editor state from a previously captured draft.
+    pub fn restore_from_draft(&mut self, draft: &crate::session::RequestDraft, cx: &mut Context<Self>) {
+
+        // Switch protocol mode
+        self.request_mode = match draft.protocol.as_str() {
+            "graphql"   => RequestMode::GraphQL,
+            "websocket" => RequestMode::WebSocket,
+            "grpc"      => RequestMode::Grpc,
+            "trpc"      => RequestMode::Trpc,
+            "socketio"  => RequestMode::SocketIo,
+            _           => RequestMode::Http,
+        };
+        self.active_tab = draft.active_tab;
+        self.active_edit = Option::None;
+        self.method_dropdown_open = false;
+        self.variable_extractions.clear();
+
+        // Method + URL
+        if let Some(m) = HttpMethod::from_str(&draft.method) {
+            self.method = m;
+        }
+        self.url = draft.url.clone();
+        let len = self.url.chars().count();
+        self.url_selection = len..len;
+
+        // Headers
+        self.headers = draft.headers.iter()
+            .map(|h| KeyValuePair { key: h.key.clone(), value: h.value.clone(), enabled: h.enabled })
+            .collect();
+        if self.headers.is_empty() {
+            self.headers.push(KeyValuePair::default());
+        } else {
+            self.headers.push(KeyValuePair::default());
+        }
+
+        // Body
+        self.body_type = match draft.body_type.as_str() {
+            "xml"    => BodyType::Xml,
+            "raw"    => BodyType::Raw,
+            "form"   => BodyType::Form,
+            "binary" => BodyType::Binary,
+            _        => BodyType::Json,
+        };
+        if !draft.body.is_empty() {
+            let b = draft.body.clone();
+            self.body_editor.update(cx, |ed, cx| ed.set_content(&b, cx));
+        }
+
+        // Auth
+        self.auth_type = match draft.auth_type.as_str() {
+            "bearer" => AuthType::Bearer,
+            "basic"  => AuthType::Basic,
+            "apikey" => AuthType::ApiKey,
+            _        => AuthType::None,
+        };
+        self.bearer_token   = draft.bearer_token.clone();
+        self.basic_username = draft.basic_username.clone();
+        self.basic_password = draft.basic_password.clone();
+        self.api_key_name   = draft.api_key_name.clone();
+        self.api_key_value  = draft.api_key_value.clone();
+        self.api_key_location = match draft.api_key_location.as_str() {
+            "query" => ApiKeyLocation::QueryParam,
+            _       => ApiKeyLocation::Header,
+        };
+
+        // GraphQL
+        if !draft.graphql_query.is_empty() {
+            let q = draft.graphql_query.clone();
+            self.graphql_query_editor.update(cx, |ed, cx| ed.set_content(&q, cx));
+        }
+        if !draft.graphql_variables.is_empty() {
+            let v = draft.graphql_variables.clone();
+            self.graphql_variables_editor.update(cx, |ed, cx| ed.set_content(&v, cx));
+        }
+        self.graphql_operation_name = draft.graphql_operation_name.clone();
+
+        // gRPC
+        if !draft.grpc_message.is_empty() {
+            let m = draft.grpc_message.clone();
+            self.grpc_message_editor.update(cx, |ed, cx| ed.set_content(&m, cx));
+        }
+        if let Some(ref proto_path) = draft.grpc_proto_path {
+            self.load_grpc_proto_from_path(proto_path.clone(), cx);
+            if let Some(ref svc) = draft.grpc_service {
+                if self.grpc_services.contains(svc) {
+                    self.grpc_service = Some(svc.clone());
+                    self.grpc_methods.retain(|m| m.full_name.starts_with(svc.as_str()));
+                }
+            }
+            if let Some(ref method_name) = draft.grpc_method_name {
+                if let Some(m) = self.grpc_methods.iter().find(|m| &m.full_name == method_name) {
+                    self.grpc_method = Some(m.clone());
+                }
+            }
+        }
+
+        // tRPC
+        self.trpc_procedure = draft.trpc_procedure.clone();
+        if !draft.trpc_params.is_empty() {
+            let p = draft.trpc_params.clone();
+            self.trpc_params_editor.update(cx, |ed, cx| ed.set_content(&p, cx));
+        }
+
+        // Socket.IO
+        self.sio_namespace  = draft.sio_namespace.clone();
+        self.sio_event_name = draft.sio_event_name.clone();
+        if !draft.sio_payload.is_empty() {
+            let p = draft.sio_payload.clone();
+            self.sio_payload_editor.update(cx, |ed, cx| ed.set_content(&p, cx));
+        }
+
+        self.sync_params_from_url(cx);
+        cx.notify();
+    }
+
     /// Load request data from a history entry
     pub fn load_from_history(
         &mut self,
@@ -1343,6 +1519,114 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
 
         // Clear variable extractions (will be set separately from file load if present)
         self.variable_extractions.clear();
+
+        cx.notify();
+    }
+
+    /// Load a parsed request from a .http file, switching protocol as needed.
+    pub fn load_from_parsed_request(&mut self, req: &http_parser::Request, cx: &mut Context<Self>) {
+        use http_parser::Protocol;
+
+        // Switch mode directly — no URL-override side effects from set_request_mode
+        self.request_mode = match req.protocol() {
+            Protocol::Http => RequestMode::Http,
+            Protocol::GraphQL => RequestMode::GraphQL,
+            Protocol::WebSocket => RequestMode::WebSocket,
+            Protocol::Grpc => RequestMode::Grpc,
+            Protocol::SocketIO => RequestMode::SocketIo,
+            Protocol::Trpc => RequestMode::Trpc,
+        };
+        self.active_tab = 0;
+        self.active_edit = None;
+        self.method_dropdown_open = false;
+        self.variable_extractions.clear();
+
+        // Common headers
+        self.headers = req.headers.iter()
+            .filter(|h| h.enabled)
+            .map(|h| KeyValuePair { key: h.key.clone(), value: h.value.clone(), enabled: true })
+            .collect();
+        if self.headers.is_empty() {
+            self.headers.push(KeyValuePair::default());
+        } else {
+            self.headers.push(KeyValuePair::default());
+        }
+
+        // Protocol-specific field loading — exhaustive, no catch-all
+        match req.protocol() {
+            Protocol::Http => {
+                if let Some(m) = HttpMethod::from_str(req.method.as_str()) {
+                    self.method = m;
+                }
+                self.url = req.url.clone();
+                let len = self.url.chars().count();
+                self.url_selection = len..len;
+                if let Some(body) = &req.body {
+                    self.set_body_content(body, cx);
+                }
+                self.sync_params_from_url(cx);
+            }
+            Protocol::GraphQL => {
+                self.method = HttpMethod::Post;
+                self.url = req.url.clone();
+                let len = self.url.chars().count();
+                self.url_selection = len..len;
+                // Body is JSON: { "query": "...", "variables": {...}, "operationName": "..." }
+                if let Some(body) = &req.body {
+                    if let Ok(json) = serde_json::from_str::<serde_json::Value>(body) {
+                        if let Some(query) = json.get("query").and_then(|q| q.as_str()) {
+                            let q = query.to_string();
+                            self.graphql_query_editor.update(cx, |ed, cx| ed.set_content(&q, cx));
+                        }
+                        if let Some(vars) = json.get("variables").filter(|v| !v.is_null()) {
+                            let v = serde_json::to_string_pretty(vars).unwrap_or_default();
+                            self.graphql_variables_editor.update(cx, |ed, cx| ed.set_content(&v, cx));
+                        }
+                        if let Some(op) = json.get("operationName").and_then(|o| o.as_str()) {
+                            self.graphql_operation_name = op.to_string();
+                        }
+                    }
+                }
+            }
+            Protocol::WebSocket => {
+                self.url = req.url.clone();
+                let len = self.url.chars().count();
+                self.url_selection = len..len;
+            }
+            Protocol::Grpc => {
+                // URL in file: grpc://host:port/Service/Method — strip to server-only part
+                let server = req.url.splitn(4, '/').take(3).collect::<Vec<_>>().join("/");
+                self.url = server;
+                let len = self.url.chars().count();
+                self.url_selection = len..len;
+                if let Some(body) = &req.body {
+                    let b = body.clone();
+                    self.grpc_message_editor.update(cx, |ed, cx| ed.set_content(&b, cx));
+                }
+            }
+            Protocol::Trpc => {
+                self.method = HttpMethod::Post;
+                // URL: http://host/path/trpc/procedure — split into base + procedure
+                let url = req.url.as_str();
+                if let Some(idx) = url.find("/trpc/") {
+                    self.url = url[..idx + 5].to_string(); // up to and including "/trpc"
+                    self.trpc_procedure = url[idx + 6..].to_string(); // after "/trpc/"
+                } else {
+                    self.url = url.to_string();
+                }
+                let len = self.url.chars().count();
+                self.url_selection = len..len;
+                if let Some(body) = &req.body {
+                    let b = body.clone();
+                    self.trpc_params_editor.update(cx, |ed, cx| ed.set_content(&b, cx));
+                }
+            }
+            Protocol::SocketIO => {
+                self.url = req.url.clone();
+                let len = self.url.chars().count();
+                self.url_selection = len..len;
+            }
+        }
 
         cx.notify();
     }

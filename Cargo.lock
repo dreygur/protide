@@ -5038,6 +5038,7 @@ dependencies = [
  "http-parser",
  "protide-core",
  "rfd",
+ "serde",
  "serde_json",
  "tokio",
  "url",
