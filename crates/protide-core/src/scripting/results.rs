@@ -1,7 +1,7 @@
 //! Script execution result types
 
 /// Result of running a single test assertion
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, serde::Serialize)]
 pub struct TestResult {
     /// Test description (from expect chain)
     pub name: String,

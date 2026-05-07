@@ -5,7 +5,8 @@ use crate::ui::main_window::MainWindow;
 use gpui::{
     ClipboardItem, Context, Entity, FocusHandle, IntoElement, KeyDownEvent, MouseButton,
     MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement, Pixels, Point, Render,
-    SharedString, Styled, Subscription, WeakEntity, Window, canvas, deferred, div, prelude::*, px,
+    ScrollWheelEvent, SharedString, Styled, Subscription, WeakEntity, Window, canvas, deferred,
+    div, prelude::*, px,
 };
 use std::fs;
 use std::ops::Range;
@@ -117,6 +118,8 @@ pub struct ExplorerPanel {
     main_window: WeakEntity<MainWindow>,
     /// Panel bounds (origin + size) captured each frame via canvas
     panel_bounds: gpui::Bounds<Pixels>,
+    /// Scroll offset (pixels) for the collections tree
+    tree_scroll: f32,
 }
 
 impl ExplorerPanel {
@@ -155,6 +158,7 @@ impl ExplorerPanel {
             drag_env: None,
             main_window,
             panel_bounds: gpui::Bounds::default(),
+            tree_scroll: 0.0,
         }
     }
 
@@ -625,6 +629,7 @@ impl ExplorerPanel {
         self.workspace_path = None;
         self.collection_items.clear();
         self.collections_expanded = true;
+        self.tree_scroll = 0.0;
         cx.notify();
     }
 
@@ -632,6 +637,7 @@ impl ExplorerPanel {
     fn refresh_collections(&mut self, cx: &mut Context<Self>) {
         if let Some(workspace) = &self.workspace_path {
             self.collection_items = self.scan_directory(workspace);
+            self.tree_scroll = 0.0;
             cx.notify();
         }
     }
@@ -1215,6 +1221,16 @@ impl ExplorerPanel {
         }
     }
 
+    fn count_visible_items(items: &[CollectionItem]) -> usize {
+        items.iter().map(|item| {
+            1 + if item.is_folder && item.expanded {
+                Self::count_visible_items(&item.children)
+            } else {
+                0
+            }
+        }).sum()
+    }
+
     /// Flatten collection items into a list with depth information for rendering
     fn flatten_collection_items(
         &self,
@@ -1344,18 +1360,48 @@ impl ExplorerPanel {
             // Content
             .when(collections_expanded, |el| {
                 if has_collections {
+                    const ROW_H: f32 = 28.0;
+                    // header (32) + outer pt (8) + content pt (4)
+                    let viewport_h = (self.collections_h - 44.0).max(0.0);
+                    let indexed: Vec<(usize, CollectionItem, usize)> = flattened_items
+                        .into_iter()
+                        .enumerate()
+                        .map(|(i, (item, depth))| (i, item, depth))
+                        .collect();
+                    let total_items = indexed.len();
+                    let max_scroll = (total_items as f32 * ROW_H - viewport_h).max(0.0);
+                    let scroll = self.tree_scroll.min(max_scroll);
+                    let start_idx = (scroll / ROW_H).floor() as usize;
+                    let visible_count = (viewport_h / ROW_H).ceil() as usize + 2;
+                    let end_idx = (start_idx + visible_count).min(total_items);
+                    let top_h = start_idx as f32 * ROW_H;
+                    let bot_h = (total_items - end_idx) as f32 * ROW_H;
+
                     el.child(
                         div()
+                            .id("collections-tree")
                             .w_full()
                             .flex()
                             .flex_col()
                             .px(px(4.0))
                             .pt(px(4.0))
-                            .children(flattened_items.into_iter().enumerate().map(
-                                |(idx, (item, depth))| {
-                                    self.render_collection_item_row(item, depth, idx, cx)
-                                },
-                            )),
+                            .on_scroll_wheel(cx.listener(move |this, event: &ScrollWheelEvent, _, cx| {
+                                let vp = (this.collections_h - 44.0).max(0.0);
+                                let n = Self::count_visible_items(&this.collection_items);
+                                let max = (n as f32 * ROW_H - vp).max(0.0);
+                                let delta = f32::from(event.delta.pixel_delta(px(ROW_H)).y);
+                                this.tree_scroll = (this.tree_scroll - delta).clamp(0.0, max);
+                                cx.notify();
+                            }))
+                            .when(top_h > 0.0, |el| el.child(div().w_full().h(px(top_h))))
+                            .children(
+                                indexed[start_idx..end_idx]
+                                    .iter()
+                                    .map(|(idx, item, depth)| {
+                                        self.render_collection_item_row(item.clone(), *depth, *idx, cx)
+                                    }),
+                            )
+                            .when(bot_h > 0.0, |el| el.child(div().w_full().h(px(bot_h)))),
                     )
                 } else {
                     // Empty state for collections

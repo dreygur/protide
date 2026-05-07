@@ -5,6 +5,7 @@ members = [
     "crates/protide-core",
     "crates/protide-ui",
     "crates/protide",
+    "crates/protide-mcp",
 ]
 
 [workspace.package]

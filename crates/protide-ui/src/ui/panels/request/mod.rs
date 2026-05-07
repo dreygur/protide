@@ -18,15 +18,20 @@ use gpui::{
 
 use crate::ui::components::{render_text_view_with_max, find_word_start, find_word_end};
 use crate::ui::components::code_editor::{CodeEditor, Language};
-use protide_core::scripting::{ScriptEngine, ScriptContext, RequestData as ScriptRequestData, ResponseData as ScriptResponseData};
+use protide_core::execution::{ExecutionBody, ExecutionMode, ExecutionRequest, FormPart, FormPartValue};
+use std::marker::PhantomData;
+
+use protide_core::execution::ws::{
+    TungsteniteExecutor, WebSocketExecutor, WsCommand, WsConnectionParams, WsDirection, WsEvent,
+    WsMessage, WsRingBuffer,
+};
 
 use super::explorer::ExplorerPanel;
-use super::request_types::{ApiKeyLocation, AuthType, BodyType, EditTarget, FormField, FormFieldType, GrpcMethodInfo, GrpcStreamingType, HttpMethod, KeyValuePair, RequestMode, WsConnectionState, WsMessage, WsMessageDirection};
+use super::request_types::{ApiKeyLocation, AuthType, BodyType, EditTarget, FormField, FormFieldType, GrpcMethodInfo, GrpcStreamingType, HttpMethod, KeyValuePair, RequestMode, WsConnectionState};
 use super::request_utils::{base64_encode, status_text, url_decode, url_encode};
 use base64::Engine;
 use super::response::{ResponseData, ResponsePanel};
 
-use protide_core::chaining;
 use protide_core::codegen::{self, CodegenRequest, Language as CodegenLanguage};
 use protide_core::import;
 use http_parser::VariableExtraction;
@@ -62,16 +67,12 @@ fn byte_to_char_offset(text: &str, byte_offset: usize) -> usize {
         .count()
 }
 
-/// WebSocket event for communication between async thread and UI
-enum WsEvent {
-    Connected,
-    Message(String),
-    Disconnected,
-    Error(String),
-}
-
-/// Request editor panel
-pub struct RequestPanel {
+/// Request editor panel.
+///
+/// `E` is the WebSocket backend. The default is `TungsteniteExecutor` (production).
+/// Tests can supply a different type that implements `WebSocketExecutor` to inject
+/// mock connections without touching the UI rendering logic.
+pub struct RequestPanel<E: WebSocketExecutor = TungsteniteExecutor> {
     pub(super) active_tab: usize,
     pub(super) method: HttpMethod,
     pub(super) url: String,
@@ -149,13 +150,13 @@ pub struct RequestPanel {
     /// WebSocket connection state
     pub(super) ws_state: WsConnectionState,
     /// WebSocket message history
-    pub(super) ws_messages: Vec<WsMessage>,
+    pub(super) ws_messages: WsRingBuffer,
     /// WebSocket message input
     pub(super) ws_message_input: String,
     /// WebSocket message editor
     pub(super) ws_message_editor: Entity<CodeEditor>,
     /// Channel to send messages to WebSocket thread
-    ws_send_tx: Option<std::sync::mpsc::Sender<String>>,
+    ws_send_tx: Option<std::sync::mpsc::Sender<WsCommand>>,
     /// gRPC message editor (JSON/Protobuf)
     pub(super) grpc_message_editor: Entity<CodeEditor>,
     /// gRPC metadata (key-value pairs, similar to headers)
@@ -199,9 +200,11 @@ pub struct RequestPanel {
     /// Draft text for custom HTTP method input
     pub(super) custom_method_input: String,
     pub(super) custom_method_focus: FocusHandle,
+    /// Zero-size marker binding the executor type to the panel.
+    _executor: PhantomData<E>,
 }
 
-impl RequestPanel {
+impl<E: WebSocketExecutor> RequestPanel<E> {
     pub fn new(cx: &mut Context<Self>, response_panel: Entity<ResponsePanel>) -> Self {
         let url = "https://httpbin.org/post".to_string();
         let url_len = url.len();
@@ -340,7 +343,7 @@ impl RequestPanel {
             graphql_variables_editor,
             graphql_operation_name: String::new(),
             ws_state: WsConnectionState::Disconnected,
-            ws_messages: Vec::new(),
+            ws_messages: WsRingBuffer::default(),
             ws_message_input: String::new(),
             ws_message_editor,
             ws_send_tx: None,
@@ -367,6 +370,7 @@ impl RequestPanel {
             save_feedback: false,
             custom_method_input: String::new(),
             custom_method_focus: cx.focus_handle(),
+            _executor: PhantomData,
         }
     }
 
@@ -435,81 +439,40 @@ impl RequestPanel {
 
         self.ws_state = WsConnectionState::Connecting;
         self.ws_messages.clear();
-
-        // Create channel for sending messages to WebSocket thread
-        let (send_tx, send_rx) = std::sync::mpsc::channel::<String>();
-        self.ws_send_tx = Some(send_tx);
         cx.notify();
 
-        let url = self.url.clone();
+        let env_state = self.explorer_panel.as_ref().map(|p| p.read(cx).env_state().clone());
+        let substitute = |s: &str| -> String {
+            env_state.as_ref().map_or_else(|| s.to_string(), |e| e.substitute(s))
+        };
 
-        // Spawn async WebSocket connection
+        let url = substitute(&self.url);
+        let headers: Vec<(String, String)> = self
+            .headers
+            .iter()
+            .filter(|h| h.enabled && !h.key.is_empty())
+            .map(|h| (substitute(&h.key), substitute(&h.value)))
+            .collect();
+        let on_message_script = self.pre_script_editor.read(cx).content().to_string();
+        let env_vars: std::collections::HashMap<String, String> = env_state
+            .as_ref()
+            .and_then(|e| e.active())
+            .map(|env| env.variables.clone())
+            .unwrap_or_default();
+        let explorer_panel = self.explorer_panel.clone();
+
+        let handle = E::connect(WsConnectionParams {
+            url,
+            headers,
+            on_message_script,
+            env_vars,
+        });
+        self.ws_send_tx = Some(handle.cmd_tx);
+
+        let event_rx = handle.event_rx;
         cx.spawn(async move |this: gpui::WeakEntity<Self>, cx: &mut gpui::AsyncApp| {
-            // Run blocking WebSocket in a thread
-            let (result_tx, result_rx) = std::sync::mpsc::channel::<WsEvent>();
-
-            std::thread::spawn(move || {
-                let rt = tokio::runtime::Runtime::new().unwrap();
-                rt.block_on(async {
-                    use tokio_tungstenite::connect_async;
-                    use futures_util::{SinkExt, StreamExt};
-
-                    match connect_async(&url).await {
-                        Ok((ws_stream, _)) => {
-                            let _ = result_tx.send(WsEvent::Connected);
-
-                            let (mut write, mut read) = ws_stream.split();
-
-                            // Process incoming and outgoing messages
-                            loop {
-                                // Check for outgoing messages (non-blocking)
-                                match send_rx.try_recv() {
-                                    Ok(msg) => {
-                                        let ws_msg = tokio_tungstenite::tungstenite::Message::Text(msg.into());
-                                        if write.send(ws_msg).await.is_err() {
-                                            break;
-                                        }
-                                    }
-                                    Err(std::sync::mpsc::TryRecvError::Disconnected) => {
-                                        break;
-                                    }
-                                    Err(std::sync::mpsc::TryRecvError::Empty) => {}
-                                }
-
-                                // Check for incoming messages with timeout
-                                match tokio::time::timeout(
-                                    std::time::Duration::from_millis(50),
-                                    read.next()
-                                ).await {
-                                    Ok(Some(Ok(tokio_tungstenite::tungstenite::Message::Text(text)))) => {
-                                        let _ = result_tx.send(WsEvent::Message(text.to_string()));
-                                    }
-                                    Ok(Some(Ok(tokio_tungstenite::tungstenite::Message::Close(_)))) => {
-                                        break;
-                                    }
-                                    Ok(Some(Err(_))) => {
-                                        break;
-                                    }
-                                    Ok(None) => {
-                                        break; // Stream ended
-                                    }
-                                    Ok(Some(Ok(_))) => {} // Ignore other message types
-                                    Err(_) => {} // Timeout, continue loop
-                                }
-                            }
-
-                            let _ = result_tx.send(WsEvent::Disconnected);
-                        }
-                        Err(e) => {
-                            let _ = result_tx.send(WsEvent::Error(e.to_string()));
-                        }
-                    }
-                });
-            });
-
-            // Process events from WebSocket thread
             loop {
-                match result_rx.recv_timeout(std::time::Duration::from_millis(100)) {
+                match event_rx.recv_timeout(std::time::Duration::from_millis(100)) {
                     Ok(WsEvent::Connected) => {
                         let _ = cx.update(|cx| {
                             let _ = this.update(cx, |this, cx| {
@@ -518,14 +481,15 @@ impl RequestPanel {
                             });
                         });
                     }
-                    Ok(WsEvent::Message(text)) => {
+                    Ok(WsEvent::Message { msg, env_changes }) => {
                         let _ = cx.update(|cx| {
                             let _ = this.update(cx, |this, cx| {
-                                this.ws_messages.push(WsMessage {
-                                    direction: WsMessageDirection::Received,
-                                    content: text,
-                                    timestamp: chrono::Local::now(),
-                                });
+                                for (k, v) in &env_changes {
+                                    if let Some(ref ep) = explorer_panel {
+                                        ep.update(cx, |p, cx| p.set_env_variable(k, v, cx)).ok();
+                                    }
+                                }
+                                this.ws_messages.push(msg);
                                 cx.notify();
                             });
                         });
@@ -546,7 +510,7 @@ impl RequestPanel {
                                 this.ws_state = WsConnectionState::Disconnected;
                                 this.ws_send_tx = None;
                                 this.ws_messages.push(WsMessage {
-                                    direction: WsMessageDirection::Received,
+                                    direction: WsDirection::Received,
                                     content: format!("Connection failed: {}", e),
                                     timestamp: chrono::Local::now(),
                                 });
@@ -556,7 +520,6 @@ impl RequestPanel {
                         break;
                     }
                     Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
-                        // Check if panel was disconnected by user - break if entity is gone
                         let mut disconnected = true;
                         let _ = cx.update(|cx| {
                             if let Ok(state) = this.update(cx, |this, _| {
@@ -569,13 +532,10 @@ impl RequestPanel {
                             break;
                         }
                     }
-                    Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
-                        break;
-                    }
+                    Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
                 }
             }
 
-            // Ensure we mark as disconnected and clear channel
             let _ = cx.update(|cx| {
                 let _ = this.update(cx, |this, cx| {
                     if this.ws_state != WsConnectionState::Disconnected {
@@ -590,8 +550,10 @@ impl RequestPanel {
 
     /// Disconnect from WebSocket server
     pub(super) fn disconnect_websocket(&mut self, cx: &mut Context<Self>) {
+        if let Some(tx) = self.ws_send_tx.take() {
+            let _ = tx.send(WsCommand::Disconnect);
+        }
         self.ws_state = WsConnectionState::Disconnected;
-        self.ws_send_tx = None; // Dropping sender will signal thread to stop
         cx.notify();
     }
 
@@ -601,23 +563,14 @@ impl RequestPanel {
             return;
         }
 
-        // Get message content from editor
         let message = self.ws_message_editor.read(cx).content();
         if message.trim().is_empty() {
             return;
         }
 
-        // Send message over the WebSocket channel
         if let Some(tx) = &self.ws_send_tx {
-            if tx.send(message.to_string()).is_ok() {
-                // Add to local history
-                self.ws_messages.push(WsMessage {
-                    direction: WsMessageDirection::Sent,
-                    content: message.to_string(),
-                    timestamp: chrono::Local::now(),
-                });
-                cx.notify();
-            }
+            let _ = tx.send(WsCommand::Send(message.to_string()));
+            cx.notify();
         }
     }
 
@@ -2634,122 +2587,62 @@ impl RequestPanel {
             Vec::new()
         };
 
-        let body = if is_graphql_mode {
-            // GraphQL mode - always POST with JSON body
-            let query = substitute(&graphql_query);
-            let variables_str = substitute(&graphql_variables);
-
-            // Parse variables as JSON, default to empty object
-            let variables: serde_json::Value = serde_json::from_str(&variables_str)
-                .unwrap_or(serde_json::json!({}));
-
-            let graphql_body = serde_json::json!({
-                "query": query,
-                "variables": variables
-            });
-
-            // Ensure Content-Type is set to application/json
-            if !headers.iter().any(|(k, _)| k.eq_ignore_ascii_case("content-type")) {
-                headers.push(("Content-Type".to_string(), "application/json".to_string()));
-            }
-
-            Some(graphql_body.to_string())
+        let exec_body = if is_graphql_mode {
+            ExecutionBody::None // body is constructed by run_http for GraphQL
         } else if matches!(method, HttpMethod::Post | HttpMethod::Put | HttpMethod::Patch | HttpMethod::Custom(_)) {
             match self.body_type {
                 BodyType::Form if !has_files => {
-                    let form_body: String = form_fields
+                    let s = form_fields
                         .iter()
                         .filter(|(_, _, _, is_file)| !is_file)
-                        .map(|(key, value, _, _)| {
-                            format!("{}={}", url_encode(key), url_encode(value))
-                        })
+                        .map(|(k, v, _, _)| format!("{}={}", url_encode(k), url_encode(v)))
                         .collect::<Vec<_>>()
                         .join("&");
-                    if form_body.is_empty() { None } else { Some(form_body) }
+                    if s.is_empty() { ExecutionBody::None } else { ExecutionBody::Text(s) }
                 }
-                BodyType::Form => None, // Will use multipart
-                BodyType::Binary => {
-                    // Read binary file and send raw bytes encoded as latin-1 string
-                    binary_file_path.as_ref().and_then(|p| {
-                        std::fs::read(p).ok().map(|bytes| {
-                            // Wrap bytes in a String for transport via the existing String body path
-                            // reqwest will send raw bytes when the body is set as String
-                            bytes.iter().map(|&b| b as char).collect::<String>()
+                BodyType::Form => ExecutionBody::Multipart(
+                    form_fields
+                        .iter()
+                        .map(|(k, v, path, is_file)| FormPart {
+                            name: k.clone(),
+                            value: if *is_file {
+                                FormPartValue::File(path.clone().unwrap_or_default())
+                            } else {
+                                FormPartValue::Text(v.clone())
+                            },
                         })
-                    })
-                }
-                _ => Some(substitute(&body_content)),
+                        .collect(),
+                ),
+                BodyType::Binary => binary_file_path
+                    .as_ref()
+                    .and_then(|p| std::fs::read(p).ok())
+                    .map(ExecutionBody::Binary)
+                    .unwrap_or(ExecutionBody::None),
+                _ => ExecutionBody::Text(substitute(&body_content)),
             }
         } else {
-            None
+            ExecutionBody::None
         };
 
-        // Run pre-script if present
-        let (mut url, mut headers, mut body) = (url, headers, body);
+        let exec_mode = if is_graphql_mode {
+            ExecutionMode::GraphQL {
+                query: substitute(&graphql_query),
+                variables: substitute(&graphql_variables),
+                operation_name: if self.graphql_operation_name.trim().is_empty() {
+                    None
+                } else {
+                    Some(substitute(&self.graphql_operation_name))
+                },
+            }
+        } else {
+            ExecutionMode::Http
+        };
+
         let env_vars: std::collections::HashMap<String, String> = env_state
             .as_ref()
             .and_then(|e| e.active())
             .map(|env| env.variables.clone())
             .unwrap_or_default();
-
-        if !pre_script.trim().is_empty() {
-            let engine = match ScriptEngine::new() {
-                Ok(e) => e,
-                Err(e) => {
-                    self.loading = false;
-                    self.response_panel.update(cx, |panel, cx| {
-                        panel.set_error(format!("Script engine error: {}", e.message), cx);
-                    });
-                    cx.notify();
-                    return;
-                }
-            };
-
-            let script_request = ScriptRequestData::new(method.as_str(), &url)
-                .with_headers(headers.clone())
-                .with_body(body.clone().unwrap_or_default());
-            let mut script_ctx = ScriptContext::new()
-                .with_request(script_request)
-                .with_env(env_vars.clone());
-
-            match engine.run_pre_script(&pre_script, &mut script_ctx) {
-                Ok(outcome) => {
-                    if !outcome.success {
-                        if let Some(error) = outcome.error {
-                            self.loading = false;
-                            self.response_panel.update(cx, |panel, cx| {
-                                panel.set_error(format!("Pre-script error: {}", error.message), cx);
-                            });
-                            cx.notify();
-                            return;
-                        }
-                    }
-                    // Apply modifications
-                    if let Some(new_url) = outcome.modified_request.url {
-                        url = new_url;
-                    }
-                    for (name, value) in outcome.modified_request.headers_to_set {
-                        // Remove existing header with same name (case-insensitive)
-                        headers.retain(|(k, _)| !k.eq_ignore_ascii_case(&name));
-                        headers.push((name, value));
-                    }
-                    for name in &outcome.modified_request.headers_to_remove {
-                        headers.retain(|(k, _)| !k.eq_ignore_ascii_case(name));
-                    }
-                    if let Some(new_body) = outcome.modified_request.body {
-                        body = Some(new_body);
-                    }
-                }
-                Err(e) => {
-                    self.loading = false;
-                    self.response_panel.update(cx, |panel, cx| {
-                        panel.set_error(format!("Pre-script error: {}", e.message), cx);
-                    });
-                    cx.notify();
-                    return;
-                }
-            }
-        }
 
         // Build final URL with API key as query param if needed
         let final_url = if auth_type == AuthType::ApiKey
@@ -2772,156 +2665,41 @@ impl RequestPanel {
                 method.as_str().to_string(),
                 final_url.clone(),
                 headers.clone(),
-                body.clone(),
+                exec_body.as_text(),
             )
         });
 
-        // Spawn background thread for HTTP request (reqwest blocking)
+        let req = ExecutionRequest {
+            method: method.as_str().to_string(),
+            url: final_url,
+            headers,
+            body: exec_body,
+            mode: exec_mode,
+            pre_script,
+            post_script,
+            tests: tests_script,
+            env_vars,
+            variable_extractions,
+        };
+
         cx.spawn(async move |this: gpui::WeakEntity<Self>, cx: &mut gpui::AsyncApp| {
-            // Run blocking HTTP in a thread
-            let result = std::thread::spawn(move || {
-                let start = std::time::Instant::now();
-
-                let client = reqwest::blocking::Client::new();
-                let req_method = match method {
-                    HttpMethod::Get => reqwest::Method::GET,
-                    HttpMethod::Post => reqwest::Method::POST,
-                    HttpMethod::Put => reqwest::Method::PUT,
-                    HttpMethod::Patch => reqwest::Method::PATCH,
-                    HttpMethod::Delete => reqwest::Method::DELETE,
-                    HttpMethod::Custom(ref s) => reqwest::Method::from_bytes(s.as_bytes())
-                        .unwrap_or(reqwest::Method::GET),
-                };
-
-                let mut req_builder = client.request(req_method, &final_url);
-
-                // Add headers (skip Content-Type for multipart - reqwest sets it)
-                for (key, value) in headers {
-                    if has_files && key.eq_ignore_ascii_case("content-type") {
-                        continue; // Let reqwest set multipart Content-Type with boundary
-                    }
-                    req_builder = req_builder.header(&key, &value);
-                }
-
-                // Add body for POST/PUT/PATCH
-                if has_files && !form_fields.is_empty() {
-                    // Build multipart form
-                    let mut form = reqwest::blocking::multipart::Form::new();
-                    for (key, value, file_path, is_file) in form_fields {
-                        if is_file {
-                            if let Some(path) = file_path {
-                                if let Ok(part) = reqwest::blocking::multipart::Part::file(&path) {
-                                    form = form.part(key, part);
-                                }
-                            }
-                        } else {
-                            form = form.text(key, value);
-                        }
-                    }
-                    req_builder = req_builder.multipart(form);
-                } else if let Some(body_content) = body {
-                    req_builder = req_builder.body(body_content);
-                }
-
-                let result = req_builder.send();
-                let elapsed = start.elapsed();
-
-                match result {
-                    Ok(response) => {
-                        let status = response.status().as_u16();
-                        let status_text_str = status_text(status).to_string();
-                        let headers: Vec<(String, String)> = response
-                            .headers()
-                            .iter()
-                            .map(|(k, v)| (k.to_string(), v.to_str().unwrap_or("").to_string()))
-                            .collect();
-
-                        let body = response.text().unwrap_or_default();
-                        let size = body.len();
-
-                        Ok(ResponseData {
-                            status,
-                            status_text: status_text_str,
-                            headers,
-                            body,
-                            time: elapsed,
-                            size,
-                        })
-                    }
-                    Err(e) => Err(e.to_string()),
-                }
-            }).join();
+            let result = std::thread::spawn(move || protide_core::execution::execute(req))
+                .join()
+                .unwrap_or_else(|_| Err("Request thread panicked".to_string()));
 
             match result {
-                Ok(Ok(data)) => {
-                    let status = data.status;
-                    let response_time = data.time;
-
-                    // Run post-script and tests
-                    let has_scripts = !post_script.trim().is_empty() || !tests_script.trim().is_empty();
-                    let test_results = if has_scripts {
-                        // Clone data for script execution
-                        let script_status = data.status;
-                        let script_status_text = data.status_text.clone();
-                        let script_body = data.body.clone();
-                        let script_headers = data.headers.clone();
-                        let script_time = data.time.as_millis() as u64;
-                        let script_size = data.size;
-
-                        std::thread::spawn(move || {
-                            let engine = match ScriptEngine::new() {
-                                Ok(e) => e,
-                                Err(_) => return Vec::new(),
-                            };
-
-                            let script_response = ScriptResponseData::new(script_status, &script_status_text, script_body)
-                                .with_headers(script_headers)
-                                .with_time(script_time)
-                                .with_size(script_size);
-
-                            let mut script_ctx = ScriptContext::new().with_env(env_vars);
-                            script_ctx.set_response(script_response);
-
-                            // Run post-script (ignore errors, just run)
-                            if !post_script.trim().is_empty() {
-                                let _ = engine.run_post_script(&post_script, &mut script_ctx);
-                            }
-
-                            // Run tests
-                            if !tests_script.trim().is_empty() {
-                                if let Ok(outcome) = engine.run_tests(&tests_script, &mut script_ctx) {
-                                    return outcome.test_results;
-                                }
-                            }
-
-                            Vec::new()
-                        }).join().unwrap_or_default()
-                    } else {
-                        Vec::new()
-                    };
-
-                    // Run variable extractions from @set annotations
-                    let extracted_vars: Vec<(String, String)> = if !variable_extractions.is_empty() {
-                        chaining::extract_variables(&data.body, &variable_extractions)
-                            .into_iter()
-                            .filter(|r| r.success)
-                            .map(|r| (r.name, r.value))
-                            .collect()
-                    } else {
-                        Vec::new()
-                    };
-
+                Ok(data) => {
                     let _ = cx.update(|cx| {
-                        // Update history with response
                         cx.update_global::<super::history::RequestHistory, _>(|history, _| {
-                            history.update_response(history_id, status, response_time);
+                            history.update_response(history_id, data.status, data.time);
                         });
 
-                        // Apply extracted variables to environment
-                        if !extracted_vars.is_empty() {
+                        if !data.extracted_vars.is_empty() || !data.env_changes.is_empty() {
                             if let Some(explorer) = &explorer_panel {
                                 explorer.update(cx, |panel, cx| {
-                                    for (name, value) in &extracted_vars {
+                                    for (name, value) in
+                                        data.extracted_vars.iter().chain(data.env_changes.iter())
+                                    {
                                         panel.set_env_variable(name, value, cx);
                                     }
                                 });
@@ -2929,24 +2707,27 @@ impl RequestPanel {
                         }
 
                         response_panel.update(cx, |panel, cx| {
-                            panel.set_response(data, cx);
-                            if !test_results.is_empty() {
-                                panel.set_test_results(test_results, cx);
+                            panel.set_response(
+                                ResponseData {
+                                    status: data.status,
+                                    status_text: data.status_text,
+                                    headers: data.headers,
+                                    body: data.body,
+                                    time: data.time,
+                                    size: data.size,
+                                },
+                                cx,
+                            );
+                            if !data.test_results.is_empty() {
+                                panel.set_test_results(data.test_results, cx);
                             }
                         });
                     });
                 }
-                Ok(Err(e)) => {
+                Err(e) => {
                     let _ = cx.update(|cx| {
                         response_panel.update(cx, |panel, cx| {
                             panel.set_error(e, cx);
-                        });
-                    });
-                }
-                Err(_) => {
-                    let _ = cx.update(|cx| {
-                        response_panel.update(cx, |panel, cx| {
-                            panel.set_error("Request thread panicked".to_string(), cx);
                         });
                     });
                 }
@@ -2958,7 +2739,8 @@ impl RequestPanel {
                     cx.notify();
                 });
             });
-        }).detach();
+        })
+        .detach();
     }
 
     fn focus_url(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -3288,7 +3070,7 @@ impl RequestPanel {
     }
 }
 
-impl Render for RequestPanel {
+impl<E: WebSocketExecutor> Render for RequestPanel<E> {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         // Reset skip_blur flag at start of each render
         self.skip_blur = false;

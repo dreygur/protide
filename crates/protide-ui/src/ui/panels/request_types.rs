@@ -169,26 +169,11 @@ pub struct GrpcMethodInfo {
     pub streaming_type: GrpcStreamingType,
 }
 
-/// WebSocket connection state
+/// WebSocket connection state (UI-only: tracks transitional Connecting phase)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum WsConnectionState {
     #[default]
     Disconnected,
     Connecting,
     Connected,
-}
-
-/// WebSocket message direction
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum WsMessageDirection {
-    Sent,
-    Received,
-}
-
-/// WebSocket message
-#[derive(Debug, Clone)]
-pub struct WsMessage {
-    pub direction: WsMessageDirection,
-    pub content: String,
-    pub timestamp: chrono::DateTime<chrono::Local>,
 }

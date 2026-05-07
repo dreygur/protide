@@ -32,10 +32,18 @@ pub struct ScriptEngine {
 }
 
 impl ScriptEngine {
-    /// Create a new script engine
+    /// Create a new script engine with the default 5 000 ms execution deadline.
     pub fn new() -> Result<Self, ScriptError> {
         Ok(Self {
             runtime: JsRuntime::new()?,
+        })
+    }
+
+    /// Create a script engine with a custom deadline — intended for tests only.
+    #[cfg(test)]
+    pub fn new_with_timeout_ms(timeout_ms: u64) -> Result<Self, ScriptError> {
+        Ok(Self {
+            runtime: JsRuntime::with_timeout_ms(timeout_ms)?,
         })
     }
 
@@ -235,5 +243,34 @@ mod tests {
         assert!(outcome.success);
         assert_eq!(outcome.console_output[0], "aGVsbG8=");
         assert_eq!(outcome.console_output[1], "hello");
+    }
+
+    /// Verifies that an infinite loop in a user script is interrupted by the
+    /// deadline handler and surfaces a meaningful timeout error instead of
+    /// blocking the thread indefinitely.
+    #[test]
+    fn test_script_timeout_infinite_loop() {
+        // Use a 100 ms deadline so the test finishes in well under a second.
+        let engine = ScriptEngine::new_with_timeout_ms(100).unwrap();
+        let mut ctx = ScriptContext::new();
+
+        let result = engine.run_pre_script("while(true){}", &mut ctx);
+
+        assert!(result.is_err(), "expected an error from infinite loop");
+        let err = result.unwrap_err();
+        assert!(
+            err.to_string().contains("timed out"),
+            "expected timeout message, got: {}",
+            err
+        );
+    }
+
+    /// A script that completes before the deadline must not be rejected.
+    #[test]
+    fn test_script_completes_within_deadline() {
+        let engine = ScriptEngine::new_with_timeout_ms(500).unwrap();
+        let mut ctx = ScriptContext::new();
+        let result = engine.run_pre_script("const x = 1 + 1;", &mut ctx);
+        assert!(result.is_ok());
     }
 }

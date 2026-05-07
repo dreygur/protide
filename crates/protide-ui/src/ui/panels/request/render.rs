@@ -19,10 +19,11 @@ use crate::ui::components::icons::{
     ICON_COPY, ICON_FILE, ICON_FOLDER, ICON_USER, ICON_KEY,
     ICON_FORM, ICON_PLAY, ICON_CIRCLE_X, ICON_CODE,
 };
-use super::super::request_types::{ApiKeyLocation, AuthType, BodyType, EditTarget, FormFieldType, GrpcMethodInfo, GrpcStreamingType, HttpMethod, RequestMode, WsConnectionState, WsMessageDirection};
+use protide_core::execution::ws::{WsDirection, WebSocketExecutor};
+use super::super::request_types::{ApiKeyLocation, AuthType, BodyType, EditTarget, FormFieldType, GrpcMethodInfo, GrpcStreamingType, HttpMethod, RequestMode, WsConnectionState};
 use super::RequestPanel;
 
-impl RequestPanel {
+impl<E: WebSocketExecutor> RequestPanel<E> {
     pub(super) fn render_url_bar(&mut self, window: &Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = theme::current(cx);
         let method = self.method.clone();
@@ -2696,7 +2697,7 @@ impl RequestPanel {
                         el.p(px(8.0))
                             .gap(px(4.0))
                             .children(messages.iter().enumerate().map(|(i, msg)| {
-                                let is_sent = msg.direction == WsMessageDirection::Sent;
+                                let is_sent = msg.direction == WsDirection::Sent;
                                 let time_str = msg.timestamp.format("%H:%M:%S").to_string();
                                 div()
                                     .id(SharedString::from(format!("ws-msg-{}", i)))

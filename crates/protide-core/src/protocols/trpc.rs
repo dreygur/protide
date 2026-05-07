@@ -51,7 +51,10 @@ pub fn execute_trpc(
     let request_body = build_trpc_request(procedure, params_value, request_id.clone());
 
     // Create blocking HTTP client
-    let client = reqwest::blocking::Client::new();
+    let client = reqwest::blocking::Client::builder()
+        .timeout(Duration::from_secs(30))
+        .build()
+        .map_err(|e| format!("Failed to build HTTP client: {}", e))?;
     let mut req = client
         .post(url)
         .header("Content-Type", "application/json")

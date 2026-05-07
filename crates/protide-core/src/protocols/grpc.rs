@@ -275,8 +275,12 @@ pub async fn execute_server_streaming(
     let full_url = format!("{}/{}", http_url, method_path);
     let use_h2c = http_url.starts_with("http://");
 
-    let client = reqwest::Client::builder()
-        .http2_prior_knowledge()
+    let mut builder = reqwest::Client::builder()
+        .connect_timeout(Duration::from_secs(10));
+    if use_h2c {
+        builder = builder.http2_prior_knowledge();
+    }
+    let client = builder
         .build()
         .map_err(|e| format!("Client build error: {}", e))?;
 
@@ -290,6 +294,7 @@ pub async fn execute_server_streaming(
     }
 
     let response = req_builder
+        .body(grpc_body)
         .send()
         .await
         .map_err(|e| format!("gRPC request failed: {}", e))?;
@@ -324,8 +329,7 @@ pub async fn execute_server_streaming(
             let msg_len = u32::from_be_bytes([buffer[1], buffer[2], buffer[3], buffer[4]]) as usize;
             if buffer.len() >= 5 + msg_len {
                 let msg_bytes = buffer.drain(5..5 + msg_len).collect::<Vec<_>>();
-                let out_desc = method_desc.output();
-                if let Ok(response_msg) = DynamicMessage::decode(out_desc, msg_bytes.as_ref()) {
+                if let Ok(response_msg) = DynamicMessage::decode(method_desc.output(), msg_bytes.as_ref()) {
                     if let Ok(json) = serde_json::to_string_pretty(&response_msg) {
                         chunks.push(json);
                     }
@@ -381,9 +385,14 @@ pub async fn execute_client_streaming(
         .replace("grpc://", "http://")
         .replace("grpcs://", "https://");
     let full_url = format!("{}/{}", http_url, method_path);
+    let use_h2c = http_url.starts_with("http://");
 
-    let client = reqwest::Client::builder()
-        .http2_prior_knowledge()
+    let mut builder = reqwest::Client::builder()
+        .connect_timeout(Duration::from_secs(10));
+    if use_h2c {
+        builder = builder.http2_prior_knowledge();
+    }
+    let client = builder
         .build()
         .map_err(|e| format!("Client build error: {}", e))?;
 
@@ -483,16 +492,19 @@ pub async fn execute_bidi_streaming(
         return Err("Method is not bidirectional streaming".to_string());
     }
 
-    let output_desc = method_desc.output();
-
     let http_url = url
         .trim_end_matches('/')
         .replace("grpc://", "http://")
         .replace("grpcs://", "https://");
     let full_url = format!("{}/{}", http_url, method_path);
+    let use_h2c = http_url.starts_with("http://");
 
-    let client = reqwest::Client::builder()
-        .http2_prior_knowledge()
+    let mut builder = reqwest::Client::builder()
+        .connect_timeout(Duration::from_secs(10));
+    if use_h2c {
+        builder = builder.http2_prior_knowledge();
+    }
+    let client = builder
         .build()
         .map_err(|e| format!("Client build error: {}", e))?;
 
@@ -553,8 +565,7 @@ pub async fn execute_bidi_streaming(
             let msg_len = u32::from_be_bytes([buffer[1], buffer[2], buffer[3], buffer[4]]) as usize;
             if buffer.len() >= 5 + msg_len {
                 let msg_bytes = buffer.drain(5..5 + msg_len).collect::<Vec<_>>();
-                let out_desc = method_desc.output();
-                if let Ok(response_msg) = DynamicMessage::decode(out_desc, msg_bytes.as_ref()) {
+                if let Ok(response_msg) = DynamicMessage::decode(method_desc.output(), msg_bytes.as_ref()) {
                     if let Ok(json) = serde_json::to_string_pretty(&response_msg) {
                         chunks.push(json);
                     }
