@@ -4,8 +4,8 @@ use std::time::Duration;
 
 use gpui::{
     canvas, deferred, div, prelude::*, px, uniform_list, Bounds, ClipboardItem, Context, Entity,
-    IntoElement, MouseButton, MouseDownEvent, Pixels, Point, Render, ScrollHandle, SharedString,
-    Styled, UniformListScrollHandle, WeakEntity, Window,
+    IntoElement, KeyDownEvent, MouseButton, MouseDownEvent, Pixels, Point, Render, ScrollHandle,
+    SharedString, Styled, UniformListScrollHandle, WeakEntity, Window,
 };
 
 const GUTTER_W: f32 = 44.0;
@@ -27,6 +27,7 @@ use crate::ui::components::icons::{
     icon, ICON_SM, ICON_MD, ICON_CLOSE, ICON_CHECK, ICON_CIRCLE_CHECK,
     ICON_ARROW_DOWN, ICON_COPY, ICON_GLOBE, ICON_CHEVRON_DOWN, ICON_CHEVRON_RIGHT,
 };
+use crate::ui::components::selectable_text::SelectionRange;
 use crate::ui::components::TextInput;
 
 // ─── JSON tree types ────────────────────────────────────────────────────────
@@ -114,12 +115,13 @@ fn flatten_json(
 }
 
 fn render_json_row(
-    line_num:  usize,
-    row:       &JsonRow,
-    colors:    &crate::theme::Colors,
-    weak:      WeakEntity<ResponsePanel>,
-    wrap_mode: bool, // true → variable-height layout; false → fixed ROW_H (uniform_list)
-    expanded:  bool, // whether the long-string at this row is expanded (wrap_mode only)
+    line_num:   usize,
+    row:        &JsonRow,
+    colors:     &crate::theme::Colors,
+    weak:       WeakEntity<ResponsePanel>,
+    wrap_mode:  bool, // true → variable-height layout; false → fixed ROW_H (uniform_list)
+    expanded:   bool, // whether the long-string at this row is expanded (wrap_mode only)
+    selection:  Option<SelectionRange>, // multi-row selection range
 ) -> gpui::AnyElement {
     let guide_color = colors.border;
     let hover_bg    = colors.hover_overlay;
@@ -250,18 +252,96 @@ fn render_json_row(
                     .into_any_element()
 
             } else if wrap_mode {
-                // Short/medium string or non-string in wrap mode: explicit soft-wrap
-                let value_div = div()
-                    .flex_1().min_w(px(0.))
-                    .whitespace_normal()   // explicitly enable word-wrap
-                    .text_color(col)
-                    .child(SharedString::from(txt));
+                let row_idx = line_num - 1;
+                let raw_txt = txt.clone();
+                // chars before the value: "key": prefix (key + quotes + colon + space = key.len()+4)
+                let key_prefix_chars = key.as_ref().map(|k| k.len() + 4).unwrap_or(0);
+
+                let sel_offsets = selection.and_then(|r| r.offsets_for_row(row_idx, raw_txt.len()));
+                let (sel_s, sel_e) = sel_offsets.unwrap_or((0, 0));
+                let has_sel = sel_s < sel_e;
+
+                let value_element: gpui::AnyElement = {
+                    // Render before/selected/after spans, or the whole text when no selection.
+                    let base = div()
+                        .id(SharedString::from(format!("json-val-{}", row_idx)))
+                        .cursor_text()
+                        .flex_1().min_w(px(0.))
+                        .whitespace_normal()
+                        .text_color(col);
+
+                    let base = if has_sel {
+                        let before  = raw_txt.get(..sel_s).unwrap_or("").to_string();
+                        let seltext = raw_txt.get(sel_s..sel_e).unwrap_or("").to_string();
+                        let after   = raw_txt.get(sel_e..).unwrap_or("").to_string();
+                        base.child(SharedString::from(before))
+                            .child(div().bg(c_accent.opacity(0.25)).child(SharedString::from(seltext)))
+                            .child(SharedString::from(after))
+                    } else {
+                        base.child(SharedString::from(raw_txt))
+                    };
+
+                    let txt_len = txt.len();
+                    base
+                    // Single-click starts drag selection; double-click selects all.
+                    .on_mouse_down(MouseButton::Left, {
+                        let weak = weak.clone();
+                        move |event: &gpui::MouseDownEvent, _, cx| {
+                            weak.update(cx, |this, cx| {
+                                let kpw = key_prefix_chars as f32 * ROW_FONT * 0.6;
+                                let vx = GUTTER_W + depth as f32 * INDENT_W + CHEVRON_W + kpw;
+                                let rel_x = (f32::from(event.position.x) - f32::from(this.bounds_origin.x) - vx).max(0.0);
+                                let char_off = ((rel_x / (ROW_FONT * 0.6)) as usize).min(txt_len);
+                                if event.click_count >= 2 {
+                                    this.json_selection = Some(SelectionRange::new(row_idx, 0, row_idx, txt_len));
+                                    this.json_selecting = false;
+                                } else {
+                                    this.json_select_start = Some((row_idx, char_off));
+                                    this.json_selecting = true;
+                                    this.json_selection = Some(SelectionRange::new(row_idx, char_off, row_idx, char_off));
+                                }
+                                cx.notify();
+                            }).ok();
+                        }
+                    })
+                    // Extend selection as mouse moves (only while left button held).
+                    .on_mouse_move({
+                        let weak = weak.clone();
+                        move |event: &gpui::MouseMoveEvent, _, cx| {
+                            if !event.dragging() { return; }
+                            weak.update(cx, |this, cx| {
+                                if !this.json_selecting { return; }
+                                if let Some((anchor_row, anchor_off)) = this.json_select_start {
+                                    if anchor_row != row_idx { return; }
+                                    let kpw = key_prefix_chars as f32 * ROW_FONT * 0.6;
+                                    let vx = GUTTER_W + depth as f32 * INDENT_W + CHEVRON_W + kpw;
+                                    let rel_x = (f32::from(event.position.x) - f32::from(this.bounds_origin.x) - vx).max(0.0);
+                                    let end_off = ((rel_x / (ROW_FONT * 0.6)) as usize).min(txt_len);
+                                    this.json_selection = Some(SelectionRange::new(anchor_row, anchor_off, row_idx, end_off));
+                                    cx.notify();
+                                }
+                            }).ok();
+                        }
+                    })
+                    .on_mouse_up(MouseButton::Left, {
+                        let weak = weak.clone();
+                        move |_, _, cx| {
+                            weak.update(cx, |this, cx| {
+                                if this.json_selecting {
+                                    this.json_selecting = false;
+                                    cx.notify();
+                                }
+                            }).ok();
+                        }
+                    })
+                    .into_any_element()
+                };
 
                 div()
                     .flex_1().min_w(px(0.)).flex().items_start()
                     .whitespace_normal()
                     .when_some(key.as_deref(), |el, k| el.child(key_span(k)))
-                    .child(value_div)
+                    .child(value_element)
                     .into_any_element()
 
             } else {
@@ -528,6 +608,12 @@ pub struct ResponsePanel {
     bounds_origin: Point<Pixels>,
     /// Active JSON tree right-click context menu
     json_context_menu: Option<JsonCtxMenu>,
+    /// Multi-row text selection in JSON tree (start_row/offset → end_row/offset)
+    json_selection: Option<SelectionRange>,
+    /// Whether we're in the middle of a selection drag
+    json_selecting: bool,
+    /// Start offset for a new selection drag
+    json_select_start: Option<(usize, usize)>,
 }
 
 impl ResponsePanel {
@@ -570,6 +656,9 @@ impl ResponsePanel {
             context_menu_pos: None,
             bounds_origin: Point::default(),
             json_context_menu: None,
+            json_selection: None,
+            json_selecting: false,
+            json_select_start: None,
         }
     }
 
@@ -637,6 +726,9 @@ impl ResponsePanel {
         self.json_value = serde_json::from_str::<serde_json::Value>(&response.body).ok();
         self.json_tree_collapsed.clear();
         self.expanded_strings.clear();
+        self.json_selection = None;
+        self.json_selecting = false;
+        self.json_select_start = None;
         self.rebuild_json_rows();
 
         self.response = Some(response);
@@ -699,10 +791,12 @@ impl ResponsePanel {
                 let colors   = theme::current(cx).colors.clone();
                 let weak     = cx.weak_entity();
                 let expanded = &self.expanded_strings;
+                let selection = self.json_selection;
                 let rows: Vec<gpui::AnyElement> = self.json_rows.iter().enumerate()
                     .map(|(i, row)| render_json_row(
                         i + 1, row, &colors, weak.clone(),
                         true, expanded.contains(&i),
+                        selection,
                     ))
                     .collect();
                 div()
@@ -722,9 +816,10 @@ impl ResponsePanel {
                     cx.processor(|this, range: std::ops::Range<usize>, _window, cx| {
                         let colors = theme::current(cx).colors.clone();
                         let weak   = cx.weak_entity();
+                        let selection = this.json_selection;
                         range.map(|i| {
                             let row = this.json_rows[i].clone();
-                            render_json_row(i + 1, &row, &colors, weak.clone(), false, false)
+                            render_json_row(i + 1, &row, &colors, weak.clone(), false, false, selection)
                         })
                         .collect::<Vec<_>>()
                     }),
@@ -776,6 +871,48 @@ impl Render for ResponsePanel {
             .flex_col()
             .relative()
             .bg(theme.colors.bg_primary)
+            // Ctrl+C copies selected text
+            .on_key_down(cx.listener(|this, event: &KeyDownEvent, _, cx| {
+                if event.keystroke.modifiers.control && event.keystroke.key.as_str() == "c" {
+                    if let Some(sel) = this.json_selection {
+                        let mut selected_text = String::new();
+                        let start_row = sel.start_row.min(sel.end_row);
+                        let end_row = sel.end_row.max(sel.start_row);
+                        for row_idx in start_row..=end_row {
+                            if let Some(row) = this.json_rows.get(row_idx) {
+                                let txt = row_text(&row.kind);
+                                if let Some((s, e)) = sel.offsets_for_row(row_idx, txt.len()) {
+                                    if s < e && s < txt.len() {
+                                        if let Some(slice) = txt.get(s..e.min(txt.len())) {
+                                            selected_text.push_str(slice);
+                                        }
+                                    }
+                                }
+                                if row_idx < end_row {
+                                    selected_text.push('\n');
+                                }
+                            }
+                        }
+                        if !selected_text.is_empty() {
+                            cx.write_to_clipboard(ClipboardItem::new_string(selected_text));
+                        }
+                    }
+                    // Also clear double-click selections
+                    cx.stop_propagation();
+                }
+            }))
+            // Mouse down: start or clear selection
+            .on_mouse_down(MouseButton::Left, cx.listener(|this, event: &MouseDownEvent, _, cx| {
+                this.context_menu_pos = None;
+                // Shift+click: extend selection is handled by child elements
+                if event.click_count == 2 {
+                    // Double-click on empty area clears selection
+                    this.json_selection = None;
+                    this.json_selecting = false;
+                    this.json_select_start = None;
+                    cx.notify();
+                }
+            }))
             // Dismiss body context menu on left-click anywhere
             .when(context_menu_pos.is_some(), |el| {
                 el.on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| {
@@ -2443,6 +2580,36 @@ fn format_size(bytes: usize) -> String {
         format!("{:.1} KB", bytes as f64 / 1024.0)
     } else {
         format!("{:.1} MB", bytes as f64 / (1024.0 * 1024.0))
+    }
+}
+
+/// Extract the text representation of a JSON row for clipboard copy operations.
+fn row_text(kind: &RowKind) -> String {
+    match kind {
+        RowKind::Leaf { val, .. } => match val {
+            PrimVal::Null => "null".to_string(),
+            PrimVal::Bool(b) => b.to_string(),
+            PrimVal::Num(n) => n.clone(),
+            PrimVal::Str(s) => format!("\"{}\"", s),
+            PrimVal::EmptyArr => "[]".to_string(),
+            PrimVal::EmptyObj => "{}".to_string(),
+        },
+        RowKind::Open { key, arr, .. } => {
+            if let Some(k) = key {
+                format!("\"{}\": {}", k, if *arr { "[" } else { "{" })
+            } else {
+                (if *arr { "[" } else { "{" }).to_string()
+            }
+        }
+        RowKind::Close { arr } => (if *arr { "]" } else { "}" }).to_string(),
+        RowKind::Folded { key, arr, count, .. } => {
+            let bracket = if *arr { "[...]" } else { "{...}" };
+            if let Some(k) = key {
+                format!("\"{}\": {} ({} items)", k, bracket, count)
+            } else {
+                format!("{} ({} items)", bracket, count)
+            }
+        }
     }
 }
 
