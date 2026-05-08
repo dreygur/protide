@@ -103,6 +103,8 @@ pub enum SyncEvent {
     BackendStatus { backend: SyncBackend, ready: bool },
     /// Error occurred
     SyncError(String),
+    /// PAKE handshake completed successfully — both sides derived the shared key
+    HandshakeComplete { peer_id: String, peer_name: String },
 }
 
 /// Live activity from a peer (response console output)

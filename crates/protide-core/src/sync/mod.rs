@@ -51,6 +51,12 @@ pub struct SyncEngine {
     event_rx: Receiver<SyncEvent>,
     /// Number of events processed
     event_count: u64,
+    /// Pending PAKE handshake state (Bob's side — stored until Alice's response arrives)
+    #[cfg(feature = "pake-auth")]
+    pake_pending: Option<spake2::Spake2<spake2::Ed25519Group>>,
+    /// The pairing code used for the pending handshake
+    #[cfg(feature = "pake-auth")]
+    pake_pending_code: String,
 }
 
 impl SyncEngine {
@@ -71,6 +77,10 @@ impl SyncEngine {
             event_count: 0,
             #[cfg(feature = "p2p-sync")]
             p2p_sync: None,
+            #[cfg(feature = "pake-auth")]
+            pake_pending: None,
+            #[cfg(feature = "pake-auth")]
+            pake_pending_code: String::new(),
         }
     }
 
@@ -237,10 +247,17 @@ impl SyncEngine {
             }
         }
 
-        // Poll P2P events
+        // Poll P2P events — two-phase: read all events, then send any PAKE responses
         #[cfg(feature = "p2p-sync")]
-        if let Some(ref p2p) = self.p2p_sync {
-            for p2p_event in p2p.poll_events() {
+        {
+            let p2p_events: Vec<_> = self.p2p_sync.as_ref()
+                .map(|p| p.poll_events())
+                .unwrap_or_default();
+
+            // (topic, serialised PakeMsgPayload) to publish after processing
+            let mut pake_resps: Vec<(String, Vec<u8>)> = Vec::new();
+
+            for p2p_event in p2p_events {
                 match p2p_event {
                     p2p::P2PEvent::EntryReceived(entry) => {
                         match self.store.merge_remote(entry.clone()) {
@@ -259,6 +276,55 @@ impl SyncEngine {
                     p2p::P2PEvent::Error(e) => {
                         events.push(SyncEvent::SyncError(e));
                     }
+                    p2p::P2PEvent::PakeMsg { from, topic, node_name, kind, pake_bytes } => {
+                        #[cfg(feature = "pake-auth")]
+                        {
+                            let code = topic.strip_prefix("protide-pake-").unwrap_or("");
+                            match kind.as_str() {
+                                "init" => {
+                                    // We are Alice: generate A-side, finish immediately, send resp
+                                    if let Ok((msg_a, state_a)) = pake::pake_initiate(code) {
+                                        if pake::pake_finish(state_a, &pake_bytes).is_ok() {
+                                            events.push(SyncEvent::HandshakeComplete {
+                                                peer_id: from.to_string(),
+                                                peer_name: node_name.clone(),
+                                            });
+                                        }
+                                        let resp = p2p::PakeMsgPayload {
+                                            kind: "resp".to_string(),
+                                            node_name: self.config.node_name.clone(),
+                                            pake_bytes: msg_a,
+                                        };
+                                        if let Ok(data) = serde_json::to_vec(&resp) {
+                                            pake_resps.push((topic, data));
+                                        }
+                                    }
+                                }
+                                "resp" => {
+                                    // We are Bob: finish with Alice's message
+                                    if let Some(state_b) = self.pake_pending.take() {
+                                        if pake::pake_finish(state_b, &pake_bytes).is_ok() {
+                                            events.push(SyncEvent::HandshakeComplete {
+                                                peer_id: from.to_string(),
+                                                peer_name: node_name,
+                                            });
+                                        }
+                                    }
+                                }
+                                _ => {}
+                            }
+                        }
+                        // Without pake-auth, handshake messages are silently ignored
+                        #[cfg(not(feature = "pake-auth"))]
+                        { let _ = (from, topic, node_name, kind, pake_bytes); }
+                    }
+                }
+            }
+
+            // Send PAKE responses (requires mutable borrow — done after the read loop)
+            for (topic, data) in pake_resps {
+                if let Some(ref p2p) = self.p2p_sync {
+                    p2p.publish_on_topic(&topic, data);
                 }
             }
         }
@@ -318,6 +384,37 @@ impl SyncEngine {
     /// Get the sync folder path if file sync is active
     pub fn sync_folder_path(&self) -> Option<PathBuf> {
         self.config.sync_folder.clone()
+    }
+
+    /// Initiate a PAKE handshake with a peer who published the given `code`.
+    ///
+    /// - Subscribes to the `protide-pake-{code}` gossipsub topic.
+    /// - Broadcasts Bob's SPAKE2 public key as an "init" message.
+    /// - Stores Bob's state so it can be finished when Alice's "resp" arrives.
+    ///
+    /// Requires the `full-sync` feature (`p2p-sync` + `pake-auth`).
+    /// Without those features this is a no-op that always returns `Ok(())`.
+    pub fn initiate_handshake(&mut self, code: &str) -> Result<(), String> {
+        #[cfg(all(feature = "p2p-sync", feature = "pake-auth"))]
+        {
+            // Bob calls pake_respond to generate his B-side key
+            let (msg_b, state_b) = pake::pake_respond(code)?;
+            self.pake_pending = Some(state_b);
+            self.pake_pending_code = code.to_string();
+
+            if let Some(ref p2p) = self.p2p_sync {
+                p2p.subscribe_pake_topic(code);
+                let payload = p2p::PakeMsgPayload {
+                    kind: "init".to_string(),
+                    node_name: self.config.node_name.clone(),
+                    pake_bytes: msg_b,
+                };
+                let data = serde_json::to_vec(&payload)
+                    .map_err(|e| format!("Serialisation error: {}", e))?;
+                p2p.publish_on_pake_topic(code, data);
+            }
+        }
+        Ok(())
     }
 
     /// Perform a periodic tick — call this from a timer (e.g., every 1 second)

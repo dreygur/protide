@@ -1,6 +1,6 @@
 use std::time::{Duration, Instant};
 use gpui::{
-    div, prelude::*, px, ClipboardItem, Context, InteractiveElement, IntoElement, MouseButton,
+    div, prelude::*, px, ClipboardItem, InteractiveElement, IntoElement, MouseButton,
     ParentElement, SharedString, Styled,
 };
 
@@ -49,6 +49,14 @@ impl Peer {
     }
 }
 
+/// Connection state for the Join Peer flow
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ConnectionStatus {
+    Idle,
+    Handshaking,
+    Connected,
+}
+
 /// Manages the list of known peers and their status.
 /// UI component that integrates with the sync engine.
 #[derive(Debug, Clone)]
@@ -62,6 +70,10 @@ pub struct PresenceManager {
     pub pairing_code: SharedString,
     /// Last generated pairing code
     pub generated_code: SharedString,
+    /// Connection state for the join flow
+    pub connection_status: ConnectionStatus,
+    /// Flips every tick while Handshaking — drives pulsing border
+    pub handshake_tick: bool,
 }
 
 impl PresenceManager {
@@ -72,6 +84,8 @@ impl PresenceManager {
             show_pairing: false,
             pairing_code: SharedString::default(),
             generated_code: SharedString::default(),
+            connection_status: ConnectionStatus::Idle,
+            handshake_tick: false,
         }
     }
 
@@ -107,12 +121,6 @@ impl PresenceManager {
         self.peers.len()
     }
 
-    /// Toggle pairing flyout
-    pub fn toggle_pairing(&mut self, cx: &mut Context<Self>) {
-        self.show_pairing = !self.show_pairing;
-        cx.notify();
-    }
-
     /// Generate a new pairing code
     pub fn generate_code(&mut self) {
         #[cfg(feature = "pake-auth")]
@@ -122,7 +130,6 @@ impl PresenceManager {
         }
         #[cfg(not(feature = "pake-auth"))]
         {
-            // Fallback code format
             use std::time::{SystemTime, UNIX_EPOCH};
             let suffix = SystemTime::now()
                 .duration_since(UNIX_EPOCH)
@@ -132,6 +139,34 @@ impl PresenceManager {
             self.generated_code = SharedString::from(format!("protide-{:04}", suffix));
             self.pairing_code = self.generated_code.clone();
         }
+    }
+
+    /// Flip the pulse tick — call once per second while Handshaking
+    pub fn tick_handshake(&mut self) {
+        if self.connection_status == ConnectionStatus::Handshaking {
+            self.handshake_tick = !self.handshake_tick;
+        }
+    }
+
+    /// Transition to Connected, update peer display
+    pub fn set_connected(&mut self, peer_id: String, peer_name: String) {
+        self.connection_status = ConnectionStatus::Connected;
+        self.upsert_peer(peer_id, peer_name, PeerSource::P2P);
+        self.show_pairing = false;
+    }
+
+    /// Reset connection state back to Idle
+    pub fn reset_connection(&mut self) {
+        self.connection_status = ConnectionStatus::Idle;
+        self.handshake_tick = false;
+    }
+
+    /// Nearby peers (mDNS / UDP-discovered, not yet PAKE-authenticated)
+    pub fn nearby_peers(&self) -> Vec<&Peer> {
+        self.peers
+            .iter()
+            .filter(|p| p.source == PeerSource::UDPBroadcast || p.source == PeerSource::P2P)
+            .collect()
     }
 
     // ── Rendering ─────────────────────────────────────────────────────────────
@@ -207,10 +242,6 @@ impl PresenceManager {
         let code = self.pairing_code.clone();
         let has_code = !code.is_empty();
 
-        // The badge interacts with the flyout — clicking it toggles show_pairing.
-        // Since we can't call cx.notify() here (no Context<Self>), this is a
-        // visual-only element. The actual toggle is handled by the parent that
-        // has the PresenceManager context.
         div()
             .px(px(6.0))
             .h(px(20.0))
@@ -224,11 +255,11 @@ impl PresenceManager {
             })
             .border_1()
             .border_color(if self.show_pairing {
-                theme.colors.team_accent.opacity(0.4)
+                theme.colors.team_accent
             } else {
-                theme.colors.border
+                theme.colors.team_accent.opacity(0.35)
             })
-            .hover(|s| s.border_color(theme.colors.team_accent.opacity(0.5)))
+            .hover(|s| s.border_color(theme.colors.team_accent))
             .child(icon(ICON_TEAM, 10.0, theme.colors.team_accent))
             .child(
                 div()
@@ -245,21 +276,28 @@ impl PresenceManager {
             .into_any_element()
     }
 
-    /// Render the pairing flyout panel (code display, copy, QR placeholder).
-    pub fn render_pairing_flyout(&self, theme: &theme::Theme) -> gpui::AnyElement {
+    /// Render the pairing flyout panel.
+    /// `join_section` is the interactive "Join Peer" block built by the caller
+    /// (needs MainWindow context for button handlers and TextInput entity).
+    pub fn render_pairing_flyout(
+        &self,
+        theme: &theme::Theme,
+        join_section: gpui::AnyElement,
+    ) -> gpui::AnyElement {
         let code = self.pairing_code.clone();
         let has_code = !code.is_empty();
+        let nearby = self.nearby_peers();
 
         div()
-            .w(px(220.0))
+            .w(px(260.0))
             .bg(theme.colors.bg_secondary)
             .border_1()
-            .border_color(theme.colors.border)
+            .border_color(theme.colors.team_accent)
             .shadow_lg()
             .overflow_hidden()
             .flex()
             .flex_col()
-            // Header
+            // ── Header ────────────────────────────────────────────────────────
             .child(
                 div()
                     .h(px(32.0))
@@ -269,50 +307,59 @@ impl PresenceManager {
                     .gap(px(6.0))
                     .bg(theme.colors.bg_primary)
                     .border_b_1()
-                    .border_color(theme.colors.border)
+                    .border_color(theme.colors.team_accent.opacity(0.3))
                     .child(icon(ICON_NETWORK, ICON_SM, theme.colors.team_accent))
                     .child(
                         div()
                             .text_size(px(11.0))
                             .font_weight(gpui::FontWeight::SEMIBOLD)
                             .text_color(theme.colors.text_primary)
-                            .child("Pairing Code")
+                            .child("Collaboration")
                     )
                     .child(div().flex_1())
-                    // Peer count
                     .child(
                         div()
-                            .px(px(4.0))
+                            .px(px(5.0))
                             .py(px(1.0))
-                            .bg(theme.colors.team_accent.opacity(0.1))
+                            .bg(theme.colors.team_accent.opacity(0.12))
+                            .border_1()
+                            .border_color(theme.colors.team_accent.opacity(0.25))
                             .text_size(px(9.0))
                             .text_color(theme.colors.team_accent)
                             .child(format!("{} peers", self.peers.len()))
                     )
             )
-            // Code display
+            // ── Your Code ─────────────────────────────────────────────────────
             .child(
                 div()
-                    .px(px(16.0))
-                    .py(px(16.0))
+                    .px(px(12.0))
+                    .pt(px(10.0))
+                    .pb(px(10.0))
                     .flex()
                     .flex_col()
-                    .items_center()
-                    .gap(px(12.0))
-                    // Large code display
+                    .gap(px(6.0))
+                    // Section label
+                    .child(
+                        div()
+                            .text_size(px(9.0))
+                            .font_weight(gpui::FontWeight::SEMIBOLD)
+                            .text_color(theme.colors.text_muted)
+                            .child("YOUR CODE")
+                    )
+                    // Code display
                     .child(
                         div()
                             .w_full()
-                            .h(px(48.0))
+                            .h(px(40.0))
                             .bg(theme.colors.bg_primary)
                             .border_1()
-                            .border_color(theme.colors.border)
+                            .border_color(theme.colors.team_accent.opacity(0.3))
                             .flex()
                             .items_center()
                             .justify_center()
                             .child(
                                 div()
-                                    .text_size(px(20.0))
+                                    .text_size(px(16.0))
                                     .font_weight(gpui::FontWeight::BOLD)
                                     .font_family("JetBrains Mono")
                                     .text_color(if has_code {
@@ -327,13 +374,16 @@ impl PresenceManager {
                     .child(
                         div()
                             .id("pairing-copy-btn")
-                            .h(px(28.0))
-                            .px(px(12.0))
+                            .h(px(26.0))
+                            .w_full()
                             .flex()
                             .items_center()
+                            .justify_center()
                             .gap(px(6.0))
-                            .bg(theme.colors.team_accent)
-                            .hover(|s| s.opacity(0.85))
+                            .bg(theme.colors.team_accent.opacity(0.12))
+                            .border_1()
+                            .border_color(theme.colors.team_accent.opacity(0.3))
+                            .hover(|s| s.bg(theme.colors.team_accent.opacity(0.2)))
                             .when(has_code, {
                                 let code = code.clone();
                                 move |el| {
@@ -344,73 +394,183 @@ impl PresenceManager {
                                         })
                                 }
                             })
-                            .child(icon(ICON_COPY, ICON_SM, theme.colors.bg_primary))
+                            .child(icon(ICON_COPY, ICON_SM, theme.colors.team_accent))
                             .child(
                                 div()
-                                    .text_size(px(11.0))
+                                    .text_size(px(10.0))
                                     .font_weight(gpui::FontWeight::SEMIBOLD)
-                                    .text_color(theme.colors.bg_primary)
+                                    .text_color(theme.colors.team_accent)
                                     .child("Copy Code")
                             )
                     )
-                    // Peer list section
-                    .when(!self.peers.is_empty(), |el| {
-                        el.child(
-                            div()
-                                .w_full()
-                                .flex()
-                                .flex_col()
-                                .gap(px(2.0))
-                                .child(
-                                    div()
-                                        .text_size(px(9.0))
-                                        .text_color(theme.colors.text_muted)
-                                        .child("Connected Peers")
-                                )
-                                .children(self.peers.iter().map(|peer| {
-                                    div()
-                                        .w_full()
-                                        .h(px(22.0))
-                                        .flex()
-                                        .items_center()
-                                        .gap(px(6.0))
-                                        .child(
-                                            div()
-                                                .size(px(16.0))
-                                                .rounded_full()
-                                                .flex()
-                                                .items_center()
-                                                .justify_center()
-                                                .bg(theme.colors.team_accent.opacity(0.15))
-                                                .child(
-                                                    div()
-                                                        .text_size(px(7.0))
-                                                        .font_weight(gpui::FontWeight::BOLD)
-                                                        .text_color(theme.colors.team_accent)
-                                                        .child(peer.initials())
-                                                )
-                                        )
-                                        .child(
-                                            div()
-                                                .flex_1()
-                                                .text_size(px(11.0))
-                                                .text_color(theme.colors.text_primary)
-                                                .child(peer.name.clone())
-                                        )
-                                        .child(
-                                            div()
-                                                .size(px(5.0))
-                                                .rounded_full()
-                                                .bg(if peer.is_active {
-                                                    theme.colors.status_success
-                                                } else {
-                                                    theme.colors.text_muted
-                                                })
-                                        )
-                                }))
-                        )
-                    })
             )
+            // ── Divider ───────────────────────────────────────────────────────
+            .child(
+                div()
+                    .h(px(1.0))
+                    .w_full()
+                    .bg(theme.colors.team_accent.opacity(0.2))
+            )
+            // ── Join Peer (interactive — provided by caller) ──────────────────
+            .child(
+                div()
+                    .px(px(12.0))
+                    .pt(px(10.0))
+                    .pb(px(10.0))
+                    .flex()
+                    .flex_col()
+                    .gap(px(6.0))
+                    .child(
+                        div()
+                            .text_size(px(9.0))
+                            .font_weight(gpui::FontWeight::SEMIBOLD)
+                            .text_color(theme.colors.text_muted)
+                            .child("JOIN PEER")
+                    )
+                    .child(join_section)
+            )
+            // ── Peers Found Nearby (mDNS) — shown when peers visible ──────────
+            .when(!nearby.is_empty(), |el| {
+                el
+                    .child(
+                        div()
+                            .h(px(1.0))
+                            .w_full()
+                            .bg(theme.colors.team_accent.opacity(0.2))
+                    )
+                    .child(
+                        div()
+                            .px(px(12.0))
+                            .pt(px(8.0))
+                            .pb(px(8.0))
+                            .flex()
+                            .flex_col()
+                            .gap(px(4.0))
+                            .child(
+                                div()
+                                    .flex()
+                                    .items_center()
+                                    .gap(px(4.0))
+                                    .child(
+                                        div()
+                                            .size(px(5.0))
+                                            .rounded_full()
+                                            .bg(theme.colors.sync_active)
+                                    )
+                                    .child(
+                                        div()
+                                            .text_size(px(9.0))
+                                            .font_weight(gpui::FontWeight::SEMIBOLD)
+                                            .text_color(theme.colors.text_muted)
+                                            .child("PEERS FOUND NEARBY")
+                                    )
+                            )
+                            .children(nearby.iter().take(5).map(|peer| {
+                                div()
+                                    .w_full()
+                                    .h(px(20.0))
+                                    .flex()
+                                    .items_center()
+                                    .gap(px(6.0))
+                                    .child(
+                                        div()
+                                            .size(px(14.0))
+                                            .rounded_full()
+                                            .flex()
+                                            .items_center()
+                                            .justify_center()
+                                            .bg(theme.colors.team_accent.opacity(0.15))
+                                            .child(
+                                                div()
+                                                    .text_size(px(6.0))
+                                                    .font_weight(gpui::FontWeight::BOLD)
+                                                    .text_color(theme.colors.team_accent)
+                                                    .child(peer.initials())
+                                            )
+                                    )
+                                    .child(
+                                        div()
+                                            .flex_1()
+                                            .text_size(px(10.0))
+                                            .text_color(theme.colors.text_secondary)
+                                            .child(peer.name.clone())
+                                    )
+                                    .child(
+                                        div()
+                                            .text_size(px(8.0))
+                                            .text_color(theme.colors.sync_active)
+                                            .child("nearby")
+                                    )
+                            }))
+                    )
+            })
+            // ── Connected Peers ───────────────────────────────────────────────
+            .when(!self.peers.is_empty(), |el| {
+                el
+                    .child(
+                        div()
+                            .h(px(1.0))
+                            .w_full()
+                            .bg(theme.colors.team_accent.opacity(0.2))
+                    )
+                    .child(
+                        div()
+                            .px(px(12.0))
+                            .pt(px(8.0))
+                            .pb(px(8.0))
+                            .flex()
+                            .flex_col()
+                            .gap(px(4.0))
+                            .child(
+                                div()
+                                    .text_size(px(9.0))
+                                    .font_weight(gpui::FontWeight::SEMIBOLD)
+                                    .text_color(theme.colors.text_muted)
+                                    .child("CONNECTED PEERS")
+                            )
+                            .children(self.peers.iter().map(|peer| {
+                                div()
+                                    .w_full()
+                                    .h(px(22.0))
+                                    .flex()
+                                    .items_center()
+                                    .gap(px(6.0))
+                                    .child(
+                                        div()
+                                            .size(px(16.0))
+                                            .rounded_full()
+                                            .flex()
+                                            .items_center()
+                                            .justify_center()
+                                            .bg(theme.colors.team_accent.opacity(0.15))
+                                            .child(
+                                                div()
+                                                    .text_size(px(7.0))
+                                                    .font_weight(gpui::FontWeight::BOLD)
+                                                    .text_color(theme.colors.team_accent)
+                                                    .child(peer.initials())
+                                            )
+                                    )
+                                    .child(
+                                        div()
+                                            .flex_1()
+                                            .text_size(px(11.0))
+                                            .text_color(theme.colors.text_primary)
+                                            .child(peer.name.clone())
+                                    )
+                                    .child(
+                                        div()
+                                            .size(px(5.0))
+                                            .rounded_full()
+                                            .bg(if peer.is_active {
+                                                theme.colors.status_success
+                                            } else {
+                                                theme.colors.text_muted
+                                            })
+                                    )
+                            }))
+                    )
+            })
             .into_any_element()
     }
 }

@@ -37,7 +37,8 @@ pub fn register_keybindings(cx: &mut gpui::App) {
     ]);
 }
 
-use super::panels::presence::{PeerSource, PresenceManager};
+use super::panels::presence::{ConnectionStatus, PeerSource, PresenceManager};
+use super::components::{TextInput, TextInputStyle};
 use super::panels::{ConsoleEntry, ConsolePanel, ExplorerPanel, MockServerPanel, RequestPanel, ResponsePanel};
 use crate::theme;
 use protide_core::sync::{SyncEngine, SyncEvent};
@@ -88,6 +89,8 @@ pub struct MainWindow {
     presence: PresenceManager,
     /// Sync engine for peer discovery and CRDT sync
     sync_engine: Option<SyncEngine>,
+    /// Text input for the "Join Peer" pairing code field
+    join_input: Entity<TextInput>,
 }
 
 impl MainWindow {
@@ -135,6 +138,12 @@ impl MainWindow {
         let quit_sub = cx.on_app_quit(|this: &mut Self, cx| {
             let state = this.capture_session(cx);
             async move { crate::session::save_sync(&state); }
+        });
+
+        let join_input = cx.new(|cx| {
+            TextInput::new(cx, "join-code-input")
+                .placeholder("enter pairing code…")
+                .style(TextInputStyle::compact())
         });
 
         let mut presence = PresenceManager::new();
@@ -201,6 +210,7 @@ impl MainWindow {
             _quit_sub: quit_sub,
             presence,
             sync_engine,
+            join_input,
         }
     }
 
@@ -236,6 +246,133 @@ impl MainWindow {
     fn toggle_mock_server(&mut self, cx: &mut Context<Self>) {
         self.show_mock_server = !self.show_mock_server;
         cx.notify();
+    }
+
+    /// Initiate a PAKE handshake using the current join_input text as the shared code.
+    fn connect_peer(&mut self, cx: &mut Context<Self>) {
+        let code = self.join_input.read(cx).get_text().trim().to_string();
+        if code.is_empty() {
+            return;
+        }
+        self.presence.connection_status = ConnectionStatus::Handshaking;
+        cx.notify();
+
+        if let Some(ref mut engine) = self.sync_engine {
+            match engine.initiate_handshake(&code) {
+                Ok(()) => {
+                    self.console_panel.update(cx, |panel, cx| {
+                        panel.log(ConsoleEntry::team(format!("Handshaking with code: {}", code)), cx);
+                    });
+                }
+                Err(e) => {
+                    self.console_panel.update(cx, |panel, cx| {
+                        panel.log(ConsoleEntry::team(format!("Handshake error: {}", e)), cx);
+                    });
+                    self.presence.reset_connection();
+                    cx.notify();
+                }
+            }
+        }
+    }
+
+    /// Read the system clipboard and, if it contains text, paste it into the join
+    /// input field and immediately attempt to connect.
+    fn paste_and_join(&mut self, cx: &mut Context<Self>) {
+        if let Some(item) = cx.read_from_clipboard() {
+            let text = item.text().unwrap_or_default().to_string();
+            self.join_input.update(cx, |input, input_cx| {
+                input.set_text(text, input_cx);
+            });
+            self.connect_peer(cx);
+        }
+    }
+
+    /// Build the flyout panel that drops down from the pairing badge.
+    fn render_pairing_flyout_panel(&mut self, cx: &mut Context<Self>) -> gpui::AnyElement {
+        let theme = theme::current(cx);
+        let status = self.presence.connection_status.clone();
+        let tick = self.presence.handshake_tick;
+
+        // Neon-green for the handshake pulse
+        let neon = gpui::hsla(120.0 / 360.0, 1.0, 0.45, 1.0);
+
+        // Connect button — border pulses while Handshaking
+        let connect_border = match (&status, tick) {
+            (ConnectionStatus::Handshaking, true) => neon,
+            (ConnectionStatus::Handshaking, false) => neon.opacity(0.25),
+            _ => theme.colors.team_accent,
+        };
+        let connect_bg = match &status {
+            ConnectionStatus::Handshaking => neon.opacity(0.15),
+            _ => theme.colors.team_accent.opacity(0.12),
+        };
+        let connect_text_color = match &status {
+            ConnectionStatus::Handshaking => neon,
+            _ => theme.colors.team_accent,
+        };
+        let connect_label = match &status {
+            ConnectionStatus::Handshaking => "Connecting…",
+            _ => "Connect",
+        };
+
+        let connect_btn = div()
+            .id("join-connect-btn")
+            .flex_1()
+            .h(px(26.0))
+            .flex()
+            .items_center()
+            .justify_center()
+            .bg(connect_bg)
+            .border_1()
+            .border_color(connect_border)
+            .cursor_pointer()
+            .hover(|s| s.opacity(0.85))
+            .on_click(cx.listener(|this, _, _, cx| this.connect_peer(cx)))
+            .child(
+                div()
+                    .text_size(px(10.0))
+                    .font_weight(gpui::FontWeight::SEMIBOLD)
+                    .text_color(connect_text_color)
+                    .child(connect_label)
+            )
+            .into_any_element();
+
+        let paste_btn = div()
+            .id("join-paste-btn")
+            .flex_1()
+            .h(px(26.0))
+            .flex()
+            .items_center()
+            .justify_center()
+            .bg(theme.colors.bg_tertiary)
+            .border_1()
+            .border_color(theme.colors.border)
+            .cursor_pointer()
+            .hover(|s| s.bg(theme.colors.bg_elevated))
+            .on_click(cx.listener(|this, _, _, cx| this.paste_and_join(cx)))
+            .child(
+                div()
+                    .text_size(px(10.0))
+                    .text_color(theme.colors.text_secondary)
+                    .child("Paste & Join")
+            )
+            .into_any_element();
+
+        let join_section = div()
+            .flex()
+            .flex_col()
+            .gap(px(6.0))
+            .child(self.join_input.clone())
+            .child(
+                div()
+                    .flex()
+                    .gap(px(6.0))
+                    .child(paste_btn)
+                    .child(connect_btn)
+            )
+            .into_any_element();
+
+        self.presence.render_pairing_flyout(&theme, join_section)
     }
 
     pub fn show_modal(&mut self, state: ModalState, cx: &mut Context<Self>) {
@@ -369,10 +506,37 @@ impl MainWindow {
                         );
                     });
                 }
-                SyncEvent::EntryReceived(_) => {
-                    // CRDT data received — not a presence event
+                SyncEvent::EntryReceived(entry) => {
+                    // Refresh the collection tree so remote changes appear immediately
+                    use protide_core::sync::DataType;
+                    if entry.data_type == DataType::Collection || entry.data_type == DataType::Request {
+                        self.explorer.update(cx, |exp, cx| exp.refresh_collections(cx));
+                    }
+                    self.console_panel.update(cx, |panel, cx| {
+                        panel.log(
+                            ConsoleEntry::team(format!("[sync] entry received: {:?}", entry.data_type)),
+                            cx,
+                        );
+                    });
+                    changed = true;
+                }
+                SyncEvent::HandshakeComplete { peer_id, peer_name } => {
+                    self.presence.set_connected(peer_id.clone(), peer_name.clone());
+                    self.console_panel.update(cx, |panel, cx| {
+                        panel.log(
+                            ConsoleEntry::team(format!("Connected to {}", peer_name)),
+                            cx,
+                        );
+                    });
+                    changed = true;
                 }
             }
+        }
+
+        // Tick the handshake pulse so the Connect button border animates at ~1Hz
+        if self.presence.connection_status == ConnectionStatus::Handshaking {
+            self.presence.tick_handshake();
+            changed = true;
         }
 
         if changed {
@@ -882,26 +1046,30 @@ impl Render for MainWindow {
                 };
                 el.child(render_modal_shell(&modal, &theme, buttons))
             })
-            // Pairing flyout overlay
-            .when(self.presence.show_pairing, |el| el
-                .child(
-                    div()
-                        .absolute().top_0().left_0().w_full().h_full()
-                        .on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| {
-                            this.presence.show_pairing = false;
-                            cx.notify();
-                        }))
-                )
-                .child(
-                    gpui::deferred(
+            // Pairing flyout — anchored below the presence badge (left ~300px, below 40px titlebar)
+            .when(self.presence.show_pairing, |el| {
+                let flyout = self.render_pairing_flyout_panel(cx);
+                el
+                    .child(
                         div()
-                            .absolute()
-                            .top(px(40.0))
-                            .right(px(220.0))
-                            .child(self.presence.render_pairing_flyout(&theme))
-                    ).with_priority(10)
-                )
-            )
+                            .absolute().top_0().left_0().w_full().h_full()
+                            .on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| {
+                                this.presence.show_pairing = false;
+                                this.presence.reset_connection();
+                                cx.notify();
+                            }))
+                    )
+                    .child(
+                        gpui::deferred(
+                            div()
+                                .absolute()
+                                .top(px(40.0))
+                                .left(px(300.0))
+                                .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                                .child(flyout)
+                        ).with_priority(10)
+                    )
+            })
             .when(self.open_menu.is_some(), |el| el
                 .child(
                     div()

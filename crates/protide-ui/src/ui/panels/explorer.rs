@@ -787,7 +787,7 @@ impl ExplorerPanel {
     }
 
     /// Refresh collections by rescanning the workspace directory
-    fn refresh_collections(&mut self, cx: &mut Context<Self>) {
+    pub fn refresh_collections(&mut self, cx: &mut Context<Self>) {
         if let Some(workspace) = &self.workspace_path {
             self.collection_items = self.scan_directory(workspace);
             self.tree_scroll = 0.0;
