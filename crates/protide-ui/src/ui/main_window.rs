@@ -37,8 +37,10 @@ pub fn register_keybindings(cx: &mut gpui::App) {
     ]);
 }
 
-use super::panels::{ConsolePanel, ExplorerPanel, MockServerPanel, RequestPanel, ResponsePanel};
+use super::panels::presence::{PeerSource, PresenceManager};
+use super::panels::{ConsoleEntry, ConsolePanel, ExplorerPanel, MockServerPanel, RequestPanel, ResponsePanel};
 use crate::theme;
+use protide_core::sync::{SyncEngine, SyncEvent};
 use crate::ui::components::icons::{
     ICON_CLOSE, ICON_COPY, ICON_FOLDER, ICON_MAXIMIZE, ICON_MD, ICON_MENU, ICON_MINIMIZE,
     ICON_REFRESH, ICON_SETTINGS, ICON_SM, ICON_WINDOW_CLOSE, icon,
@@ -82,6 +84,10 @@ pub struct MainWindow {
     open_menu: Option<u8>,
     /// Keeps the on_app_quit subscription alive for the lifetime of the window.
     _quit_sub: gpui::Subscription,
+    /// Collaboration presence manager
+    presence: PresenceManager,
+    /// Sync engine for peer discovery and CRDT sync
+    sync_engine: Option<SyncEngine>,
 }
 
 impl MainWindow {
@@ -131,6 +137,42 @@ impl MainWindow {
             async move { crate::session::save_sync(&state); }
         });
 
+        let mut presence = PresenceManager::new();
+        presence.generate_code();
+
+        // Initialize sync engine
+        let node_name = std::env::var("USER")
+            .or_else(|_| std::env::var("USERNAME"))
+            .unwrap_or_else(|_| "developer".into());
+        let pairing_code_str = if presence.pairing_code.is_empty() {
+            None
+        } else {
+            Some(presence.pairing_code.to_string())
+        };
+        let mut sync_engine = SyncEngine::new(protide_core::sync::SyncConfig {
+            node_name,
+            p2p_enabled: true,
+            live_probe_enabled: true,
+            pairing_code: pairing_code_str,
+            ..Default::default()
+        });
+        let _ = sync_engine.init();
+        let sync_engine = Some(sync_engine);
+
+        // Periodic sync event polling (every 1 second)
+        let poll_weak = cx.entity().downgrade();
+        cx.spawn(async move |_, cx| {
+            loop {
+                cx.background_executor()
+                    .timer(std::time::Duration::from_millis(1000))
+                    .await;
+                let weak = poll_weak.clone();
+                weak.update(cx, |this, cx| {
+                    this.poll_sync_events(cx);
+                }).ok();
+            }
+        }).detach();
+
         Self {
             explorer,
             request_panel,
@@ -157,6 +199,8 @@ impl MainWindow {
             focus: cx.focus_handle(),
             open_menu: None,
             _quit_sub: quit_sub,
+            presence,
+            sync_engine,
         }
     }
 
@@ -225,6 +269,8 @@ impl MainWindow {
             self.show_help = false;
         } else if self.show_about {
             self.show_about = false;
+        } else if self.presence.show_pairing {
+            self.presence.show_pairing = false;
         }
         cx.notify();
     }
@@ -240,6 +286,99 @@ impl MainWindow {
             ModalPending::None => {}
         }
         cx.notify();
+    }
+
+    /// Poll the sync engine for events and update presence + console.
+    fn poll_sync_events(&mut self, cx: &mut Context<Self>) {
+        let Some(ref mut engine) = self.sync_engine else { return };
+
+        let events = engine.tick();
+
+        // Also drain events from the engine's internal channel
+        let channel_events = engine.drain_events();
+        let all_events: Vec<SyncEvent> = events.into_iter().chain(channel_events).collect();
+
+        let mut changed = false;
+
+        for evt in all_events {
+            match evt {
+                SyncEvent::PeerJoined(peer_id) => {
+                    let display_name = format!("Peer-{}", &peer_id[..peer_id.len().min(8)]);
+                    self.presence.upsert_peer(
+                        peer_id.clone(),
+                        display_name,
+                        PeerSource::P2P,
+                    );
+                    // Log to console
+                    self.console_panel.update(cx, |panel, cx| {
+                        panel.log(
+                            ConsoleEntry::team(format!("Peer joined: {}", &peer_id[..peer_id.len().min(8)])),
+                            cx,
+                        );
+                    });
+                    changed = true;
+                }
+                SyncEvent::PeerLeft(peer_id) => {
+                    self.presence.remove_peer(&peer_id);
+                    self.console_panel.update(cx, |panel, cx| {
+                        panel.log(
+                            ConsoleEntry::team(format!("Peer left: {}", &peer_id[..peer_id.len().min(8)])),
+                            cx,
+                        );
+                    });
+                    changed = true;
+                }
+                SyncEvent::LiveActivity(activity) => {
+                    self.presence.upsert_peer(
+                        activity.node_id.clone(),
+                        activity.node_name.clone(),
+                        PeerSource::UDPBroadcast,
+                    );
+                    // Log live team activity to console (Method/URL/Status)
+                    let method = activity.method.clone();
+                    let url = activity.url.clone();
+                    let status = activity.status;
+                    let time_ms = activity.time_ms;
+                    self.console_panel.update(cx, |panel, cx| {
+                        let msg = if status > 0 {
+                            format!("{} {} → {} ({}ms)", method, url, status, time_ms)
+                        } else {
+                            format!("{} {}", method, url)
+                        };
+                        panel.log(
+                            ConsoleEntry::team(format!("[{}] {}", activity.node_name, msg)),
+                            cx,
+                        );
+                    });
+                    changed = true;
+                }
+                SyncEvent::BackendStatus { backend, ready } => {
+                    let status = if ready { "online" } else { "offline" };
+                    self.console_panel.update(cx, |panel, cx| {
+                        panel.log(
+                            ConsoleEntry::team(format!("{:?} sync {}", backend, status)),
+                            cx,
+                        );
+                    });
+                }
+                SyncEvent::SyncError(err) => {
+                    self.console_panel.update(cx, |panel, cx| {
+                        panel.log(
+                            ConsoleEntry::team(format!("Sync error: {}", err)),
+                            cx,
+                        );
+                    });
+                }
+                SyncEvent::EntryReceived(_) => {
+                    // CRDT data received — not a presence event
+                }
+            }
+        }
+
+        if changed {
+            self.presence.reap_stale();
+            cx.notify();
+        }
     }
 }
 
@@ -743,6 +882,26 @@ impl Render for MainWindow {
                 };
                 el.child(render_modal_shell(&modal, &theme, buttons))
             })
+            // Pairing flyout overlay
+            .when(self.presence.show_pairing, |el| el
+                .child(
+                    div()
+                        .absolute().top_0().left_0().w_full().h_full()
+                        .on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| {
+                            this.presence.show_pairing = false;
+                            cx.notify();
+                        }))
+                )
+                .child(
+                    gpui::deferred(
+                        div()
+                            .absolute()
+                            .top(px(40.0))
+                            .right(px(220.0))
+                            .child(self.presence.render_pairing_flyout(&theme))
+                    ).with_priority(10)
+                )
+            )
             .when(self.open_menu.is_some(), |el| el
                 .child(
                     div()
@@ -843,6 +1002,17 @@ impl MainWindow {
                             }))
                     }))
             })
+            // Presence bar (collaboration) — click to toggle pairing flyout
+            .child(
+                div()
+                    .id("presence-bar")
+                    .cursor_pointer()
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.presence.show_pairing = !this.presence.show_pairing;
+                        cx.notify();
+                    }))
+                    .child(self.presence.render_presence_bar(&theme))
+            )
             // Drag region (fills remaining space)
             .child(div().flex_1().h_full().on_mouse_down(
                 gpui::MouseButton::Left,

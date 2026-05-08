@@ -58,3 +58,11 @@ pub const ICON_TIMER:          &str = "icons/loader-circle.svg";
 pub const ICON_STAR:           &str = "icons/star.svg";
 pub const ICON_ELLIPSIS:       &str = "icons/ellipsis.svg";
 pub const ICON_CODE:           &str = "icons/square-terminal.svg";
+pub const ICON_LINK:           &str = "icons/external-link.svg";
+pub const ICON_WIFI:           &str = "icons/network.svg";
+pub const ICON_WIFI_OFF:       &str = "icons/eye-off.svg";
+pub const ICON_USERS:          &str = "icons/user.svg";
+pub const ICON_NETWORK:        &str = "icons/network.svg";
+pub const ICON_TEAM:           &str = "icons/bot.svg";
+/// Brand icon - use for the green "P" logo in title bar and About dialog
+pub const ICON_BRAND:          &str = "icons/bot.svg";

@@ -29,7 +29,7 @@ use protide_core::execution::sio::{
     SocketIoExecutor, TungsteniteSocketIoExecutor, SioCommand, SioConnectionParams, SioUiEvent, SioRingBuffer,
 };
 
-use super::console::{ConsoleEntry, ConsolePanel, LogLevel};
+use super::console::{ConsoleEntry, ConsoleEntrySource, ConsolePanel, LogLevel};
 use super::explorer::ExplorerPanel;
 use super::request_types::{ApiKeyLocation, AuthType, BodyType, EditTarget, FormField, FormFieldType, GrpcMethodInfo, GrpcStreamingType, HttpMethod, KeyValuePair, RequestMode, SioConnectionState, WsConnectionState};
 use super::request_utils::{base64_encode, status_text, url_decode, url_encode};
@@ -590,6 +590,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                                 let entry = ConsoleEntry {
                                     timestamp: chrono::Local::now(),
                                     level: LogLevel::Error,
+                                    source: ConsoleEntrySource::Request,
                                     protocol: ws_protocol.clone(),
                                     method: "CONNECT".to_string(),
                                     url: ws_log_url.clone(),
@@ -3318,6 +3319,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                                 panel.log(ConsoleEntry {
                                     timestamp: chrono::Local::now(),
                                     level: LogLevel::Info,
+                                    source: ConsoleEntrySource::Request,
                                     protocol: log_protocol.to_string(),
                                     method: log_method.clone(),
                                     url: log_url.clone(),
@@ -3357,6 +3359,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                                 panel.log(ConsoleEntry {
                                     timestamp: chrono::Local::now(),
                                     level: LogLevel::Error,
+                                    source: ConsoleEntrySource::Request,
                                     protocol: log_protocol.to_string(),
                                     method: log_method.clone(),
                                     url: log_url.clone(),
