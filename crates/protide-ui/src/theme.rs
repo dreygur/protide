@@ -248,8 +248,8 @@ impl Theme {
             "DELETE" => self.colors.method_delete,
             "HEAD" => self.colors.method_head,
             "OPTIONS" => self.colors.method_options,
-            "WS" | "WEBSOCKET" => self.colors.protocol_ws,
-            "GRPC" => self.colors.protocol_grpc,
+            "WS" | "WEBSOCKET" | "SIO" => self.colors.protocol_ws,
+            "GRPC" | "TRPC" => self.colors.protocol_grpc,
             "GQL" | "GRAPHQL" => self.colors.protocol_graphql,
             _ => self.colors.text_secondary,
         }
@@ -342,6 +342,11 @@ pub mod sizes {
     pub const PANEL_HEADER: f32 = 32.0; // section / collapsible headers
     pub const TOOLBAR: f32 = 40.0;      // toolbars, tab bars, nav bars
     pub const URL_BAR: f32 = 64.0;      // primary URL bar
+    /// Gap between the expand/collapse chevron and the item icon in tree rows.
+    pub const CHEVRON_ICON_GAP: f32 = 4.0;
+    /// Gap between an icon and its adjacent label/badge in tree rows.
+    /// Adjust this single value to switch between Compact and Spacious density.
+    pub const ICON_TEXT_GAP: f32 = 8.0;
 }
 
 /// Pixel-typed component dimensions for use via `theme.sizes.*`.

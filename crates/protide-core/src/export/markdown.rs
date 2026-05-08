@@ -1,6 +1,7 @@
 //! Export a collection directory as Markdown documentation
 
 use std::path::Path;
+use http_parser;
 
 /// Walk a collection root directory and generate Markdown documentation.
 /// Each .http file becomes a documented request; folders become sections.
@@ -69,104 +70,60 @@ fn collect_dir(
 }
 
 fn append_http_request(md: &mut String, name: &str, content: &str, heading_level: usize) {
+    let requests = match http_parser::parse(content) {
+        Ok(r) if !r.is_empty() => r,
+        _ => return,
+    };
+
     let hashes = "#".repeat(heading_level);
 
-    // Parse annotations and the request
-    let mut display_name = name.to_string();
-    let mut description = String::new();
-    let mut method = String::new();
-    let mut url = String::new();
-    let mut headers: Vec<(String, String)> = Vec::new();
-    let mut body_lines: Vec<String> = Vec::new();
-    let mut in_body = false;
-
-    for line in content.lines() {
-        let trimmed = line.trim();
-
-        // Annotations
-        if let Some(val) = trimmed.strip_prefix("# @name ") {
-            display_name = val.to_string();
-            continue;
-        }
-        if let Some(val) = trimmed.strip_prefix("# @description ") {
-            description = val.to_string();
-            continue;
-        }
-        if trimmed.starts_with("# ") || trimmed == "#" {
-            continue; // skip other comments
-        }
-
-        // Empty line = start/end of body section
-        if trimmed.is_empty() {
-            if !method.is_empty() && !in_body {
-                in_body = true;
+    for (i, req) in requests.iter().enumerate() {
+        let display_name = req.meta.name.as_deref().map(|s| s.to_string()).unwrap_or_else(|| {
+            if requests.len() > 1 {
+                format!("{} ({})", name, i + 1)
+            } else {
+                name.to_string()
             }
-            continue;
+        });
+
+        md.push_str(&format!("\n{} {}\n\n", hashes, display_name));
+
+        if let Some(desc) = &req.meta.description {
+            md.push_str(&format!("{}\n\n", desc));
         }
 
-        // Request line: METHOD URL [HTTP_VERSION]
-        if method.is_empty() && !trimmed.starts_with('#') {
-            let parts: Vec<&str> = trimmed.splitn(3, ' ').collect();
-            if let Some(&m) = parts.first() {
-                let upper = m.to_uppercase();
-                if matches!(
-                    upper.as_str(),
-                    "GET" | "POST" | "PUT" | "DELETE" | "PATCH" | "HEAD" | "OPTIONS"
-                ) {
-                    method = upper;
-                    url = parts.get(1).copied().unwrap_or("").to_string();
-                    continue;
-                }
+        md.push_str(&format!("**`{} {}`**\n\n", req.method.as_str(), req.url));
+
+        let enabled_headers: Vec<_> = req.headers.iter().filter(|h| h.enabled).collect();
+        if !enabled_headers.is_empty() {
+            md.push_str("**Headers**\n\n");
+            md.push_str("| Name | Value |\n");
+            md.push_str("|------|-------|\n");
+            for h in &enabled_headers {
+                md.push_str(&format!("| `{}` | `{}` |\n", h.key, h.value));
+            }
+            md.push('\n');
+        }
+
+        if let Some(body) = &req.body {
+            let trimmed = body.trim();
+            if !trimmed.is_empty() {
+                md.push_str("**Request Body**\n\n");
+                let lang = detect_body_lang(trimmed);
+                md.push_str(&format!("```{}\n{}\n```\n\n", lang, trimmed));
             }
         }
 
-        // Headers
-        if !method.is_empty() && !in_body && trimmed.contains(':') {
-            if let Some((k, v)) = trimmed.split_once(':') {
-                headers.push((k.trim().to_string(), v.trim().to_string()));
+        if let Some(tests) = &req.scripts.tests {
+            let trimmed = tests.trim();
+            if !trimmed.is_empty() {
+                md.push_str("**Test Scripts**\n\n");
+                md.push_str(&format!("```javascript\n{}\n```\n\n", trimmed));
             }
-            continue;
         }
 
-        // Body
-        if in_body {
-            body_lines.push(line.to_string());
-        }
+        md.push_str("---\n");
     }
-
-    if method.is_empty() {
-        return;
-    }
-
-    md.push_str(&format!("\n{} {}\n\n", hashes, display_name));
-
-    if !description.is_empty() {
-        md.push_str(&format!("{}\n\n", description));
-    }
-
-    // Method + URL line
-    md.push_str(&format!("**`{} {}`**\n\n", method, url));
-
-    // Headers table
-    if !headers.is_empty() {
-        md.push_str("**Headers**\n\n");
-        md.push_str("| Name | Value |\n");
-        md.push_str("|------|-------|\n");
-        for (k, v) in &headers {
-            md.push_str(&format!("| `{}` | `{}` |\n", k, v));
-        }
-        md.push('\n');
-    }
-
-    // Body
-    let body = body_lines.join("\n").trim().to_string();
-    if !body.is_empty() {
-        md.push_str("**Request Body**\n\n");
-        let lang = detect_body_lang(&body);
-        md.push_str(&format!("```{}\n{}\n```\n\n", lang, body));
-    }
-
-    md.push_str("---\n");
 }
 
 fn detect_body_lang(body: &str) -> &'static str {
@@ -190,5 +147,61 @@ mod tests {
         assert_eq!(detect_body_lang("[1, 2]"), "json");
         assert_eq!(detect_body_lang("<root/>"), "xml");
         assert_eq!(detect_body_lang("plain text"), "text");
+    }
+
+    #[test]
+    fn test_scripts_do_not_leak_into_body() {
+        let content = r#"
+### Login
+# @name login
+
+POST https://api.example.com/auth
+Content-Type: application/json
+
+{"user": "alice"}
+
+# @tests
+expect(response.status).toBe(200);
+expect(response.json().token).toBeTruthy();
+"#;
+        let mut md = String::new();
+        append_http_request(&mut md, "login", content, 2);
+
+        // Body section must only contain the JSON payload
+        let body_start = md.find("**Request Body**").expect("should have a body section");
+        let tests_start = md.find("**Test Scripts**").expect("should have a test scripts section");
+        assert!(body_start < tests_start, "body section must come before test scripts section");
+
+        // The text between **Request Body** and **Test Scripts** must not contain expect()
+        let body_section = &md[body_start..tests_start];
+        assert!(body_section.contains("{\"user\": \"alice\"}"), "body section should contain JSON payload");
+        assert!(!body_section.contains("expect("), "expect() must not appear in body section");
+
+        // Test scripts section must contain the assertions
+        let tests_section = &md[tests_start..];
+        assert!(tests_section.contains("expect(response.status).toBe(200)"), "test scripts must be documented");
+    }
+
+    #[test]
+    fn test_pre_scripts_excluded_from_body() {
+        let content = r#"
+POST https://httpbin.org/post
+Content-Type: application/json
+
+{"purpose": "demo"}
+
+# @pre-script
+const ts = new Date().toISOString();
+request.setHeader("X-Timestamp", ts);
+
+# @tests
+expect(response.status).toBe(200);
+"#;
+        let mut md = String::new();
+        append_http_request(&mut md, "demo", content, 2);
+
+        assert!(!md.contains("const ts ="), "pre-script must not appear in body section");
+        assert!(!md.contains("request.setHeader"), "pre-script must not appear in body section");
+        assert!(md.contains("{\"purpose\": \"demo\"}"), "body must contain JSON payload");
     }
 }

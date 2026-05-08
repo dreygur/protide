@@ -127,8 +127,9 @@ impl<'a> Lexer<'a> {
             return Token::RequestSeparator;
         }
 
-        // Annotations and comments
+        // Annotations and comments — body is always over when we see a # line
         if trimmed.starts_with('#') {
+            self.in_body = false;
             let comment = trimmed.trim_start_matches('#').trim();
 
             // Check for annotations
@@ -173,13 +174,13 @@ impl<'a> Lexer<'a> {
             }
         }
 
-        // If we have a URL-like pattern
+        // If we have a URL-like pattern ({{var}} substitution only matches when not inside JSON)
         if trimmed.starts_with("http://")
             || trimmed.starts_with("https://")
             || trimmed.starts_with("ws://")
             || trimmed.starts_with("wss://")
             || trimmed.starts_with("grpc://")
-            || trimmed.contains("{{") // Variable substitution
+            || (trimmed.contains("{{") && !trimmed.starts_with('{') && !trimmed.starts_with('['))
         {
             return Token::Url(trimmed.to_string());
         }

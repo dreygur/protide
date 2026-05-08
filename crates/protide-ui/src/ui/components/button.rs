@@ -130,14 +130,11 @@ impl ButtonStyles {
 /// Create a styled button element
 ///
 /// # Example
-/// ```
-/// use crate::ui::components::button::*;
+/// ```ignore
+/// use protide_ui::ui::components::button::*;
 ///
 /// button(ButtonVariant::Primary, ButtonSize::Medium)
 ///     .child("Click me")
-///     .on_click(|_, cx| {
-///         // Handle click
-///     })
 /// ```
 pub fn button(_variant: ButtonVariant, size: ButtonSize) -> Div {
     div()

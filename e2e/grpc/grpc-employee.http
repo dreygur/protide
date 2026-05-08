@@ -5,12 +5,12 @@
 # Prerequisites:
 #   Start the local gRPC server before running these tests.
 #   A minimal Go/Rust server implementing e2e.testing.EmployeeService is assumed at
-#   grpc://localhost:50051. Adjust the URL to match your test server.
+#   grpc://localhost:50051. Set grpc_host = localhost:50051 in your environment.
 #
 # @protocol grpc
-# @proto e2e/employee.proto
+# @proto e2e/grpc/employee.proto
 
-GRPC grpc://localhost:50051/e2e.testing.EmployeeService/GetEmployee
+GRPC grpc://{{grpc_host}}/e2e.testing.EmployeeService/GetEmployee
 
 {"id": 1}
 
@@ -18,9 +18,9 @@ GRPC grpc://localhost:50051/e2e.testing.EmployeeService/GetEmployee
 # @name grpc-list-employees
 # @description Fetch all employees (unary RPC returning a list).
 # @protocol grpc
-# @proto e2e/employee.proto
+# @proto e2e/grpc/employee.proto
 
-GRPC grpc://localhost:50051/e2e.testing.EmployeeService/ListEmployees
+GRPC grpc://{{grpc_host}}/e2e.testing.EmployeeService/ListEmployees
 
 {}
 
@@ -28,9 +28,9 @@ GRPC grpc://localhost:50051/e2e.testing.EmployeeService/ListEmployees
 # @name grpc-create-employee
 # @description Create a new employee record.
 # @protocol grpc
-# @proto e2e/employee.proto
+# @proto e2e/grpc/employee.proto
 
-GRPC grpc://localhost:50051/e2e.testing.EmployeeService/CreateEmployee
+GRPC grpc://{{grpc_host}}/e2e.testing.EmployeeService/CreateEmployee
 
 {
   "name": "Protide Test User",
@@ -42,9 +42,9 @@ GRPC grpc://localhost:50051/e2e.testing.EmployeeService/CreateEmployee
 # @name grpc-update-employee
 # @description Update an existing employee's details.
 # @protocol grpc
-# @proto e2e/employee.proto
+# @proto e2e/grpc/employee.proto
 
-GRPC grpc://localhost:50051/e2e.testing.EmployeeService/UpdateEmployee
+GRPC grpc://{{grpc_host}}/e2e.testing.EmployeeService/UpdateEmployee
 
 {
   "id": 1,
@@ -57,9 +57,9 @@ GRPC grpc://localhost:50051/e2e.testing.EmployeeService/UpdateEmployee
 # @name grpc-delete-employee
 # @description Remove an employee record.
 # @protocol grpc
-# @proto e2e/employee.proto
+# @proto e2e/grpc/employee.proto
 
-GRPC grpc://localhost:50051/e2e.testing.EmployeeService/DeleteEmployee
+GRPC grpc://{{grpc_host}}/e2e.testing.EmployeeService/DeleteEmployee
 
 {"id": 1}
 
@@ -67,9 +67,8 @@ GRPC grpc://localhost:50051/e2e.testing.EmployeeService/DeleteEmployee
 # @name grpc-hello-h2c
 # @description Unary RPC against grpcb.in using plaintext HTTP/2 (H2C).
 # No local server required — uses the public grpcb.in test server.
-# Load grpc-hello.proto for this request.
 # @protocol grpc
-# @proto e2e/grpc-hello.proto
+# @proto e2e/grpc/grpc-hello.proto
 
 GRPC grpc://grpcb.in:9000/hello.Hello/SayHello
 
@@ -79,7 +78,7 @@ GRPC grpc://grpcb.in:9000/hello.Hello/SayHello
 # @name grpc-hello-tls
 # @description Same unary call over TLS (grpcs:// scheme — ALPN negotiates HTTP/2).
 # @protocol grpc
-# @proto e2e/grpc-hello.proto
+# @proto e2e/grpc/grpc-hello.proto
 
 GRPC grpcs://grpcb.in:9001/hello.Hello/SayHello
 
@@ -90,7 +89,7 @@ GRPC grpcs://grpcb.in:9001/hello.Hello/SayHello
 # @description Server streaming: server sends multiple HelloReply messages in response
 # to a single HelloRequest. Responses appear in the Protide response panel as they arrive.
 # @protocol grpc
-# @proto e2e/grpc-hello.proto
+# @proto e2e/grpc/grpc-hello.proto
 
 GRPC grpc://grpcb.in:9000/hello.Hello/SayHellos
 
@@ -100,7 +99,7 @@ GRPC grpc://grpcb.in:9000/hello.Hello/SayHellos
 # @name grpc-with-metadata
 # @description Demonstrates gRPC metadata (sent as HTTP/2 headers).
 # @protocol grpc
-# @proto e2e/grpc-hello.proto
+# @proto e2e/grpc/grpc-hello.proto
 
 GRPC grpc://grpcb.in:9000/hello.Hello/SayHello
 x-request-id: protide-e2e-001

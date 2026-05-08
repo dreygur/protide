@@ -1,0 +1,5 @@
+### Get Leaderboard
+# @name get-leaderboard
+# @description Fetch the DevHub leaderboard.
+
+GET https://devhubbd.com/api/v1/leaderboard
