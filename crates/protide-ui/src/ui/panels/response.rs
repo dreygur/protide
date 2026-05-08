@@ -3,9 +3,9 @@
 use std::time::Duration;
 
 use gpui::{
-    deferred, div, prelude::*, px, uniform_list, ClipboardItem, Context, Entity, IntoElement,
-    MouseButton, MouseDownEvent, Render, ScrollHandle, SharedString, Styled,
-    UniformListScrollHandle, WeakEntity, Window,
+    canvas, deferred, div, prelude::*, px, uniform_list, Bounds, ClipboardItem, Context, Entity,
+    IntoElement, MouseButton, MouseDownEvent, Pixels, Point, Render, ScrollHandle, SharedString,
+    Styled, UniformListScrollHandle, WeakEntity, Window,
 };
 
 const GUTTER_W: f32 = 44.0;
@@ -43,10 +43,18 @@ enum PrimVal {
 
 #[derive(Clone, Debug)]
 enum RowKind {
-    Leaf   { key: Option<String>, val: PrimVal },
+    Leaf   { key: Option<String>, val: PrimVal, path: String },
     Open   { key: Option<String>, arr: bool, path: String },
     Close  { arr: bool },
     Folded { key: Option<String>, arr: bool, count: usize, path: String },
+}
+
+/// Items shown in the JSON right-click context menu
+#[derive(Clone, Debug)]
+struct JsonCtxMenu {
+    x: f32,
+    y: f32,
+    items: Vec<(String, String)>, // (label, clipboard_value)
 }
 
 #[derive(Clone, Debug)]
@@ -64,13 +72,14 @@ fn flatten_json(
     rows:      &mut Vec<JsonRow>,
 ) {
     use serde_json::Value;
+    let leaf_path = path.to_string();
     match value {
-        Value::Null    => rows.push(JsonRow { depth, kind: RowKind::Leaf { key, val: PrimVal::Null } }),
-        Value::Bool(b) => rows.push(JsonRow { depth, kind: RowKind::Leaf { key, val: PrimVal::Bool(*b) } }),
-        Value::Number(n) => rows.push(JsonRow { depth, kind: RowKind::Leaf { key, val: PrimVal::Num(n.to_string()) } }),
-        Value::String(s) => rows.push(JsonRow { depth, kind: RowKind::Leaf { key, val: PrimVal::Str(s.clone()) } }),
+        Value::Null    => rows.push(JsonRow { depth, kind: RowKind::Leaf { key, val: PrimVal::Null,         path: leaf_path } }),
+        Value::Bool(b) => rows.push(JsonRow { depth, kind: RowKind::Leaf { key, val: PrimVal::Bool(*b),    path: leaf_path } }),
+        Value::Number(n) => rows.push(JsonRow { depth, kind: RowKind::Leaf { key, val: PrimVal::Num(n.to_string()), path: leaf_path } }),
+        Value::String(s) => rows.push(JsonRow { depth, kind: RowKind::Leaf { key, val: PrimVal::Str(s.clone()), path: leaf_path } }),
         Value::Array(arr) if arr.is_empty() => {
-            rows.push(JsonRow { depth, kind: RowKind::Leaf { key, val: PrimVal::EmptyArr } });
+            rows.push(JsonRow { depth, kind: RowKind::Leaf { key, val: PrimVal::EmptyArr, path: leaf_path } });
         }
         Value::Array(arr) => {
             let count = arr.len();
@@ -86,7 +95,7 @@ fn flatten_json(
             rows.push(JsonRow { depth, kind: RowKind::Close { arr: true } });
         }
         Value::Object(obj) if obj.is_empty() => {
-            rows.push(JsonRow { depth, kind: RowKind::Leaf { key, val: PrimVal::EmptyObj } });
+            rows.push(JsonRow { depth, kind: RowKind::Leaf { key, val: PrimVal::EmptyObj, path: leaf_path } });
         }
         Value::Object(obj) => {
             let count = obj.len();
@@ -178,7 +187,7 @@ fn render_json_row(
     let c_accent    = colors.accent;
 
     let content: gpui::AnyElement = match &row.kind {
-        RowKind::Leaf { key, val } => {
+        RowKind::Leaf { key, val, .. } => {
             // Sanitize control characters so GPUI never sees hard newlines inside a value.
             // Soft-wrap is achieved by removing whitespace_nowrap — the browser-style
             // word-wrap kicks in automatically within the flex-1 value container.
@@ -308,6 +317,31 @@ fn render_json_row(
     };
     let can_click = click_path.is_some();
 
+    // Build right-click context menu items
+    let ctx_items: Vec<(String, String)> = match &row.kind {
+        RowKind::Leaf { key, val, path } => {
+            let val_str = match val {
+                PrimVal::Null     => "null".to_string(),
+                PrimVal::Bool(b)  => if *b { "true" } else { "false" }.to_string(),
+                PrimVal::Num(n)   => n.clone(),
+                PrimVal::Str(s)   => s.clone(),
+                PrimVal::EmptyArr => "[]".to_string(),
+                PrimVal::EmptyObj => "{}".to_string(),
+            };
+            let mut items = vec![("Copy Value".to_string(), val_str)];
+            if let Some(k) = key { items.push(("Copy Key".to_string(), k.clone())); }
+            items.push(("Copy Path".to_string(), path.clone()));
+            items
+        }
+        RowKind::Open { key, path, .. } | RowKind::Folded { key, path, .. } => {
+            let mut items = vec![];
+            if let Some(k) = key { items.push(("Copy Key".to_string(), k.clone())); }
+            items.push(("Copy Path".to_string(), path.clone()));
+            items
+        }
+        RowKind::Close { .. } => vec![],
+    };
+
     // Outer row: variable height in wrap mode, fixed in perf mode.
     // items_start keeps gutter/chevron top-aligned; guide pillars override via self_stretch().
     let row_div = if wrap_mode {
@@ -325,6 +359,24 @@ fn render_json_row(
     };
 
     let row_div = row_div.child(gutter).children(guides).child(chevron).child(content);
+
+    // Attach right-click handler if we have context items
+    let row_div = if !ctx_items.is_empty() {
+        let items = ctx_items;
+        let weak_cm = weak.clone();
+        row_div.on_mouse_down(MouseButton::Right, move |event: &gpui::MouseDownEvent, _, cx| {
+            let pos = event.position;
+            let items_c = items.clone();
+            weak_cm.update(cx, |this, cx| {
+                let lx = f32::from(pos.x) - f32::from(this.bounds_origin.x);
+                let ly = f32::from(pos.y) - f32::from(this.bounds_origin.y);
+                this.json_context_menu = Some(JsonCtxMenu { x: lx, y: ly, items: items_c });
+                cx.notify();
+            }).ok();
+        })
+    } else {
+        row_div
+    };
 
     if let Some(path) = click_path {
         let weak_c = weak;
@@ -470,8 +522,12 @@ pub struct ResponsePanel {
     /// Active column drag: (drag_id, start_x, start_width)
     /// drag_id: 0=resp_header_col1, 1=cookie_col1, 2=cookie_col3, 3=cookie_col4
     resp_col_drag: Option<(u8, f32, f32)>,
-    /// Right-click context menu position (window coords)
+    /// Right-click context menu position (window coords) for body-level copy menu
     context_menu_pos: Option<gpui::Point<gpui::Pixels>>,
+    /// Window-space origin of this panel, captured each frame for JSON context-menu positioning
+    bounds_origin: Point<Pixels>,
+    /// Active JSON tree right-click context menu
+    json_context_menu: Option<JsonCtxMenu>,
 }
 
 impl ResponsePanel {
@@ -512,6 +568,8 @@ impl ResponsePanel {
             cookie_col4_w: 80.0,
             resp_col_drag: None,
             context_menu_pos: None,
+            bounds_origin: Point::default(),
+            json_context_menu: None,
         }
     }
 
@@ -705,6 +763,8 @@ impl Render for ResponsePanel {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = theme::current(cx);
         let is_col_dragging = self.resp_col_drag.is_some();
+        let has_ctx_menu = self.json_context_menu.is_some();
+        let entity = cx.entity();
 
         let has_response = self.response.is_some();
         let context_menu_pos = self.context_menu_pos;
@@ -716,13 +776,28 @@ impl Render for ResponsePanel {
             .flex_col()
             .relative()
             .bg(theme.colors.bg_primary)
-            // Dismiss context menu on left-click anywhere
+            // Dismiss body context menu on left-click anywhere
             .when(context_menu_pos.is_some(), |el| {
                 el.on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| {
                     this.context_menu_pos = None;
                     cx.notify();
                 }))
             })
+            // Capture panel origin for JSON context-menu local-coord conversion
+            .child(
+                canvas(
+                    move |bounds: Bounds<Pixels>, _win, cx| {
+                        let _ = entity.update(cx, |this, _| {
+                            this.bounds_origin = bounds.origin;
+                        });
+                    },
+                    |_, _, _, _| {},
+                )
+                .absolute()
+                .top_0()
+                .left_0()
+                .size_full(),
+            )
             .child(self.render_header(cx))
             .child(self.render_tabs(cx))
             .child(
@@ -745,7 +820,7 @@ impl Render for ResponsePanel {
                     })
                     .child(self.render_content(cx)),
             )
-            // Right-click context menu
+            // Body-level right-click context menu (copy / clear)
             .when_some(context_menu_pos, |el, pos| {
                 let body = self.response.as_ref().map(|r| r.body.clone()).unwrap_or_default();
                 let x = f32::from(pos.x);
@@ -805,6 +880,10 @@ impl Render for ResponsePanel {
                                 )
                         )
                 ).with_priority(10))
+            })
+            // JSON tree right-click context menu overlay
+            .when(has_ctx_menu, |el| {
+                el.child(deferred(self.render_json_context_menu(cx)).with_priority(10))
             })
             // Column resize overlay
             .when(is_col_dragging, |el| el.child(
@@ -2274,6 +2353,64 @@ impl ResponsePanel {
         }
         self.extraction_result = Some(result);
         cx.notify();
+    }
+
+    fn render_json_context_menu(&self, cx: &Context<Self>) -> gpui::AnyElement {
+        let Some(ref menu) = self.json_context_menu else {
+            return div().into_any_element();
+        };
+        let theme = theme::current(cx);
+        let items = menu.items.clone();
+        let x = menu.x;
+        let y = menu.y;
+
+        div()
+            .id("json-cm-backdrop")
+            .absolute()
+            .top_0()
+            .left_0()
+            .w_full()
+            .h_full()
+            .on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| {
+                this.json_context_menu = None;
+                cx.notify();
+            }))
+            .on_mouse_down(MouseButton::Right, cx.listener(|this, _, _, cx| {
+                this.json_context_menu = None;
+                cx.notify();
+            }))
+            .child({
+                let hover_bg = theme.colors.bg_tertiary;
+                let mut menu_box = div()
+                    .id("json-cm-box")
+                    .absolute()
+                    .left(px(x))
+                    .top(px(y))
+                    .w(px(175.0))
+                    .bg(theme.colors.bg_elevated)
+                    .border_1()
+                    .border_color(theme.colors.border);
+                for (i, (label, value)) in items.into_iter().enumerate() {
+                    let label_s = SharedString::from(label);
+                    menu_box = menu_box.child(
+                        div()
+                            .id(i)
+                            .w_full()
+                            .px(px(12.0))
+                            .py(px(8.0))
+                            .text_size(px(12.0))
+                            .text_color(theme.colors.text_primary)
+                            .cursor_pointer()
+                            .hover(move |s| s.bg(hover_bg))
+                            .on_click(move |_, _, cx| {
+                                cx.write_to_clipboard(gpui::ClipboardItem::new_string(value.clone()));
+                            })
+                            .child(label_s),
+                    );
+                }
+                menu_box
+            })
+            .into_any_element()
     }
 
     fn render_col_drag_handle(&self, drag_id: u8, cx: &Context<Self>) -> impl IntoElement {
