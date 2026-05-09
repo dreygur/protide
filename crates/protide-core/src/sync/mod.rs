@@ -25,6 +25,9 @@ pub mod types;
 use std::path::PathBuf;
 use std::sync::mpsc::{self, Receiver, Sender};
 
+#[allow(unused_imports)]
+use log::{debug, info};
+
 pub use crdt::{CrdtStore, MergeResult};
 pub use types::*;
 
@@ -268,6 +271,7 @@ impl SyncEngine {
                         }
                     }
                     p2p::P2PEvent::PeerJoined(peer) => {
+                        info!("[mDNS] Discovered peer: {}", peer);
                         events.push(SyncEvent::P2PDiagnostic(
                             format!("[mDNS] Discovered peer: {}", peer)
                         ));
@@ -283,6 +287,7 @@ impl SyncEngine {
                         events.push(SyncEvent::LocalAddr(addr));
                     }
                     p2p::P2PEvent::PakeMsg { from, topic, node_name, kind, pake_bytes } => {
+                        info!("[PAKE] Received '{}' from {} on topic {}", kind, from, topic);
                         events.push(SyncEvent::P2PDiagnostic(
                             format!("[PAKE] Received '{}' from {} on {}", kind, from, topic)
                         ));
@@ -294,11 +299,13 @@ impl SyncEngine {
                                     // We are Alice: generate A-side, finish immediately, send resp
                                     if let Ok((msg_a, state_a)) = pake::pake_initiate(code) {
                                         if pake::pake_finish(state_a, &pake_bytes).is_ok() {
+                                            info!("[PAKE] Handshake complete (init) with peer {}", from);
                                             events.push(SyncEvent::HandshakeComplete {
                                                 peer_id: from.to_string(),
                                                 peer_name: node_name.clone(),
                                             });
                                         } else {
+                                            info!("[PAKE] Handshake mismatch on 'init' from peer {}", from);
                                             events.push(SyncEvent::HandshakeFailed {
                                                 reason: "PAKE Mismatch".to_string(),
                                             });
@@ -317,11 +324,13 @@ impl SyncEngine {
                                     // We are Bob: finish with Alice's message
                                     if let Some(state_b) = self.pake_pending.take() {
                                         if pake::pake_finish(state_b, &pake_bytes).is_ok() {
+                                            info!("[PAKE] Handshake complete (resp) with peer {}", from);
                                             events.push(SyncEvent::HandshakeComplete {
                                                 peer_id: from.to_string(),
                                                 peer_name: node_name,
                                             });
                                         } else {
+                                            info!("[PAKE] Handshake mismatch on 'resp' from peer {}", from);
                                             events.push(SyncEvent::HandshakeFailed {
                                                 reason: "PAKE Mismatch".to_string(),
                                             });
@@ -429,6 +438,7 @@ impl SyncEngine {
                 let data = serde_json::to_vec(&payload)
                     .map_err(|e| format!("Serialisation error: {}", e))?;
                 p2p.publish_on_pake_topic(code, data);
+                info!("[PAKE] Initiation packet sent for code: {}", code);
                 let _ = self.event_tx.send(SyncEvent::P2PDiagnostic(
                     format!("[PAKE] Initiation packet sent for code: {}", code)
                 ));

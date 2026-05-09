@@ -129,6 +129,8 @@ pub struct ConsolePanel {
     context_menu: Option<(usize, gpui::Point<gpui::Pixels>)>,
     /// Whether to show team/sync events
     show_team: bool,
+    /// Whether to show internal P2P diagnostic events
+    show_system: bool,
     /// URL/message field of selected entry (double-click selects, Ctrl+C copies)
     url_sel_entry: Option<usize>,
 }
@@ -141,6 +143,7 @@ impl ConsolePanel {
             focus: cx.focus_handle(),
             context_menu: None,
             show_team: true,
+            show_system: true,
             url_sel_entry: None,
         }
     }
@@ -167,6 +170,11 @@ impl ConsolePanel {
 
     pub fn toggle_team(&mut self, cx: &mut Context<Self>) {
         self.show_team = !self.show_team;
+        cx.notify();
+    }
+
+    pub fn toggle_system(&mut self, cx: &mut Context<Self>) {
+        self.show_system = !self.show_system;
         cx.notify();
     }
 }
@@ -267,6 +275,30 @@ impl Render for ConsolePanel {
                             .on_click(cx.listener(|this, _, _, cx| this.toggle_team(cx)))
                             .child("TEAM")
                     )
+                    // System/P2P diagnostic toggle
+                    .child(
+                        div()
+                            .id("console-toggle-system")
+                            .px(px(5.0))
+                            .py(px(1.0))
+                            .flex_shrink_0()
+                            .cursor_pointer()
+                            .bg(if self.show_system {
+                                theme.colors.info.opacity(0.15)
+                            } else {
+                                gpui::Hsla::default()
+                            })
+                            .text_size(px(9.0))
+                            .font_weight(gpui::FontWeight::BOLD)
+                            .text_color(if self.show_system {
+                                theme.colors.info
+                            } else {
+                                theme.colors.text_muted.opacity(0.5)
+                            })
+                            .hover(|s| s.bg(theme.colors.info.opacity(0.1)))
+                            .on_click(cx.listener(|this, _, _, cx| this.toggle_system(cx)))
+                            .child("SYS")
+                    )
                     .child(div().w(px(6.0)))
                     // Clear button
                     .child(
@@ -312,7 +344,10 @@ impl Render for ConsolePanel {
                     })
                     .children(
                         entries.iter().enumerate()
-                        .filter(|(_, entry)| self.show_team || entry.source != ConsoleEntrySource::Team)
+                        .filter(|(_, entry)| {
+                            (self.show_team   || entry.source != ConsoleEntrySource::Team) &&
+                            (self.show_system || entry.source != ConsoleEntrySource::System)
+                        })
                         .map(|(i, entry)| {
                             let status = entry.status;
                             let is_ws  = entry.protocol == "WebSocket" || entry.protocol == "Socket.IO";

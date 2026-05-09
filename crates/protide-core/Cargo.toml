@@ -24,6 +24,7 @@ jsonpath-rust = { workspace = true }
 
 anyhow = { workspace = true }
 thiserror = { workspace = true }
+log = { workspace = true }
 
 uuid = { workspace = true }
 chrono = { workspace = true }

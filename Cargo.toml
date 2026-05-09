@@ -56,6 +56,7 @@ image = { version = "0.25", default-features = false, features = ["png"] }
 # Utils
 uuid = { version = "1", features = ["v4", "serde"] }
 chrono = { version = "0.4", features = ["serde"] }
+log = "0.4"
 
 # File watching
 notify = "7"
