@@ -297,34 +297,35 @@ impl MainWindow {
         let status = self.presence.connection_status.clone();
         let tick = self.presence.handshake_tick;
 
-        // Neon-green for the handshake pulse
         let neon = gpui::hsla(120.0 / 360.0, 1.0, 0.45, 1.0);
 
-        // Connect button — border pulses while Handshaking
-        let connect_border = match (&status, tick) {
-            (ConnectionStatus::Handshaking, true) => neon,
-            (ConnectionStatus::Handshaking, false) => neon.opacity(0.25),
-            _ => theme.colors.team_accent,
-        };
-        let connect_bg = match &status {
-            ConnectionStatus::Handshaking => neon.opacity(0.15),
-            _ => theme.colors.team_accent.opacity(0.12),
-        };
-        let connect_text_color = match &status {
-            ConnectionStatus::Handshaking => neon,
-            _ => theme.colors.team_accent,
-        };
-        let connect_label = match &status {
-            ConnectionStatus::Handshaking => "Connecting…",
-            _ => "Connect",
-        };
-        // Error message extracted for the banner (shown below the buttons)
+        // Single match → all connect-button properties + interactivity flag.
+        // Hover and click are only wired when interactive = true, ensuring
+        // .hover() is called at most once per element and never during Handshaking.
+        let (connect_bg, connect_border, connect_text_color, connect_label, interactive) =
+            match (&status, tick) {
+                (ConnectionStatus::Handshaking, true) => {
+                    (neon.opacity(0.15), neon, neon, "Connecting…", false)
+                }
+                (ConnectionStatus::Handshaking, false) => {
+                    (neon.opacity(0.15), neon.opacity(0.25), neon, "Connecting…", false)
+                }
+                _ => (
+                    theme.colors.team_accent.opacity(0.12),
+                    theme.colors.team_accent,
+                    theme.colors.team_accent,
+                    "Connect",
+                    true,
+                ),
+            };
+
         let error_msg: Option<String> = match &status {
             ConnectionStatus::Error(msg) => Some(msg.clone()),
             _ => None,
         };
 
-        let connect_btn = div()
+        // Connect button: hover/cursor/click added only in the interactive branch
+        let connect_btn_base = div()
             .id("join-connect-btn")
             .flex_1()
             .h(px(26.0))
@@ -334,19 +335,26 @@ impl MainWindow {
             .bg(connect_bg)
             .border_1()
             .border_color(connect_border)
-            .cursor_pointer()
-            .hover(|s| s.opacity(0.85))
-            .on_click(cx.listener(|this, _, _, cx| this.connect_peer(cx)))
             .child(
                 div()
                     .text_size(px(10.0))
                     .font_weight(gpui::FontWeight::SEMIBOLD)
                     .text_color(connect_text_color)
-                    .child(connect_label)
-            )
-            .into_any_element();
+                    .child(connect_label),
+            );
 
-        let paste_btn = div()
+        let connect_btn: gpui::AnyElement = if interactive {
+            connect_btn_base
+                .cursor_pointer()
+                .hover(|s| s.opacity(0.85))
+                .on_click(cx.listener(|this, _, _, cx| this.connect_peer(cx)))
+                .into_any_element()
+        } else {
+            connect_btn_base.into_any_element()
+        };
+
+        // Paste button: disabled (dimmed, no hover/click) while handshaking
+        let paste_btn_base = div()
             .id("join-paste-btn")
             .flex_1()
             .h(px(26.0))
@@ -356,29 +364,33 @@ impl MainWindow {
             .bg(theme.colors.bg_tertiary)
             .border_1()
             .border_color(theme.colors.border)
-            .cursor_pointer()
-            .hover(|s| s.bg(theme.colors.bg_elevated))
-            .on_click(cx.listener(|this, _, _, cx| this.paste_and_join(cx)))
             .child(
                 div()
                     .text_size(px(10.0))
-                    .text_color(theme.colors.text_secondary)
-                    .child("Paste & Join")
-            )
-            .into_any_element();
+                    .text_color(if interactive {
+                        theme.colors.text_secondary
+                    } else {
+                        theme.colors.text_muted
+                    })
+                    .child("Paste & Join"),
+            );
+
+        let paste_btn: gpui::AnyElement = if interactive {
+            paste_btn_base
+                .cursor_pointer()
+                .hover(|s| s.bg(theme.colors.bg_elevated))
+                .on_click(cx.listener(|this, _, _, cx| this.paste_and_join(cx)))
+                .into_any_element()
+        } else {
+            paste_btn_base.into_any_element()
+        };
 
         let join_section = div()
             .flex()
             .flex_col()
             .gap(px(6.0))
             .child(self.join_input.clone())
-            .child(
-                div()
-                    .flex()
-                    .gap(px(6.0))
-                    .child(paste_btn)
-                    .child(connect_btn)
-            )
+            .child(div().flex().gap(px(6.0)).child(paste_btn).child(connect_btn))
             .when_some(error_msg, |el, msg| {
                 let error_color = theme.colors.error;
                 el.child(
@@ -397,7 +409,7 @@ impl MainWindow {
                                 .flex_1()
                                 .text_size(px(10.0))
                                 .text_color(error_color)
-                                .child(msg)
+                                .child(msg),
                         )
                         .child(
                             div()
@@ -414,8 +426,8 @@ impl MainWindow {
                                     this.handshake_started = None;
                                     cx.notify();
                                 }))
-                                .child("Retry")
-                        )
+                                .child("Retry"),
+                        ),
                 )
             })
             .into_any_element();

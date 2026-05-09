@@ -372,7 +372,7 @@ impl PresenceManager {
                                     .child(if has_code { code.clone() } else { SharedString::from("------") })
                             )
                     )
-                    // Copy code button
+                    // Copy code button — hover/cursor/click only when a code exists
                     .child(
                         div()
                             .id("pairing-copy-btn")
@@ -385,14 +385,17 @@ impl PresenceManager {
                             .bg(theme.colors.team_accent.opacity(0.12))
                             .border_1()
                             .border_color(theme.colors.team_accent.opacity(0.3))
-                            .hover(|s| s.bg(theme.colors.team_accent.opacity(0.2)))
                             .when(has_code, {
                                 let code = code.clone();
+                                let accent = theme.colors.team_accent;
                                 move |el| {
                                     let code = code.clone();
                                     el.cursor_pointer()
+                                        .hover(move |s| s.bg(accent.opacity(0.2)))
                                         .on_mouse_down(MouseButton::Left, move |_, _, cx| {
-                                            cx.write_to_clipboard(ClipboardItem::new_string(code.to_string()));
+                                            cx.write_to_clipboard(ClipboardItem::new_string(
+                                                code.to_string(),
+                                            ));
                                         })
                                 }
                             })

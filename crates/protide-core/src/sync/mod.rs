@@ -420,9 +420,10 @@ impl SyncEngine {
     ///
     /// Requires the `full-sync` feature (`p2p-sync` + `pake-auth`).
     /// Without those features this is a no-op that always returns `Ok(())`.
-    pub fn initiate_handshake(&mut self, code: &str) -> Result<(), String> {
+    pub fn initiate_handshake(&mut self, _code: &str) -> Result<(), String> {
         #[cfg(all(feature = "p2p-sync", feature = "pake-auth"))]
         {
+            let code = _code;
             // Bob calls pake_respond to generate his B-side key
             let (msg_b, state_b) = pake::pake_respond(code)?;
             self.pake_pending = Some(state_b);
