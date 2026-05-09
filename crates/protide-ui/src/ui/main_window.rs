@@ -91,6 +91,8 @@ pub struct MainWindow {
     sync_engine: Option<SyncEngine>,
     /// Text input for the "Join Peer" pairing code field
     join_input: Entity<TextInput>,
+    /// When the current PAKE handshake was initiated (for 10-second timeout)
+    handshake_started: Option<std::time::Instant>,
 }
 
 impl MainWindow {
@@ -211,6 +213,7 @@ impl MainWindow {
             presence,
             sync_engine,
             join_input,
+            handshake_started: None,
         }
     }
 
@@ -255,6 +258,7 @@ impl MainWindow {
             return;
         }
         self.presence.connection_status = ConnectionStatus::Handshaking;
+        self.handshake_started = Some(std::time::Instant::now());
         cx.notify();
 
         if let Some(ref mut engine) = self.sync_engine {
@@ -314,6 +318,11 @@ impl MainWindow {
             ConnectionStatus::Handshaking => "Connecting…",
             _ => "Connect",
         };
+        // Error message extracted for the banner (shown below the buttons)
+        let error_msg: Option<String> = match &status {
+            ConnectionStatus::Error(msg) => Some(msg.clone()),
+            _ => None,
+        };
 
         let connect_btn = div()
             .id("join-connect-btn")
@@ -370,6 +379,45 @@ impl MainWindow {
                     .child(paste_btn)
                     .child(connect_btn)
             )
+            .when_some(error_msg, |el, msg| {
+                let error_color = theme.colors.error;
+                el.child(
+                    div()
+                        .w_full()
+                        .px(px(8.0))
+                        .py(px(5.0))
+                        .bg(error_color.opacity(0.08))
+                        .border_1()
+                        .border_color(error_color.opacity(0.35))
+                        .flex()
+                        .items_center()
+                        .gap(px(6.0))
+                        .child(
+                            div()
+                                .flex_1()
+                                .text_size(px(10.0))
+                                .text_color(error_color)
+                                .child(msg)
+                        )
+                        .child(
+                            div()
+                                .id("handshake-retry-btn")
+                                .px(px(6.0))
+                                .py(px(2.0))
+                                .text_size(px(9.0))
+                                .font_weight(gpui::FontWeight::SEMIBOLD)
+                                .text_color(error_color)
+                                .cursor_pointer()
+                                .hover(move |s| s.bg(error_color.opacity(0.15)))
+                                .on_click(cx.listener(|this, _, _, cx| {
+                                    this.presence.reset_connection();
+                                    this.handshake_started = None;
+                                    cx.notify();
+                                }))
+                                .child("Retry")
+                        )
+                )
+            })
             .into_any_element();
 
         self.presence.render_pairing_flyout(&theme, join_section)
@@ -521,6 +569,7 @@ impl MainWindow {
                     changed = true;
                 }
                 SyncEvent::HandshakeComplete { peer_id, peer_name } => {
+                    self.handshake_started = None;
                     self.presence.set_connected(peer_id.clone(), peer_name.clone());
                     self.console_panel.update(cx, |panel, cx| {
                         panel.log(
@@ -530,11 +579,52 @@ impl MainWindow {
                     });
                     changed = true;
                 }
+                SyncEvent::HandshakeFailed { reason } => {
+                    self.handshake_started = None;
+                    self.presence.connection_status = ConnectionStatus::Error(reason.clone());
+                    self.presence.handshake_tick = false;
+                    self.console_panel.update(cx, |panel, cx| {
+                        panel.log(
+                            ConsoleEntry::system(format!("[PAKE] Handshake failed: {}", reason)),
+                            cx,
+                        );
+                    });
+                    changed = true;
+                }
+                SyncEvent::P2PDiagnostic(msg) => {
+                    self.console_panel.update(cx, |panel, cx| {
+                        panel.log(ConsoleEntry::system(msg), cx);
+                    });
+                }
+                SyncEvent::LocalAddr(addr) => {
+                    self.console_panel.update(cx, |panel, cx| {
+                        panel.log(
+                            ConsoleEntry::system(format!("[P2P] Listening on: {}", addr)),
+                            cx,
+                        );
+                    });
+                }
             }
         }
 
         // Tick the handshake pulse so the Connect button border animates at ~1Hz
         if self.presence.connection_status == ConnectionStatus::Handshaking {
+            // 10-second timeout: transition to Error if no HandshakeComplete arrives
+            if let Some(started) = self.handshake_started {
+                if started.elapsed() > std::time::Duration::from_secs(10) {
+                    self.handshake_started = None;
+                    self.presence.connection_status =
+                        ConnectionStatus::Error("Peer Not Found".to_string());
+                    self.presence.handshake_tick = false;
+                    self.console_panel.update(cx, |panel, cx| {
+                        panel.log(
+                            ConsoleEntry::system("[PAKE] Handshake timed out: Peer Not Found"),
+                            cx,
+                        );
+                    });
+                    changed = true;
+                }
+            }
             self.presence.tick_handshake();
             changed = true;
         }

@@ -268,6 +268,9 @@ impl SyncEngine {
                         }
                     }
                     p2p::P2PEvent::PeerJoined(peer) => {
+                        events.push(SyncEvent::P2PDiagnostic(
+                            format!("[mDNS] Discovered peer: {}", peer)
+                        ));
                         events.push(SyncEvent::PeerJoined(peer.to_string()));
                     }
                     p2p::P2PEvent::PeerLeft(peer) => {
@@ -276,7 +279,13 @@ impl SyncEngine {
                     p2p::P2PEvent::Error(e) => {
                         events.push(SyncEvent::SyncError(e));
                     }
+                    p2p::P2PEvent::LocalAddr(addr) => {
+                        events.push(SyncEvent::LocalAddr(addr));
+                    }
                     p2p::P2PEvent::PakeMsg { from, topic, node_name, kind, pake_bytes } => {
+                        events.push(SyncEvent::P2PDiagnostic(
+                            format!("[PAKE] Received '{}' from {} on {}", kind, from, topic)
+                        ));
                         #[cfg(feature = "pake-auth")]
                         {
                             let code = topic.strip_prefix("protide-pake-").unwrap_or("");
@@ -288,6 +297,10 @@ impl SyncEngine {
                                             events.push(SyncEvent::HandshakeComplete {
                                                 peer_id: from.to_string(),
                                                 peer_name: node_name.clone(),
+                                            });
+                                        } else {
+                                            events.push(SyncEvent::HandshakeFailed {
+                                                reason: "PAKE Mismatch".to_string(),
                                             });
                                         }
                                         let resp = p2p::PakeMsgPayload {
@@ -307,6 +320,10 @@ impl SyncEngine {
                                             events.push(SyncEvent::HandshakeComplete {
                                                 peer_id: from.to_string(),
                                                 peer_name: node_name,
+                                            });
+                                        } else {
+                                            events.push(SyncEvent::HandshakeFailed {
+                                                reason: "PAKE Mismatch".to_string(),
                                             });
                                         }
                                     }
@@ -412,6 +429,9 @@ impl SyncEngine {
                 let data = serde_json::to_vec(&payload)
                     .map_err(|e| format!("Serialisation error: {}", e))?;
                 p2p.publish_on_pake_topic(code, data);
+                let _ = self.event_tx.send(SyncEvent::P2PDiagnostic(
+                    format!("[PAKE] Initiation packet sent for code: {}", code)
+                ));
             }
         }
         Ok(())

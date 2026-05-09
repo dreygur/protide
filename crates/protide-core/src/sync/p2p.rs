@@ -59,6 +59,8 @@ pub enum P2PEvent {
         kind: String,
         pake_bytes: Vec<u8>,
     },
+    /// Our own listen multiaddress — emitted once the swarm binds a port
+    LocalAddr(String),
 }
 
 // ── libp2p behaviour ──────────────────────────────────────────────────────────
@@ -291,7 +293,9 @@ impl P2PSync {
                     }
                     SwarmEvent::Behaviour(ProtideBehaviourEvent::Identify(_)) => {}
                     SwarmEvent::Behaviour(ProtideBehaviourEvent::Kademlia(_)) => {}
-                    SwarmEvent::NewListenAddr { .. } => {}
+                    SwarmEvent::NewListenAddr { address, .. } => {
+                        let _ = event_tx_clone.send(P2PEvent::LocalAddr(address.to_string()));
+                    }
                     _ => {}
                 }
             }

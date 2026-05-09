@@ -105,6 +105,12 @@ pub enum SyncEvent {
     SyncError(String),
     /// PAKE handshake completed successfully — both sides derived the shared key
     HandshakeComplete { peer_id: String, peer_name: String },
+    /// PAKE handshake failed (wrong code or crypto error)
+    HandshakeFailed { reason: String },
+    /// Internal P2P diagnostic log (mDNS discovery, PAKE steps, DHT events)
+    P2PDiagnostic(String),
+    /// Our own libp2p listen multiaddress — logged once on startup
+    LocalAddr(String),
 }
 
 /// Live activity from a peer (response console output)

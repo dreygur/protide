@@ -70,6 +70,23 @@ impl ConsoleEntry {
             troubleshoot_hint: None,
         }
     }
+
+    /// Build a system diagnostic entry (P2P internals: mDNS, PAKE, DHT, listen addr)
+    pub fn system(message: impl Into<String>) -> Self {
+        Self {
+            timestamp: chrono::Local::now(),
+            level: LogLevel::Debug,
+            source: ConsoleEntrySource::System,
+            protocol: "SYS".to_string(),
+            method: String::new(),
+            url: message.into(),
+            status: 0,
+            duration_ms: 0,
+            error: None,
+            response_body: String::new(),
+            troubleshoot_hint: None,
+        }
+    }
 }
 
 impl ConsoleEntry {

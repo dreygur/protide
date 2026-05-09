@@ -55,6 +55,8 @@ pub enum ConnectionStatus {
     Idle,
     Handshaking,
     Connected,
+    /// Handshake timed out or PAKE verification failed
+    Error(String),
 }
 
 /// Manages the list of known peers and their status.
