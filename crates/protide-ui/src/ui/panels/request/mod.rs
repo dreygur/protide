@@ -180,6 +180,10 @@ pub struct RequestPanel<E: WebSocketExecutor = TungsteniteExecutor> {
     pub(super) ws_message_editor: Entity<CodeEditor>,
     /// Channel to send messages to WebSocket thread
     ws_send_tx: Option<std::sync::mpsc::Sender<WsCommand>>,
+    /// Height of the WS compose area (resizable)
+    pub(super) ws_compose_h: f32,
+    /// Drag state for WS compose resize: (start_mouse_y, start_compose_h)
+    pub(super) ws_compose_drag: Option<(f32, f32)>,
     /// gRPC message editor (JSON/Protobuf)
     pub(super) grpc_message_editor: Entity<CodeEditor>,
     /// gRPC metadata (key-value pairs, similar to headers)
@@ -396,6 +400,8 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             ws_message_input: String::new(),
             ws_message_editor,
             ws_send_tx: None,
+            ws_compose_h: 120.0,
+            ws_compose_drag: None,
             grpc_message_editor,
             grpc_metadata: vec![KeyValuePair::default()],
             grpc_proto_path: None,

@@ -851,16 +851,19 @@ impl Render for MainWindow {
                             .flex()
                             .flex_col()
                             .overflow_hidden()
-                            // Request panel
+                            // Request panel: flex_1 in WS/SIO (no response panel), fixed height otherwise
                             .child(
                                 div()
                                     .flex()
                                     .flex_col()
-                                    .flex_shrink_0()
-                                    .min_h(px(150.0))
-                                    .h(px(self.request_height))
                                     .w_full()
                                     .overflow_hidden()
+                                    .when(show_response, |el| {
+                                        el.flex_shrink_0()
+                                            .min_h(px(150.0))
+                                            .h(px(self.request_height))
+                                    })
+                                    .when(!show_response, |el| el.flex_1())
                                     .child(self.request_panel.clone()),
                             )
                             // Response resize handle + panel (hidden in WS/SIO modes)
