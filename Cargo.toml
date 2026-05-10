@@ -62,7 +62,7 @@ log = "0.4"
 notify = "7"
 
 # P2P networking
-libp2p = { version = "0.54", features = ["tokio", "tcp", "dns", "noise", "yamux", "kad", "mdns", "gossipsub", "identify", "macros"] }
+libp2p = { version = "0.54", features = ["tokio", "tcp", "quic", "dns", "noise", "yamux", "kad", "mdns", "gossipsub", "identify", "macros"] }
 
 # PAKE cryptography
 spake2 = "0.3"

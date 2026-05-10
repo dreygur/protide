@@ -277,9 +277,6 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                                 .text_color(theme.colors.status_success)
                                 .border_color(theme.colors.status_success.opacity(0.4))
                             )
-                            .when(!is_saved, |el| el
-                                .hover(|s| s.bg(theme.colors.bg_tertiary).border_color(theme.colors.text_muted))
-                            )
                             .on_click(cx.listener(|this, _, _, cx| {
                                 this.save_request(cx);
                             }))

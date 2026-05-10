@@ -93,6 +93,8 @@ pub struct MainWindow {
     join_input: Entity<TextInput>,
     /// When the current PAKE handshake was initiated (for 10-second timeout)
     handshake_started: Option<std::time::Instant>,
+    /// Last time cx.notify() was called from the P2P sync poller — used to throttle redraws
+    last_p2p_notify: std::time::Instant,
 }
 
 impl MainWindow {
@@ -214,6 +216,7 @@ impl MainWindow {
             sync_engine,
             join_input,
             handshake_started: None,
+            last_p2p_notify: std::time::Instant::now(),
         }
     }
 
@@ -490,23 +493,19 @@ impl MainWindow {
         let Some(ref mut engine) = self.sync_engine else { return };
 
         let events = engine.tick();
-
-        // Also drain events from the engine's internal channel
         let channel_events = engine.drain_events();
         let all_events: Vec<SyncEvent> = events.into_iter().chain(channel_events).collect();
 
         let mut changed = false;
+        // Deferred: call refresh_collections once after processing all entries,
+        // not once per entry (avoids N expensive filesystem scans per poll tick).
+        let mut should_refresh_collections = false;
 
         for evt in all_events {
             match evt {
                 SyncEvent::PeerJoined(peer_id) => {
                     let display_name = format!("Peer-{}", &peer_id[..peer_id.len().min(8)]);
-                    self.presence.upsert_peer(
-                        peer_id.clone(),
-                        display_name,
-                        PeerSource::P2P,
-                    );
-                    // Log to console
+                    self.presence.upsert_peer(peer_id.clone(), display_name, PeerSource::P2P);
                     self.console_panel.update(cx, |panel, cx| {
                         panel.log(
                             ConsoleEntry::team(format!("Peer joined: {}", &peer_id[..peer_id.len().min(8)])),
@@ -531,7 +530,6 @@ impl MainWindow {
                         activity.node_name.clone(),
                         PeerSource::UDPBroadcast,
                     );
-                    // Log live team activity to console (Method/URL/Status)
                     let method = activity.method.clone();
                     let url = activity.url.clone();
                     let status = activity.status;
@@ -542,35 +540,26 @@ impl MainWindow {
                         } else {
                             format!("{} {}", method, url)
                         };
-                        panel.log(
-                            ConsoleEntry::team(format!("[{}] {}", activity.node_name, msg)),
-                            cx,
-                        );
+                        panel.log(ConsoleEntry::team(format!("[{}] {}", activity.node_name, msg)), cx);
                     });
                     changed = true;
                 }
                 SyncEvent::BackendStatus { backend, ready } => {
                     let status = if ready { "online" } else { "offline" };
                     self.console_panel.update(cx, |panel, cx| {
-                        panel.log(
-                            ConsoleEntry::team(format!("{:?} sync {}", backend, status)),
-                            cx,
-                        );
+                        panel.log(ConsoleEntry::team(format!("{:?} sync {}", backend, status)), cx);
                     });
                 }
                 SyncEvent::SyncError(err) => {
                     self.console_panel.update(cx, |panel, cx| {
-                        panel.log(
-                            ConsoleEntry::team(format!("Sync error: {}", err)),
-                            cx,
-                        );
+                        panel.log(ConsoleEntry::team(format!("Sync error: {}", err)), cx);
                     });
                 }
                 SyncEvent::EntryReceived(entry) => {
-                    // Refresh the collection tree so remote changes appear immediately
                     use protide_core::sync::DataType;
                     if entry.data_type == DataType::Collection || entry.data_type == DataType::Request {
-                        self.explorer.update(cx, |exp, cx| exp.refresh_collections(cx));
+                        // Mark for a single deferred refresh rather than refreshing per-entry.
+                        should_refresh_collections = true;
                     }
                     self.console_panel.update(cx, |panel, cx| {
                         panel.log(
@@ -584,10 +573,7 @@ impl MainWindow {
                     self.handshake_started = None;
                     self.presence.set_connected(peer_id.clone(), peer_name.clone());
                     self.console_panel.update(cx, |panel, cx| {
-                        panel.log(
-                            ConsoleEntry::team(format!("Connected to {}", peer_name)),
-                            cx,
-                        );
+                        panel.log(ConsoleEntry::team(format!("Connected to {}", peer_name)), cx);
                     });
                     changed = true;
                 }
@@ -596,10 +582,7 @@ impl MainWindow {
                     self.presence.connection_status = ConnectionStatus::Error(reason.clone());
                     self.presence.handshake_tick = false;
                     self.console_panel.update(cx, |panel, cx| {
-                        panel.log(
-                            ConsoleEntry::system(format!("[PAKE] Handshake failed: {}", reason)),
-                            cx,
-                        );
+                        panel.log(ConsoleEntry::system(format!("[PAKE] Handshake failed: {}", reason)), cx);
                     });
                     changed = true;
                 }
@@ -610,18 +593,19 @@ impl MainWindow {
                 }
                 SyncEvent::LocalAddr(addr) => {
                     self.console_panel.update(cx, |panel, cx| {
-                        panel.log(
-                            ConsoleEntry::system(format!("[P2P] Listening on: {}", addr)),
-                            cx,
-                        );
+                        panel.log(ConsoleEntry::system(format!("[P2P] Listening on: {}", addr)), cx);
                     });
                 }
             }
         }
 
+        // Single filesystem scan for all batched CRDT entries.
+        if should_refresh_collections {
+            self.explorer.update(cx, |exp, cx| exp.refresh_collections(cx));
+        }
+
         // Tick the handshake pulse so the Connect button border animates at ~1Hz
         if self.presence.connection_status == ConnectionStatus::Handshaking {
-            // 10-second timeout: transition to Error if no HandshakeComplete arrives
             if let Some(started) = self.handshake_started {
                 if started.elapsed() > std::time::Duration::from_secs(10) {
                     self.handshake_started = None;
@@ -643,7 +627,14 @@ impl MainWindow {
 
         if changed {
             self.presence.reap_stale();
-            cx.notify();
+            // Throttle: skip the redraw if we already notified within the last 100ms.
+            // This prevents bursts of CRDT entries or live-probe packets from causing
+            // more frame submissions than the GPU can display.
+            let now = std::time::Instant::now();
+            if now.duration_since(self.last_p2p_notify).as_millis() >= 100 {
+                self.last_p2p_notify = now;
+                cx.notify();
+            }
         }
     }
 }

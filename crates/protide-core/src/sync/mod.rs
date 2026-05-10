@@ -424,6 +424,7 @@ impl SyncEngine {
         #[cfg(all(feature = "p2p-sync", feature = "pake-auth"))]
         {
             let code = _code;
+            println!("[PAKE] initiate_handshake called for code: {}", code);
             // Bob calls pake_respond to generate his B-side key
             let (msg_b, state_b) = pake::pake_respond(code)?;
             self.pake_pending = Some(state_b);
@@ -439,6 +440,7 @@ impl SyncEngine {
                 let data = serde_json::to_vec(&payload)
                     .map_err(|e| format!("Serialisation error: {}", e))?;
                 p2p.publish_on_pake_topic(code, data);
+                println!("[PAKE] Init packet published on topic: protide-pake-{}", code);
                 info!("[PAKE] Initiation packet sent for code: {}", code);
                 let _ = self.event_tx.send(SyncEvent::P2PDiagnostic(
                     format!("[PAKE] Initiation packet sent for code: {}", code)

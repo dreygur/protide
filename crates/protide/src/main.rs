@@ -18,6 +18,9 @@ fn load_app_icon() -> Option<Arc<image::RgbaImage>> {
 }
 
 fn main() -> Result<()> {
+    // Default to info level; override with RUST_LOG=debug cargo run
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
+
     gpui_platform::application()
         .with_assets(Assets)
         .run(|cx| {

@@ -10,8 +10,9 @@ name = "protide"
 path = "src/main.rs"
 
 [dependencies]
-protide-core = { workspace = true }
+protide-core = { workspace = true, features = ["full-sync"] }
 protide-ui = { workspace = true }
+env_logger = "0.11"
 
 gpui = { workspace = true }
 gpui_platform = { workspace = true }
