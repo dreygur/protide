@@ -446,6 +446,10 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
         cx.notify();
     }
 
+    pub fn has_response_panel(&self) -> bool {
+        !matches!(self.request_mode, RequestMode::WebSocket | RequestMode::SocketIo)
+    }
+
     /// Get the current request mode label for status bar display
     pub fn mode_label(&self) -> &'static str {
         match self.request_mode {

@@ -642,6 +642,7 @@ impl MainWindow {
 impl Render for MainWindow {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = theme::current(cx);
+        let show_response = self.request_panel.read(cx).has_response_panel();
         let show_codegen = self.request_panel.read(cx).codegen_content.is_some();
         let import_modal: Option<gpui::AnyElement> = if self.request_panel.read(cx).import_modal_open {
             Some(self.request_panel.update(cx, |p, cx| p.render_import_modal(cx)))
@@ -862,38 +863,40 @@ impl Render for MainWindow {
                                     .overflow_hidden()
                                     .child(self.request_panel.clone()),
                             )
-                            // Response resize handle
-                            .child(
-                                div()
-                                    .id("response-resize-handle")
-                                    .w_full()
-                                    .h(px(4.0))
-                                    .flex_shrink_0()
-                                    .border_t_1()
-                                    .border_color(theme.colors.border)
-                                    .cursor_row_resize()
-                                    .hover(|s| s.bg(theme.colors.accent.opacity(0.25)))
-                                    .on_mouse_down(
-                                        MouseButton::Left,
-                                        cx.listener(
-                                            |this, event: &gpui::MouseDownEvent, _window, _cx| {
-                                                this.drag_response = Some((
-                                                    f32::from(event.position.y),
-                                                    this.request_height,
-                                                ));
-                                            },
-                                        ),
-                                    ),
-                            )
-                            // Response panel
-                            .child(
-                                div()
-                                    .flex_1()
-                                    .min_h(px(100.0))
-                                    .w_full()
-                                    .overflow_hidden()
-                                    .child(self.response_panel.clone()),
-                            )
+                            // Response resize handle + panel (hidden in WS/SIO modes)
+                            .when(show_response, |el| {
+                                el
+                                    .child(
+                                        div()
+                                            .id("response-resize-handle")
+                                            .w_full()
+                                            .h(px(4.0))
+                                            .flex_shrink_0()
+                                            .border_t_1()
+                                            .border_color(theme.colors.border)
+                                            .cursor_row_resize()
+                                            .hover(|s| s.bg(theme.colors.accent.opacity(0.25)))
+                                            .on_mouse_down(
+                                                MouseButton::Left,
+                                                cx.listener(
+                                                    |this, event: &gpui::MouseDownEvent, _window, _cx| {
+                                                        this.drag_response = Some((
+                                                            f32::from(event.position.y),
+                                                            this.request_height,
+                                                        ));
+                                                    },
+                                                ),
+                                            ),
+                                    )
+                                    .child(
+                                        div()
+                                            .flex_1()
+                                            .min_h(px(100.0))
+                                            .w_full()
+                                            .overflow_hidden()
+                                            .child(self.response_panel.clone()),
+                                    )
+                            })
                             // Console resize handle + panel (toggled with Ctrl+Shift+C)
                             .when(self.show_console, |el| {
                                 el

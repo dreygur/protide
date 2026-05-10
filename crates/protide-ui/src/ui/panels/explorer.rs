@@ -1569,6 +1569,17 @@ impl ExplorerPanel {
                             .px(px(4.0))
                             .pt(px(4.0))
                             .on_scroll_wheel(cx.listener(move |this, event: &ScrollWheelEvent, _, cx| {
+                                // GPUI's on_scroll_wheel fires window-wide (not hitbox-scoped).
+                                // Guard: only handle events whose cursor falls inside the
+                                // collections section (panel origin + 40px header + collections_h).
+                                let b = this.panel_bounds;
+                                let ey = f32::from(event.position.y);
+                                let col_top = f32::from(b.origin.y) + 40.0;
+                                let col_bot = col_top + this.collections_h;
+                                if ey < col_top || ey > col_bot { return; }
+                                let ex = f32::from(event.position.x);
+                                if ex < f32::from(b.origin.x) || ex > f32::from(b.origin.x) + f32::from(b.size.width) { return; }
+
                                 let vp = (this.collections_h - 44.0).max(0.0);
                                 let n = Self::count_visible_items(&this.collection_items);
                                 let max = (n as f32 * ROW_H - vp).max(0.0);
