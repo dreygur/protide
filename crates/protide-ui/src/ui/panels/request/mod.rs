@@ -2480,8 +2480,10 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                 .unwrap_or(0.0);
             let click_x = f32::from(event.position.x) - text_start_x;
             let index = self.edit_index_for_x(click_x.max(0.0), char_width);
-            self.edit_selection.end = index;
-            cx.notify();
+            if self.edit_selection.end != index {
+                self.edit_selection.end = index;
+                cx.notify();
+            }
         }
     }
 
@@ -3800,8 +3802,11 @@ impl<E: WebSocketExecutor> Render for RequestPanel<E> {
                         .on_mouse_move(cx.listener(|this, event: &MouseMoveEvent, _, cx| {
                             if let Some((start_x, start_w)) = this.kv_col_drag {
                                 let delta = f32::from(event.position.x) - start_x;
-                                this.kv_col_key_w = (start_w + delta).max(60.0).min(500.0);
-                                cx.notify();
+                                let new_w = (start_w + delta).max(60.0).min(500.0);
+                                if (this.kv_col_key_w - new_w).abs() > 0.5 {
+                                    this.kv_col_key_w = new_w;
+                                    cx.notify();
+                                }
                             }
                         }))
                         .on_mouse_up(MouseButton::Left, cx.listener(|this, _, _, cx| {

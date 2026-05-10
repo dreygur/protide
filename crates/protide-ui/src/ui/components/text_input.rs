@@ -418,9 +418,11 @@ impl TextInput {
     fn handle_mouse_move(&mut self, event: &MouseMoveEvent, cx: &mut Context<Self>) {
         if self.is_selecting {
             let click_x = f32::from(event.position.x) - self.input_left;
-            let index = self.index_for_x(click_x);
-            self.selection.end = index.min(self.text.len());
-            cx.notify();
+            let index = self.index_for_x(click_x).min(self.text.len());
+            if self.selection.end != index {
+                self.selection.end = index;
+                cx.notify();
+            }
         }
     }
 

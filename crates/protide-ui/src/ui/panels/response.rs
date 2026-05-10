@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use gpui::{
     canvas, deferred, div, prelude::*, px, uniform_list, Bounds, ClipboardItem, Context, Entity,
-    IntoElement, KeyDownEvent, MouseButton, MouseDownEvent, Pixels, Point, Render, ScrollHandle,
+    IntoElement, MouseButton, MouseDownEvent, Pixels, Point, Render, ScrollHandle,
     SharedString, Styled, UniformListScrollHandle, WeakEntity, Window,
 };
 
@@ -17,7 +17,9 @@ const GUTTER_FONT: f32 = 11.0;
 // Strings longer than COLLAPSE_CHARS get a "show more" toggle in wrap mode.
 const COLLAPSE_CHARS: usize = 300;
 // Responses with more rows than this fall back to uniform_list (no wrapping).
-const WRAP_MODE_MAX_ROWS: usize = 2_000;
+// Keep this low: wrap mode builds ALL row elements on every render frame, so
+// large row counts cause O(n) layout work on every cx.notify() and scroll tick.
+const WRAP_MODE_MAX_ROWS: usize = 200;
 
 use protide_core::chaining;
 use protide_core::scripting::results::TestResult;
@@ -27,7 +29,6 @@ use crate::ui::components::icons::{
     icon, ICON_SM, ICON_MD, ICON_CLOSE, ICON_CHECK, ICON_CIRCLE_CHECK,
     ICON_ARROW_DOWN, ICON_COPY, ICON_GLOBE, ICON_CHEVRON_DOWN, ICON_CHEVRON_RIGHT,
 };
-use crate::ui::components::selectable_text::SelectionRange;
 use crate::ui::components::TextInput;
 
 // ─── JSON tree types ────────────────────────────────────────────────────────
@@ -36,8 +37,11 @@ use crate::ui::components::TextInput;
 enum PrimVal {
     Null,
     Bool(bool),
-    Num(String),
-    Str(String),
+    /// Pre-formatted display string, e.g. "42.5". Raw value == display for numbers.
+    Num(SharedString),
+    /// `raw` is the original JSON string value (used for clipboard copy).
+    /// `display` is pre-sanitized and quoted: `"\"hello world\""`.
+    Str { raw: String, display: SharedString },
     EmptyArr,
     EmptyObj,
 }
@@ -77,8 +81,12 @@ fn flatten_json(
     match value {
         Value::Null    => rows.push(JsonRow { depth, kind: RowKind::Leaf { key, val: PrimVal::Null,         path: leaf_path } }),
         Value::Bool(b) => rows.push(JsonRow { depth, kind: RowKind::Leaf { key, val: PrimVal::Bool(*b),    path: leaf_path } }),
-        Value::Number(n) => rows.push(JsonRow { depth, kind: RowKind::Leaf { key, val: PrimVal::Num(n.to_string()), path: leaf_path } }),
-        Value::String(s) => rows.push(JsonRow { depth, kind: RowKind::Leaf { key, val: PrimVal::Str(s.clone()), path: leaf_path } }),
+        Value::Number(n) => rows.push(JsonRow { depth, kind: RowKind::Leaf { key, val: PrimVal::Num(SharedString::new(n.to_string())), path: leaf_path } }),
+        Value::String(s) => {
+            let san: String = s.chars().map(|c| if c.is_control() { ' ' } else { c }).collect();
+            let display = SharedString::new(format!("\"{}\"", san));
+            rows.push(JsonRow { depth, kind: RowKind::Leaf { key, val: PrimVal::Str { raw: s.clone(), display }, path: leaf_path } });
+        }
         Value::Array(arr) if arr.is_empty() => {
             rows.push(JsonRow { depth, kind: RowKind::Leaf { key, val: PrimVal::EmptyArr, path: leaf_path } });
         }
@@ -115,13 +123,12 @@ fn flatten_json(
 }
 
 fn render_json_row(
-    line_num:   usize,
-    row:        &JsonRow,
-    colors:     &crate::theme::Colors,
-    weak:       WeakEntity<ResponsePanel>,
-    wrap_mode:  bool, // true → variable-height layout; false → fixed ROW_H (uniform_list)
-    expanded:   bool, // whether the long-string at this row is expanded (wrap_mode only)
-    selection:  Option<SelectionRange>, // multi-row selection range
+    line_num:  usize,
+    row:       &JsonRow,
+    colors:    &crate::theme::Colors,
+    weak:      WeakEntity<ResponsePanel>,
+    wrap_mode: bool,
+    expanded:  bool,
 ) -> gpui::AnyElement {
     let guide_color = colors.border;
     let hover_bg    = colors.hover_overlay;
@@ -170,14 +177,12 @@ fn render_json_row(
          .when(is_folded, |el| el.child(icon(ICON_CHEVRON_RIGHT, ICON_SM, colors.text_secondary)))
     };
 
-    // Key prefix helper (Hsla is Copy)
     let key_color   = colors.info;
     let colon_color = colors.text_secondary.opacity(0.45);
     let key_span = move |k: &str| -> gpui::AnyElement {
         div()
             .flex_shrink_0().flex().items_center().whitespace_nowrap()
-            .child(div().flex_shrink_0().text_color(key_color)
-                .child(SharedString::from(format!("\"{}\"", k))))
+            .child(div().text_color(key_color).child(SharedString::from(format!("\"{}\"", k))))
             .child(div().flex_shrink_0().text_color(colon_color).child(": "))
             .into_any_element()
     };
@@ -190,26 +195,21 @@ fn render_json_row(
 
     let content: gpui::AnyElement = match &row.kind {
         RowKind::Leaf { key, val, .. } => {
-            // Sanitize control characters so GPUI never sees hard newlines inside a value.
-            // Soft-wrap is achieved by removing whitespace_nowrap — the browser-style
-            // word-wrap kicks in automatically within the flex-1 value container.
-            let (txt, col, is_str) = match val {
-                PrimVal::Null     => ("null".to_string(),                                          c_secondary, false),
-                PrimVal::Bool(b)  => (if *b { "true" } else { "false" }.to_string(),              c_patch,     false),
-                PrimVal::Num(n)   => (n.clone(),                                                   c_put,       false),
-                PrimVal::Str(s)   => {
-                    let san: String = s.chars().map(|c| if c.is_control() { ' ' } else { c }).collect();
-                    (format!("\"{}\"", san),                                                       c_success,   true)
-                }
-                PrimVal::EmptyArr => ("[]".to_string(),                                            c_secondary, false),
-                PrimVal::EmptyObj => ("{}".to_string(),                                            c_secondary, false),
+            // Display text is pre-computed at flatten time — no allocs on the render path.
+            let (txt, col, is_str): (SharedString, _, bool) = match val {
+                PrimVal::Null     => (SharedString::new_static("null"),                  c_secondary, false),
+                PrimVal::Bool(b)  => (SharedString::new_static(if *b { "true" } else { "false" }), c_patch, false),
+                PrimVal::Num(n)   => (n.clone(),                                         c_put,       false),
+                PrimVal::Str { display, .. } => (display.clone(),                        c_success,   true),
+                PrimVal::EmptyArr => (SharedString::new_static("[]"),                    c_secondary, false),
+                PrimVal::EmptyObj => (SharedString::new_static("{}"),                    c_secondary, false),
             };
 
             // Long strings in wrap mode: show truncated text + expand/collapse toggle
             if wrap_mode && is_str && txt.len() > COLLAPSE_CHARS + 3 {
                 let row_idx  = line_num - 1;
                 let weak_str = weak.clone();
-                let display  = if expanded {
+                let display: SharedString = if expanded {
                     txt.clone()
                 } else {
                     // Safe byte boundary: stay within ASCII quotes wrapping
@@ -217,14 +217,14 @@ fn render_json_row(
                         .nth(COLLAPSE_CHARS + 1)
                         .map(|(i, _)| i)
                         .unwrap_or(txt.len());
-                    format!("{}…\"", &txt[..cut])
+                    SharedString::new(format!("{}…\"", &txt[..cut]))
                 };
                 let btn_label: &'static str = if expanded { "▲ collapse" } else { "▼ show more" };
 
                 let value_block = div()
                     .flex_1().min_w(px(0.))
                     .flex().flex_col().gap(px(2.0))
-                    .child(div().whitespace_normal().text_color(col).child(SharedString::from(display)))
+                    .child(div().whitespace_normal().text_color(col).child(display))
                     .child(
                         div()
                             .id(SharedString::from(format!("str-toggle-{}", row_idx)))
@@ -252,96 +252,16 @@ fn render_json_row(
                     .into_any_element()
 
             } else if wrap_mode {
-                let row_idx = line_num - 1;
-                let raw_txt = txt.clone();
-                // chars before the value: "key": prefix (key + quotes + colon + space = key.len()+4)
-                let key_prefix_chars = key.as_ref().map(|k| k.len() + 4).unwrap_or(0);
-
-                let sel_offsets = selection.and_then(|r| r.offsets_for_row(row_idx, raw_txt.len()));
-                let (sel_s, sel_e) = sel_offsets.unwrap_or((0, 0));
-                let has_sel = sel_s < sel_e;
-
-                let value_element: gpui::AnyElement = {
-                    // Render before/selected/after spans, or the whole text when no selection.
-                    let base = div()
-                        .id(SharedString::from(format!("json-val-{}", row_idx)))
-                        .cursor_text()
-                        .flex_1().min_w(px(0.))
-                        .whitespace_normal()
-                        .text_color(col);
-
-                    let base = if has_sel {
-                        let before  = raw_txt.get(..sel_s).unwrap_or("").to_string();
-                        let seltext = raw_txt.get(sel_s..sel_e).unwrap_or("").to_string();
-                        let after   = raw_txt.get(sel_e..).unwrap_or("").to_string();
-                        base.child(SharedString::from(before))
-                            .child(div().bg(c_accent.opacity(0.25)).child(SharedString::from(seltext)))
-                            .child(SharedString::from(after))
-                    } else {
-                        base.child(SharedString::from(raw_txt))
-                    };
-
-                    let txt_len = txt.len();
-                    base
-                    // Single-click starts drag selection; double-click selects all.
-                    .on_mouse_down(MouseButton::Left, {
-                        let weak = weak.clone();
-                        move |event: &gpui::MouseDownEvent, _, cx| {
-                            weak.update(cx, |this, cx| {
-                                let kpw = key_prefix_chars as f32 * ROW_FONT * 0.6;
-                                let vx = GUTTER_W + depth as f32 * INDENT_W + CHEVRON_W + kpw;
-                                let rel_x = (f32::from(event.position.x) - f32::from(this.bounds_origin.x) - vx).max(0.0);
-                                let char_off = ((rel_x / (ROW_FONT * 0.6)) as usize).min(txt_len);
-                                if event.click_count >= 2 {
-                                    this.json_selection = Some(SelectionRange::new(row_idx, 0, row_idx, txt_len));
-                                    this.json_selecting = false;
-                                } else {
-                                    this.json_select_start = Some((row_idx, char_off));
-                                    this.json_selecting = true;
-                                    this.json_selection = Some(SelectionRange::new(row_idx, char_off, row_idx, char_off));
-                                }
-                                cx.notify();
-                            }).ok();
-                        }
-                    })
-                    // Extend selection as mouse moves (only while left button held).
-                    .on_mouse_move({
-                        let weak = weak.clone();
-                        move |event: &gpui::MouseMoveEvent, _, cx| {
-                            if !event.dragging() { return; }
-                            weak.update(cx, |this, cx| {
-                                if !this.json_selecting { return; }
-                                if let Some((anchor_row, anchor_off)) = this.json_select_start {
-                                    if anchor_row != row_idx { return; }
-                                    let kpw = key_prefix_chars as f32 * ROW_FONT * 0.6;
-                                    let vx = GUTTER_W + depth as f32 * INDENT_W + CHEVRON_W + kpw;
-                                    let rel_x = (f32::from(event.position.x) - f32::from(this.bounds_origin.x) - vx).max(0.0);
-                                    let end_off = ((rel_x / (ROW_FONT * 0.6)) as usize).min(txt_len);
-                                    this.json_selection = Some(SelectionRange::new(anchor_row, anchor_off, row_idx, end_off));
-                                    cx.notify();
-                                }
-                            }).ok();
-                        }
-                    })
-                    .on_mouse_up(MouseButton::Left, {
-                        let weak = weak.clone();
-                        move |_, _, cx| {
-                            weak.update(cx, |this, cx| {
-                                if this.json_selecting {
-                                    this.json_selecting = false;
-                                    cx.notify();
-                                }
-                            }).ok();
-                        }
-                    })
-                    .into_any_element()
-                };
-
                 div()
                     .flex_1().min_w(px(0.)).flex().items_start()
                     .whitespace_normal()
                     .when_some(key.as_deref(), |el, k| el.child(key_span(k)))
-                    .child(value_element)
+                    .child(
+                        div().flex_1().min_w(px(0.))
+                            .whitespace_normal()
+                            .text_color(col)
+                            .child(txt)  // SharedString — no alloc
+                    )
                     .into_any_element()
 
             } else {
@@ -352,7 +272,7 @@ fn render_json_row(
                     .child(
                         div().flex_1().min_w(px(0.)).overflow_hidden().text_ellipsis().whitespace_nowrap()
                             .text_color(col)
-                            .child(SharedString::from(txt)),
+                            .child(txt),  // SharedString — no alloc
                     )
                     .into_any_element()
             }
@@ -403,8 +323,8 @@ fn render_json_row(
             let val_str = match val {
                 PrimVal::Null     => "null".to_string(),
                 PrimVal::Bool(b)  => if *b { "true" } else { "false" }.to_string(),
-                PrimVal::Num(n)   => n.clone(),
-                PrimVal::Str(s)   => s.clone(),
+                PrimVal::Num(n)   => n.to_string(),
+                PrimVal::Str { raw, .. } => raw.clone(),  // raw = unquoted original value
                 PrimVal::EmptyArr => "[]".to_string(),
                 PrimVal::EmptyObj => "{}".to_string(),
             };
@@ -608,12 +528,6 @@ pub struct ResponsePanel {
     bounds_origin: Point<Pixels>,
     /// Active JSON tree right-click context menu
     json_context_menu: Option<JsonCtxMenu>,
-    /// Multi-row text selection in JSON tree (start_row/offset → end_row/offset)
-    json_selection: Option<SelectionRange>,
-    /// Whether we're in the middle of a selection drag
-    json_selecting: bool,
-    /// Start offset for a new selection drag
-    json_select_start: Option<(usize, usize)>,
 }
 
 impl ResponsePanel {
@@ -656,9 +570,6 @@ impl ResponsePanel {
             context_menu_pos: None,
             bounds_origin: Point::default(),
             json_context_menu: None,
-            json_selection: None,
-            json_selecting: false,
-            json_select_start: None,
         }
     }
 
@@ -726,9 +637,6 @@ impl ResponsePanel {
         self.json_value = serde_json::from_str::<serde_json::Value>(&response.body).ok();
         self.json_tree_collapsed.clear();
         self.expanded_strings.clear();
-        self.json_selection = None;
-        self.json_selecting = false;
-        self.json_select_start = None;
         self.rebuild_json_rows();
 
         self.response = Some(response);
@@ -791,12 +699,10 @@ impl ResponsePanel {
                 let colors   = theme::current(cx).colors.clone();
                 let weak     = cx.weak_entity();
                 let expanded = &self.expanded_strings;
-                let selection = self.json_selection;
                 let rows: Vec<gpui::AnyElement> = self.json_rows.iter().enumerate()
                     .map(|(i, row)| render_json_row(
                         i + 1, row, &colors, weak.clone(),
                         true, expanded.contains(&i),
-                        selection,
                     ))
                     .collect();
                 div()
@@ -816,10 +722,9 @@ impl ResponsePanel {
                     cx.processor(|this, range: std::ops::Range<usize>, _window, cx| {
                         let colors = theme::current(cx).colors.clone();
                         let weak   = cx.weak_entity();
-                        let selection = this.json_selection;
                         range.map(|i| {
                             let row = this.json_rows[i].clone();
-                            render_json_row(i + 1, &row, &colors, weak.clone(), false, false, selection)
+                            render_json_row(i + 1, &row, &colors, weak.clone(), false, false)
                         })
                         .collect::<Vec<_>>()
                     }),
@@ -871,45 +776,9 @@ impl Render for ResponsePanel {
             .flex_col()
             .relative()
             .bg(theme.colors.bg_primary)
-            // Ctrl+C copies selected text
-            .on_key_down(cx.listener(|this, event: &KeyDownEvent, _, cx| {
-                if event.keystroke.modifiers.control && event.keystroke.key.as_str() == "c" {
-                    if let Some(sel) = this.json_selection {
-                        let mut selected_text = String::new();
-                        let start_row = sel.start_row.min(sel.end_row);
-                        let end_row = sel.end_row.max(sel.start_row);
-                        for row_idx in start_row..=end_row {
-                            if let Some(row) = this.json_rows.get(row_idx) {
-                                let txt = row_text(&row.kind);
-                                if let Some((s, e)) = sel.offsets_for_row(row_idx, txt.len()) {
-                                    if s < e && s < txt.len() {
-                                        if let Some(slice) = txt.get(s..e.min(txt.len())) {
-                                            selected_text.push_str(slice);
-                                        }
-                                    }
-                                }
-                                if row_idx < end_row {
-                                    selected_text.push('\n');
-                                }
-                            }
-                        }
-                        if !selected_text.is_empty() {
-                            cx.write_to_clipboard(ClipboardItem::new_string(selected_text));
-                        }
-                    }
-                    // Also clear double-click selections
-                    cx.stop_propagation();
-                }
-            }))
-            // Mouse down: start or clear selection
-            .on_mouse_down(MouseButton::Left, cx.listener(|this, event: &MouseDownEvent, _, cx| {
-                this.context_menu_pos = None;
-                // Shift+click: extend selection is handled by child elements
-                if event.click_count == 2 {
-                    // Double-click on empty area clears selection
-                    this.json_selection = None;
-                    this.json_selecting = false;
-                    this.json_select_start = None;
+            .on_mouse_down(MouseButton::Left, cx.listener(|this, _event: &MouseDownEvent, _, cx| {
+                if this.context_menu_pos.is_some() {
+                    this.context_menu_pos = None;
                     cx.notify();
                 }
             }))
@@ -1033,14 +902,14 @@ impl Render for ResponsePanel {
                             if let Some((drag_id, start_x, start_w)) = this.resp_col_drag {
                                 let delta = f32::from(event.position.x) - start_x;
                                 let new_w = (start_w + delta).max(60.0);
-                                match drag_id {
-                                    0 => this.resp_header_col1_w = new_w.min(600.0),
-                                    1 => this.cookie_col1_w = new_w.min(400.0),
-                                    2 => this.cookie_col3_w = new_w.min(300.0),
-                                    3 => this.cookie_col4_w = new_w.min(200.0),
-                                    _ => {}
-                                }
-                                cx.notify();
+                                let changed = match drag_id {
+                                    0 => { let w = new_w.min(600.0); let c = (this.resp_header_col1_w - w).abs() > 0.5; this.resp_header_col1_w = w; c }
+                                    1 => { let w = new_w.min(400.0); let c = (this.cookie_col1_w - w).abs() > 0.5; this.cookie_col1_w = w; c }
+                                    2 => { let w = new_w.min(300.0); let c = (this.cookie_col3_w - w).abs() > 0.5; this.cookie_col3_w = w; c }
+                                    3 => { let w = new_w.min(200.0); let c = (this.cookie_col4_w - w).abs() > 0.5; this.cookie_col4_w = w; c }
+                                    _ => false,
+                                };
+                                if changed { cx.notify(); }
                             }
                         }))
                         .on_mouse_up(MouseButton::Left, cx.listener(|this, _, _, cx| {
@@ -2583,35 +2452,6 @@ fn format_size(bytes: usize) -> String {
     }
 }
 
-/// Extract the text representation of a JSON row for clipboard copy operations.
-fn row_text(kind: &RowKind) -> String {
-    match kind {
-        RowKind::Leaf { val, .. } => match val {
-            PrimVal::Null => "null".to_string(),
-            PrimVal::Bool(b) => b.to_string(),
-            PrimVal::Num(n) => n.clone(),
-            PrimVal::Str(s) => format!("\"{}\"", s),
-            PrimVal::EmptyArr => "[]".to_string(),
-            PrimVal::EmptyObj => "{}".to_string(),
-        },
-        RowKind::Open { key, arr, .. } => {
-            if let Some(k) = key {
-                format!("\"{}\": {}", k, if *arr { "[" } else { "{" })
-            } else {
-                (if *arr { "[" } else { "{" }).to_string()
-            }
-        }
-        RowKind::Close { arr } => (if *arr { "]" } else { "}" }).to_string(),
-        RowKind::Folded { key, arr, count, .. } => {
-            let bracket = if *arr { "[...]" } else { "{...}" };
-            if let Some(k) = key {
-                format!("\"{}\": {} ({} items)", k, bracket, count)
-            } else {
-                format!("{} ({} items)", bracket, count)
-            }
-        }
-    }
-}
 
 fn truncate_error(error: &str) -> String {
     if error.len() > 40 {

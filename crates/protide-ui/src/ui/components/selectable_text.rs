@@ -1,6 +1,20 @@
+//! Selectable text rendering utilities.
+//!
+//! # TextLayout caching
+//! GPUI's `LineLayoutCache` caches shaped lines by `(text, font, size)` across frames.
+//! `index_for_x` calls `window.text_system().shape_line()`, which hits this cache on
+//! every subsequent call with the same arguments — no manual caching is needed here.
+//! Invalidation is automatic: when content or font_size changes, the cache misses and
+//! re-shapes. Across a selection drag the text is constant, so hit-testing is O(1).
+//!
+//! # Notify guard
+//! Parents that attach mouse events MUST gate `cx.notify()` with `selection_changed()`.
+//! Without the guard, every MouseMove triggers a full view re-render regardless of
+//! whether the selection moved to a different character, causing continuous CPU spikes.
+
 use gpui::{
-    div, prelude::*, px, Context, ElementId, Hsla, InteractiveElement,
-    IntoElement, ParentElement, SharedString, Styled, Window,
+    div, font, px, Context, ElementId, Hsla, InteractiveElement,
+    IntoElement, ParentElement, SharedString, Styled, TextRun, Window,
 };
 
 /// A selection range spanning multiple rows.
@@ -20,16 +34,26 @@ impl SelectionRange {
 
     /// Check if a given (row_index, offset) falls within this selection.
     pub fn contains(&self, row: usize, offset: usize) -> bool {
-        if self.start_row == self.end_row {
-            row == self.start_row
-                && offset >= self.start_offset.min(self.end_offset)
-                && offset < self.start_offset.max(self.end_offset)
-        } else if row == self.start_row {
-            offset >= self.start_offset.min(self.end_offset)
-        } else if row == self.end_row {
-            offset < self.end_offset.max(self.start_offset)
+        let (sr, er) = if self.start_row <= self.end_row {
+            (self.start_row, self.end_row)
         } else {
-            row > self.start_row.min(self.end_row) && row < self.end_row.max(self.start_row)
+            (self.end_row, self.start_row)
+        };
+        let (so, eo) = if sr == self.start_row {
+            (self.start_offset, self.end_offset)
+        } else {
+            (self.end_offset, self.start_offset)
+        };
+        if sr == er {
+            row == sr && offset >= so.min(eo) && offset < so.max(eo)
+        } else if row == sr {
+            // Canonical start row: selection runs from so to end of line.
+            offset >= so
+        } else if row == er {
+            // Canonical end row: selection runs from start of line to eo.
+            offset < eo
+        } else {
+            row > sr && row < er
         }
     }
 
@@ -50,16 +74,17 @@ impl SelectionRange {
             return None;
         }
         if sr == er {
+            // Both offsets are in the same row — min/max to normalize direction.
             let s = so.min(eo).min(text_len);
-            let e = eo.max(so).min(text_len);
+            let e = so.max(eo).min(text_len);
             return Some((s, e));
         }
+        // Multi-row: so is the offset within sr, eo is the offset within er.
+        // They are in different rows, so min/max across them is meaningless.
         if row == sr {
-            let s = so.min(eo).min(text_len);
-            Some((s, text_len))
+            Some((so.min(text_len), text_len))
         } else if row == er {
-            let e = eo.max(so).min(text_len);
-            Some((0, e))
+            Some((0, eo.min(text_len)))
         } else {
             Some((0, text_len))
         }
@@ -134,23 +159,79 @@ impl SelectableText {
         self
     }
 
-    /// Coordinate-based character index at a given x-offset.
-    /// Uses the font's average char width for monospace.
-    /// For pixel-perfect accuracy, shape the text via `TextSystem::shape_line()`
-    /// and use `ShapedLine::index_for_x()`.
-    fn char_at_x(&self, x: f32) -> usize {
-        let text_str = self.text.as_ref();
-        if text_str.is_empty() {
+    fn index_for_x_inner(&self, x: f32, window: &Window) -> usize {
+        if self.text.is_empty() {
             return 0;
         }
-        let avg_char_w = self.font_size * 0.55;
-        let raw_idx = (x / avg_char_w).round() as usize;
-        raw_idx.min(text_str.len())
+        let f = if self.mono { font("JetBrains Mono") } else { font(".SystemUIFont") };
+        let run = TextRun {
+            len: self.text.len(),
+            font: f,
+            color: Hsla::default(),
+            background_color: None,
+            underline: None,
+            strikethrough: None,
+        };
+        let shaped = window
+            .text_system()
+            .shape_line(self.text.clone(), px(self.font_size), &[run], None);
+        // ShapedLine derefs to Arc<LineLayout> derefs to LineLayout
+        shaped.closest_index_for_x(px(x.max(0.0)))
     }
 
-    /// Compute index from pixel x coordinate relative to text start.
-    pub fn index_for_x(&self, x: f32) -> usize {
-        self.char_at_x(x.max(0.0))
+    /// Pixel-exact character boundary nearest to `x` (relative to text origin).
+    ///
+    /// `x` must be local to this element's top-left corner. Inside a scrollable
+    /// container, pass `event.position.x - element_origin.x - scroll_offset_x`.
+    ///
+    /// Only call this while the mouse button is down (selection drag). Calling on
+    /// every MouseMove without a down-state guard causes a shape_line hit + re-render
+    /// on every frame even when no character boundary changes.
+    ///
+    /// Uses GPUI's shaped line — correct for ligatures, kerning, variable-width fonts.
+    /// The internal `LineLayoutCache` makes repeated calls for the same text O(1).
+    pub fn index_for_x(&self, x: f32, window: &Window) -> usize {
+        #[cfg(debug_assertions)]
+        let t0 = std::time::Instant::now();
+
+        let result = self.index_for_x_inner(x, window);
+
+        #[cfg(debug_assertions)]
+        {
+            let elapsed = t0.elapsed();
+            if elapsed.as_millis() > 8 {
+                eprintln!(
+                    "[SelectableText] SLOW hit-test: {}ms (text_len={})",
+                    elapsed.as_millis(),
+                    self.text.len()
+                );
+            }
+        }
+        result
+    }
+}
+
+/// Returns `true` when the selection actually changes — use this to gate `cx.notify()`.
+///
+/// Without this guard, every `MouseMove` triggers a full view re-render even when the
+/// cursor hasn't advanced to a different character, causing continuous CPU spikes.
+///
+/// # Example
+/// ```ignore
+/// let new_idx = selectable.index_for_x(delta_x, window);
+/// if selection_changed(self.sel, anchor, new_idx) {
+///     self.sel = Some((anchor, new_idx));
+///     cx.notify();
+/// }
+/// ```
+pub fn selection_changed(
+    old: Option<(usize, usize)>,
+    new_start: usize,
+    new_end: usize,
+) -> bool {
+    match old {
+        None => new_start != new_end,
+        Some((s, e)) => s != new_start || e != new_end,
     }
 }
 
@@ -214,8 +295,13 @@ pub fn render_selectable(
 
 /// Build a selectable text element for use in div-based layouts.
 /// Returns an `AnyElement` with the selection highlight already baked in.
-/// Does NOT handle mouse events — those should be attached at the parent level
-/// via the `selection` callback.
+/// Does NOT handle mouse events — those should be attached at the parent level.
+///
+/// Hot-path optimisation: the no-selection case (the vast majority of rows)
+/// emits a single text node with no child divs, so GPUI lays out one box
+/// instead of three. The selection case emits three children: two plain
+/// SharedString nodes (inherit parent text_color, no extra div) plus one
+/// highlight span that needs a wrapper div for the background color.
 pub fn selectable_text_element(
     id: ElementId,
     text: SharedString,
@@ -224,39 +310,34 @@ pub fn selectable_text_element(
     sel_color: Hsla,
     font_size: f32,
 ) -> gpui::AnyElement {
-    let txt = text.clone();
+    let base = div()
+        .id(id)
+        .cursor_text()
+        .text_size(px(font_size))
+        .font_family(SharedString::from("JetBrains Mono"))
+        .text_color(text_color);  // inherited by all direct SharedString children
+
     if let Some((start, end)) = selection {
         let (s, e) = if start <= end { (start, end) } else { (end, start) };
-        let s = s.min(txt.len());
-        let e = e.min(txt.len());
-
-        let before = txt[..s].to_string();
-        let selected = txt[s..e].to_string();
-        let after = txt[e..].to_string();
-
-        div()
-            .id(id)
-            .cursor_text()
-            .text_size(px(font_size))
-            .font_family(SharedString::from("JetBrains Mono"))
-            .child(div().text_color(text_color).child(SharedString::from(before)))
-            .child(div().bg(sel_color).text_color(text_color).child(SharedString::from(selected)))
-            .child(div().text_color(text_color).child(SharedString::from(after)))
+        let s = s.min(text.len());
+        let e = e.min(text.len());
+        base
+            .child(SharedString::from(&text[..s]))
+            .child(div().bg(sel_color).child(SharedString::from(&text[s..e])))
+            .child(SharedString::from(&text[e..]))
             .into_any_element()
     } else {
-        div()
-            .id(id)
-            .cursor_text()
-            .text_size(px(font_size))
-            .font_family(SharedString::from("JetBrains Mono"))
-            .child(div().text_color(text_color).child(text))
-            .into_any_element()
+        // Common case: no selection — single text node, zero extra allocations.
+        base.child(text).into_any_element()
     }
 }
 
 /// Render a JSON value with per-row selection support.
-/// Splits the value into before/selection/after segments based on the
-/// `SelectionRange` for this row.
+///
+/// Hot-path design: most rows have no active selection, so we take a fast path
+/// that emits a single text node (no string splitting, one child div).  Only
+/// rows whose range intersects the current SelectionRange pay the cost of three
+/// children and two extra string allocations.
 pub fn render_selectable_json_value(
     row_id: ElementId,
     text: &str,
@@ -266,31 +347,25 @@ pub fn render_selectable_json_value(
     sel_color: Hsla,
     font_size: f32,
 ) -> gpui::AnyElement {
-    let (before, selected, after) = if let Some(range) = sel_range {
-        range.offsets_for_row(row_index, text.len()).map_or_else(
-            || (text.to_string(), String::new(), String::new()),
-            |(s, e)| {
-                let before = text[..s].to_string();
-                let sel = text[s..e].to_string();
-                let after = text[e..].to_string();
-                (before, sel, after)
-            },
-        )
-    } else {
-        (text.to_string(), String::new(), String::new())
-    };
-
-    let has_sel = !selected.is_empty();
-
-    div()
+    let base = div()
         .id(row_id)
         .cursor_text()
         .text_size(px(font_size))
         .font_family(SharedString::from("JetBrains Mono"))
-        .child(div().text_color(text_color).child(SharedString::from(before)))
-        .when(has_sel, |el| {
-            el.child(div().bg(sel_color).text_color(text_color).child(SharedString::from(selected)))
-        })
-        .child(div().text_color(text_color).child(SharedString::from(after)))
-        .into_any_element()
+        .text_color(text_color);  // inherited by plain SharedString children
+
+    // Only compute offsets when the selection actually touches this row.
+    if let Some((s, e)) = sel_range.and_then(|r| r.offsets_for_row(row_index, text.len())) {
+        // Selection intersects this row: split into before / highlight / after.
+        // before and after are plain SharedString nodes — they inherit text_color
+        // from the parent div, so no per-segment wrapper div is needed.
+        base
+            .child(SharedString::from(&text[..s]))
+            .child(div().bg(sel_color).child(SharedString::from(&text[s..e])))
+            .child(SharedString::from(&text[e..]))
+            .into_any_element()
+    } else {
+        // Common case: no selection on this row — one allocation, one layout box.
+        base.child(SharedString::from(text)).into_any_element()
+    }
 }
