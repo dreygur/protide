@@ -14,6 +14,13 @@ const CHEVRON_W: f32 = 16.0;
 const ROW_H: f32 = 20.0;
 const ROW_FONT: f32 = 12.5;
 const GUTTER_FONT: f32 = 11.0;
+// Header table layout constants (response headers tab)
+const HDR_LABEL_ROW_H: f32 = 22.0; // NAME/VALUE column header: py(6)*2 + font 10px
+const HDR_ROW_H: f32 = 28.0;       // data row: py(8)*2 + font 12px
+const HDR_SPACER_W: f32 = 4.0;     // div().w(px(4.0)) spacer between columns
+const HDR_PADDING: f32 = 12.0;     // px(12.0) left padding in value column
+const HDR_CHAR_W: f32 = 7.2;       // JetBrains Mono 12px ≈ font_size × 0.6
+const JSON_CHAR_W: f32 = 7.5;      // JetBrains Mono 12.5px ≈ font_size × 0.6
 // Strings longer than COLLAPSE_CHARS get a "show more" toggle in wrap mode.
 const COLLAPSE_CHARS: usize = 300;
 // Responses with more rows than this fall back to uniform_list (no wrapping).
@@ -21,10 +28,14 @@ const COLLAPSE_CHARS: usize = 300;
 // large row counts cause O(n) layout work on every cx.notify() and scroll tick.
 const WRAP_MODE_MAX_ROWS: usize = 200;
 
+use log::{debug, warn};
 use protide_core::chaining;
 use protide_core::scripting::results::TestResult;
 use crate::theme;
 use crate::ui::components::code_editor::{CodeEditor, Language};
+use crate::ui::components::selectable_text::{
+    selectable_text_element, selection_changed, render_selectable_json_value, SelectionRange,
+};
 use crate::ui::components::icons::{
     icon, ICON_SM, ICON_MD, ICON_CLOSE, ICON_CHECK, ICON_CIRCLE_CHECK,
     ICON_ARROW_DOWN, ICON_COPY, ICON_GLOBE, ICON_CHEVRON_DOWN, ICON_CHEVRON_RIGHT,
@@ -129,6 +140,7 @@ fn render_json_row(
     weak:      WeakEntity<ResponsePanel>,
     wrap_mode: bool,
     expanded:  bool,
+    sel_range: Option<&SelectionRange>,
 ) -> gpui::AnyElement {
     let guide_color = colors.border;
     let hover_bg    = colors.hover_overlay;
@@ -258,9 +270,15 @@ fn render_json_row(
                     .when_some(key.as_deref(), |el, k| el.child(key_span(k)))
                     .child(
                         div().flex_1().min_w(px(0.))
-                            .whitespace_normal()
-                            .text_color(col)
-                            .child(txt)  // SharedString — no alloc
+                            .child(render_selectable_json_value(
+                                gpui::ElementId::Integer(line_num as u64),
+                                &txt,
+                                sel_range,
+                                line_num - 1,
+                                col,
+                                c_accent.opacity(0.3),
+                                ROW_FONT,
+                            ))
                     )
                     .into_any_element()
 
@@ -471,6 +489,14 @@ impl ParsedCookie {
     }
 }
 
+/// Active text selection within the header value column
+#[derive(Debug, Clone, Copy)]
+struct HdrSel {
+    row: usize,
+    range: (usize, usize), // (anchor_byte, head_byte) — un-normalized
+    selecting: bool,
+}
+
 /// Copy feedback type
 #[derive(Clone, Copy, PartialEq, Eq)]
 #[allow(dead_code)]
@@ -478,6 +504,7 @@ enum CopyFeedback {
     Body,
     Headers,
     Cookies,
+    HdrVal,
 }
 
 /// Response viewer panel
@@ -528,6 +555,16 @@ pub struct ResponsePanel {
     bounds_origin: Point<Pixels>,
     /// Active JSON tree right-click context menu
     json_context_menu: Option<JsonCtxMenu>,
+    /// Layout bounds of the response headers table, captured each frame for hit-testing
+    hdr_table_bounds: Option<Bounds<Pixels>>,
+    /// Active text selection within the header value column
+    hdr_sel: Option<HdrSel>,
+    /// Bounds of the JSON tree container, captured each frame for mouse hit-testing
+    json_tree_bounds: Option<Bounds<Pixels>>,
+    /// Active drag-select across JSON tree value cells
+    json_sel: Option<SelectionRange>,
+    /// Whether a JSON tree selection drag is in progress
+    json_selecting: bool,
 }
 
 impl ResponsePanel {
@@ -570,6 +607,11 @@ impl ResponsePanel {
             context_menu_pos: None,
             bounds_origin: Point::default(),
             json_context_menu: None,
+            hdr_table_bounds: None,
+            hdr_sel: None,
+            json_tree_bounds: None,
+            json_sel: None,
+            json_selecting: false,
         }
     }
 
@@ -577,6 +619,26 @@ impl ResponsePanel {
     pub fn set_test_results(&mut self, results: Vec<TestResult>, cx: &mut Context<Self>) {
         self.test_results = results;
         cx.notify();
+    }
+
+    fn hdr_row_at(&self, ey: Pixels) -> Option<usize> {
+        let bounds = self.hdr_table_bounds?;
+        let rel_y = f32::from(ey) - f32::from(bounds.origin.y) - HDR_LABEL_ROW_H;
+        if rel_y < 0.0 { return None; }
+        let row = (rel_y / HDR_ROW_H) as usize;
+        let n = self.response.as_ref()?.headers.len();
+        (row < n).then_some(row)
+    }
+
+    fn hdr_val_byte_at(&self, ex: Pixels, row: usize) -> usize {
+        let bounds = self.hdr_table_bounds.unwrap_or_default();
+        let val_col_x = f32::from(bounds.origin.x) + self.resp_header_col1_w + HDR_SPACER_W + HDR_PADDING;
+        let char_x = (f32::from(ex) - val_col_x).max(0.0);
+        let max_len = self.response.as_ref()
+            .and_then(|r| r.headers.get(row))
+            .map(|(_, v)| v.len())
+            .unwrap_or(0);
+        ((char_x / HDR_CHAR_W) as usize).min(max_len)
     }
 
     fn show_copy_feedback(&mut self, feedback: CopyFeedback, cx: &mut Context<Self>) {
@@ -600,6 +662,7 @@ impl ResponsePanel {
     }
 
     pub fn set_response(&mut self, response: ResponseData, cx: &mut Context<Self>) {
+        debug!("Response: {} {} ({} bytes, {:?})", response.status, response.status_text, response.body.len(), response.time);
         // Detect language from Content-Type header
         let content_type = response.headers.iter()
             .find(|(k, _)| k.eq_ignore_ascii_case("content-type"))
@@ -612,6 +675,7 @@ impl ResponsePanel {
                     let formatted = serde_json::to_string_pretty(&json).unwrap_or_else(|_| response.body.clone());
                     (formatted, Language::Json)
                 } else {
+                    warn!("JSON parse failed for '{}' response ({} bytes)", ct, response.body.len());
                     (response.body.clone(), Language::Json)
                 }
             } else if ct.contains("text/html") {
@@ -637,6 +701,8 @@ impl ResponsePanel {
         self.json_value = serde_json::from_str::<serde_json::Value>(&response.body).ok();
         self.json_tree_collapsed.clear();
         self.expanded_strings.clear();
+        self.json_sel = None;
+        self.json_selecting = false;
         self.rebuild_json_rows();
 
         self.response = Some(response);
@@ -671,6 +737,7 @@ impl ResponsePanel {
         } else {
             self.json_tree_collapsed.insert(path);
         }
+        self.json_sel = None;
         self.rebuild_json_rows();
         cx.notify();
     }
@@ -679,6 +746,87 @@ impl ResponsePanel {
         self.json_rows.clear();
         if let Some(json) = &self.json_value {
             flatten_json(json, 0, None, "", &self.json_tree_collapsed, &mut self.json_rows);
+        }
+    }
+
+    fn json_row_at_y(&self, ey: Pixels) -> Option<usize> {
+        let bounds = self.json_tree_bounds?;
+        let rel_y = f32::from(ey) - f32::from(bounds.origin.y);
+        if rel_y < 0.0 { return None; }
+        let row = (rel_y / ROW_H) as usize;
+        (row < self.json_rows.len()).then_some(row)
+    }
+
+    fn json_val_char_at_x(&self, ex: Pixels, row_i: usize) -> usize {
+        let Some(row) = self.json_rows.get(row_i) else { return 0 };
+        let key_chars = match &row.kind {
+            RowKind::Leaf { key: Some(k), .. } => k.len() + 4, // "key":
+            _ => 0,
+        };
+        let bounds = self.json_tree_bounds.unwrap_or_default();
+        let val_x = f32::from(bounds.origin.x) + GUTTER_W + (row.depth as f32) * INDENT_W + CHEVRON_W + (key_chars as f32) * JSON_CHAR_W;
+        let char_x = (f32::from(ex) - val_x).max(0.0);
+        let max_len = match &row.kind {
+            RowKind::Leaf { val, .. } => match val {
+                PrimVal::Null => 4,
+                PrimVal::Bool(b) => if *b { 4 } else { 5 },
+                PrimVal::Num(n) => n.len(),
+                PrimVal::Str { display, .. } => display.len(),
+                PrimVal::EmptyArr | PrimVal::EmptyObj => 2,
+            },
+            _ => 0,
+        };
+        ((char_x / JSON_CHAR_W) as usize).min(max_len)
+    }
+
+    fn json_row_display_text(&self, row_i: usize) -> &str {
+        let Some(row) = self.json_rows.get(row_i) else { return "" };
+        match &row.kind {
+            RowKind::Leaf { val, .. } => match val {
+                PrimVal::Null => "null",
+                PrimVal::Bool(b) => if *b { "true" } else { "false" },
+                PrimVal::Num(n) => n.as_ref(),
+                PrimVal::Str { display, .. } => display.as_ref(),
+                PrimVal::EmptyArr => "[]",
+                PrimVal::EmptyObj => "{}",
+            },
+            RowKind::Open { arr: true, .. }   => "[",
+            RowKind::Open { arr: false, .. }  => "{",
+            RowKind::Close { arr: true }       => "]",
+            RowKind::Close { arr: false }      => "}",
+            RowKind::Folded { arr: true, .. }  => "[...]",
+            RowKind::Folded { arr: false, .. } => "{...}",
+        }
+    }
+
+    fn copy_json_selection(&mut self, cx: &mut Context<Self>) {
+        let Some(sel) = self.json_sel else { return };
+        let n = self.json_rows.len();
+        if n == 0 { return; }
+        let (sr, er, so, eo) = if sel.start_row <= sel.end_row {
+            (sel.start_row, sel.end_row, sel.start_offset, sel.end_offset)
+        } else {
+            (sel.end_row, sel.start_row, sel.end_offset, sel.start_offset)
+        };
+        let mut parts: Vec<String> = Vec::new();
+        for i in sr..=er.min(n - 1) {
+            let text = self.json_row_display_text(i);
+            let tl = text.len();
+            let chunk = if sr == er {
+                &text[so.min(tl)..eo.min(tl)]
+            } else if i == sr {
+                &text[so.min(tl)..]
+            } else if i == er {
+                &text[..eo.min(tl)]
+            } else {
+                text
+            };
+            if !chunk.is_empty() { parts.push(chunk.to_string()); }
+        }
+        let combined = parts.join("\n");
+        if !combined.is_empty() {
+            cx.write_to_clipboard(ClipboardItem::new_string(combined));
+            self.show_copy_feedback(CopyFeedback::Body, cx);
         }
     }
 
@@ -699,12 +847,14 @@ impl ResponsePanel {
                 let colors   = theme::current(cx).colors.clone();
                 let weak     = cx.weak_entity();
                 let expanded = &self.expanded_strings;
+                let sel      = self.json_sel.as_ref();
                 let rows: Vec<gpui::AnyElement> = self.json_rows.iter().enumerate()
                     .map(|(i, row)| render_json_row(
                         i + 1, row, &colors, weak.clone(),
-                        true, expanded.contains(&i),
+                        true, expanded.contains(&i), sel,
                     ))
                     .collect();
+                let weak_bounds = cx.weak_entity();
                 div()
                     .id("json-tree")
                     .size_full()
@@ -712,10 +862,48 @@ impl ResponsePanel {
                     .font_family(SharedString::from("JetBrains Mono"))
                     .text_size(px(ROW_FONT))
                     .track_scroll(&self.json_scroll_handle_div)
+                    // Capture bounds each frame for mouse→row hit-testing
+                    .child(
+                        canvas(
+                            move |bounds, _, cx| {
+                                weak_bounds.update(cx, |this, _| { this.json_tree_bounds = Some(bounds); }).ok();
+                            },
+                            |_, _, _, _| {},
+                        )
+                        .absolute().top_0().left_0().size_full()
+                    )
+                    .on_mouse_down(MouseButton::Left, cx.listener(|this, event: &MouseDownEvent, _, cx| {
+                        let Some(row_i) = this.json_row_at_y(event.position.y) else { return };
+                        let col = this.json_val_char_at_x(event.position.x, row_i);
+                        this.json_sel = Some(SelectionRange::new(row_i, col, row_i, col));
+                        this.json_selecting = true;
+                        cx.notify();
+                    }))
+                    .on_mouse_move(cx.listener(|this, event: &gpui::MouseMoveEvent, _, cx| {
+                        if !this.json_selecting { return; }
+                        let Some(sel) = this.json_sel else { return };
+                        let new_row = this.json_row_at_y(event.position.y)
+                            .unwrap_or_else(|| this.json_rows.len().saturating_sub(1));
+                        let new_col = this.json_val_char_at_x(event.position.x, new_row);
+                        if selection_changed(
+                            Some((sel.end_offset, sel.end_row)),
+                            new_col, new_row,
+                        ) {
+                            this.json_sel = Some(SelectionRange::new(sel.start_row, sel.start_offset, new_row, new_col));
+                            cx.notify();
+                        }
+                    }))
+                    .on_mouse_up(MouseButton::Left, cx.listener(|this, _, _, cx| {
+                        if this.json_selecting {
+                            this.json_selecting = false;
+                            this.copy_json_selection(cx);
+                        }
+                    }))
                     .children(rows)
                     .into_any_element()
             } else {
                 // ── Perf mode: uniform_list (fixed ROW_H, no wrapping) ────────────
+                // Selection not supported in perf mode (rows are virtualized).
                 uniform_list(
                     "json-tree",
                     row_count,
@@ -724,7 +912,7 @@ impl ResponsePanel {
                         let weak   = cx.weak_entity();
                         range.map(|i| {
                             let row = this.json_rows[i].clone();
-                            render_json_row(i + 1, &row, &colors, weak.clone(), false, false)
+                            render_json_row(i + 1, &row, &colors, weak.clone(), false, false, None)
                         })
                         .collect::<Vec<_>>()
                     }),
@@ -1549,7 +1737,7 @@ impl ResponsePanel {
             .gap(px(8.0))
             // Header toolbar
             .child({
-                let header_is_copied = self.copy_feedback == Some(CopyFeedback::Headers);
+                let header_is_copied = matches!(self.copy_feedback, Some(CopyFeedback::Headers) | Some(CopyFeedback::HdrVal));
                 let headers_text: String = response.headers
                     .iter()
                     .map(|(k, v)| format!("{}: {}", k, v))
@@ -1615,12 +1803,66 @@ impl ResponsePanel {
                     ).with_priority(1))
             })
             // Headers table
-            .child(
+            .child({
+                let weak = cx.weak_entity();
                 div()
+                    .id("hdr-table")
                     .w_full()
                     .border_1()
                     .border_color(theme.colors.border)
                     .overflow_hidden()
+                    // Capture bounds for mouse→row/char hit-testing
+                    .child(
+                        canvas(
+                            move |bounds, _, cx| {
+                                weak.update(cx, |this, _| { this.hdr_table_bounds = Some(bounds); }).ok();
+                            },
+                            |_, _, _, _| {},
+                        )
+                        .absolute().top_0().left_0().size_full()
+                    )
+                    .on_mouse_down(MouseButton::Left, cx.listener(|this, event: &MouseDownEvent, _, cx| {
+                        let Some(row) = this.hdr_row_at(event.position.y) else { return };
+                        let bounds = this.hdr_table_bounds.unwrap_or_default();
+                        let val_col_x = f32::from(bounds.origin.x) + this.resp_header_col1_w + HDR_SPACER_W;
+                        if f32::from(event.position.x) < val_col_x { return; }
+                        let byte = this.hdr_val_byte_at(event.position.x, row);
+                        this.hdr_sel = Some(HdrSel { row, range: (byte, byte), selecting: true });
+                        cx.notify();
+                    }))
+                    .on_mouse_move(cx.listener(|this, event: &gpui::MouseMoveEvent, _, cx| {
+                        let Some((row, old_range)) = this.hdr_sel
+                            .as_ref()
+                            .filter(|s| s.selecting)
+                            .map(|s| (s.row, s.range))
+                        else { return };
+                        let new_end = this.hdr_val_byte_at(event.position.x, row);
+                        if selection_changed(Some(old_range), old_range.0, new_end) {
+                            if let Some(sel) = this.hdr_sel.as_mut() {
+                                sel.range.1 = new_end;
+                            }
+                            cx.notify();
+                        }
+                    }))
+                    .on_mouse_up(MouseButton::Left, cx.listener(|this, _, _, cx| {
+                        if let Some(sel) = this.hdr_sel {
+                            if sel.selecting {
+                                let (a, b) = sel.range;
+                                let (s, e) = (a.min(b), a.max(b));
+                                if s != e {
+                                    if let Some((_, val)) = this.response.as_ref()
+                                        .and_then(|r| r.headers.get(sel.row))
+                                    {
+                                        let text = val[s.min(val.len())..e.min(val.len())].to_string();
+                                        cx.write_to_clipboard(ClipboardItem::new_string(text));
+                                        this.show_copy_feedback(CopyFeedback::HdrVal, cx);
+                                    }
+                                }
+                                this.hdr_sel = Some(HdrSel { selecting: false, ..sel });
+                            }
+                        }
+                        cx.notify();
+                    }))
                     // Table header
                     .child(
                         div()
@@ -1656,6 +1898,14 @@ impl ResponsePanel {
                     .children(response.headers.iter().enumerate().map(|(i, (key, value))| {
                         let is_last = i == header_count - 1;
                         let col1_w = self.resp_header_col1_w;
+                        let sel_range = if self.hdr_sel.as_ref().map(|s| s.row == i).unwrap_or(false) {
+                            self.hdr_sel.map(|s| {
+                                let (a, b) = s.range;
+                                if a <= b { (a, b) } else { (b, a) }
+                            })
+                        } else {
+                            None
+                        };
                         div()
                             .w_full()
                             .flex()
@@ -1679,14 +1929,18 @@ impl ResponsePanel {
                                     .flex_1()
                                     .px(px(12.0))
                                     .py(px(8.0))
-                                    .text_size(px(12.0))
-                                    .font_family("JetBrains Mono")
-                                    .text_color(theme.colors.text_primary)
                                     .overflow_hidden()
-                                    .child(value.clone())
+                                    .child(selectable_text_element(
+                                        gpui::ElementId::Integer(i as u64),
+                                        SharedString::from(value.as_str()),
+                                        sel_range,
+                                        theme.colors.text_primary,
+                                        theme.colors.accent.opacity(0.3),
+                                        12.0,
+                                    ))
                             )
                     }))
-            )
+            })
             .into_any_element()
     }
 
@@ -2342,6 +2596,9 @@ impl ResponsePanel {
         }
 
         let result = chaining::extract_jsonpath(&response.body, &jsonpath);
+        if let Err(ref e) = result {
+            warn!("JSONPath '{}' extraction failed: {}", jsonpath, e);
+        }
         if let Ok(ref value) = result {
             let (content, lang) = if value.trim().starts_with('{') || value.trim().starts_with('[') {
                 let pretty = serde_json::from_str::<serde_json::Value>(value)

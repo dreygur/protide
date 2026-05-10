@@ -14,6 +14,8 @@ use libp2p::swarm::{NetworkBehaviour, SwarmEvent};
 use libp2p::{identity, Multiaddr, PeerId, SwarmBuilder};
 use serde::{Deserialize, Serialize};
 
+use log::{debug, error, info, warn};
+
 use super::types::{CrdtEntry, NodeId};
 
 const GOSSIP_TOPIC: &str = "protide-crdt";
@@ -137,8 +139,8 @@ impl P2PSync {
         let crdt_topic = gossipsub::IdentTopic::new(&crdt_topic_str);
         let crdt_topic_thread = crdt_topic.clone();
 
-        println!("[P2P] Node starting. Local PeerID: {}", peer_id);
-        println!("[P2P] Requested listen addr: /ip4/0.0.0.0/tcp/{}", listen_port.unwrap_or(0));
+        info!("[P2P] Node starting. Local PeerID: {}", peer_id);
+        info!("[P2P] Requested listen addr: /ip4/0.0.0.0/tcp/{}", listen_port.unwrap_or(0));
 
         let pairing_code_owned = pairing_code.to_string();
         let event_tx_thread = event_tx.clone();
@@ -155,7 +157,7 @@ impl P2PSync {
                     .build()
                 {
                     Ok(rt) => rt,
-                    Err(e) => { eprintln!("[P2P] Failed to build Tokio runtime: {}", e); return; }
+                    Err(e) => { error!("[P2P] Failed to build Tokio runtime: {}", e); return; }
                 };
 
                 rt.block_on(async move {
@@ -229,11 +231,11 @@ impl P2PSync {
 
                     let mut swarm = match build {
                         Ok(s) => s,
-                        Err(e) => { eprintln!("[P2P] Swarm setup failed: {}", e); return; }
+                        Err(e) => { error!("[P2P] Swarm setup failed: {}", e); return; }
                     };
 
                     if let Err(e) = swarm.behaviour_mut().gossipsub.subscribe(&crdt_topic_thread) {
-                        eprintln!("[P2P] Failed to subscribe to CRDT topic: {:?}", e);
+                        error!("[P2P] Failed to subscribe to CRDT topic: {:?}", e);
                         return;
                     }
 
@@ -249,7 +251,7 @@ impl P2PSync {
                     let tcp_addr: Multiaddr = format!("/ip4/0.0.0.0/tcp/{}", listen_port.unwrap_or(0))
                         .parse().expect("valid tcp addr");
                     if let Err(e) = swarm.listen_on(tcp_addr) {
-                        eprintln!("[P2P] TCP listen_on failed: {}", e);
+                        error!("[P2P] TCP listen_on failed: {}", e);
                         return;
                     }
 
@@ -257,7 +259,7 @@ impl P2PSync {
                     let quic_addr: Multiaddr = "/ip4/0.0.0.0/udp/0/quic-v1"
                         .parse().expect("valid quic addr");
                     if let Err(e) = swarm.listen_on(quic_addr) {
-                        eprintln!("[P2P] QUIC listen_on failed (TCP still active): {}", e);
+                        warn!("[P2P] QUIC listen_on failed (TCP still active): {}", e);
                     }
 
                     // Kademlia: server mode makes us discoverable to remote peers
@@ -280,13 +282,13 @@ impl P2PSync {
                                 swarm.behaviour_mut().kademlia.add_address(&pid, addr);
                                 added += 1;
                             }
-                            _ => eprintln!("[Kad] Failed to parse bootstrap entry: {} {}", addr_str, peer_str),
+                            _ => warn!("[Kad] Failed to parse bootstrap entry: {} {}", addr_str, peer_str),
                         }
                     }
-                    println!("[Kad] Added {} bootstrap peers", added);
+                    debug!("[Kad] Added {} bootstrap peers", added);
                     match swarm.behaviour_mut().kademlia.bootstrap() {
-                        Ok(qid) => println!("[Kad] Bootstrap query started: {:?}", qid),
-                        Err(e)  => eprintln!("[Kad] Bootstrap failed (no known peers): {:?}", e),
+                        Ok(qid) => debug!("[Kad] Bootstrap query started: {:?}", qid),
+                        Err(e)  => warn!("[Kad] Bootstrap failed (no known peers): {:?}", e),
                     }
 
                     let mut pake_topics: HashMap<String, gossipsub::IdentTopic> = HashMap::new();
@@ -341,9 +343,9 @@ impl P2PSync {
                                     let from = message.source.unwrap_or_else(PeerId::random);
 
                                     if topic_str.starts_with(PAKE_TOPIC_PREFIX) {
-                                        println!("[PAKE] Received packet on topic '{}' from {}", topic_str, from);
+                                        debug!("[PAKE] Received packet on topic '{}' from {}", topic_str, from);
                                         if let Ok(payload) = serde_json::from_slice::<PakeMsgPayload>(&message.data) {
-                                            println!("[PAKE] Message kind='{}' node='{}'", payload.kind, payload.node_name);
+                                            debug!("[PAKE] Message kind='{}' node='{}'", payload.kind, payload.node_name);
                                             let _ = event_tx_thread.send(P2PEvent::PakeMsg {
                                                 from,
                                                 topic: topic_str,
@@ -361,7 +363,7 @@ impl P2PSync {
                                 match mdns_event {
                                     mdns::Event::Discovered(peers) => {
                                         for (peer, addr) in peers {
-                                            println!("[mDNS] Discovered peer {} at {}", peer, addr);
+                                            info!("[mDNS] Discovered peer {} at {}", peer, addr);
                                             let _ = event_tx_thread.send(P2PEvent::PeerJoined(peer));
                                         }
                                     }
@@ -379,20 +381,20 @@ impl P2PSync {
                                         if let kad::QueryResult::Bootstrap(res) = result {
                                             match res {
                                                 Ok(kad::BootstrapOk { peer, num_remaining }) => {
-                                                    println!("[Kad] Bootstrap progress: peer={} remaining={}", peer, num_remaining);
+                                                    debug!("[Kad] Bootstrap progress: peer={} remaining={}", peer, num_remaining);
                                                 }
-                                                Err(e) => eprintln!("[Kad] Bootstrap error: {:?}", e),
+                                                Err(e) => warn!("[Kad] Bootstrap error: {:?}", e),
                                             }
                                         }
                                     }
                                     kad::Event::RoutingUpdated { peer, .. } => {
-                                        println!("[Kad] Routing table updated: new peer {}", peer);
+                                        debug!("[Kad] Routing table updated: new peer {}", peer);
                                     }
                                     _ => {}
                                 }
                             }
                             SwarmEvent::NewListenAddr { address, .. } => {
-                                println!("[P2P] Bound listen address: {}", address);
+                                info!("[P2P] Bound listen address: {}", address);
                                 let _ = event_tx_thread.send(P2PEvent::LocalAddr(address.to_string()));
                             }
                             _ => {}

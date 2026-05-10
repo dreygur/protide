@@ -10,6 +10,7 @@ mod tests;
 
 use std::ops::Range;
 
+use log::{error, info};
 use gpui::{
     deferred, div, prelude::*, px, ClipboardItem, Context, Entity, FocusHandle, IntoElement,
     KeyDownEvent, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement, Render,
@@ -535,6 +536,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
         let explorer_panel = self.explorer_panel.clone();
         let ws_console_panel = self.console_panel.clone();
         let ws_log_url = url.clone();
+        info!("WS connecting: {}", ws_log_url);
         let ws_protocol = match self.request_mode {
             RequestMode::SocketIo => "Socket.IO",
             _ => "WebSocket",
@@ -553,6 +555,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             loop {
                 match event_rx.recv_timeout(std::time::Duration::from_millis(100)) {
                     Ok(WsEvent::Connected) => {
+                        info!("WS connected: {}", ws_log_url);
                         let _ = cx.update(|cx| {
                             let _ = this.update(cx, |this, cx| {
                                 this.ws_state = WsConnectionState::Connected;
@@ -574,6 +577,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                         });
                     }
                     Ok(WsEvent::Disconnected) => {
+                        info!("WS disconnected: {}", ws_log_url);
                         let _ = cx.update(|cx| {
                             let _ = this.update(cx, |this, cx| {
                                 this.ws_state = WsConnectionState::Disconnected;
@@ -584,6 +588,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                         break;
                     }
                     Ok(WsEvent::Error(e)) => {
+                        error!("WS error {}: {}", ws_log_url, e);
                         let _ = cx.update(|cx| {
                             let hint = dns_troubleshoot_hint(&e);
                             if let Some(ref console) = ws_console_panel {
@@ -691,8 +696,10 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             .map(|h| (substitute(&h.key), substitute(&h.value)))
             .collect();
 
+        let sio_url = substitute(&self.url);
+        info!("SIO connecting: {}", sio_url);
         let handle = TungsteniteSocketIoExecutor::connect(SioConnectionParams {
-            url: substitute(&self.url),
+            url: sio_url,
             namespace: self.sio_namespace.clone(),
             headers,
         });
@@ -729,6 +736,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                         break;
                     }
                     Ok(SioUiEvent::Error(e)) => {
+                        error!("SIO error: {}", e);
                         let _ = cx.update(|cx| {
                             let _ = this.update(cx, |this, cx| {
                                 this.sio_state = SioConnectionState::Disconnected;
@@ -827,14 +835,12 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                 Ok(content) => {
                     self.grpc_proto_path = Some(path);
                     self.grpc_proto_content = content.clone();
-
-                    // Parse services and methods from proto content (basic parsing)
                     self.parse_proto_services(&content);
-
+                    info!("Proto loaded: {} ({} services)", self.grpc_proto_path.as_ref().unwrap().display(), self.grpc_services.len());
                     cx.notify();
                 }
                 Err(e) => {
-                    eprintln!("Failed to read proto file: {}", e);
+                    error!("Failed to read proto file: {}", e);
                 }
             }
         }
@@ -898,10 +904,11 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                 self.grpc_proto_path = Some(path);
                 self.grpc_proto_content = content.clone();
                 self.parse_proto_services(&content);
+                info!("Proto loaded: {} ({} services)", self.grpc_proto_path.as_ref().unwrap().display(), self.grpc_services.len());
                 cx.notify();
             }
             Err(e) => {
-                eprintln!("Failed to read proto file: {}", e);
+                error!("Failed to read proto file: {}", e);
             }
         }
     }
@@ -1012,6 +1019,8 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
 
         let response_panel = self.response_panel.clone();
 
+        info!("gRPC {} {}", url, method.full_name);
+
         match streaming_type {
             GrpcStreamingType::Unary => {
                 let task = cx.spawn(async move |this: gpui::WeakEntity<Self>, cx: &mut gpui::AsyncApp| {
@@ -1049,6 +1058,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                                 });
                             }
                             Err(e) => {
+                                error!("gRPC error: {}", e);
                                 let _ = cx.update(|cx| {
                                     response_panel.update(cx, |panel, cx| {
                                         panel.set_response(ResponseData {
@@ -1105,6 +1115,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                             });
                         }
                         Err(e) => {
+                            error!("gRPC streaming error: {}", e);
                             let _ = cx.update(|cx| {
                                 response_panel.update(cx, |panel, cx| {
                                     panel.set_response(ResponseData {
@@ -1159,6 +1170,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                             });
                         }
                         Err(e) => {
+                            error!("gRPC client-streaming error: {}", e);
                             let _ = cx.update(|cx| {
                                 response_panel.update(cx, |panel, cx| {
                                     panel.set_response(ResponseData {
@@ -1215,6 +1227,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                             });
                         }
                         Err(e) => {
+                            error!("gRPC bidi-streaming error: {}", e);
                             let _ = cx.update(|cx| {
                                 response_panel.update(cx, |panel, cx| {
                                     panel.set_response(ResponseData {
@@ -1312,6 +1325,8 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
 
         let response_panel = self.response_panel.clone();
 
+        info!("tRPC {} {}", url, procedure);
+
         let task = cx.spawn(async move |this: gpui::WeakEntity<Self>, cx: &mut gpui::AsyncApp| {
             let (result_tx, result_rx) = std::sync::mpsc::channel();
 
@@ -1346,7 +1361,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                         });
                     }
                     Err(e) => {
-                        // Show error in response panel
+                        error!("tRPC error: {}", e);
                         let _ = cx.update(|cx| {
                             response_panel.update(cx, |panel, cx| {
                                 let error_body = serde_json::json!({
@@ -2736,8 +2751,9 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
         // Save in-place if a file is already loaded
         if let Some(ref path) = self.current_file.clone() {
             if let Err(e) = std::fs::write(path, &content) {
-                eprintln!("Failed to save request: {}", e);
+                error!("Failed to save request {}: {}", path.display(), e);
             } else {
+                info!("Saved: {}", path.display());
                 self.save_feedback = true;
                 cx.notify();
                 cx.spawn(async move |this, cx| {
@@ -2779,8 +2795,9 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                 path
             };
             if let Err(e) = std::fs::write(&path, &content) {
-                eprintln!("Failed to save request: {}", e);
+                error!("Failed to save request {}: {}", path.display(), e);
             } else {
+                info!("Saved: {}", path.display());
                 self.current_file = Some(path);
             }
         }
@@ -3288,6 +3305,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
         };
 
         let log_url = final_url.clone();
+        info!("[{}] → {} {}", log_protocol, log_method, log_url);
 
         cx.spawn(async move |this: gpui::WeakEntity<Self>, cx: &mut gpui::AsyncApp| {
             let result = std::thread::spawn(move || protide_core::execution::execute(req))
@@ -3296,6 +3314,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
 
             match result {
                 Ok(data) => {
+                    info!("[{}] ← {} {} in {}ms", log_protocol, data.status, data.status_text, data.time.as_millis());
                     let _ = cx.update(|cx| {
                         cx.update_global::<super::history::RequestHistory, _>(|history, _| {
                             history.update_response(history_id, data.status, data.time);
@@ -3353,6 +3372,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                     });
                 }
                 Err(e) => {
+                    error!("[{}] Request failed {}: {}", log_protocol, log_url, e);
                     let _ = cx.update(|cx| {
                         if let Some(console) = &console_panel {
                             let err = e.clone();

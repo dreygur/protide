@@ -1142,10 +1142,11 @@ impl Render for MainWindow {
             // Pairing flyout — anchored below the presence badge (left ~300px, below 40px titlebar)
             .when(self.presence.show_pairing, |el| {
                 let flyout = self.render_pairing_flyout_panel(cx);
+                let toolbar_h = theme.sizes.toolbar;
                 el
                     .child(
                         div()
-                            .absolute().top_0().left_0().w_full().h_full()
+                            .absolute().top(toolbar_h).left_0().w_full().h_full()
                             .on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| {
                                 this.presence.show_pairing = false;
                                 this.presence.reset_connection();

@@ -6396,6 +6396,7 @@ dependencies = [
  "gpui-component-assets",
  "gpui_platform",
  "http-parser",
+ "log",
  "protide-core",
  "reqwest",
  "rfd",

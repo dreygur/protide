@@ -1,20 +1,12 @@
 //! Selectable text rendering utilities.
 //!
-//! # TextLayout caching
-//! GPUI's `LineLayoutCache` caches shaped lines by `(text, font, size)` across frames.
-//! `index_for_x` calls `window.text_system().shape_line()`, which hits this cache on
-//! every subsequent call with the same arguments — no manual caching is needed here.
-//! Invalidation is automatic: when content or font_size changes, the cache misses and
-//! re-shapes. Across a selection drag the text is constant, so hit-testing is O(1).
-//!
 //! # Notify guard
 //! Parents that attach mouse events MUST gate `cx.notify()` with `selection_changed()`.
 //! Without the guard, every MouseMove triggers a full view re-render regardless of
 //! whether the selection moved to a different character, causing continuous CPU spikes.
 
 use gpui::{
-    div, font, px, Context, ElementId, Hsla, InteractiveElement,
-    IntoElement, ParentElement, SharedString, Styled, TextRun, Window,
+    div, px, ElementId, Hsla, InteractiveElement, IntoElement, ParentElement, SharedString, Styled,
 };
 
 /// A selection range spanning multiple rows.
@@ -91,125 +83,6 @@ impl SelectionRange {
     }
 }
 
-/// A text element that supports mouse-driven selection and Ctrl+C copy.
-///
-/// Architecture: Uses a global logical selection layer. Tracks `selection` as
-/// `(usize, usize)` byte offsets into the full text. Renders as three segments:
-/// before-selection, selection-highlighted, after-selection.
-///
-/// For multi-row support, pair with `SelectionRange` at the parent level.
-pub struct SelectableText {
-    /// Unique element ID for event routing
-    id: ElementId,
-    /// Full text content
-    text: SharedString,
-    /// Current selection as byte offsets `(start, end)` — `None` means no selection
-    selection: Option<(usize, usize)>,
-    /// Whether we're in the middle of a mouse-drag selection
-    selecting: bool,
-    /// The base color for non-selected text
-    text_color: Hsla,
-    /// The highlight color for the selection
-    selection_color: Hsla,
-    /// Monospace style
-    mono: bool,
-    /// Font size in pixels
-    font_size: f32,
-    /// Row index for multi-row selection tracking
-    row_index: Option<usize>,
-}
-
-impl SelectableText {
-    pub fn new(id: impl Into<ElementId>, text: impl Into<SharedString>) -> Self {
-        Self {
-            id: id.into(),
-            text: text.into(),
-            selection: None,
-            selecting: false,
-            text_color: gpui::Hsla::default(),
-            selection_color: gpui::Hsla::default(),
-            mono: false,
-            font_size: 12.0,
-            row_index: None,
-        }
-    }
-
-    pub fn text_color(mut self, color: Hsla) -> Self {
-        self.text_color = color;
-        self
-    }
-
-    pub fn selection_color(mut self, color: Hsla) -> Self {
-        self.selection_color = color;
-        self
-    }
-
-    pub fn mono(mut self, val: bool) -> Self {
-        self.mono = val;
-        self
-    }
-
-    pub fn font_size(mut self, size: f32) -> Self {
-        self.font_size = size;
-        self
-    }
-
-    pub fn row_index(mut self, idx: usize) -> Self {
-        self.row_index = Some(idx);
-        self
-    }
-
-    fn index_for_x_inner(&self, x: f32, window: &Window) -> usize {
-        if self.text.is_empty() {
-            return 0;
-        }
-        let f = if self.mono { font("JetBrains Mono") } else { font(".SystemUIFont") };
-        let run = TextRun {
-            len: self.text.len(),
-            font: f,
-            color: Hsla::default(),
-            background_color: None,
-            underline: None,
-            strikethrough: None,
-        };
-        let shaped = window
-            .text_system()
-            .shape_line(self.text.clone(), px(self.font_size), &[run], None);
-        // ShapedLine derefs to Arc<LineLayout> derefs to LineLayout
-        shaped.closest_index_for_x(px(x.max(0.0)))
-    }
-
-    /// Pixel-exact character boundary nearest to `x` (relative to text origin).
-    ///
-    /// `x` must be local to this element's top-left corner. Inside a scrollable
-    /// container, pass `event.position.x - element_origin.x - scroll_offset_x`.
-    ///
-    /// Only call this while the mouse button is down (selection drag). Calling on
-    /// every MouseMove without a down-state guard causes a shape_line hit + re-render
-    /// on every frame even when no character boundary changes.
-    ///
-    /// Uses GPUI's shaped line — correct for ligatures, kerning, variable-width fonts.
-    /// The internal `LineLayoutCache` makes repeated calls for the same text O(1).
-    pub fn index_for_x(&self, x: f32, window: &Window) -> usize {
-        #[cfg(debug_assertions)]
-        let t0 = std::time::Instant::now();
-
-        let result = self.index_for_x_inner(x, window);
-
-        #[cfg(debug_assertions)]
-        {
-            let elapsed = t0.elapsed();
-            if elapsed.as_millis() > 8 {
-                eprintln!(
-                    "[SelectableText] SLOW hit-test: {}ms (text_len={})",
-                    elapsed.as_millis(),
-                    self.text.len()
-                );
-            }
-        }
-        result
-    }
-}
 
 /// Returns `true` when the selection actually changes — use this to gate `cx.notify()`.
 ///
@@ -235,63 +108,6 @@ pub fn selection_changed(
     }
 }
 
-/// Render a piece of text with selection support.
-pub fn render_selectable(
-    el: &mut SelectableText,
-    _window: &mut Window,
-    _cx: &mut Context<'_, impl gpui::Focusable>,
-) -> impl IntoElement {
-    let text_str = el.text.clone();
-    let sel = el.selection;
-    let txt_color = el.text_color;
-    let sel_color = el.selection_color;
-    let is_mono = el.mono;
-    let font_sz = el.font_size;
-
-    let mut base = div()
-        .id(el.id.clone())
-        .cursor_text()
-        .text_size(px(font_sz));
-
-    if is_mono {
-        base = base.font_family(SharedString::from("JetBrains Mono"));
-    }
-
-    let children: Vec<gpui::AnyElement> = if let Some((start, end)) = sel {
-        let (s, e) = if start <= end { (start, end) } else { (end, start) };
-        let s = s.min(text_str.len());
-        let e = e.min(text_str.len());
-
-        let before = &text_str[..s];
-        let selected = &text_str[s..e];
-        let after = &text_str[e..];
-
-        vec![
-            div()
-                .text_color(txt_color)
-                .child(SharedString::from(before))
-                .into_any_element(),
-            div()
-                .bg(sel_color)
-                .text_color(txt_color)
-                .child(SharedString::from(selected))
-                .into_any_element(),
-            div()
-                .text_color(txt_color)
-                .child(SharedString::from(after))
-                .into_any_element(),
-        ]
-    } else {
-        vec![
-            div()
-                .text_color(txt_color)
-                .child(text_str)
-                .into_any_element(),
-        ]
-    };
-
-    base.children(children)
-}
 
 /// Build a selectable text element for use in div-based layouts.
 /// Returns an `AnyElement` with the selection highlight already baked in.

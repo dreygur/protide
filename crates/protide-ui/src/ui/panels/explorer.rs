@@ -1,5 +1,7 @@
 //! File explorer panel - displays the workspace file tree, request history, and environment selector
 
+use log::{debug, error, info, warn};
+
 use crate::ui::components::modal::ModalState;
 use crate::ui::main_window::MainWindow;
 use gpui::{
@@ -423,16 +425,17 @@ impl ExplorerPanel {
             // Create default content
             let content = "### New Request\n# @name new-request\n\nGET https://api.example.com\n";
 
-            if fs::write(&path, content).is_ok() {
-                // If parent is in workspace, refresh collection
-                if let Some(workspace) = &self.workspace_path {
-                    if path.starts_with(workspace) {
-                        self.collection_items = self.scan_directory(workspace);
+            match fs::write(&path, content) {
+                Ok(_) => {
+                    info!("Created: {}", path.display());
+                    if let Some(workspace) = &self.workspace_path {
+                        if path.starts_with(workspace) {
+                            self.collection_items = self.scan_directory(workspace);
+                        }
                     }
+                    self.load_request_file(path, cx);
                 }
-
-                // Load the new file into request panel
-                self.load_request_file(path, cx);
+                Err(e) => error!("Failed to create request {}: {}", path.display(), e),
             }
         }
     }
@@ -452,8 +455,11 @@ impl ExplorerPanel {
         self.collection_items = self.scan_directory(&path);
         self.tree_scroll      = 0.0;
         match protide_core::workspace::Workspace::open(&path) {
-            Ok(ws)  => { self.workspace_watcher = Some(Arc::new(ws)); }
-            Err(e)  => { eprintln!("Workspace watcher: {}", e); }
+            Ok(ws)  => {
+                info!("Workspace loaded: {}", path.display());
+                self.workspace_watcher = Some(Arc::new(ws));
+            }
+            Err(e)  => { error!("Workspace watcher: {}", e); }
         }
         if let Some(entry) = saved_entry {
             self.restore_workspace_session(&entry, cx);
@@ -494,8 +500,11 @@ impl ExplorerPanel {
         self.tree_scroll       = 0.0;
 
         match protide_core::workspace::Workspace::open(&path) {
-            Ok(ws)  => { self.workspace_watcher = Some(Arc::new(ws)); }
-            Err(e)  => { eprintln!("File watcher failed: {}", e); }
+            Ok(ws)  => {
+                info!("Workspace loaded: {}", path.display());
+                self.workspace_watcher = Some(Arc::new(ws));
+            }
+            Err(e)  => { error!("File watcher failed: {}", e); }
         }
 
         // Restore any previously saved state for this workspace
@@ -573,10 +582,12 @@ impl ExplorerPanel {
 
                             let filepath = collection_dir.join(format!("{}.http", filename));
 
-                            if let Ok(content) = request_to_http_content(request) {
-                                if fs::write(&filepath, content).is_ok() {
-                                    created += 1;
-                                }
+                            match request_to_http_content(request) {
+                                Ok(content) => match fs::write(&filepath, &content) {
+                                    Ok(_) => created += 1,
+                                    Err(e) => warn!("Failed to write {}: {}", filepath.display(), e),
+                                },
+                                Err(e) => warn!("Failed to convert request '{}' to .http: {}", filename, e),
                             }
                         }
 
@@ -587,6 +598,7 @@ impl ExplorerPanel {
                             self.load_collection_from_path(collection_dir, cx);
                         }
 
+                        info!("Imported {} request(s) from {}", created, file_path.display());
                         let mut msg = format!("Imported {} request(s).", created);
                         let modal_state = if !result.warnings.is_empty() {
                             msg.push_str(&format!(
@@ -603,6 +615,7 @@ impl ExplorerPanel {
                         }
                     }
                     Err(e) => {
+                        error!("Import failed from {}: {}", file_path.display(), e);
                         if let Some(win) = self.main_window.upgrade() {
                             win.update(cx, |win, cx| {
                                 win.show_modal(ModalState::error("Import Failed", e), cx)
@@ -637,15 +650,22 @@ impl ExplorerPanel {
 
             let modal_state = match protide_core::export::export_collection(workspace, format) {
                 Ok(content) => match std::fs::write(&save_path, &content) {
-                    Ok(_) => ModalState::info(
-                        "Export Complete",
-                        format!("Documentation saved to {}", save_path.display()),
-                    ),
+                    Ok(_) => {
+                        info!("Exported docs to: {}", save_path.display());
+                        ModalState::info(
+                            "Export Complete",
+                            format!("Documentation saved to {}", save_path.display()),
+                        )
+                    }
                     Err(e) => {
+                        error!("Export write failed {}: {}", save_path.display(), e);
                         ModalState::error("Export Failed", format!("Failed to write file: {}", e))
                     }
                 },
-                Err(e) => ModalState::error("Export Failed", e),
+                Err(e) => {
+                    error!("Export generation failed: {}", e);
+                    ModalState::error("Export Failed", e)
+                }
             };
             if let Some(win) = self.main_window.upgrade() {
                 win.update(_cx, |win, cx| win.show_modal(modal_state, cx));
@@ -655,6 +675,7 @@ impl ExplorerPanel {
 
     /// Recursively scan a directory for .http files and subdirectories
     fn scan_directory(&self, path: &PathBuf) -> Vec<CollectionItem> {
+        debug!("Scanning: {}", path.display());
         let mut items = Vec::new();
 
         if let Ok(entries) = fs::read_dir(path) {
@@ -848,8 +869,12 @@ impl ExplorerPanel {
         } else {
             fs::remove_file(&path)
         };
-        if result.is_ok() {
-            self.refresh_collections(cx);
+        match result {
+            Ok(_) => {
+                info!("Deleted: {}", path.display());
+                self.refresh_collections(cx);
+            }
+            Err(e) => warn!("Delete failed {}: {}", path.display(), e),
         }
     }
 
@@ -876,8 +901,12 @@ impl ExplorerPanel {
                 if new_name != old_name {
                     if let Some(parent) = old_path.parent() {
                         let new_path = parent.join(new_name);
-                        if fs::rename(&old_path, &new_path).is_ok() {
-                            self.refresh_collections(cx);
+                        match fs::rename(&old_path, &new_path) {
+                            Ok(_) => {
+                                info!("Renamed: {} → {}", old_name, new_name);
+                                self.refresh_collections(cx);
+                            }
+                            Err(e) => error!("Rename failed {} → {}: {}", old_name, new_name, e),
                         }
                     }
                 }
