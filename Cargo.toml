@@ -56,9 +56,22 @@ image = { version = "0.25", default-features = false, features = ["png"] }
 # Utils
 uuid = { version = "1", features = ["v4", "serde"] }
 chrono = { version = "0.4", features = ["serde"] }
+log = "0.4"
 
 # File watching
 notify = "7"
+
+# P2P networking
+libp2p = { version = "0.54", features = ["tokio", "tcp", "quic", "dns", "noise", "yamux", "kad", "mdns", "gossipsub", "identify", "macros"] }
+
+# PAKE cryptography
+spake2 = "0.3"
+chacha20poly1305 = "0.10"
+blake3 = "1"
+rand = "0.8"
+zeroize = { version = "1", features = ["zeroize_derive"] }
+
+
 
 # Paths
 dirs = "6"

@@ -4,8 +4,8 @@ use std::time::Duration;
 
 use gpui::{
     canvas, deferred, div, prelude::*, px, uniform_list, Bounds, ClipboardItem, Context, Entity,
-    IntoElement, MouseButton, MouseDownEvent, Pixels, Point, Render, ScrollHandle, SharedString,
-    Styled, UniformListScrollHandle, WeakEntity, Window,
+    IntoElement, MouseButton, MouseDownEvent, Pixels, Point, Render, ScrollHandle,
+    SharedString, Styled, UniformListScrollHandle, WeakEntity, Window,
 };
 
 const GUTTER_W: f32 = 44.0;
@@ -17,7 +17,9 @@ const GUTTER_FONT: f32 = 11.0;
 // Strings longer than COLLAPSE_CHARS get a "show more" toggle in wrap mode.
 const COLLAPSE_CHARS: usize = 300;
 // Responses with more rows than this fall back to uniform_list (no wrapping).
-const WRAP_MODE_MAX_ROWS: usize = 2_000;
+// Keep this low: wrap mode builds ALL row elements on every render frame, so
+// large row counts cause O(n) layout work on every cx.notify() and scroll tick.
+const WRAP_MODE_MAX_ROWS: usize = 200;
 
 use protide_core::chaining;
 use protide_core::scripting::results::TestResult;
@@ -35,8 +37,11 @@ use crate::ui::components::TextInput;
 enum PrimVal {
     Null,
     Bool(bool),
-    Num(String),
-    Str(String),
+    /// Pre-formatted display string, e.g. "42.5". Raw value == display for numbers.
+    Num(SharedString),
+    /// `raw` is the original JSON string value (used for clipboard copy).
+    /// `display` is pre-sanitized and quoted: `"\"hello world\""`.
+    Str { raw: String, display: SharedString },
     EmptyArr,
     EmptyObj,
 }
@@ -76,8 +81,12 @@ fn flatten_json(
     match value {
         Value::Null    => rows.push(JsonRow { depth, kind: RowKind::Leaf { key, val: PrimVal::Null,         path: leaf_path } }),
         Value::Bool(b) => rows.push(JsonRow { depth, kind: RowKind::Leaf { key, val: PrimVal::Bool(*b),    path: leaf_path } }),
-        Value::Number(n) => rows.push(JsonRow { depth, kind: RowKind::Leaf { key, val: PrimVal::Num(n.to_string()), path: leaf_path } }),
-        Value::String(s) => rows.push(JsonRow { depth, kind: RowKind::Leaf { key, val: PrimVal::Str(s.clone()), path: leaf_path } }),
+        Value::Number(n) => rows.push(JsonRow { depth, kind: RowKind::Leaf { key, val: PrimVal::Num(SharedString::new(n.to_string())), path: leaf_path } }),
+        Value::String(s) => {
+            let san: String = s.chars().map(|c| if c.is_control() { ' ' } else { c }).collect();
+            let display = SharedString::new(format!("\"{}\"", san));
+            rows.push(JsonRow { depth, kind: RowKind::Leaf { key, val: PrimVal::Str { raw: s.clone(), display }, path: leaf_path } });
+        }
         Value::Array(arr) if arr.is_empty() => {
             rows.push(JsonRow { depth, kind: RowKind::Leaf { key, val: PrimVal::EmptyArr, path: leaf_path } });
         }
@@ -118,8 +127,8 @@ fn render_json_row(
     row:       &JsonRow,
     colors:    &crate::theme::Colors,
     weak:      WeakEntity<ResponsePanel>,
-    wrap_mode: bool, // true → variable-height layout; false → fixed ROW_H (uniform_list)
-    expanded:  bool, // whether the long-string at this row is expanded (wrap_mode only)
+    wrap_mode: bool,
+    expanded:  bool,
 ) -> gpui::AnyElement {
     let guide_color = colors.border;
     let hover_bg    = colors.hover_overlay;
@@ -168,14 +177,12 @@ fn render_json_row(
          .when(is_folded, |el| el.child(icon(ICON_CHEVRON_RIGHT, ICON_SM, colors.text_secondary)))
     };
 
-    // Key prefix helper (Hsla is Copy)
     let key_color   = colors.info;
     let colon_color = colors.text_secondary.opacity(0.45);
     let key_span = move |k: &str| -> gpui::AnyElement {
         div()
             .flex_shrink_0().flex().items_center().whitespace_nowrap()
-            .child(div().flex_shrink_0().text_color(key_color)
-                .child(SharedString::from(format!("\"{}\"", k))))
+            .child(div().text_color(key_color).child(SharedString::from(format!("\"{}\"", k))))
             .child(div().flex_shrink_0().text_color(colon_color).child(": "))
             .into_any_element()
     };
@@ -188,26 +195,21 @@ fn render_json_row(
 
     let content: gpui::AnyElement = match &row.kind {
         RowKind::Leaf { key, val, .. } => {
-            // Sanitize control characters so GPUI never sees hard newlines inside a value.
-            // Soft-wrap is achieved by removing whitespace_nowrap — the browser-style
-            // word-wrap kicks in automatically within the flex-1 value container.
-            let (txt, col, is_str) = match val {
-                PrimVal::Null     => ("null".to_string(),                                          c_secondary, false),
-                PrimVal::Bool(b)  => (if *b { "true" } else { "false" }.to_string(),              c_patch,     false),
-                PrimVal::Num(n)   => (n.clone(),                                                   c_put,       false),
-                PrimVal::Str(s)   => {
-                    let san: String = s.chars().map(|c| if c.is_control() { ' ' } else { c }).collect();
-                    (format!("\"{}\"", san),                                                       c_success,   true)
-                }
-                PrimVal::EmptyArr => ("[]".to_string(),                                            c_secondary, false),
-                PrimVal::EmptyObj => ("{}".to_string(),                                            c_secondary, false),
+            // Display text is pre-computed at flatten time — no allocs on the render path.
+            let (txt, col, is_str): (SharedString, _, bool) = match val {
+                PrimVal::Null     => (SharedString::new_static("null"),                  c_secondary, false),
+                PrimVal::Bool(b)  => (SharedString::new_static(if *b { "true" } else { "false" }), c_patch, false),
+                PrimVal::Num(n)   => (n.clone(),                                         c_put,       false),
+                PrimVal::Str { display, .. } => (display.clone(),                        c_success,   true),
+                PrimVal::EmptyArr => (SharedString::new_static("[]"),                    c_secondary, false),
+                PrimVal::EmptyObj => (SharedString::new_static("{}"),                    c_secondary, false),
             };
 
             // Long strings in wrap mode: show truncated text + expand/collapse toggle
             if wrap_mode && is_str && txt.len() > COLLAPSE_CHARS + 3 {
                 let row_idx  = line_num - 1;
                 let weak_str = weak.clone();
-                let display  = if expanded {
+                let display: SharedString = if expanded {
                     txt.clone()
                 } else {
                     // Safe byte boundary: stay within ASCII quotes wrapping
@@ -215,14 +217,14 @@ fn render_json_row(
                         .nth(COLLAPSE_CHARS + 1)
                         .map(|(i, _)| i)
                         .unwrap_or(txt.len());
-                    format!("{}…\"", &txt[..cut])
+                    SharedString::new(format!("{}…\"", &txt[..cut]))
                 };
                 let btn_label: &'static str = if expanded { "▲ collapse" } else { "▼ show more" };
 
                 let value_block = div()
                     .flex_1().min_w(px(0.))
                     .flex().flex_col().gap(px(2.0))
-                    .child(div().whitespace_normal().text_color(col).child(SharedString::from(display)))
+                    .child(div().whitespace_normal().text_color(col).child(display))
                     .child(
                         div()
                             .id(SharedString::from(format!("str-toggle-{}", row_idx)))
@@ -250,18 +252,16 @@ fn render_json_row(
                     .into_any_element()
 
             } else if wrap_mode {
-                // Short/medium string or non-string in wrap mode: explicit soft-wrap
-                let value_div = div()
-                    .flex_1().min_w(px(0.))
-                    .whitespace_normal()   // explicitly enable word-wrap
-                    .text_color(col)
-                    .child(SharedString::from(txt));
-
                 div()
                     .flex_1().min_w(px(0.)).flex().items_start()
                     .whitespace_normal()
                     .when_some(key.as_deref(), |el, k| el.child(key_span(k)))
-                    .child(value_div)
+                    .child(
+                        div().flex_1().min_w(px(0.))
+                            .whitespace_normal()
+                            .text_color(col)
+                            .child(txt)  // SharedString — no alloc
+                    )
                     .into_any_element()
 
             } else {
@@ -272,7 +272,7 @@ fn render_json_row(
                     .child(
                         div().flex_1().min_w(px(0.)).overflow_hidden().text_ellipsis().whitespace_nowrap()
                             .text_color(col)
-                            .child(SharedString::from(txt)),
+                            .child(txt),  // SharedString — no alloc
                     )
                     .into_any_element()
             }
@@ -323,8 +323,8 @@ fn render_json_row(
             let val_str = match val {
                 PrimVal::Null     => "null".to_string(),
                 PrimVal::Bool(b)  => if *b { "true" } else { "false" }.to_string(),
-                PrimVal::Num(n)   => n.clone(),
-                PrimVal::Str(s)   => s.clone(),
+                PrimVal::Num(n)   => n.to_string(),
+                PrimVal::Str { raw, .. } => raw.clone(),  // raw = unquoted original value
                 PrimVal::EmptyArr => "[]".to_string(),
                 PrimVal::EmptyObj => "{}".to_string(),
             };
@@ -776,6 +776,12 @@ impl Render for ResponsePanel {
             .flex_col()
             .relative()
             .bg(theme.colors.bg_primary)
+            .on_mouse_down(MouseButton::Left, cx.listener(|this, _event: &MouseDownEvent, _, cx| {
+                if this.context_menu_pos.is_some() {
+                    this.context_menu_pos = None;
+                    cx.notify();
+                }
+            }))
             // Dismiss body context menu on left-click anywhere
             .when(context_menu_pos.is_some(), |el| {
                 el.on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| {
@@ -896,14 +902,14 @@ impl Render for ResponsePanel {
                             if let Some((drag_id, start_x, start_w)) = this.resp_col_drag {
                                 let delta = f32::from(event.position.x) - start_x;
                                 let new_w = (start_w + delta).max(60.0);
-                                match drag_id {
-                                    0 => this.resp_header_col1_w = new_w.min(600.0),
-                                    1 => this.cookie_col1_w = new_w.min(400.0),
-                                    2 => this.cookie_col3_w = new_w.min(300.0),
-                                    3 => this.cookie_col4_w = new_w.min(200.0),
-                                    _ => {}
-                                }
-                                cx.notify();
+                                let changed = match drag_id {
+                                    0 => { let w = new_w.min(600.0); let c = (this.resp_header_col1_w - w).abs() > 0.5; this.resp_header_col1_w = w; c }
+                                    1 => { let w = new_w.min(400.0); let c = (this.cookie_col1_w - w).abs() > 0.5; this.cookie_col1_w = w; c }
+                                    2 => { let w = new_w.min(300.0); let c = (this.cookie_col3_w - w).abs() > 0.5; this.cookie_col3_w = w; c }
+                                    3 => { let w = new_w.min(200.0); let c = (this.cookie_col4_w - w).abs() > 0.5; this.cookie_col4_w = w; c }
+                                    _ => false,
+                                };
+                                if changed { cx.notify(); }
                             }
                         }))
                         .on_mouse_up(MouseButton::Left, cx.listener(|this, _, _, cx| {
@@ -2445,6 +2451,7 @@ fn format_size(bytes: usize) -> String {
         format!("{:.1} MB", bytes as f64 / (1024.0 * 1024.0))
     }
 }
+
 
 fn truncate_error(error: &str) -> String {
     if error.len() > 40 {

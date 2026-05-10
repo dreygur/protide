@@ -37,8 +37,11 @@ pub fn register_keybindings(cx: &mut gpui::App) {
     ]);
 }
 
-use super::panels::{ConsolePanel, ExplorerPanel, MockServerPanel, RequestPanel, ResponsePanel};
+use super::panels::presence::{ConnectionStatus, PeerSource, PresenceManager};
+use super::components::{TextInput, TextInputStyle};
+use super::panels::{ConsoleEntry, ConsolePanel, ExplorerPanel, MockServerPanel, RequestPanel, ResponsePanel};
 use crate::theme;
+use protide_core::sync::{SyncEngine, SyncEvent};
 use crate::ui::components::icons::{
     ICON_CLOSE, ICON_COPY, ICON_FOLDER, ICON_MAXIMIZE, ICON_MD, ICON_MENU, ICON_MINIMIZE,
     ICON_REFRESH, ICON_SETTINGS, ICON_SM, ICON_WINDOW_CLOSE, icon,
@@ -82,6 +85,16 @@ pub struct MainWindow {
     open_menu: Option<u8>,
     /// Keeps the on_app_quit subscription alive for the lifetime of the window.
     _quit_sub: gpui::Subscription,
+    /// Collaboration presence manager
+    presence: PresenceManager,
+    /// Sync engine for peer discovery and CRDT sync
+    sync_engine: Option<SyncEngine>,
+    /// Text input for the "Join Peer" pairing code field
+    join_input: Entity<TextInput>,
+    /// When the current PAKE handshake was initiated (for 10-second timeout)
+    handshake_started: Option<std::time::Instant>,
+    /// Last time cx.notify() was called from the P2P sync poller — used to throttle redraws
+    last_p2p_notify: std::time::Instant,
 }
 
 impl MainWindow {
@@ -131,6 +144,48 @@ impl MainWindow {
             async move { crate::session::save_sync(&state); }
         });
 
+        let join_input = cx.new(|cx| {
+            TextInput::new(cx, "join-code-input")
+                .placeholder("enter pairing code…")
+                .style(TextInputStyle::compact())
+        });
+
+        let mut presence = PresenceManager::new();
+        presence.generate_code();
+
+        // Initialize sync engine
+        let node_name = std::env::var("USER")
+            .or_else(|_| std::env::var("USERNAME"))
+            .unwrap_or_else(|_| "developer".into());
+        let pairing_code_str = if presence.pairing_code.is_empty() {
+            None
+        } else {
+            Some(presence.pairing_code.to_string())
+        };
+        let mut sync_engine = SyncEngine::new(protide_core::sync::SyncConfig {
+            node_name,
+            p2p_enabled: true,
+            live_probe_enabled: true,
+            pairing_code: pairing_code_str,
+            ..Default::default()
+        });
+        let _ = sync_engine.init();
+        let sync_engine = Some(sync_engine);
+
+        // Periodic sync event polling (every 1 second)
+        let poll_weak = cx.entity().downgrade();
+        cx.spawn(async move |_, cx| {
+            loop {
+                cx.background_executor()
+                    .timer(std::time::Duration::from_millis(1000))
+                    .await;
+                let weak = poll_weak.clone();
+                weak.update(cx, |this, cx| {
+                    this.poll_sync_events(cx);
+                }).ok();
+            }
+        }).detach();
+
         Self {
             explorer,
             request_panel,
@@ -157,6 +212,11 @@ impl MainWindow {
             focus: cx.focus_handle(),
             open_menu: None,
             _quit_sub: quit_sub,
+            presence,
+            sync_engine,
+            join_input,
+            handshake_started: None,
+            last_p2p_notify: std::time::Instant::now(),
         }
     }
 
@@ -194,6 +254,190 @@ impl MainWindow {
         cx.notify();
     }
 
+    /// Initiate a PAKE handshake using the current join_input text as the shared code.
+    fn connect_peer(&mut self, cx: &mut Context<Self>) {
+        let code = self.join_input.read(cx).get_text().trim().to_string();
+        if code.is_empty() {
+            return;
+        }
+        self.presence.connection_status = ConnectionStatus::Handshaking;
+        self.handshake_started = Some(std::time::Instant::now());
+        cx.notify();
+
+        if let Some(ref mut engine) = self.sync_engine {
+            match engine.initiate_handshake(&code) {
+                Ok(()) => {
+                    self.console_panel.update(cx, |panel, cx| {
+                        panel.log(ConsoleEntry::team(format!("Handshaking with code: {}", code)), cx);
+                    });
+                }
+                Err(e) => {
+                    self.console_panel.update(cx, |panel, cx| {
+                        panel.log(ConsoleEntry::team(format!("Handshake error: {}", e)), cx);
+                    });
+                    self.presence.reset_connection();
+                    cx.notify();
+                }
+            }
+        }
+    }
+
+    /// Read the system clipboard and, if it contains text, paste it into the join
+    /// input field and immediately attempt to connect.
+    fn paste_and_join(&mut self, cx: &mut Context<Self>) {
+        if let Some(item) = cx.read_from_clipboard() {
+            let text = item.text().unwrap_or_default().to_string();
+            self.join_input.update(cx, |input, input_cx| {
+                input.set_text(text, input_cx);
+            });
+            self.connect_peer(cx);
+        }
+    }
+
+    /// Build the flyout panel that drops down from the pairing badge.
+    fn render_pairing_flyout_panel(&mut self, cx: &mut Context<Self>) -> gpui::AnyElement {
+        let theme = theme::current(cx);
+        let status = self.presence.connection_status.clone();
+        let tick = self.presence.handshake_tick;
+
+        let neon = gpui::hsla(120.0 / 360.0, 1.0, 0.45, 1.0);
+
+        // Single match → all connect-button properties + interactivity flag.
+        // Hover and click are only wired when interactive = true, ensuring
+        // .hover() is called at most once per element and never during Handshaking.
+        let (connect_bg, connect_border, connect_text_color, connect_label, interactive) =
+            match (&status, tick) {
+                (ConnectionStatus::Handshaking, true) => {
+                    (neon.opacity(0.15), neon, neon, "Connecting…", false)
+                }
+                (ConnectionStatus::Handshaking, false) => {
+                    (neon.opacity(0.15), neon.opacity(0.25), neon, "Connecting…", false)
+                }
+                _ => (
+                    theme.colors.team_accent.opacity(0.12),
+                    theme.colors.team_accent,
+                    theme.colors.team_accent,
+                    "Connect",
+                    true,
+                ),
+            };
+
+        let error_msg: Option<String> = match &status {
+            ConnectionStatus::Error(msg) => Some(msg.clone()),
+            _ => None,
+        };
+
+        // Connect button: hover/cursor/click added only in the interactive branch
+        let connect_btn_base = div()
+            .id("join-connect-btn")
+            .flex_1()
+            .h(px(26.0))
+            .flex()
+            .items_center()
+            .justify_center()
+            .bg(connect_bg)
+            .border_1()
+            .border_color(connect_border)
+            .child(
+                div()
+                    .text_size(px(10.0))
+                    .font_weight(gpui::FontWeight::SEMIBOLD)
+                    .text_color(connect_text_color)
+                    .child(connect_label),
+            );
+
+        let connect_btn: gpui::AnyElement = if interactive {
+            connect_btn_base
+                .cursor_pointer()
+                .hover(|s| s.opacity(0.85))
+                .on_click(cx.listener(|this, _, _, cx| this.connect_peer(cx)))
+                .into_any_element()
+        } else {
+            connect_btn_base.into_any_element()
+        };
+
+        // Paste button: disabled (dimmed, no hover/click) while handshaking
+        let paste_btn_base = div()
+            .id("join-paste-btn")
+            .flex_1()
+            .h(px(26.0))
+            .flex()
+            .items_center()
+            .justify_center()
+            .bg(theme.colors.bg_tertiary)
+            .border_1()
+            .border_color(theme.colors.border)
+            .child(
+                div()
+                    .text_size(px(10.0))
+                    .text_color(if interactive {
+                        theme.colors.text_secondary
+                    } else {
+                        theme.colors.text_muted
+                    })
+                    .child("Paste & Join"),
+            );
+
+        let paste_btn: gpui::AnyElement = if interactive {
+            paste_btn_base
+                .cursor_pointer()
+                .hover(|s| s.bg(theme.colors.bg_elevated))
+                .on_click(cx.listener(|this, _, _, cx| this.paste_and_join(cx)))
+                .into_any_element()
+        } else {
+            paste_btn_base.into_any_element()
+        };
+
+        let join_section = div()
+            .flex()
+            .flex_col()
+            .gap(px(6.0))
+            .child(self.join_input.clone())
+            .child(div().flex().gap(px(6.0)).child(paste_btn).child(connect_btn))
+            .when_some(error_msg, |el, msg| {
+                let error_color = theme.colors.error;
+                el.child(
+                    div()
+                        .w_full()
+                        .px(px(8.0))
+                        .py(px(5.0))
+                        .bg(error_color.opacity(0.08))
+                        .border_1()
+                        .border_color(error_color.opacity(0.35))
+                        .flex()
+                        .items_center()
+                        .gap(px(6.0))
+                        .child(
+                            div()
+                                .flex_1()
+                                .text_size(px(10.0))
+                                .text_color(error_color)
+                                .child(msg),
+                        )
+                        .child(
+                            div()
+                                .id("handshake-retry-btn")
+                                .px(px(6.0))
+                                .py(px(2.0))
+                                .text_size(px(9.0))
+                                .font_weight(gpui::FontWeight::SEMIBOLD)
+                                .text_color(error_color)
+                                .cursor_pointer()
+                                .hover(move |s| s.bg(error_color.opacity(0.15)))
+                                .on_click(cx.listener(|this, _, _, cx| {
+                                    this.presence.reset_connection();
+                                    this.handshake_started = None;
+                                    cx.notify();
+                                }))
+                                .child("Retry"),
+                        ),
+                )
+            })
+            .into_any_element();
+
+        self.presence.render_pairing_flyout(&theme, join_section)
+    }
+
     pub fn show_modal(&mut self, state: ModalState, cx: &mut Context<Self>) {
         self.modal = Some(state);
         self.modal_pending = ModalPending::None;
@@ -225,6 +469,8 @@ impl MainWindow {
             self.show_help = false;
         } else if self.show_about {
             self.show_about = false;
+        } else if self.presence.show_pairing {
+            self.presence.show_pairing = false;
         }
         cx.notify();
     }
@@ -240,6 +486,156 @@ impl MainWindow {
             ModalPending::None => {}
         }
         cx.notify();
+    }
+
+    /// Poll the sync engine for events and update presence + console.
+    fn poll_sync_events(&mut self, cx: &mut Context<Self>) {
+        let Some(ref mut engine) = self.sync_engine else { return };
+
+        let events = engine.tick();
+        let channel_events = engine.drain_events();
+        let all_events: Vec<SyncEvent> = events.into_iter().chain(channel_events).collect();
+
+        let mut changed = false;
+        // Deferred: call refresh_collections once after processing all entries,
+        // not once per entry (avoids N expensive filesystem scans per poll tick).
+        let mut should_refresh_collections = false;
+
+        for evt in all_events {
+            match evt {
+                SyncEvent::PeerJoined(peer_id) => {
+                    let display_name = format!("Peer-{}", &peer_id[..peer_id.len().min(8)]);
+                    self.presence.upsert_peer(peer_id.clone(), display_name, PeerSource::P2P);
+                    self.console_panel.update(cx, |panel, cx| {
+                        panel.log(
+                            ConsoleEntry::team(format!("Peer joined: {}", &peer_id[..peer_id.len().min(8)])),
+                            cx,
+                        );
+                    });
+                    changed = true;
+                }
+                SyncEvent::PeerLeft(peer_id) => {
+                    self.presence.remove_peer(&peer_id);
+                    self.console_panel.update(cx, |panel, cx| {
+                        panel.log(
+                            ConsoleEntry::team(format!("Peer left: {}", &peer_id[..peer_id.len().min(8)])),
+                            cx,
+                        );
+                    });
+                    changed = true;
+                }
+                SyncEvent::LiveActivity(activity) => {
+                    self.presence.upsert_peer(
+                        activity.node_id.clone(),
+                        activity.node_name.clone(),
+                        PeerSource::UDPBroadcast,
+                    );
+                    let method = activity.method.clone();
+                    let url = activity.url.clone();
+                    let status = activity.status;
+                    let time_ms = activity.time_ms;
+                    self.console_panel.update(cx, |panel, cx| {
+                        let msg = if status > 0 {
+                            format!("{} {} → {} ({}ms)", method, url, status, time_ms)
+                        } else {
+                            format!("{} {}", method, url)
+                        };
+                        panel.log(ConsoleEntry::team(format!("[{}] {}", activity.node_name, msg)), cx);
+                    });
+                    changed = true;
+                }
+                SyncEvent::BackendStatus { backend, ready } => {
+                    let status = if ready { "online" } else { "offline" };
+                    self.console_panel.update(cx, |panel, cx| {
+                        panel.log(ConsoleEntry::team(format!("{:?} sync {}", backend, status)), cx);
+                    });
+                }
+                SyncEvent::SyncError(err) => {
+                    self.console_panel.update(cx, |panel, cx| {
+                        panel.log(ConsoleEntry::team(format!("Sync error: {}", err)), cx);
+                    });
+                }
+                SyncEvent::EntryReceived(entry) => {
+                    use protide_core::sync::DataType;
+                    if entry.data_type == DataType::Collection || entry.data_type == DataType::Request {
+                        // Mark for a single deferred refresh rather than refreshing per-entry.
+                        should_refresh_collections = true;
+                    }
+                    self.console_panel.update(cx, |panel, cx| {
+                        panel.log(
+                            ConsoleEntry::team(format!("[sync] entry received: {:?}", entry.data_type)),
+                            cx,
+                        );
+                    });
+                    changed = true;
+                }
+                SyncEvent::HandshakeComplete { peer_id, peer_name } => {
+                    self.handshake_started = None;
+                    self.presence.set_connected(peer_id.clone(), peer_name.clone());
+                    self.console_panel.update(cx, |panel, cx| {
+                        panel.log(ConsoleEntry::team(format!("Connected to {}", peer_name)), cx);
+                    });
+                    changed = true;
+                }
+                SyncEvent::HandshakeFailed { reason } => {
+                    self.handshake_started = None;
+                    self.presence.connection_status = ConnectionStatus::Error(reason.clone());
+                    self.presence.handshake_tick = false;
+                    self.console_panel.update(cx, |panel, cx| {
+                        panel.log(ConsoleEntry::system(format!("[PAKE] Handshake failed: {}", reason)), cx);
+                    });
+                    changed = true;
+                }
+                SyncEvent::P2PDiagnostic(msg) => {
+                    self.console_panel.update(cx, |panel, cx| {
+                        panel.log(ConsoleEntry::system(msg), cx);
+                    });
+                }
+                SyncEvent::LocalAddr(addr) => {
+                    self.console_panel.update(cx, |panel, cx| {
+                        panel.log(ConsoleEntry::system(format!("[P2P] Listening on: {}", addr)), cx);
+                    });
+                }
+            }
+        }
+
+        // Single filesystem scan for all batched CRDT entries.
+        if should_refresh_collections {
+            self.explorer.update(cx, |exp, cx| exp.refresh_collections(cx));
+        }
+
+        // Tick the handshake pulse so the Connect button border animates at ~1Hz
+        if self.presence.connection_status == ConnectionStatus::Handshaking {
+            if let Some(started) = self.handshake_started {
+                if started.elapsed() > std::time::Duration::from_secs(10) {
+                    self.handshake_started = None;
+                    self.presence.connection_status =
+                        ConnectionStatus::Error("Peer Not Found".to_string());
+                    self.presence.handshake_tick = false;
+                    self.console_panel.update(cx, |panel, cx| {
+                        panel.log(
+                            ConsoleEntry::system("[PAKE] Handshake timed out: Peer Not Found"),
+                            cx,
+                        );
+                    });
+                    changed = true;
+                }
+            }
+            self.presence.tick_handshake();
+            changed = true;
+        }
+
+        if changed {
+            self.presence.reap_stale();
+            // Throttle: skip the redraw if we already notified within the last 100ms.
+            // This prevents bursts of CRDT entries or live-probe packets from causing
+            // more frame submissions than the GPU can display.
+            let now = std::time::Instant::now();
+            if now.duration_since(self.last_p2p_notify).as_millis() >= 100 {
+                self.last_p2p_notify = now;
+                cx.notify();
+            }
+        }
     }
 }
 
@@ -743,6 +1139,30 @@ impl Render for MainWindow {
                 };
                 el.child(render_modal_shell(&modal, &theme, buttons))
             })
+            // Pairing flyout — anchored below the presence badge (left ~300px, below 40px titlebar)
+            .when(self.presence.show_pairing, |el| {
+                let flyout = self.render_pairing_flyout_panel(cx);
+                el
+                    .child(
+                        div()
+                            .absolute().top_0().left_0().w_full().h_full()
+                            .on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| {
+                                this.presence.show_pairing = false;
+                                this.presence.reset_connection();
+                                cx.notify();
+                            }))
+                    )
+                    .child(
+                        gpui::deferred(
+                            div()
+                                .absolute()
+                                .top(px(40.0))
+                                .left(px(300.0))
+                                .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                                .child(flyout)
+                        ).with_priority(10)
+                    )
+            })
             .when(self.open_menu.is_some(), |el| el
                 .child(
                     div()
@@ -843,6 +1263,17 @@ impl MainWindow {
                             }))
                     }))
             })
+            // Presence bar (collaboration) — click to toggle pairing flyout
+            .child(
+                div()
+                    .id("presence-bar")
+                    .cursor_pointer()
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.presence.show_pairing = !this.presence.show_pairing;
+                        cx.notify();
+                    }))
+                    .child(self.presence.render_presence_bar(&theme))
+            )
             // Drag region (fills remaining space)
             .child(div().flex_1().h_full().on_mouse_down(
                 gpui::MouseButton::Left,

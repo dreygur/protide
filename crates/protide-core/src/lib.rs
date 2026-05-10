@@ -7,4 +7,5 @@ pub mod mock_server;
 pub mod models;
 pub mod protocols;
 pub mod scripting;
+pub mod sync;
 pub mod workspace;

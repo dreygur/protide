@@ -24,6 +24,7 @@ jsonpath-rust = { workspace = true }
 
 anyhow = { workspace = true }
 thiserror = { workspace = true }
+log = { workspace = true }
 
 uuid = { workspace = true }
 chrono = { workspace = true }
@@ -47,3 +48,17 @@ prost = { workspace = true }
 prost-types = { workspace = true }
 prost-reflect = { workspace = true }
 protox = { workspace = true }
+
+# Optional sync dependencies
+libp2p = { workspace = true, optional = true }
+spake2 = { workspace = true, optional = true }
+chacha20poly1305 = { workspace = true, optional = true }
+blake3 = { workspace = true, optional = true }
+rand = { workspace = true, optional = true }
+zeroize = { workspace = true, optional = true }
+
+[features]
+default = []
+p2p-sync = ["dep:libp2p", "dep:blake3"]
+pake-auth = ["dep:spake2", "dep:chacha20poly1305", "dep:blake3", "dep:rand", "dep:zeroize"]
+full-sync = ["p2p-sync", "pake-auth"]

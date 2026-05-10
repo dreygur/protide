@@ -70,6 +70,10 @@ pub struct Colors {
     pub focus_ring: Hsla,
     pub focus_ring_error: Hsla,
 
+    // Collaboration / sync
+    pub team_accent: Hsla,
+    pub sync_active: Hsla,
+
     // Modal backdrop
     pub overlay: Hsla,
 }
@@ -131,6 +135,10 @@ impl Colors {
             focus_ring: rgb(0x4ade80).into(),
             focus_ring_error: rgb(0xf87171).into(),
 
+            // Collaboration / sync
+            team_accent: rgb(0x4ade80).into(),       // green, matches accent
+            sync_active: rgb(0x22c55e).into(),       // brighter green for active state
+
             // Modal backdrop
             overlay: Hsla { h: 0.0, s: 0.0, l: 0.0, a: 0.5 },
         }
@@ -191,6 +199,10 @@ impl Colors {
             // Focus indicator
             focus_ring: rgb(0x007acc).into(),
             focus_ring_error: rgb(0xc62828).into(),
+
+            // Collaboration / sync
+            team_accent: rgb(0x007acc).into(),       // blue, matches accent
+            sync_active: rgb(0x008000).into(),       // darker green for active
 
             // Modal backdrop
             overlay: Hsla { h: 0.0, s: 0.0, l: 0.0, a: 0.4 },

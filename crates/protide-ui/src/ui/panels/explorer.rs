@@ -20,7 +20,8 @@ use crate::theme;
 use crate::ui::components::icons::{
     ICON_ARROW_DOWN, ICON_CHEVRON_DOWN, ICON_CHEVRON_RIGHT, ICON_CHEVRON_UP, ICON_CLOSE,
     ICON_DELETE, ICON_EDIT, ICON_EXTERNAL, ICON_FILE, ICON_FOLDER, ICON_FOLDER_OPEN, ICON_INFO,
-    ICON_MD, ICON_MENU, ICON_PLUS, ICON_REFRESH, ICON_SETTINGS, ICON_SM, ICON_TIMER, icon,
+    ICON_LINK, ICON_MD, ICON_MENU, ICON_PLUS, ICON_REFRESH, ICON_SETTINGS, ICON_SM, ICON_TIMER,
+    icon,
 };
 use http_parser::Protocol;
 use crate::ui::components::{icon_btn, render_text_view_with_max_scrolled};
@@ -786,7 +787,7 @@ impl ExplorerPanel {
     }
 
     /// Refresh collections by rescanning the workspace directory
-    fn refresh_collections(&mut self, cx: &mut Context<Self>) {
+    pub fn refresh_collections(&mut self, cx: &mut Context<Self>) {
         if let Some(workspace) = &self.workspace_path {
             self.collection_items = self.scan_directory(workspace);
             self.tree_scroll = 0.0;
@@ -1759,6 +1760,11 @@ impl ExplorerPanel {
                         .text_color(theme.colors.text_primary)
                         .child(rename_text),
                 )
+            })
+            // Sync watch icon (shown on folders with active workspace watcher)
+            .when(is_folder && self.workspace_watcher.is_some(), |el| {
+                el.child(div().w(px(4.0)))
+                    .child(icon(ICON_LINK, ICON_SM, theme.colors.team_accent))
             })
     }
 

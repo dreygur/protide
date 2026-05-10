@@ -4,6 +4,7 @@ pub mod button;
 pub mod code_editor;
 pub mod icons;
 pub mod modal;
+pub mod selectable_text;
 mod text_input;
 mod ui_helpers;
 

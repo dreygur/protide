@@ -277,9 +277,6 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                                 .text_color(theme.colors.status_success)
                                 .border_color(theme.colors.status_success.opacity(0.4))
                             )
-                            .when(!is_saved, |el| el
-                                .hover(|s| s.bg(theme.colors.bg_tertiary).border_color(theme.colors.text_muted))
-                            )
                             .on_click(cx.listener(|this, _, _, cx| {
                                 this.save_request(cx);
                             }))
@@ -3368,10 +3365,9 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                                 .py(px(8.0))
                                 .bg(theme.colors.bg_tertiary)
                                 .cursor_pointer()
-                                .hover(|s| s.bg(theme.colors.method_delete.opacity(0.1)))
                                 .text_size(px(11.0))
                                 .text_color(theme.colors.text_muted)
-                                .hover(|s| s.text_color(theme.colors.method_delete))
+                                .hover(|s| s.bg(theme.colors.method_delete.opacity(0.1)).text_color(theme.colors.method_delete))
                                 .on_click(cx.listener(|this, _, _, cx| {
                                     this.grpc_proto_path = None;
                                     this.grpc_proto_content.clear();

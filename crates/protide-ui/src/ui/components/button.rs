@@ -207,19 +207,22 @@ impl Button {
             .px(ButtonStyles::padding_x(size))
             .text_size(ButtonStyles::font_size(size, &theme))
             .when(!disabled, |el| {
-                let mut el = el
-                    .bg(bg_color)
-                    .text_color(text_color)
-                    .cursor_pointer()
-                    .hover(|style| style.bg(hover_color));
-
-                if let Some(border) = border_color {
-                    el = el.border_1().border_color(border);
-                    if let Some(hover_border) = border_hover_color {
-                        el = el.hover(|style| style.border_color(hover_border));
-                    }
-                }
-                el
+                // Apply base border before the single hover call
+                let el = if let Some(border) = border_color {
+                    el.bg(bg_color)
+                        .text_color(text_color)
+                        .cursor_pointer()
+                        .border_1()
+                        .border_color(border)
+                } else {
+                    el.bg(bg_color).text_color(text_color).cursor_pointer()
+                };
+                // Merge bg + optional border into one hover call — calling hover()
+                // twice on the same element triggers a GPUI debug_assert panic.
+                el.hover(move |style| match border_hover_color {
+                    Some(hover_border) => style.bg(hover_color).border_color(hover_border),
+                    None => style.bg(hover_color),
+                })
             })
             .when(disabled, |el| {
                 el.bg(ButtonStyles::disabled_background(&theme))
