@@ -2,10 +2,9 @@
 # @name ws-echo-text
 # @description Connect to the public echo server and send a plain text message.
 # The server echoes every message back verbatim.
-# Endpoint: wss://echo.websocket.events (maintained by websocket.org)
 # @protocol websocket
 
-WEBSOCKET wss://echo.websocket.events
+WEBSOCKET wss://echo.websocket.org
 
 Hello from Protide!
 
@@ -14,7 +13,7 @@ Hello from Protide!
 # @description Send a structured JSON message. Useful for testing JSON-over-WebSocket APIs.
 # @protocol websocket
 
-WEBSOCKET wss://echo.websocket.events
+WEBSOCKET wss://echo.websocket.org
 
 {"event": "ping", "id": 1, "timestamp": "2025-01-01T00:00:00Z"}
 
@@ -23,7 +22,7 @@ WEBSOCKET wss://echo.websocket.events
 # @description Verify the connection handles payloads beyond a single TCP segment.
 # @protocol websocket
 
-WEBSOCKET wss://echo.websocket.events
+WEBSOCKET wss://echo.websocket.org
 
 {"type": "bulk", "items": [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20]}
 
@@ -32,7 +31,7 @@ WEBSOCKET wss://echo.websocket.events
 # @description Verify multi-byte UTF-8 is transmitted and echoed without corruption.
 # @protocol websocket
 
-WEBSOCKET wss://echo.websocket.events
+WEBSOCKET wss://echo.websocket.org
 
 {"message": "こんにちは世界 — مرحبا بالعالم — 🌍🌎🌏"}
 
@@ -42,7 +41,7 @@ WEBSOCKET wss://echo.websocket.events
 # them but this verifies Protide passes them through the WebSocket upgrade handshake.
 # @protocol websocket
 
-WEBSOCKET wss://echo.websocket.events
+WEBSOCKET wss://echo.websocket.org
 Authorization: Bearer demo-token
 X-Client-Name: protide-e2e
 
@@ -51,7 +50,7 @@ X-Client-Name: protide-e2e
 ### WebSocket — Environment Variable in URL
 # @name ws-echo-env-url
 # @description Demonstrates {{variable}} substitution in the WebSocket URL.
-# Set ws_host = echo.websocket.events in your environment.
+# Set ws_host = echo.websocket.org in your environment.
 # @protocol websocket
 
 WEBSOCKET wss://{{ws_host}}

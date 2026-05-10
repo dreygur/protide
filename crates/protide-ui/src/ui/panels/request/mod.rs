@@ -551,10 +551,16 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
         self.ws_send_tx = Some(handle.cmd_tx);
 
         let event_rx = handle.event_rx;
+        let (fwd_tx, fwd_rx) = async_channel::unbounded::<WsEvent>();
+        std::thread::spawn(move || {
+            while let Ok(ev) = event_rx.recv() {
+                if fwd_tx.try_send(ev).is_err() { break; }
+            }
+        });
         cx.spawn(async move |this: gpui::WeakEntity<Self>, cx: &mut gpui::AsyncApp| {
-            loop {
-                match event_rx.recv_timeout(std::time::Duration::from_millis(100)) {
-                    Ok(WsEvent::Connected) => {
+            while let Ok(event) = fwd_rx.recv().await {
+                match event {
+                    WsEvent::Connected => {
                         info!("WS connected: {}", ws_log_url);
                         let _ = cx.update(|cx| {
                             let _ = this.update(cx, |this, cx| {
@@ -563,7 +569,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                             });
                         });
                     }
-                    Ok(WsEvent::Message { msg, env_changes }) => {
+                    WsEvent::Message { msg, env_changes } => {
                         let _ = cx.update(|cx| {
                             let _ = this.update(cx, |this, cx| {
                                 for (k, v) in &env_changes {
@@ -576,7 +582,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                             });
                         });
                     }
-                    Ok(WsEvent::Disconnected) => {
+                    WsEvent::Disconnected => {
                         info!("WS disconnected: {}", ws_log_url);
                         let _ = cx.update(|cx| {
                             let _ = this.update(cx, |this, cx| {
@@ -587,7 +593,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                         });
                         break;
                     }
-                    Ok(WsEvent::Error(e)) => {
+                    WsEvent::Error(e) => {
                         error!("WS error {}: {}", ws_log_url, e);
                         let _ = cx.update(|cx| {
                             let hint = dns_troubleshoot_hint(&e);
@@ -620,23 +626,8 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                         });
                         break;
                     }
-                    Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
-                        let mut should_stop = false;
-                        let _ = cx.update(|cx| {
-                            if let Ok(state) = this.update(cx, |this, _| {
-                                matches!(this.ws_state, WsConnectionState::Disconnected | WsConnectionState::Error)
-                            }) {
-                                should_stop = state;
-                            }
-                        });
-                        if should_stop {
-                            break;
-                        }
-                    }
-                    Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
                 }
             }
-
             let _ = cx.update(|cx| {
                 let _ = this.update(cx, |this, cx| {
                     if !matches!(this.ws_state, WsConnectionState::Disconnected | WsConnectionState::Error) {
@@ -706,10 +697,16 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
         self.sio_send_tx = Some(handle.cmd_tx);
 
         let event_rx = handle.event_rx;
+        let (fwd_tx, fwd_rx) = async_channel::unbounded::<SioUiEvent>();
+        std::thread::spawn(move || {
+            while let Ok(ev) = event_rx.recv() {
+                if fwd_tx.try_send(ev).is_err() { break; }
+            }
+        });
         cx.spawn(async move |this: gpui::WeakEntity<Self>, cx: &mut gpui::AsyncApp| {
-            loop {
-                match event_rx.recv_timeout(std::time::Duration::from_millis(100)) {
-                    Ok(SioUiEvent::Connected { .. }) => {
+            while let Ok(event) = fwd_rx.recv().await {
+                match event {
+                    SioUiEvent::Connected { .. } => {
                         let _ = cx.update(|cx| {
                             let _ = this.update(cx, |this, cx| {
                                 this.sio_state = SioConnectionState::Connected;
@@ -717,7 +714,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                             });
                         });
                     }
-                    Ok(SioUiEvent::Event(event)) => {
+                    SioUiEvent::Event(event) => {
                         let _ = cx.update(|cx| {
                             let _ = this.update(cx, |this, cx| {
                                 this.sio_messages.push(event);
@@ -725,7 +722,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                             });
                         });
                     }
-                    Ok(SioUiEvent::Disconnected) => {
+                    SioUiEvent::Disconnected => {
                         let _ = cx.update(|cx| {
                             let _ = this.update(cx, |this, cx| {
                                 this.sio_state = SioConnectionState::Disconnected;
@@ -735,7 +732,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                         });
                         break;
                     }
-                    Ok(SioUiEvent::Error(e)) => {
+                    SioUiEvent::Error(e) => {
                         error!("SIO error: {}", e);
                         let _ = cx.update(|cx| {
                             let _ = this.update(cx, |this, cx| {
@@ -755,20 +752,6 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                         });
                         break;
                     }
-                    Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
-                        let mut disconnected = true;
-                        let _ = cx.update(|cx| {
-                            if let Ok(state) = this.update(cx, |this, _| {
-                                this.sio_state == SioConnectionState::Disconnected
-                            }) {
-                                disconnected = state;
-                            }
-                        });
-                        if disconnected {
-                            break;
-                        }
-                    }
-                    Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
                 }
             }
             let _ = cx.update(|cx| {

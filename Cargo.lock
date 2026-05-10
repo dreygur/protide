@@ -6293,6 +6293,7 @@ dependencies = [
 name = "protide-ui"
 version = "0.1.0"
 dependencies = [
+ "async-channel 2.5.0",
  "base64",
  "chrono",
  "dirs",
