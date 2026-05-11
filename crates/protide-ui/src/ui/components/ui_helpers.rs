@@ -1,5 +1,5 @@
 use crate::theme;
-use crate::ui::components::icons::{ICON_MD, icon};
+use crate::ui::components::icons::{ICON_MD, ICON_SM, icon};
 use gpui::prelude::*;
 use gpui::{AppContext, Div, ElementId, Stateful, div, px};
 
@@ -18,6 +18,25 @@ pub fn icon_btn(id: impl Into<ElementId>, icon_src: &'static str, cx: &impl AppC
                 .text_color(theme.colors.text_primary)
         })
         .child(icon(icon_src, ICON_MD, theme.colors.text_muted))
+}
+
+/// 18×18px ghost icon button for use inside ActionRow actions.
+/// Invisible background; reveals a subtle bg on hover.  Caller adds .on_click().
+pub fn ghost_action_btn(
+    id: impl Into<ElementId>,
+    icon_src: &'static str,
+    cx: &impl AppContext,
+) -> Stateful<Div> {
+    let theme = theme::current(cx);
+    div()
+        .id(id.into())
+        .size(px(18.0))
+        .flex()
+        .items_center()
+        .justify_center()
+        .cursor_pointer()
+        .hover(|s| s.bg(theme.colors.bg_elevated))
+        .child(icon(icon_src, ICON_SM, theme.colors.text_muted))
 }
 
 /// Compact labeled toolbar button (border, 11px text, subtle hover).

@@ -26,7 +26,7 @@ use crate::ui::components::icons::{
     icon,
 };
 use http_parser::Protocol;
-use crate::ui::components::{icon_btn, render_text_view_with_max_scrolled};
+use crate::ui::components::{ActionRow, ghost_action_btn, icon_btn, render_text_view_with_max_scrolled};
 use protide_core::models::{Environment, EnvironmentState};
 
 /// Represents an item in the collection tree (either a folder or a .http file)
@@ -394,6 +394,37 @@ impl ExplorerPanel {
         if let Some(folder) = dialog.pick_folder() {
             last_paths::save_last_dir("open_folder", &folder);
             self.load_collection_from_path(folder, cx);
+        }
+    }
+
+    /// Create a new .http file inside a specific folder (called by ActionRow action button).
+    fn create_new_file_in_folder(&mut self, folder_path: PathBuf, cx: &mut Context<Self>) {
+        let dialog = rfd::FileDialog::new()
+            .set_title("Create New Request")
+            .set_file_name("new-request.http")
+            .set_directory(&folder_path)
+            .add_filter("HTTP Request", &["http"]);
+        if let Some(path) = dialog.save_file() {
+            last_paths::save_last_dir("new_request", &path);
+            last_paths::save_last_dir("save_request", &path);
+            let path = if path.extension().map_or(true, |e| e != "http") {
+                path.with_extension("http")
+            } else {
+                path
+            };
+            let content = "### New Request\n# @name new-request\n\nGET https://api.example.com\n";
+            match fs::write(&path, content) {
+                Ok(_) => {
+                    info!("Created: {}", path.display());
+                    if let Some(workspace) = &self.workspace_path {
+                        if path.starts_with(workspace) {
+                            self.collection_items = self.scan_directory(workspace);
+                        }
+                    }
+                    self.load_request_file(path, cx);
+                }
+                Err(e) => error!("Failed to create request: {}", e),
+            }
         }
     }
 
@@ -1659,6 +1690,7 @@ impl ExplorerPanel {
         let path = item.path.clone();
         let path_for_right_click = item.path.clone();
         let path_for_select = item.path.clone();
+        let path_for_action = item.path.clone();
         let is_folder = item.is_folder;
         let is_expanded = item.expanded;
         let display_name = item.name.trim_end_matches(".http").to_string();
@@ -1666,57 +1698,53 @@ impl ExplorerPanel {
         let has_badge = method.is_some();
         let is_selected = self.selected_item.as_ref() == Some(&item.path);
         let is_renaming = self.renaming_item.as_ref() == Some(&item.path);
+        let has_watcher = self.workspace_watcher.is_some();
 
         let guide_color = theme.colors.text_muted.opacity(0.12);
 
-        div()
-            .id(SharedString::from(format!("collection-item-{}", idx)))
-            .w_full()
-            .h(px(28.0))
-            .relative()
+        // Build the ActionRow — hover bg and group/group_hover handled centrally.
+        let mut row = ActionRow::new(
+            SharedString::from(format!("collection-item-{}", idx)),
+            SharedString::from(format!("coll-row-{}", idx)),
+            &theme,
+        )
+        .selected(is_selected)
+        .on_click(cx.listener(move |this, _, _, cx| {
+            this.selected_item = Some(path_for_select.clone());
+            if is_folder {
+                this.toggle_collection_folder(path.clone(), cx);
+            } else {
+                this.load_request_file(path.clone(), cx);
+            }
+        }))
+        .on_right_click(cx.listener(move |this, event: &MouseDownEvent, _, cx| {
+            this.selected_item = Some(path_for_right_click.clone());
+            this.context_menu = Some((path_for_right_click.clone(), event.position));
+            cx.notify();
+        }));
+
+        // Guide lines: absolute children — don't affect flex layout, position relative to row.
+        for level in 0..depth {
+            row = row.child(
+                div()
+                    .absolute()
+                    .left(px(8.0 + level as f32 * 16.0 + 7.5))
+                    .top(px(0.0))
+                    .h(px(28.0))
+                    .w(px(1.0))
+                    .bg(guide_color),
+            );
+        }
+
+        // Main content — a flex row with the indent applied here.
+        let rename_text = self.rename_text.clone();
+        let content = div()
+            .flex_1()
             .flex()
             .items_center()
             .pl(indent)
-            .pr(px(8.0))
-            .cursor_pointer()
-            .when(is_selected, |el| el.bg(theme.colors.accent.opacity(0.1)))
-            .when(!is_selected, |el| {
-                el.hover(|s| s.bg(theme.colors.bg_tertiary))
-            })
-            // Left click - select and load/toggle
-            .on_click({
-                cx.listener(move |this, _, _, cx| {
-                    this.selected_item = Some(path_for_select.clone());
-                    if is_folder {
-                        this.toggle_collection_folder(path.clone(), cx);
-                    } else {
-                        this.load_request_file(path.clone(), cx);
-                    }
-                })
-            })
-            // Right click - show context menu
-            .on_mouse_down(MouseButton::Right, {
-                cx.listener(move |this, event: &MouseDownEvent, _, cx| {
-                    this.selected_item = Some(path_for_right_click.clone());
-                    this.context_menu = Some((path_for_right_click.clone(), event.position));
-                    cx.notify();
-                })
-            })
-            // Guide lines for nested items (absolute, behind content)
-            .when(depth > 0, |el| {
-                (0..depth).fold(el, |el, level| {
-                    el.child(
-                        div()
-                            .absolute()
-                            .left(px(8.0 + level as f32 * 16.0 + 7.5))
-                            .top(px(0.0))
-                            .h(px(28.0))
-                            .w(px(1.0))
-                            .bg(guide_color),
-                    )
-                })
-            })
-            // Expand/collapse icon for folders
+            .pr(px(4.0))
+            // Expand/collapse icon for folders, spacer for files
             .when(is_folder, |el| {
                 el.child(
                     div()
@@ -1731,7 +1759,6 @@ impl ExplorerPanel {
                         }),
                 )
             })
-            // Spacer for files to align with folders
             .when(!is_folder, |el| el.child(div().w(px(10.0))))
             // Gap: chevron → icon
             .child(div().w(px(crate::theme::sizes::CHEVRON_ICON_GAP)))
@@ -1767,9 +1794,8 @@ impl ExplorerPanel {
                         ),
                 )
             })
-            // 4px gap after badge before label
             .when(has_badge, |el| el.child(div().w(px(4.0))))
-            // Name (or rename input) - folders are bold to stand out
+            // Name label or rename input
             .when(!is_renaming, |el| {
                 el.child(
                     div()
@@ -1783,7 +1809,6 @@ impl ExplorerPanel {
                 )
             })
             .when(is_renaming, |el| {
-                let rename_text = self.rename_text.clone();
                 el.child(
                     div()
                         .flex_1()
@@ -1801,11 +1826,31 @@ impl ExplorerPanel {
                         .child(rename_text),
                 )
             })
-            // Sync watch icon (shown on folders with active workspace watcher)
-            .when(is_folder && self.workspace_watcher.is_some(), |el| {
+            // Sync watch indicator (folders only, when workspace watcher active)
+            .when(is_folder && has_watcher, |el| {
                 el.child(div().w(px(4.0)))
                     .child(icon(ICON_LINK, ICON_SM, theme.colors.team_accent))
-            })
+            });
+
+        row = row.child(content);
+
+        // Folder action: ghost "new file in folder" button, revealed on hover.
+        // on_click calls stop_propagation so the row's own click does not fire.
+        if is_folder {
+            row = row.action(
+                ghost_action_btn(
+                    SharedString::from(format!("new-in-folder-{}", idx)),
+                    ICON_PLUS,
+                    cx,
+                )
+                .on_click(cx.listener(move |this, _, _, cx| {
+                    cx.stop_propagation();
+                    this.create_new_file_in_folder(path_for_action.clone(), cx);
+                })),
+            );
+        }
+
+        row
     }
 
     fn render_history_section(&self, cx: &Context<Self>) -> impl IntoElement {
@@ -1923,7 +1968,7 @@ impl ExplorerPanel {
                                     ),
                             )
                         })
-                        .children(entries.into_iter().map(|entry| {
+                        .children(entries.into_iter().enumerate().map(|(entry_idx, entry)| {
                             let entry_id = entry.id;
                             let method = entry.method.clone();
                             let display_url = entry.display_url();
@@ -1931,57 +1976,59 @@ impl ExplorerPanel {
                             let status = entry.status;
                             let status_color = status.map(|s| theme.status_color(s));
 
-                            div()
-                                .id(gpui::ElementId::Name(
-                                    format!("history-{}", entry_id).into(),
-                                ))
-                                .w_full()
-                                .h(px(32.0))
-                                .flex()
-                                .items_center()
-                                .px(px(8.0))
-                                .gap(px(10.0))
-                                .cursor_pointer()
-                                .hover(|s| s.bg(theme.colors.bg_tertiary))
-                                .on_click(cx.listener(move |this, _, _, cx| {
-                                    this.load_history_item(entry_id, cx);
-                                }))
-                                // Method badge - sharp style matching explorer badges
-                                .child(
-                                    div()
-                                        .min_w(px(36.0))
-                                        .h(px(16.0))
-                                        .px(px(4.0))
-                                        .flex()
-                                        .items_center()
-                                        .justify_center()
-                                        .bg(method_color.opacity(0.12))
-                                        .border_1()
-                                        .border_color(method_color.opacity(0.6))
-                                        .child(
-                                            div()
-                                                .text_size(px(9.0))
-                                                .font_weight(gpui::FontWeight::BOLD)
-                                                .font_family("JetBrains Mono")
-                                                .text_color(method_color)
-                                                .child(method),
-                                        ),
-                                )
-                                // URL
-                                .child(
-                                    div()
-                                        .flex_1()
-                                        .min_w(px(0.0))
-                                        .overflow_hidden()
-                                        .whitespace_nowrap()
-                                        .text_size(px(12.0))
-                                        .text_color(theme.colors.text_primary)
-                                        .child(display_url),
-                                )
-                                // Status indicator
-                                .when_some(status_color, |el, color| {
-                                    el.child(div().size(px(7.0)).bg(color))
-                                })
+                            ActionRow::new(
+                                SharedString::from(format!("history-{}", entry_id)),
+                                SharedString::from(format!("hist-row-{}", entry_idx)),
+                                &theme,
+                            )
+                            .height(px(32.0))
+                            .on_click(cx.listener(move |this, _, _, cx| {
+                                this.load_history_item(entry_id, cx);
+                            }))
+                            .child(
+                                div()
+                                    .flex_1()
+                                    .flex()
+                                    .items_center()
+                                    .px(px(8.0))
+                                    .gap(px(10.0))
+                                    // Method badge
+                                    .child(
+                                        div()
+                                            .min_w(px(36.0))
+                                            .h(px(16.0))
+                                            .px(px(4.0))
+                                            .flex()
+                                            .items_center()
+                                            .justify_center()
+                                            .bg(method_color.opacity(0.12))
+                                            .border_1()
+                                            .border_color(method_color.opacity(0.6))
+                                            .child(
+                                                div()
+                                                    .text_size(px(9.0))
+                                                    .font_weight(gpui::FontWeight::BOLD)
+                                                    .font_family("JetBrains Mono")
+                                                    .text_color(method_color)
+                                                    .child(method),
+                                            ),
+                                    )
+                                    // URL
+                                    .child(
+                                        div()
+                                            .flex_1()
+                                            .min_w(px(0.0))
+                                            .overflow_hidden()
+                                            .whitespace_nowrap()
+                                            .text_size(px(12.0))
+                                            .text_color(theme.colors.text_primary)
+                                            .child(display_url),
+                                    )
+                                    // Status indicator
+                                    .when_some(status_color, |el, color| {
+                                        el.child(div().size(px(7.0)).bg(color))
+                                    }),
+                            )
                         })),
                 )
             })

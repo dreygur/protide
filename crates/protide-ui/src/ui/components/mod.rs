@@ -1,5 +1,6 @@
 //! Shared UI components
 
+pub mod action_row;
 pub mod button;
 pub mod code_editor;
 pub mod icons;
@@ -8,7 +9,8 @@ pub mod selectable_text;
 mod text_input;
 mod ui_helpers;
 
-pub use ui_helpers::{icon_btn, toolbar_btn};
+pub use action_row::ActionRow;
+pub use ui_helpers::{ghost_action_btn, icon_btn, toolbar_btn};
 
 #[allow(unused_imports)]
 pub use text_input::{
