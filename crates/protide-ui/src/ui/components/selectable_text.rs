@@ -24,31 +24,6 @@ impl SelectionRange {
         Self { start_row, start_offset, end_row, end_offset }
     }
 
-    /// Check if a given (row_index, offset) falls within this selection.
-    pub fn contains(&self, row: usize, offset: usize) -> bool {
-        let (sr, er) = if self.start_row <= self.end_row {
-            (self.start_row, self.end_row)
-        } else {
-            (self.end_row, self.start_row)
-        };
-        let (so, eo) = if sr == self.start_row {
-            (self.start_offset, self.end_offset)
-        } else {
-            (self.end_offset, self.start_offset)
-        };
-        if sr == er {
-            row == sr && offset >= so.min(eo) && offset < so.max(eo)
-        } else if row == sr {
-            // Canonical start row: selection runs from so to end of line.
-            offset >= so
-        } else if row == er {
-            // Canonical end row: selection runs from start of line to eo.
-            offset < eo
-        } else {
-            row > sr && row < er
-        }
-    }
-
     /// Returns the (start, end) byte offsets for a given row, if the row intersects selection.
     pub fn offsets_for_row(&self, row: usize, text_len: usize) -> Option<(usize, usize)> {
         let (sr, er) = if self.start_row <= self.end_row {

@@ -78,6 +78,12 @@ pub struct PresenceManager {
     pub handshake_tick: bool,
 }
 
+impl Default for PresenceManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl PresenceManager {
     pub fn new() -> Self {
         Self {

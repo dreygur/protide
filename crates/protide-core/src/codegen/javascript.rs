@@ -22,8 +22,8 @@ pub fn generate_javascript(request: &CodegenRequest) -> String {
         lines.push("  },".to_string());
     }
 
-    if has_body {
-        if let Some(body) = &request.body {
+    if has_body
+        && let Some(body) = &request.body {
             // Check if it's JSON
             let is_json = request.headers.iter().any(|(k, v)| {
                 k.eq_ignore_ascii_case("content-type") && v.contains("application/json")
@@ -40,7 +40,6 @@ pub fn generate_javascript(request: &CodegenRequest) -> String {
                 lines.push(format!("  body: '{}',", escape_js_string(body)));
             }
         }
-    }
 
     lines.push("};".to_string());
     lines.push(String::new());

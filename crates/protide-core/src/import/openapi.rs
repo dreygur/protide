@@ -43,13 +43,11 @@ pub fn parse_openapi(input: &str) -> Result<ImportResult, String> {
 /// Get base URL from OpenAPI spec
 fn get_base_url(spec: &OpenApiSpec) -> String {
     // OpenAPI 3.x - servers array
-    if let Some(servers) = &spec.servers {
-        if let Some(first) = servers.first() {
-            if let Some(url) = &first.url {
+    if let Some(servers) = &spec.servers
+        && let Some(first) = servers.first()
+            && let Some(url) = &first.url {
                 return url.clone();
             }
-        }
-    }
 
     // Swagger 2.0 - host, basePath, schemes
     let scheme = spec.schemes.as_ref()
@@ -68,11 +66,10 @@ fn parse_path_item(path: &str, item: &Value, base_url: &str, result: &mut Import
     let methods = ["get", "post", "put", "patch", "delete", "head", "options"];
 
     for method_str in methods {
-        if let Some(operation) = item.get(method_str) {
-            if let Some(request) = parse_operation(path, method_str, operation, base_url) {
+        if let Some(operation) = item.get(method_str)
+            && let Some(request) = parse_operation(path, method_str, operation, base_url) {
                 result.add_request(request);
             }
-        }
     }
 }
 
@@ -105,13 +102,10 @@ fn parse_operation(path: &str, method_str: &str, operation: &Value, base_url: &s
             let param_in = param.get("in").and_then(|v| v.as_str()).unwrap_or("");
             let param_name = param.get("name").and_then(|v| v.as_str()).unwrap_or("");
 
-            match param_in {
-                "header" => {
-                    // Add as header with placeholder value
-                    let example = get_example_value(param);
-                    headers.push(KeyValue::new(param_name, example));
-                }
-                _ => {}
+            if param_in == "header" {
+                // Add as header with placeholder value
+                let example = get_example_value(param);
+                headers.push(KeyValue::new(param_name, example));
             }
         }
     }
@@ -124,11 +118,10 @@ fn parse_operation(path: &str, method_str: &str, operation: &Value, base_url: &s
     };
 
     // Add Accept header based on produces/responses
-    if let Some(produces) = operation.get("produces").and_then(|v| v.as_array()) {
-        if let Some(first) = produces.first().and_then(|v| v.as_str()) {
+    if let Some(produces) = operation.get("produces").and_then(|v| v.as_array())
+        && let Some(first) = produces.first().and_then(|v| v.as_str()) {
             headers.push(KeyValue::new("Accept", first));
         }
-    }
 
     let mut request = Request::new(method, url);
     request.headers = headers;
@@ -165,12 +158,11 @@ fn parse_request_body(body: &Value, headers: &mut Vec<KeyValue>) -> Option<Strin
     }
 
     // Use first available content type
-    if let Some(obj) = content.as_object() {
-        if let Some((content_type, type_content)) = obj.iter().next() {
+    if let Some(obj) = content.as_object()
+        && let Some((content_type, type_content)) = obj.iter().next() {
             headers.push(KeyValue::new("Content-Type", content_type.clone()));
             return get_schema_example(type_content);
         }
-    }
 
     None
 }

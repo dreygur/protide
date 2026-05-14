@@ -43,21 +43,19 @@ pub fn parse_bruno(content: &str) -> Result<ImportResult, String> {
         match block_name.as_str() {
             "meta" => {
                 for line in lines {
-                    if let Some((k, v)) = parse_kv(line) {
-                        if k == "name" {
+                    if let Some((k, v)) = parse_kv(line)
+                        && k == "name" {
                             name = v;
                         }
-                    }
                 }
             }
             "get" | "post" | "put" | "delete" | "patch" | "head" | "options" => {
                 method = block_name.to_uppercase();
                 for line in lines {
-                    if let Some((k, v)) = parse_kv(line) {
-                        if k == "url" {
+                    if let Some((k, v)) = parse_kv(line)
+                        && k == "url" {
                             url = v;
                         }
-                    }
                 }
             }
             "headers" => {
@@ -133,13 +131,12 @@ fn parse_blocks(content: &str) -> Vec<(String, Vec<String>)> {
 
         if current_name.is_none() {
             // Look for block start: "name {" or "name:variant {"
-            if let Some(block_name) = trimmed.strip_suffix('{').map(|s| s.trim().to_string()) {
-                if !block_name.is_empty() {
+            if let Some(block_name) = trimmed.strip_suffix('{').map(|s| s.trim().to_string())
+                && !block_name.is_empty() {
                     current_name = Some(block_name);
                     current_lines.clear();
                     depth = 1;
                 }
-            }
         } else {
             if trimmed.ends_with('{') {
                 depth += 1;

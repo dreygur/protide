@@ -140,18 +140,15 @@ fn parse_request(item: &PostmanItem, request: &PostmanRequest, path: &[String]) 
     if let Some(events) = &item.event {
         for event in events {
             if event.listen.as_deref() == Some("prerequest") {
-                if let Some(script) = &event.script {
-                    if let Some(exec) = &script.exec {
+                if let Some(script) = &event.script
+                    && let Some(exec) = &script.exec {
                         scripts.pre_script = Some(exec.join("\n"));
                     }
-                }
-            } else if event.listen.as_deref() == Some("test") {
-                if let Some(script) = &event.script {
-                    if let Some(exec) = &script.exec {
+            } else if event.listen.as_deref() == Some("test")
+                && let Some(script) = &event.script
+                    && let Some(exec) = &script.exec {
                         scripts.tests = Some(exec.join("\n"));
                     }
-                }
-            }
         }
     }
 

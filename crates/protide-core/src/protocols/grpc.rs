@@ -330,11 +330,10 @@ pub async fn execute_server_streaming(
             let msg_len = u32::from_be_bytes([buffer[1], buffer[2], buffer[3], buffer[4]]) as usize;
             if buffer.len() >= 5 + msg_len {
                 let msg_bytes = buffer.drain(5..5 + msg_len).collect::<Vec<_>>();
-                if let Ok(response_msg) = DynamicMessage::decode(method_desc.output(), msg_bytes.as_ref()) {
-                    if let Ok(json) = serde_json::to_string_pretty(&response_msg) {
+                if let Ok(response_msg) = DynamicMessage::decode(method_desc.output(), msg_bytes.as_ref())
+                    && let Ok(json) = serde_json::to_string_pretty(&response_msg) {
                         chunks.push(json);
                     }
-                }
             } else {
                 break;
             }
@@ -566,11 +565,10 @@ pub async fn execute_bidi_streaming(
             let msg_len = u32::from_be_bytes([buffer[1], buffer[2], buffer[3], buffer[4]]) as usize;
             if buffer.len() >= 5 + msg_len {
                 let msg_bytes = buffer.drain(5..5 + msg_len).collect::<Vec<_>>();
-                if let Ok(response_msg) = DynamicMessage::decode(method_desc.output(), msg_bytes.as_ref()) {
-                    if let Ok(json) = serde_json::to_string_pretty(&response_msg) {
+                if let Ok(response_msg) = DynamicMessage::decode(method_desc.output(), msg_bytes.as_ref())
+                    && let Ok(json) = serde_json::to_string_pretty(&response_msg) {
                         chunks.push(json);
                     }
-                }
             } else {
                 break;
             }

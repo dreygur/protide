@@ -55,15 +55,14 @@ fn collect_dir(
         if path.is_dir() {
             md.push_str(&format!("\n{} {}\n\n", hashes, name));
             collect_dir(root, &path, md, (heading_level + 1).min(6))?;
-        } else if path.extension().and_then(|e| e.to_str()) == Some("http") {
-            if let Ok(content) = std::fs::read_to_string(&path) {
+        } else if path.extension().and_then(|e| e.to_str()) == Some("http")
+            && let Ok(content) = std::fs::read_to_string(&path) {
                 let request_name = path
                     .file_stem()
                     .and_then(|s| s.to_str())
                     .unwrap_or(&name);
                 append_http_request(md, request_name, &content, heading_level);
             }
-        }
     }
 
     Ok(())

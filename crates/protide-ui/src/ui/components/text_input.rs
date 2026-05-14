@@ -460,8 +460,8 @@ impl TextInput {
                     return;
                 }
                 "v" => {
-                    if let Some(item) = cx.read_from_clipboard() {
-                        if let Some(text) = item.text() {
+                    if let Some(item) = cx.read_from_clipboard()
+                        && let Some(text) = item.text() {
                             let insert_text = if self.multiline {
                                 text.to_string()
                             } else {
@@ -469,7 +469,6 @@ impl TextInput {
                             };
                             self.insert_text(&insert_text, cx);
                         }
-                    }
                     return;
                 }
                 "z" => {
@@ -739,23 +738,6 @@ impl Render for TextInput {
 
 /// Render text with selection highlighting and cursor
 ///
-/// Use this for inline text rendering in parent components that manage their own state.
-/// Returns an AnyElement that can be composed into parent UI.
-///
-/// `max_chars` - optional max characters before truncation (only when unfocused)
-pub fn render_text_view(
-    text: &str,
-    selection: &std::ops::Range<usize>,
-    is_focused: bool,
-    font_size: f32,
-    text_color: Hsla,
-    placeholder: Option<&str>,
-    placeholder_color: Hsla,
-    selection_bg: Hsla,
-) -> gpui::AnyElement {
-    render_text_view_with_max(text, selection, is_focused, font_size, text_color, placeholder, placeholder_color, None, selection_bg)
-}
-
 /// Render text with optional max character limit for truncation
 /// When focused, expands to multiple lines if chars_per_line is provided
 /// `scroll_offset_x`: horizontal pixel scroll offset (0.0 = no scroll)
@@ -822,8 +804,8 @@ pub fn render_text_view_multiline(
     use gpui::IntoElement;
 
     if text.is_empty() {
-        if let Some(ph) = placeholder {
-            if !is_focused {
+        if let Some(ph) = placeholder
+            && !is_focused {
                 return div()
                     .flex()
                     .items_center()
@@ -833,7 +815,6 @@ pub fn render_text_view_multiline(
                     .child(ph.to_string())
                     .into_any_element();
             }
-        }
         // Empty but focused - show cursor
         return div()
             .flex()

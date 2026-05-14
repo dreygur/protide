@@ -151,19 +151,18 @@ impl<'a> Lexer<'a> {
             let method_upper = method.to_uppercase();
             if is_http_method(&method_upper) {
                 // If there's a URL on the same line, store it as pending token
-                if let Some(url) = parts.get(1).map(|s| s.trim()) {
-                    if !url.is_empty() {
+                if let Some(url) = parts.get(1).map(|s| s.trim())
+                    && !url.is_empty() {
                         self.pending_token = Some(Token::Url(url.to_string()));
                     }
-                }
                 return Token::Method(method_upper);
             }
         }
 
         // Check for header (Key: Value)
         // Headers must not start with { or [ (which would be JSON body)
-        if !trimmed.starts_with('{') && !trimmed.starts_with('[') {
-            if let Some(colon_pos) = trimmed.find(':') {
+        if !trimmed.starts_with('{') && !trimmed.starts_with('[')
+            && let Some(colon_pos) = trimmed.find(':') {
                 let key = trimmed[..colon_pos].trim();
                 let value = trimmed[colon_pos + 1..].trim();
 
@@ -172,7 +171,6 @@ impl<'a> Lexer<'a> {
                     return Token::Header(key.to_string(), value.to_string());
                 }
             }
-        }
 
         // If we have a URL-like pattern ({{var}} substitution only matches when not inside JSON)
         if trimmed.starts_with("http://")

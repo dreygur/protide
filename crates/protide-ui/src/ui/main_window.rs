@@ -101,11 +101,11 @@ impl MainWindow {
     pub fn build(_window: &mut Window, cx: &mut Context<Self>) -> Self {
         let main_window_weak: WeakEntity<MainWindow> = cx.entity().downgrade();
         let explorer = cx.new(|cx| ExplorerPanel::new(cx, main_window_weak.clone()));
-        let response_panel = cx.new(|cx| ResponsePanel::new(cx));
+        let response_panel = cx.new(ResponsePanel::new);
         let response_panel_clone = response_panel.clone();
         let request_panel = cx.new(|cx| RequestPanel::new(cx, response_panel_clone));
         let mock_server_panel = cx.new(|cx| MockServerPanel::new(cx, main_window_weak));
-        let console_panel = cx.new(|cx| ConsolePanel::new(cx));
+        let console_panel = cx.new(ConsolePanel::new);
 
         // Connect explorer to request panel for history loading
         let request_panel_clone = request_panel.clone();
@@ -606,8 +606,8 @@ impl MainWindow {
 
         // Tick the handshake pulse so the Connect button border animates at ~1Hz
         if self.presence.connection_status == ConnectionStatus::Handshaking {
-            if let Some(started) = self.handshake_started {
-                if started.elapsed() > std::time::Duration::from_secs(10) {
+            if let Some(started) = self.handshake_started
+                && started.elapsed() > std::time::Duration::from_secs(10) {
                     self.handshake_started = None;
                     self.presence.connection_status =
                         ConnectionStatus::Error("Peer Not Found".to_string());
@@ -618,9 +618,7 @@ impl MainWindow {
                             cx,
                         );
                     });
-                    changed = true;
                 }
-            }
             self.presence.tick_handshake();
             changed = true;
         }
@@ -1012,35 +1010,32 @@ impl Render for MainWindow {
                                         let mouse_y = f32::from(event.position.y);
                                         if let Some((start_x, start_w)) = this.drag_sidebar {
                                             this.sidebar_width =
-                                                (start_w + mouse_x - start_x).max(150.0).min(600.0);
+                                                (start_w + mouse_x - start_x).clamp(150.0, 600.0);
                                             cx.notify();
                                         }
                                         if let Some((start_y, start_h)) = this.drag_response {
                                             this.request_height =
-                                                (start_h + mouse_y - start_y).max(150.0).min(800.0);
+                                                (start_h + mouse_y - start_y).clamp(150.0, 800.0);
                                             cx.notify();
                                         }
                                         if let Some((start_x, start_w)) = this.drag_mock_server {
                                             // dragging left edge: moving left increases width
                                             this.mock_server_width = (start_w
                                                 - (mouse_x - start_x))
-                                                .max(200.0)
-                                                .min(700.0);
+                                                .clamp(200.0, 700.0);
                                             cx.notify();
                                         }
                                         if let Some((start_x, start_w)) = this.drag_codegen {
                                             // dragging left edge: moving left increases width
                                             this.codegen_panel_width = (start_w
                                                 - (mouse_x - start_x))
-                                                .max(250.0)
-                                                .min(800.0);
+                                                .clamp(250.0, 800.0);
                                             cx.notify();
                                         }
                                         if let Some((start_y, start_h)) = this.drag_console {
                                             // dragging top edge of console: moving up increases height
                                             this.console_height = (start_h - (mouse_y - start_y))
-                                                .max(80.0)
-                                                .min(500.0);
+                                                .clamp(80.0, 500.0);
                                             cx.notify();
                                         }
                                     },

@@ -63,8 +63,8 @@ impl FileSync {
         // Set up file watcher
         let watcher_tx = event_tx.clone();
         let mut watcher = notify::recommended_watcher(move |result: Result<Event, notify::Error>| {
-            if let Ok(event) = result {
-                if Self::is_crdt_event(&event) {
+            if let Ok(event) = result
+                && Self::is_crdt_event(&event) {
                     for path in &event.paths {
                         match event.kind {
                             EventKind::Create(_) | EventKind::Modify(_) => {
@@ -81,7 +81,6 @@ impl FileSync {
                         }
                     }
                 }
-            }
         })
         .map_err(|e| format!("Failed to create file watcher: {}", e))?;
 

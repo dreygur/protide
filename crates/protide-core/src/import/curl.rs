@@ -54,11 +54,10 @@ fn parse_single_curl(input: &str) -> Result<Request, String> {
             }
             "-H" | "--header" => {
                 i += 1;
-                if i < args.len() {
-                    if let Some((key, value)) = parse_header(&args[i]) {
+                if i < args.len()
+                    && let Some((key, value)) = parse_header(&args[i]) {
                         headers.push(KeyValue::new(key, value));
                     }
-                }
             }
             "-d" | "--data" | "--data-raw" | "--data-binary" => {
                 i += 1;

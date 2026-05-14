@@ -151,12 +151,12 @@ fn classify_value(s: &str) -> TokenKind {
 impl Highlighter for XmlHighlighter {
     fn tokenize_line(&self, line: &str) -> Vec<Token> {
         let mut tokens = Vec::new();
-        let mut chars = line.chars().peekable();
+        let chars = line.chars().peekable();
         let mut current = String::new();
         let mut in_tag = false;
         let mut in_attr_value = false;
 
-        while let Some(c) = chars.next() {
+        for c in chars {
             match c {
                 '<' => {
                     if !current.is_empty() {
@@ -266,7 +266,7 @@ impl Highlighter for GraphQLHighlighter {
                         while let Some(ch) = chars.next() {
                             s.push(ch);
                             if ch == '"' { break; }
-                            if ch == '\\' { if let Some(esc) = chars.next() { s.push(esc); } }
+                            if ch == '\\' && let Some(esc) = chars.next() { s.push(esc); }
                         }
                     }
                     tokens.push(Token { text: s, kind: TokenKind::String });
@@ -361,10 +361,8 @@ fn tokenize_generic(line: &str, is_keyword: impl Fn(&str) -> bool, comment_prefi
     while let Some((i, c)) = chars.next() {
         if c.is_whitespace() {
             tokens.push(Token { text: c.to_string(), kind: TokenKind::Plain });
-        } else if double_slash_comment && c == '/' && chars.peek().map(|(_, c)| *c) == Some('/') {
-            tokens.push(Token { text: line[i..].to_string(), kind: TokenKind::Comment });
-            break;
-        } else if !double_slash_comment && c == comment_prefix.chars().next().unwrap_or('\0') && comment_prefix.len() == 1 {
+        } else if (double_slash_comment && c == '/' && chars.peek().map(|(_, c)| *c) == Some('/'))
+            || (!double_slash_comment && c == comment_prefix.chars().next().unwrap_or('\0') && comment_prefix.len() == 1) {
             tokens.push(Token { text: line[i..].to_string(), kind: TokenKind::Comment });
             break;
         } else if c == '"' || c == '\'' {
@@ -420,7 +418,7 @@ impl Highlighter for ShellHighlighter {
             } else if c == '\'' {
                 let start = i;
                 let mut end = i + 1;
-                while let Some((j, ch)) = chars.next() {
+                for (j, ch) in chars.by_ref() {
                     end = j + ch.len_utf8();
                     if ch == '\'' { break; }
                 }
@@ -460,8 +458,6 @@ impl Highlighter for ShellHighlighter {
                     _ => TokenKind::Plain,
                 };
                 tokens.push(Token { text: word.to_string(), kind });
-            } else if c.is_whitespace() {
-                tokens.push(Token { text: c.to_string(), kind: TokenKind::Plain });
             } else {
                 tokens.push(Token { text: c.to_string(), kind: TokenKind::Plain });
             }
@@ -531,11 +527,10 @@ impl Highlighter for JavaScriptHighlighter {
                     if ch == quote {
                         break;
                     }
-                    if ch == '\\' {
-                        if let Some((_, _)) = chars.next() {
+                    if ch == '\\'
+                        && let Some((_, _)) = chars.next() {
                             continue;
                         }
-                    }
                 }
                 tokens.push(Token { text: line[start..end].to_string(), kind: TokenKind::String });
             } else if c.is_ascii_digit() {

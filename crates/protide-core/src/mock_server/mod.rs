@@ -58,11 +58,10 @@ impl MockServer {
 
     /// Remove a route by index
     pub fn remove_route(&mut self, index: usize) {
-        if let Ok(mut routes) = self.routes.write() {
-            if index < routes.len() {
+        if let Ok(mut routes) = self.routes.write()
+            && index < routes.len() {
                 routes.remove(index);
             }
-        }
     }
 
     /// Get all routes
@@ -72,11 +71,10 @@ impl MockServer {
 
     /// Update a route
     pub fn update_route(&mut self, index: usize, route: MockRoute) {
-        if let Ok(mut routes) = self.routes.write() {
-            if index < routes.len() {
+        if let Ok(mut routes) = self.routes.write()
+            && index < routes.len() {
                 routes[index] = route;
             }
-        }
     }
 
     /// Clear all routes

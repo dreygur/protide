@@ -182,18 +182,16 @@ impl CodeEditor {
                         stack.push((line_idx, c));
                     }
                     '}' => {
-                        if let Some((start_line, '{')) = stack.pop() {
-                            if start_line < line_idx {
+                        if let Some((start_line, '{')) = stack.pop()
+                            && start_line < line_idx {
                                 self.fold_ranges.insert(start_line, line_idx);
                             }
-                        }
                     }
                     ']' => {
-                        if let Some((start_line, '[')) = stack.pop() {
-                            if start_line < line_idx {
+                        if let Some((start_line, '[')) = stack.pop()
+                            && start_line < line_idx {
                                 self.fold_ranges.insert(start_line, line_idx);
                             }
-                        }
                     }
                     _ => {}
                 }
@@ -262,19 +260,14 @@ impl CodeEditor {
             return;
         }
 
-        match self.language {
-            Language::Json => {
-                if let Ok(value) = serde_json::from_str::<serde_json::Value>(self.buffer.content()) {
-                    if let Ok(formatted) = serde_json::to_string_pretty(&value) {
-                        self.buffer = TextBuffer::new(formatted);
-                        self.selection = Selection::cursor(0);
-                        self.compute_fold_ranges();
-                        self.folded_lines.clear();
-                        cx.notify();
-                    }
-                }
-            }
-            _ => {} // No beautify for other languages yet
+        if self.language == Language::Json
+            && let Ok(value) = serde_json::from_str::<serde_json::Value>(self.buffer.content())
+            && let Ok(formatted) = serde_json::to_string_pretty(&value) {
+            self.buffer = TextBuffer::new(formatted);
+            self.selection = Selection::cursor(0);
+            self.compute_fold_ranges();
+            self.folded_lines.clear();
+            cx.notify();
         }
     }
 
@@ -289,7 +282,7 @@ impl CodeEditor {
     fn save_undo_state(&mut self) {
         self.undo_stack.push(UndoState {
             content: self.buffer.content().to_string(),
-            selection: self.selection.clone(),
+            selection: self.selection,
         });
         // Clear redo stack when making new changes
         self.redo_stack.clear();
@@ -305,7 +298,7 @@ impl CodeEditor {
             // Save current state to redo stack
             self.redo_stack.push(UndoState {
                 content: self.buffer.content().to_string(),
-                selection: self.selection.clone(),
+                selection: self.selection,
             });
             // Restore previous state
             self.buffer.set_content(state.content);
@@ -321,7 +314,7 @@ impl CodeEditor {
             // Save current state to undo stack
             self.undo_stack.push(UndoState {
                 content: self.buffer.content().to_string(),
-                selection: self.selection.clone(),
+                selection: self.selection,
             });
             // Restore redo state
             self.buffer.set_content(state.content);
@@ -471,11 +464,10 @@ impl CodeEditor {
         if self.config.read_only {
             return;
         }
-        if let Some(item) = cx.read_from_clipboard() {
-            if let Some(text) = item.text() {
+        if let Some(item) = cx.read_from_clipboard()
+            && let Some(text) = item.text() {
                 self.insert_text(&text, cx);
             }
-        }
     }
 
     fn select_all(&mut self, cx: &mut Context<Self>) {
@@ -528,7 +520,7 @@ impl Render for CodeEditor {
             .child(
                 canvas(
                     move |bounds, _window, cx| {
-                        let _ = entity.update(cx, |this, _| {
+                        entity.update(cx, |this, _| {
                             this.bounds = Some(bounds);
                         });
                     },

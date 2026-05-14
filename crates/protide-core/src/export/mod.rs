@@ -75,12 +75,12 @@ fn markdown_to_html(md: &str) -> String {
             html.push('\n');
             continue;
         }
-        if line.starts_with("### ") {
-            html.push_str(&format!("<h3>{}</h3>\n", escape_html(&line[4..])));
-        } else if line.starts_with("## ") {
-            html.push_str(&format!("<h2>{}</h2>\n", escape_html(&line[3..])));
-        } else if line.starts_with("# ") {
-            html.push_str(&format!("<h1>{}</h1>\n", escape_html(&line[2..])));
+        if let Some(rest) = line.strip_prefix("### ") {
+            html.push_str(&format!("<h3>{}</h3>\n", escape_html(rest)));
+        } else if let Some(rest) = line.strip_prefix("## ") {
+            html.push_str(&format!("<h2>{}</h2>\n", escape_html(rest)));
+        } else if let Some(rest) = line.strip_prefix("# ") {
+            html.push_str(&format!("<h1>{}</h1>\n", escape_html(rest)));
         } else if line.starts_with("---") {
             html.push_str("<hr>\n");
         } else if line.starts_with("- ") || line.starts_with("* ") {

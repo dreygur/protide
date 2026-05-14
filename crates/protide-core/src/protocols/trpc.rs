@@ -96,11 +96,10 @@ pub fn execute_trpc(
     }
 
     // Verify response ID matches request ID
-    if let Some(resp_id) = response_json.get("id").and_then(|id| id.as_str()) {
-        if resp_id != request_id {
+    if let Some(resp_id) = response_json.get("id").and_then(|id| id.as_str())
+        && resp_id != request_id {
             return Err(format!("Response ID mismatch: expected {}, got {}", request_id, resp_id));
         }
-    }
 
     // Pretty-print the response
     let formatted = serde_json::to_string_pretty(&response_json)

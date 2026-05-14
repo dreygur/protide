@@ -20,11 +20,10 @@ pub fn generate_curl(request: &CodegenRequest) -> String {
     }
 
     // Body
-    if let Some(body) = &request.body {
-        if !body.trim().is_empty() {
+    if let Some(body) = &request.body
+        && !body.trim().is_empty() {
             parts.push(format!("-d '{}'", escape_single_quotes(body)));
         }
-    }
 
     parts.join(" \\\n  ")
 }

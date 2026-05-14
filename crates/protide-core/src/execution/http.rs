@@ -31,11 +31,10 @@ pub fn run_http(
                 "query": query,
                 "variables": vars,
             });
-            if let Some(op) = operation_name {
-                if !op.is_empty() {
+            if let Some(op) = operation_name
+                && !op.is_empty() {
                     gql_body["operationName"] = serde_json::Value::String(op.clone());
                 }
-            }
             let mut hdrs = headers.to_vec();
             if !hdrs.iter().any(|(k, _)| k.eq_ignore_ascii_case("content-type")) {
                 hdrs.push(("Content-Type".to_string(), "application/json".to_string()));

@@ -187,7 +187,7 @@ impl Render for ConsolePanel {
         let entry_count = self.entries.len();
 
         let entries: Vec<ConsoleEntry> = self.entries.iter().cloned().collect();
-        let context_menu = self.context_menu.clone();
+        let context_menu = self.context_menu;
         let url_sel = self.url_sel_entry;
 
         div()
@@ -203,11 +203,10 @@ impl Render for ConsolePanel {
             // Ctrl+C: copy the selected entry's URL/message
             .on_key_down(cx.listener(|this, event: &KeyDownEvent, _, cx| {
                 if event.keystroke.modifiers.control && event.keystroke.key.as_str() == "c" {
-                    if let Some(idx) = this.url_sel_entry {
-                        if let Some(entry) = this.entries.get(idx) {
+                    if let Some(idx) = this.url_sel_entry
+                        && let Some(entry) = this.entries.get(idx) {
                             cx.write_to_clipboard(ClipboardItem::new_string(entry.url.clone()));
                         }
-                    }
                     cx.stop_propagation();
                 }
             }))

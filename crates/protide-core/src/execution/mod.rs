@@ -116,11 +116,10 @@ pub fn execute(req: ExecutionRequest) -> Result<ExecutionResult, String> {
             .run_pre_script(&req.pre_script, &mut ctx)
             .map_err(|e| format!("Pre-script error: {}", e))?;
 
-        if !outcome.success {
-            if let Some(err) = outcome.error {
+        if !outcome.success
+            && let Some(err) = outcome.error {
                 return Err(format!("Pre-script error: {}", err.message));
             }
-        }
 
         console_output.extend(outcome.console_output);
         env_changes.extend(outcome.env_changes);
@@ -145,8 +144,8 @@ pub fn execute(req: ExecutionRequest) -> Result<ExecutionResult, String> {
 
     // 3. Post-script + tests
     let mut test_results: Vec<TestResult> = Vec::new();
-    if !req.post_script.trim().is_empty() || !req.tests.trim().is_empty() {
-        if let Ok(engine) = ScriptEngine::new() {
+    if (!req.post_script.trim().is_empty() || !req.tests.trim().is_empty())
+        && let Ok(engine) = ScriptEngine::new() {
             let script_resp =
                 ScriptResponseData::new(raw.status, &raw.status_text, raw.body.clone())
                     .with_headers(raw.headers.clone())
@@ -156,20 +155,17 @@ pub fn execute(req: ExecutionRequest) -> Result<ExecutionResult, String> {
             let mut ctx = crate::scripting::ScriptContext::new().with_env(req.env_vars.clone());
             ctx.set_response(script_resp);
 
-            if !req.post_script.trim().is_empty() {
-                if let Ok(outcome) = engine.run_post_script(&req.post_script, &mut ctx) {
+            if !req.post_script.trim().is_empty()
+                && let Ok(outcome) = engine.run_post_script(&req.post_script, &mut ctx) {
                     console_output.extend(outcome.console_output);
                     env_changes.extend(outcome.env_changes);
                 }
-            }
-            if !req.tests.trim().is_empty() {
-                if let Ok(outcome) = engine.run_tests(&req.tests, &mut ctx) {
+            if !req.tests.trim().is_empty()
+                && let Ok(outcome) = engine.run_tests(&req.tests, &mut ctx) {
                     console_output.extend(outcome.console_output);
                     test_results = outcome.test_results;
                 }
-            }
         }
-    }
 
     // 4. Variable extraction via @set JSONPath annotations
     let extracted_vars: Vec<(String, String)> = if !req.variable_extractions.is_empty() {

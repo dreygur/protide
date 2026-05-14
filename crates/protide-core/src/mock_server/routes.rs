@@ -257,11 +257,10 @@ impl MockRoute {
 
         // Check suffix (after last *)
         let last = *parts.last().unwrap();
-        if !last.is_empty() {
-            if !remaining.ends_with(last) {
+        if !last.is_empty()
+            && !remaining.ends_with(last) {
                 return false;
             }
-        }
 
         true
     }
