@@ -33,6 +33,8 @@ pub mod init;
 pub mod workspace;
 pub mod tree_nav;
 pub mod tree_ops;
+pub mod tree_scan;
+pub mod env_input;
 pub mod history;
 pub mod env;
 pub mod render;
