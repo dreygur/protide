@@ -97,6 +97,7 @@ impl Render for ExplorerPanel {
                     .w_full()
                     .h(px(if self.collections_expanded { self.collections_h } else { 48.0 }))
                     .overflow_hidden()
+                    .bg(theme.colors.bg_secondary)
                     .child(self.render_collections_section(cx)),
             )
             .when(self.collections_expanded, |el| {
@@ -122,6 +123,7 @@ impl Render for ExplorerPanel {
                     .flex_1()
                     .w_full()
                     .overflow_scroll()
+                    .bg(theme.colors.bg_secondary)
                     .child(self.render_history_section(cx)),
             )
             .when(self.env_editor_open, |el| {

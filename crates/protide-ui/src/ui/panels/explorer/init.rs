@@ -37,7 +37,6 @@ impl ExplorerPanel {
             drag_env: None,
             main_window,
             panel_bounds: gpui::Bounds::default(),
-            tree_scroll: 0.0,
         }
     }
 

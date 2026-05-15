@@ -7,7 +7,7 @@ use crate::ui::main_window::MainWindow;
 use gpui::{
     ClipboardItem, Context, Entity, FocusHandle, IntoElement, KeyDownEvent, MouseButton,
     MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement, Pixels, Point, Render,
-    ScrollWheelEvent, SharedString, Styled, Subscription, WeakEntity, Window, canvas, deferred,
+    SharedString, Styled, Subscription, WeakEntity, Window, canvas, deferred,
     div, prelude::*, px,
 };
 use std::fs;
@@ -106,7 +106,6 @@ pub struct ExplorerPanel {
     pub(super) drag_env: Option<(f32, f32)>,
     pub(super) main_window: WeakEntity<MainWindow>,
     pub(super) panel_bounds: gpui::Bounds<Pixels>,
-    pub(super) tree_scroll: f32,
 }
 
 impl ExplorerPanel {

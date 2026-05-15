@@ -1,4 +1,4 @@
-use gpui::{Context, IntoElement, ParentElement, ScrollWheelEvent, Styled, div, px};
+use gpui::{Context, IntoElement, ParentElement, div, px};
 use super::*;
 
 impl ExplorerPanel {
@@ -137,54 +137,31 @@ impl ExplorerPanel {
         flattened_items: Vec<(CollectionItem, usize)>,
         cx: &mut Context<Self>,
     ) -> gpui::Div {
-        const ROW_H: f32 = 28.0;
-        let viewport_h = (self.collections_h - 44.0).max(0.0);
-        let indexed: Vec<(usize, CollectionItem, usize)> = flattened_items
-            .into_iter()
-            .enumerate()
-            .map(|(i, (item, depth))| (i, item, depth))
-            .collect();
-        let total_items = indexed.len();
-        let max_scroll = (total_items as f32 * ROW_H - viewport_h).max(0.0);
-        let scroll = self.tree_scroll.min(max_scroll);
-        let start_idx = (scroll / ROW_H).floor() as usize;
-        let visible_count = (viewport_h / ROW_H).ceil() as usize + 2;
-        let end_idx = (start_idx + visible_count).min(total_items);
-        let top_h = start_idx as f32 * ROW_H;
-        let bot_h = (total_items - end_idx) as f32 * ROW_H;
+        const HEADER_H: f32 = 44.0; // pt(8) + h(32) + pt(4)
+        let tree_h = (self.collections_h - HEADER_H).max(0.0);
 
         el.child(
             div()
                 .id("collections-tree")
                 .w_full()
-                .flex()
-                .flex_col()
-                .px(px(4.0))
-                .pt(px(4.0))
-                .on_scroll_wheel(cx.listener(move |this, event: &ScrollWheelEvent, _, cx| {
-                    let b = this.panel_bounds;
-                    let ey = f32::from(event.position.y);
-                    let col_top = f32::from(b.origin.y) + 40.0;
-                    let col_bot = col_top + this.collections_h;
-                    if ey < col_top || ey > col_bot { return; }
-                    let ex = f32::from(event.position.x);
-                    if ex < f32::from(b.origin.x) || ex > f32::from(b.origin.x) + f32::from(b.size.width) { return; }
-                    let vp = (this.collections_h - 44.0).max(0.0);
-                    let n = Self::count_visible_items(&this.collection_items);
-                    let max = (n as f32 * ROW_H - vp).max(0.0);
-                    let delta = f32::from(event.delta.pixel_delta(px(ROW_H)).y);
-                    this.tree_scroll = (this.tree_scroll - delta).clamp(0.0, max);
-                    cx.notify();
-                }))
-                .when(top_h > 0.0, |el| el.child(div().w_full().h(px(top_h))))
-                .children(
-                    indexed[start_idx..end_idx]
-                        .iter()
-                        .map(|(idx, item, depth)| {
-                            self.render_collection_item_row(item.clone(), *depth, *idx, cx)
-                        }),
-                )
-                .when(bot_h > 0.0, |el| el.child(div().w_full().h(px(bot_h)))),
+                .h(px(tree_h))
+                .overflow_scroll()
+                .child(
+                    div()
+                        .w_full()
+                        .flex()
+                        .flex_col()
+                        .px(px(4.0))
+                        .pt(px(4.0))
+                        .children(
+                            flattened_items
+                                .into_iter()
+                                .enumerate()
+                                .map(|(idx, (item, depth))| {
+                                    self.render_collection_item_row(item, depth, idx, cx)
+                                }),
+                        ),
+                ),
         )
     }
 

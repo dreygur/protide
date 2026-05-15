@@ -32,7 +32,6 @@ impl ExplorerPanel {
         self.workspace_path    = Some(path.clone());
         self.collection_items  = self.scan_directory(&path);
         self.selected_item     = Option::None;
-        self.tree_scroll       = 0.0;
 
         match protide_core::workspace::Workspace::open(&path) {
             Ok(ws)  => {
@@ -61,7 +60,6 @@ impl ExplorerPanel {
         }
         self.workspace_path   = Some(path.clone());
         self.collection_items = self.scan_directory(&path);
-        self.tree_scroll      = 0.0;
         match protide_core::workspace::Workspace::open(&path) {
             Ok(ws)  => {
                 info!("Workspace loaded: {}", path.display());
@@ -95,7 +93,6 @@ impl ExplorerPanel {
     pub fn refresh_collections(&mut self, cx: &mut Context<Self>) {
         if let Some(workspace) = &self.workspace_path {
             self.collection_items = self.scan_directory(workspace);
-            self.tree_scroll = 0.0;
             cx.notify();
         }
     }
@@ -140,7 +137,6 @@ impl ExplorerPanel {
         self.workspace_path = None;
         self.collection_items.clear();
         self.collections_expanded = true;
-        self.tree_scroll = 0.0;
         cx.notify();
     }
 

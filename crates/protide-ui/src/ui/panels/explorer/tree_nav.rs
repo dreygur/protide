@@ -38,18 +38,7 @@ impl ExplorerPanel {
             }
         }
         collapse(&mut self.collection_items);
-        self.tree_scroll = 0.0;
         cx.notify();
-    }
-
-    pub(super) fn count_visible_items(items: &[CollectionItem]) -> usize {
-        items.iter().map(|item| {
-            1 + if item.is_folder && item.expanded {
-                Self::count_visible_items(&item.children)
-            } else {
-                0
-            }
-        }).sum()
     }
 
     /// Flatten collection items into a list with depth information for rendering
