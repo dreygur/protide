@@ -1,0 +1,19 @@
+[package]
+name = "protide-lsp"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Language server for .http files"
+default-run = "protide-lsp"
+
+[[bin]]
+name = "protide-lsp"
+path = "src/main.rs"
+
+[dependencies]
+http-parser = { workspace = true }
+tower-lsp = { workspace = true }
+tokio = { workspace = true }
+serde_json = { workspace = true }
+log = { workspace = true }
+env_logger = "0.11"

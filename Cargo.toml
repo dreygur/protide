@@ -6,6 +6,7 @@ members = [
     "crates/protide-ui",
     "crates/protide",
     "crates/protide-mcp",
+    "crates/protide-lsp",
 ]
 
 [workspace.package]
@@ -90,6 +91,9 @@ async-channel = "2"
 # WebSocket client
 tokio-tungstenite = { version = "0.26", features = ["rustls-tls-native-roots"] }
 futures-util = "0.3"
+
+# Language server
+tower-lsp = "0.20"
 
 # gRPC client
 tonic = "0.12"

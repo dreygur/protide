@@ -154,6 +154,10 @@ impl ExplorerPanel {
         mark(&mut self.collection_items, paths);
     }
 
+    pub fn collection_items(&self) -> &[CollectionItem] {
+        &self.collection_items
+    }
+
     pub fn expand_section_collections(&mut self, cx: &mut Context<Self>) {
         self.collections_expanded = true;
         cx.notify();

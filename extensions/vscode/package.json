@@ -1,0 +1,42 @@
+{
+  "name": "protide",
+  "displayName": "Protide",
+  "description": "Language support for .http request files",
+  "version": "0.1.0",
+  "publisher": "protide",
+  "engines": { "vscode": "^1.75.0" },
+  "categories": ["Languages", "Other"],
+  "keywords": ["http", "rest", "api", "request"],
+  "activationEvents": ["onLanguage:http"],
+  "main": "./out/extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "http",
+        "aliases": ["HTTP", "http"],
+        "extensions": [".http", ".rest"],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "http",
+        "scopeName": "source.http",
+        "path": "./syntaxes/http.tmLanguage.json"
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "devDependencies": {
+    "@types/node": "^18.0.0",
+    "@types/vscode": "^1.75.0",
+    "typescript": "^5.0.0"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.0"
+  }
+}

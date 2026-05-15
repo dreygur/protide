@@ -1,0 +1,50 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "HTTP",
+  "scopeName": "source.http",
+  "patterns": [
+    { "include": "#separator" },
+    { "include": "#annotation" },
+    { "include": "#comment" },
+    { "include": "#request-line" },
+    { "include": "#header" },
+    { "include": "#variable" }
+  ],
+  "repository": {
+    "separator": {
+      "match": "^###.*$",
+      "name": "keyword.control.separator.http"
+    },
+    "annotation": {
+      "match": "^#\\s+@(\\w+)(.*)$",
+      "captures": {
+        "0": { "name": "comment.line.http" },
+        "1": { "name": "keyword.other.annotation.http" },
+        "2": { "name": "string.unquoted.annotation-value.http" }
+      }
+    },
+    "comment": {
+      "match": "^#.*$",
+      "name": "comment.line.http"
+    },
+    "request-line": {
+      "match": "^(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS|WEBSOCKET|GRPC)\\s+(\\S+)(.*)$",
+      "captures": {
+        "1": { "name": "keyword.operator.http-method.http" },
+        "2": { "name": "string.other.url.http" },
+        "3": { "name": "constant.other.version.http" }
+      }
+    },
+    "header": {
+      "match": "^([\\w-]+):(\\s*)(.+)$",
+      "captures": {
+        "1": { "name": "entity.name.tag.header.http" },
+        "3": { "name": "string.other.header-value.http" }
+      }
+    },
+    "variable": {
+      "match": "\\{\\{[^}]+\\}\\}",
+      "name": "variable.other.http"
+    }
+  }
+}

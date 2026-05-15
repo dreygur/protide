@@ -16,6 +16,7 @@ gpui::actions!(
         ToggleSidebar,
         ToggleMockServer,
         ToggleConsole,
+        ToggleDocs,
         ShowHelp,
         ShowAbout,
         DismissOverlay,
@@ -30,6 +31,7 @@ pub fn register_keybindings(cx: &mut gpui::App) {
         KeyBinding::new("ctrl-b", ToggleSidebar, None),
         KeyBinding::new("ctrl-shift-m", ToggleMockServer, None),
         KeyBinding::new("ctrl-shift-c", ToggleConsole, None),
+        KeyBinding::new("ctrl-shift-d", ToggleDocs, None),
         KeyBinding::new("f1", ShowHelp, None),
         KeyBinding::new("ctrl-shift-a", ShowAbout, None),
         KeyBinding::new("escape", DismissOverlay, None),
@@ -39,7 +41,7 @@ pub fn register_keybindings(cx: &mut gpui::App) {
 
 use super::panels::presence::{ConnectionStatus, PeerSource, PresenceManager};
 use super::components::{TextInput, TextInputStyle};
-use super::panels::{ConsoleEntry, ConsolePanel, ExplorerPanel, MockServerPanel, RequestPanel, ResponsePanel};
+use super::panels::{ConsoleEntry, ConsolePanel, DocsPanel, ExplorerPanel, MockServerPanel, RequestPanel, ResponsePanel};
 use crate::theme;
 use protide_core::sync::{SyncEngine, SyncEvent};
 use crate::ui::components::icons::{
@@ -63,10 +65,14 @@ pub struct MainWindow {
     response_panel: Entity<ResponsePanel>,
     mock_server_panel: Entity<MockServerPanel>,
     console_panel: Entity<ConsolePanel>,
+    docs_panel: Entity<DocsPanel>,
     show_console: bool,
     console_height: f32,
     drag_console: Option<(f32, f32)>,
     show_mock_server: bool,
+    show_docs: bool,
+    docs_width: f32,
+    drag_docs: Option<(f32, f32)>,
     sidebar_collapsed: bool,
     sidebar_width: f32,
     request_height: f32,
@@ -106,6 +112,7 @@ impl MainWindow {
         let request_panel = cx.new(|cx| RequestPanel::new(cx, response_panel_clone));
         let mock_server_panel = cx.new(|cx| MockServerPanel::new(cx, main_window_weak));
         let console_panel = cx.new(ConsolePanel::new);
+        let docs_panel = cx.new(|_| DocsPanel::new());
 
         // Connect explorer to request panel for history loading
         let request_panel_clone = request_panel.clone();
@@ -117,6 +124,12 @@ impl MainWindow {
         let explorer_clone = explorer.clone();
         request_panel.update(cx, |panel, cx| {
             panel.set_explorer_panel(explorer_clone, cx);
+        });
+
+        // Connect docs panel to explorer for workspace browsing
+        let explorer_clone = explorer.clone();
+        docs_panel.update(cx, |panel, _| {
+            panel.set_explorer(explorer_clone);
         });
 
         // Connect console panel to request panel for request logging
@@ -192,10 +205,14 @@ impl MainWindow {
             response_panel,
             mock_server_panel,
             console_panel,
+            docs_panel,
             show_console: false,
             console_height: 160.0,
             drag_console: None,
             show_mock_server: false,
+            show_docs: false,
+            docs_width: crate::prefs::get_f32("main.docs_width", 420.0),
+            drag_docs: None,
             sidebar_collapsed: false,
             sidebar_width: crate::prefs::get_f32("main.sidebar_width", 250.0),
             request_height: crate::prefs::get_f32("main.request_height", 320.0),
@@ -251,6 +268,11 @@ impl MainWindow {
 
     fn toggle_mock_server(&mut self, cx: &mut Context<Self>) {
         self.show_mock_server = !self.show_mock_server;
+        cx.notify();
+    }
+
+    fn toggle_docs(&mut self, cx: &mut Context<Self>) {
+        self.show_docs = !self.show_docs;
         cx.notify();
     }
 
@@ -651,10 +673,12 @@ impl Render for MainWindow {
             || self.drag_response.is_some()
             || self.drag_mock_server.is_some()
             || self.drag_codegen.is_some()
-            || self.drag_console.is_some();
+            || self.drag_console.is_some()
+            || self.drag_docs.is_some();
         let is_col_drag = self.drag_sidebar.is_some()
             || self.drag_mock_server.is_some()
-            || self.drag_codegen.is_some();
+            || self.drag_codegen.is_some()
+            || self.drag_docs.is_some();
 
         div()
             .size_full()
@@ -678,6 +702,9 @@ impl Render for MainWindow {
             }))
             .on_action(cx.listener(|this, _: &ToggleConsole, _, cx| {
                 this.toggle_console(cx);
+            }))
+            .on_action(cx.listener(|this, _: &ToggleDocs, _, cx| {
+                this.toggle_docs(cx);
             }))
             .on_action(cx.listener(|this, _: &ShowHelp, _, cx| {
                 this.show_help = true;
@@ -966,6 +993,37 @@ impl Render for MainWindow {
                                     .child(self.mock_server_panel.clone()),
                             )
                     })
+                    // Docs (API Explorer) panel (optional right sidebar)
+                    .when(self.show_docs, |el| {
+                        el.child(
+                            div()
+                                .id("docs-resize-handle")
+                                .w(px(4.0))
+                                .h_full()
+                                .flex_shrink_0()
+                                .border_l_1()
+                                .border_color(theme.colors.border)
+                                .cursor_col_resize()
+                                .hover(|s| s.bg(theme.colors.accent.opacity(0.25)))
+                                .on_mouse_down(
+                                    MouseButton::Left,
+                                    cx.listener(|this, event: &gpui::MouseDownEvent, _, _| {
+                                        this.drag_docs = Some((
+                                            f32::from(event.position.x),
+                                            this.docs_width,
+                                        ));
+                                    }),
+                                ),
+                        )
+                        .child(
+                            div()
+                                .w(px(self.docs_width))
+                                .h_full()
+                                .flex_shrink_0()
+                                .overflow_hidden()
+                                .child(self.docs_panel.clone()),
+                        )
+                    })
                     // Codegen panel (optional right sidebar)
                     .when(show_codegen, |el| {
                         el.child(
@@ -1032,6 +1090,12 @@ impl Render for MainWindow {
                                                 .clamp(250.0, 800.0);
                                             cx.notify();
                                         }
+                                        if let Some((start_x, start_w)) = this.drag_docs {
+                                            this.docs_width = (start_w
+                                                - (mouse_x - start_x))
+                                                .clamp(260.0, 800.0);
+                                            cx.notify();
+                                        }
                                         if let Some((start_y, start_h)) = this.drag_console {
                                             // dragging top edge of console: moving up increases height
                                             this.console_height = (start_h - (mouse_y - start_y))
@@ -1065,6 +1129,12 @@ impl Render for MainWindow {
                                             crate::prefs::set_f32(
                                                 "main.codegen_panel_width",
                                                 this.codegen_panel_width,
+                                            );
+                                        }
+                                        if this.drag_docs.take().is_some() {
+                                            crate::prefs::set_f32(
+                                                "main.docs_width",
+                                                this.docs_width,
                                             );
                                         }
                                         this.drag_console.take();
@@ -1672,8 +1742,9 @@ impl MainWindow {
                 ("Save Request",      "Ctrl+S",     Box::new(|w, cx| w.dispatch_action(Box::new(SaveRequest), cx))),
             ],
             Some(2) => vec![
-                ("Toggle Sidebar",    "Ctrl+B",     Box::new(|w, cx| w.dispatch_action(Box::new(ToggleSidebar), cx))),
-                ("Toggle Mock Server","Ctrl+Shift+M",Box::new(|w, cx| w.dispatch_action(Box::new(ToggleMockServer), cx))),
+                ("Toggle Sidebar",      "Ctrl+B",       Box::new(|w, cx| w.dispatch_action(Box::new(ToggleSidebar), cx))),
+                ("Toggle Mock Server",  "Ctrl+Shift+M", Box::new(|w, cx| w.dispatch_action(Box::new(ToggleMockServer), cx))),
+                ("Toggle API Explorer", "Ctrl+Shift+D", Box::new(|w, cx| w.dispatch_action(Box::new(ToggleDocs), cx))),
             ],
             Some(3) => vec![
                 ("Keyboard Shortcuts","F1",          Box::new(|w, cx| w.dispatch_action(Box::new(ShowHelp), cx))),
@@ -1741,6 +1812,7 @@ impl MainWindow {
             ("Request", "Ctrl+S", "Save request"),
             ("View", "Ctrl+B", "Toggle sidebar"),
             ("View", "Ctrl+Shift+M", "Toggle mock server"),
+            ("View", "Ctrl+Shift+D", "Toggle API explorer"),
             ("Help", "F1", "Show keyboard shortcuts"),
             ("Help", "Ctrl+Shift+A", "About Protide"),
             ("General", "Escape", "Close dialog / overlay"),

@@ -8,6 +8,7 @@
 //! - `MockServerPanel` - Mock server configuration
 
 mod console;
+mod docs;
 mod explorer;
 mod history;
 mod mock_server;
@@ -18,6 +19,7 @@ mod request_utils;
 mod response;
 
 pub use console::{ConsoleEntry, ConsoleEntrySource, ConsolePanel, LogLevel};
+pub use docs::DocsPanel;
 pub use explorer::ExplorerPanel;
 pub use history::RequestHistory;
 pub use mock_server::MockServerPanel;

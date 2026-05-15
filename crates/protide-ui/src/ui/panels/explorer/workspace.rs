@@ -110,7 +110,7 @@ impl ExplorerPanel {
     }
 
     /// Load a .http file into the request panel
-    pub(super) fn load_request_file(&mut self, path: PathBuf, cx: &mut Context<Self>) {
+    pub fn load_request_file(&mut self, path: PathBuf, cx: &mut Context<Self>) {
         if let Ok(content) = fs::read_to_string(&path)
             && let Ok(requests) = http_parser::parse(&content)
                 && let Some(req) = requests.first()
