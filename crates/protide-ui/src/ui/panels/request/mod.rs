@@ -50,7 +50,7 @@ use std::marker::PhantomData;
 use gpui::{
     deferred, div, prelude::*, px, ClipboardItem, Context, Entity, FocusHandle, IntoElement,
     KeyDownEvent, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement, Render,
-    Styled, Subscription, Window,
+    ScrollHandle, Styled, Subscription, Window,
 };
 use crate::ui::components::{render_text_view_with_max, find_word_start, find_word_end};
 use crate::ui::components::code_editor::{CodeEditor, Language};
@@ -181,6 +181,7 @@ pub struct RequestPanel<E: WebSocketExecutor = TungsteniteExecutor> {
     ws_send_tx: Option<std::sync::mpsc::Sender<WsCommand>>,
     pub(super) ws_compose_h: f32,
     pub(super) ws_compose_drag: Option<(f32, f32)>,
+    pub(super) ws_scroll: ScrollHandle,
     pub(super) grpc_message_editor: Entity<CodeEditor>,
     pub(super) grpc_metadata: Vec<KeyValuePair>,
     pub(super) grpc_proto_path: Option<std::path::PathBuf>,

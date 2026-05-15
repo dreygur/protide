@@ -38,6 +38,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
 
         let send_bg = if is_connected { theme.colors.accent } else { theme.colors.text_muted.opacity(0.15) };
         let send_fg = if is_connected { theme.colors.bg_primary } else { theme.colors.text_muted };
+        let ws_scroll = self.ws_scroll.clone();
 
         div()
             .id("websocket-messages-tab")
@@ -114,6 +115,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                     .border_color(theme.colors.border)
                     .bg(theme.colors.bg_primary)
                     .overflow_scroll()
+                    .track_scroll(&ws_scroll)
                     .flex()
                     .flex_col()
                     .when(messages.is_empty(), |el| {

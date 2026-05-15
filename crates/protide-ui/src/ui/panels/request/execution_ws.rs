@@ -68,6 +68,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                                     }
                                 }
                                 this.ws_messages.push(msg);
+                                this.ws_scroll.scroll_to_bottom();
                                 cx.notify();
                             });
                         });
@@ -111,6 +112,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                                     content: format!("Connection failed: {}", e),
                                     timestamp: chrono::Local::now(),
                                 });
+                                this.ws_scroll.scroll_to_bottom();
                                 cx.notify();
                             });
                         });

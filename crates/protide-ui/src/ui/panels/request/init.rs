@@ -151,6 +151,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             ws_send_tx: None,
             ws_compose_h: 120.0,
             ws_compose_drag: None,
+            ws_scroll: gpui::ScrollHandle::new(),
             grpc_message_editor,
             grpc_metadata: vec![KeyValuePair::default()],
             grpc_proto_path: None,
