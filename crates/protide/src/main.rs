@@ -69,6 +69,7 @@ fn main() -> Result<()> {
                     appears_transparent: false,
                     traffic_light_position: None,
                 }),
+                app_id: Some("protide".into()),
                 icon: load_app_icon(),
                 ..Default::default()
             };

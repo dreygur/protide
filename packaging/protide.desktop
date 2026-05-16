@@ -9,4 +9,4 @@ Type=Application
 Categories=Development;WebDevelopment;Network;
 Keywords=api;rest;graphql;websocket;grpc;http;testing;
 StartupNotify=true
-StartupWMClass=Protide
+StartupWMClass=protide
