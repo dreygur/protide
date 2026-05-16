@@ -1,6 +1,6 @@
 use gpui::Context;
 use super::*;
-use super::super::request_utils::{base64_encode, status_text};
+use super::super::request_utils::status_text;
 
 impl<E: WebSocketExecutor> RequestPanel<E> {
     pub(super) fn send_trpc_request(&mut self, cx: &mut Context<Self>) {
@@ -52,6 +52,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                 }
             }
             AuthType::None => {}
+            AuthType::ClientCert => {}
         }
 
         let response_panel = self.response_panel.clone();

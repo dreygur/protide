@@ -57,4 +57,32 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             cx.notify();
         }
     }
+
+    pub(super) fn browse_client_cert(&mut self, cx: &mut Context<Self>) {
+        let mut dialog = rfd::FileDialog::new()
+            .set_title("Select Client Certificate (PEM)")
+            .add_filter("PEM Certificate", &["pem", "crt", "cer"]);
+        if let Some(dir) = last_paths::last_dir("client_cert").or_else(dirs::home_dir) {
+            dialog = dialog.set_directory(dir);
+        }
+        if let Some(path) = dialog.pick_file() {
+            last_paths::save_last_dir("client_cert", &path);
+            self.client_cert_path = Some(path);
+            cx.notify();
+        }
+    }
+
+    pub(super) fn browse_client_key(&mut self, cx: &mut Context<Self>) {
+        let mut dialog = rfd::FileDialog::new()
+            .set_title("Select Private Key (PEM)")
+            .add_filter("PEM Key", &["pem", "key"]);
+        if let Some(dir) = last_paths::last_dir("client_key").or_else(dirs::home_dir) {
+            dialog = dialog.set_directory(dir);
+        }
+        if let Some(path) = dialog.pick_file() {
+            last_paths::save_last_dir("client_key", &path);
+            self.client_key_path = Some(path);
+            cx.notify();
+        }
+    }
 }

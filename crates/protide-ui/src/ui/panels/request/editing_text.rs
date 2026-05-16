@@ -1,4 +1,4 @@
-use gpui::{ClipboardItem, Context, MouseDownEvent, MouseMoveEvent, MouseUpEvent, Window};
+use gpui::{Context, MouseDownEvent, MouseMoveEvent, MouseUpEvent, Window};
 use super::*;
 use crate::ui::components::{find_word_start, find_word_end};
 

@@ -142,9 +142,10 @@ impl ResponsePanel {
                     self.render_json_tree(cx)
                 } else {
                     div()
+                        .id("response-body-text")
                         .flex_1()
                         .w_full()
-                        .overflow_hidden()
+                        .overflow_scroll()
                         .child(self.body_viewer.clone())
                         .into_any_element()
                 }

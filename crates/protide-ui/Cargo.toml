@@ -33,3 +33,6 @@ async-channel = { workspace = true }
 
 rfd = "0.17"
 reqwest = { workspace = true }
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(feature, values("pake-auth"))'] }

@@ -1,6 +1,5 @@
 //! Form body rendering for RequestPanel
 
-use std::ops::Range;
 
 use gpui::{
     div, prelude::*, px, Context, IntoElement,
@@ -8,10 +7,6 @@ use gpui::{
 };
 
 use crate::theme;
-use crate::ui::components::icons::{
-    ICON_FOLDER,
-    icon, ICON_MD,
-};
 use protide_core::execution::ws::WebSocketExecutor;
 use super::super::request_types::{BodyType, EditTarget, FormFieldType};
 use super::RequestPanel;

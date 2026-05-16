@@ -9,7 +9,7 @@ use gpui::{
 
 use crate::theme;
 use crate::ui::components::icons::{
-    icon, ICON_SM, ICON_MD,
+    icon, ICON_MD,
     ICON_USER, ICON_KEY,
 };
 use protide_core::execution::ws::WebSocketExecutor;

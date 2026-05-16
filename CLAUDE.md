@@ -4,8 +4,8 @@
 Native desktop API testing tool built with Rust + GPUI (Zed's GPU-accelerated UI framework).
 Supports HTTP, GraphQL, WebSocket, and gRPC protocols.
 
-## Current State (Jan 2025)
-**Progress: ~90% of full plan (Phases 1-6, 8-12 complete)**
+## Current State (May 2025)
+**Progress: ~95% of full plan (Phases 1-6, 8-14 complete)**
 
 ### Completed Features
 **Core HTTP Client**
@@ -19,10 +19,12 @@ Supports HTTP, GraphQL, WebSocket, and gRPC protocols.
 - Request timing and size metrics
 
 **Protocol Support**
-- GraphQL mode with query/variables editors and syntax highlighting
+- GraphQL mode with query/variables editors and schema introspection
 - WebSocket mode with connect/disconnect, message sending, and message history
-- gRPC mode with proto file loading, service/method selection, and metadata
-- Mode toggle (HTTP/GraphQL/WS/gRPC)
+- gRPC mode with proto file loading, service/method selection, metadata, and all streaming modes
+- tRPC mode with procedure selection and params editor
+- Socket.IO mode (EIO4 handshake, event send/receive, namespace support)
+- Mode toggle (HTTP/GraphQL/WS/gRPC/tRPC/Socket.IO)
 
 **Collections & Storage**
 - File-based collections (folders = collections, .http files = requests)
@@ -30,70 +32,83 @@ Supports HTTP, GraphQL, WebSocket, and gRPC protocols.
 - Request history panel
 - Save request to .http file
 
-**Scripting & Testing (Phase 8)**
-- JavaScript engine (rquickjs) for pre/post-request scripts
+**Scripting & Testing**
+- JavaScript engine (rquickjs) for pre/post-request scripts with sandbox interrupt handler
 - Test assertions with expect() API
+- Script errors surface to console panel (pre and post)
 
-**Import/Export (Phase 10)**
+**Import/Export**
 - cURL command import
 - Postman Collection import
+- OpenAPI / Swagger import
+- Bruno .bru file import
+- Markdown documentation export
 
-**Request Chaining (Phase 11)**
+**Request Chaining**
 - JSONPath extraction from responses
 - Variable setting via @set annotations
 
-**Code Generation (Phase 12)**
+**Code Generation**
 - Generate cURL, Python, JavaScript, Go, Rust code
 
-**Mock Server (Phase 9)**
+**Mock Server**
 - Local HTTP server for mocking responses
 - Route configuration UI
+
+**Tooling & Integrations**
+- MCP server (`protide-mcp`) for AI agent integration
+- LSP server (`protide-lsp`) for .http file language support
+- VS Code extension (`extensions/vscode/`)
+- P2P workspace sync (libp2p + CRDT + PAKE auth, behind `full-sync` feature)
 
 **UI/UX**
 - System theme support (light/dark)
 - Ubuntu Mono font
+- Script console output panel
+- P2P presence panel
 
 ### Project Structure
 ```
-api-dash/
-├── Cargo.toml                      # Workspace manifest
+protide/                        # Workspace root
+├── Cargo.toml                  # Workspace manifest
 ├── crates/
-│   ├── api-dash/                   # Main desktop app
+│   ├── http-parser/            # .http file parser (reusable lib)
 │   │   └── src/
-│   │       ├── main.rs             # Entry point
-│   │       ├── app.rs              # App state
-│   │       ├── theme.rs            # Theme colors
-│   │       ├── workspace/mod.rs    # Workspace management
-│   │       ├── models/
-│   │       │   ├── mod.rs
-│   │       │   ├── environment.rs  # Environment variables
-│   │       │   └── request.rs      # Request model
-│   │       ├── protocols/
-│   │       │   ├── mod.rs
-│   │       │   └── http.rs         # Async HTTP client (unused, blocking used instead)
-│   │       └── ui/
-│   │           ├── mod.rs
-│   │           ├── main_window.rs  # Main window layout
-│   │           ├── components/
-│   │           │   ├── mod.rs
-│   │           │   └── text_input.rs   # Text input with selection
-│   │           └── panels/
-│   │               ├── mod.rs
-│   │               ├── explorer.rs     # File tree + environments (~1900 lines)
-│   │               ├── history.rs      # Request history
-│   │               ├── response.rs     # Response viewer (~1200 lines)
-│   │               ├── request_types.rs    # Shared types
-│   │               ├── request_utils.rs    # URL encode/decode, base64
-│   │               └── request/
-│   │                   ├── mod.rs      # Core logic (~1500 lines)
-│   │                   ├── render.rs   # UI rendering (~1800 lines)
-│   │                   └── tests.rs    # Unit tests
-│   └── http-parser/                # .http file parser (reusable crate)
-│       └── src/
-│           ├── lib.rs
-│           ├── ast.rs              # AST types
-│           ├── lexer.rs            # Tokenizer
-│           └── parser.rs           # Parser
+│   │       ├── lib.rs
+│   │       ├── ast.rs          # AST types
+│   │       ├── lexer.rs        # Tokenizer
+│   │       └── parser.rs       # Parser
+│   ├── protide-core/           # All business logic (no UI deps)
+│   │   └── src/
+│   │       ├── chaining/       # JSONPath @set variable extraction
+│   │       ├── codegen/        # Code gen: curl, python, js, go, rust
+│   │       ├── execution/      # Protocol runners (http.rs, ws.rs, sio.rs)
+│   │       ├── export/         # Markdown doc export
+│   │       ├── import/         # cURL, Postman, OpenAPI, Bruno importers
+│   │       ├── mock_server/    # Local mock HTTP server (axum)
+│   │       ├── models/         # Request, environment models
+│   │       ├── protocols/      # gRPC, tRPC protocol handlers
+│   │       ├── scripting/      # JS engine (rquickjs) with sandbox + interrupt
+│   │       ├── sync/           # P2P sync (libp2p, CRDT, PAKE auth)
+│   │       └── workspace/      # Workspace file scanning & management
+│   ├── protide-ui/             # GPUI UI layer (no reqwest/tokio-tungstenite)
+│   │   └── src/ui/
+│   │       ├── main_window.rs  # Top-level layout
+│   │       ├── components/     # text_input, code_editor, action_row, etc.
+│   │       └── panels/
+│   │           ├── request/    # ~40 files: url bar, kv editor, body, auth,
+│   │           │               # scripting, code gen, execution glue per protocol
+│   │           ├── response/   # Response viewer with JSON highlighting
+│   │           ├── explorer/   # File tree + environments (virtualized, ~15 files)
+│   │           ├── history.rs  # Request history
+│   │           ├── console.rs  # Script console output
+│   │           ├── mock_server.rs
+│   │           └── presence.rs # P2P presence UI
+│   ├── protide/                # Binary entry point (main.rs only)
+│   ├── protide-mcp/            # MCP server for AI agent integration
+│   └── protide-lsp/            # Language server for .http files
+├── extensions/vscode/          # VS Code extension
+└── e2e/                        # End-to-end test fixtures per protocol
 ```
 
 ### Key Technical Decisions
@@ -118,8 +133,8 @@ api-dash/
 
 ### Running the App
 ```bash
-cargo run --release   # Release build recommended for performance
-cargo test            # 146 tests total
+cargo run -p protide --release   # Release build recommended for performance
+cargo test                       # 190 tests total
 ```
 
 ## Coding Rules
@@ -142,20 +157,22 @@ cargo test            # 146 tests total
 - ✅ Streaming type detection & UI badge
 
 ### Phase 7: tRPC Support
-- Endpoint configuration
-- Query/mutation procedures
+- ✅ Endpoint configuration
+- ✅ Query/mutation procedures
+- ⚠️ No tRPC v11 batch support yet
 
 ### Phase 13: API Documentation
-- Markdown/HTML export
-- Interactive explorer
+- ✅ Markdown export
+- Interactive explorer (not started)
 
 ### Phase 14: Language Server (LSP)
-- Syntax highlighting for .http files
-- Autocomplete
-- VS Code/Zed extensions
+- ✅ LSP server (`protide-lsp`)
+- ✅ VS Code extension (`extensions/vscode/`)
+- Zed extension (not started)
 
 ### Future Enhancements
-- Socket.IO support (extend WebSocket mode)
-- Bruno .bru file import
-- OpenAPI/Swagger import
+- OAuth 2.0 flow UI
+- mTLS configuration UI
+- Batch collection runner
+- Response diffing
 - Mock server record/proxy mode

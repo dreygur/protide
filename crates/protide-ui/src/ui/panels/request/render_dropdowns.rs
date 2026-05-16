@@ -1,6 +1,5 @@
 //! Dropdown overlay rendering for RequestPanel
 
-use std::ops::Range;
 
 use gpui::{
     div, prelude::*, px, Context, IntoElement, KeyDownEvent,
@@ -8,10 +7,6 @@ use gpui::{
 };
 
 use crate::theme;
-use crate::ui::components::icons::{
-    icon, ICON_SM,
-    ICON_CHEVRON_DOWN,
-};
 use protide_core::execution::ws::WebSocketExecutor;
 use super::super::request_types::{HttpMethod, RequestMode};
 use super::RequestPanel;

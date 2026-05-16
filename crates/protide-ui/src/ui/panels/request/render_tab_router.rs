@@ -1,6 +1,5 @@
 //! Tab bar and tab content routing for RequestPanel
 
-use std::ops::Range;
 
 use gpui::{
     div, prelude::*, px, Context, IntoElement,

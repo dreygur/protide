@@ -1,6 +1,5 @@
 //! Socket.IO events tab rendering for RequestPanel
 
-use std::ops::Range;
 
 use gpui::{
     div, prelude::*, px, Context, IntoElement,
@@ -9,7 +8,6 @@ use gpui::{
 
 use crate::theme;
 use protide_core::execution::ws::WebSocketExecutor;
-use protide_core::execution::sio::SioEvent;
 use super::super::request_types::{EditTarget, SioConnectionState};
 use super::RequestPanel;
 use super::render_socketio_helpers::{render_sio_status_bar, render_sio_event_item};

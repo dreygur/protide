@@ -1,6 +1,6 @@
 use gpui::Context;
 use super::*;
-use super::super::request_utils::{base64_encode, url_encode};
+use super::super::request_utils::base64_encode;
 
 impl<E: WebSocketExecutor> RequestPanel<E> {
     /// Save the current request to a .http file
@@ -103,6 +103,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                     }
                 }
             }
+            AuthType::ClientCert => {}
         }
 
         let body_content = self.body_editor.read(cx).content().to_string();

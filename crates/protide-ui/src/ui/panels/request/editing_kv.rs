@@ -9,11 +9,6 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
         }
     }
 
-    pub(super) fn add_header(&mut self, cx: &mut Context<Self>) {
-        self.headers.push(KeyValuePair::default());
-        cx.notify();
-    }
-
     pub(super) fn remove_header(&mut self, index: usize, cx: &mut Context<Self>) {
         if index < self.headers.len() && self.headers.len() > 1 {
             self.headers.remove(index);
@@ -74,11 +69,6 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             self.sync_url_from_params(cx);
             cx.notify();
         }
-    }
-
-    pub(super) fn add_param(&mut self, cx: &mut Context<Self>) {
-        self.params.push(KeyValuePair::default());
-        cx.notify();
     }
 
     pub(super) fn remove_param(&mut self, index: usize, cx: &mut Context<Self>) {

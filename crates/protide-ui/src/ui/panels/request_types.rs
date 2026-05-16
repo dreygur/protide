@@ -63,6 +63,7 @@ pub enum AuthType {
     Bearer,
     Basic,
     ApiKey,
+    ClientCert,
 }
 
 /// API key location

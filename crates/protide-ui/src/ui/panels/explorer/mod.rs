@@ -1,14 +1,11 @@
 //! File explorer panel - displays the workspace file tree, request history, and environment selector
 
-use log::{debug, error, info, warn};
+use log::{error, info, warn};
 
 use crate::ui::components::modal::ModalState;
 use crate::ui::main_window::MainWindow;
 use gpui::{
-    ClipboardItem, Context, Entity, FocusHandle, IntoElement, KeyDownEvent, MouseButton,
-    MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement, Pixels, Point, Render,
-    SharedString, Styled, Subscription, WeakEntity, Window, canvas, deferred,
-    div, prelude::*, px,
+    Context, Entity, FocusHandle, Pixels, Point, Styled, Subscription, WeakEntity, prelude::*,
 };
 use std::fs;
 use std::ops::Range;

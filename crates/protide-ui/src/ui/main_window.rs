@@ -185,6 +185,13 @@ impl MainWindow {
         let _ = sync_engine.init();
         let sync_engine = Some(sync_engine);
 
+        // Apply system appearance and react to future changes
+        cx.set_global(crate::theme::theme_for_appearance(_window.appearance()));
+        cx.observe_window_appearance(_window, |_, window, cx| {
+            cx.set_global(crate::theme::theme_for_appearance(window.appearance()));
+            cx.notify();
+        }).detach();
+
         // Periodic sync event polling (every 1 second)
         let poll_weak = cx.entity().downgrade();
         cx.spawn(async move |_, cx| {

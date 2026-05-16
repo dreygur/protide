@@ -57,7 +57,7 @@ pub mod render_extract;
 pub mod render_util;
 
 pub use types::*;
-pub use json::{PrimVal, RowKind, JsonCtxMenu, JsonRow, flatten_json};
+pub use json::{PrimVal, RowKind, JsonCtxMenu, JsonRow};
 
 /// Response viewer panel
 pub struct ResponsePanel {

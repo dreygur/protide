@@ -1,6 +1,6 @@
 use gpui::Context;
 use super::*;
-use super::super::request_utils::{base64_encode, status_text, url_encode};
+use super::super::request_utils::{base64_encode, url_encode};
 use super::graphql::dns_troubleshoot_hint;
 
 impl<E: WebSocketExecutor> RequestPanel<E> {
@@ -64,6 +64,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                     }
                 }
             }
+            AuthType::ClientCert => {}
         }
 
         let binary_file_path = self.binary_file_path.clone();
@@ -176,6 +177,8 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             tests: tests_script,
             env_vars,
             variable_extractions,
+            client_cert_path: self.client_cert_path.clone(),
+            client_key_path: self.client_key_path.clone(),
         };
 
         cx.spawn(async move |this: gpui::WeakEntity<Self>, cx: &mut gpui::AsyncApp| {

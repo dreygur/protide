@@ -32,10 +32,11 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                 BodyType::Binary => "binary",
             }.to_string(),
             auth_type: match self.auth_type {
-                None    => "none",
-                Bearer  => "bearer",
-                Basic   => "basic",
-                ApiKey  => "apikey",
+                None       => "none",
+                Bearer     => "bearer",
+                Basic      => "basic",
+                ApiKey     => "apikey",
+                ClientCert => "client_cert",
             }.to_string(),
             bearer_token:    self.bearer_token.clone(),
             basic_username:  self.basic_username.clone(),
@@ -110,9 +111,10 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
 
         // Auth
         self.auth_type = match draft.auth_type.as_str() {
-            "bearer" => AuthType::Bearer,
-            "basic"  => AuthType::Basic,
-            "apikey" => AuthType::ApiKey,
+            "bearer"      => AuthType::Bearer,
+            "basic"       => AuthType::Basic,
+            "apikey"      => AuthType::ApiKey,
+            "client_cert" => AuthType::ClientCert,
             _        => AuthType::None,
         };
         self.bearer_token   = draft.bearer_token.clone();

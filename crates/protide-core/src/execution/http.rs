@@ -19,14 +19,19 @@ pub fn run_http(
     headers: &[(String, String)],
     body: &ExecutionBody,
     mode: &ExecutionMode,
+    client_cert: Option<(&std::path::Path, &std::path::Path)>,
 ) -> Result<RawResponse, String> {
     let start = Instant::now();
 
     // GraphQL: construct JSON body and ensure Content-Type
     let (resolved_url, resolved_headers, resolved_body) = match mode {
         ExecutionMode::GraphQL { query, variables, operation_name } => {
-            let vars: serde_json::Value = serde_json::from_str(variables)
-                .unwrap_or(serde_json::json!({}));
+            let vars: serde_json::Value = if variables.trim().is_empty() {
+                serde_json::json!({})
+            } else {
+                serde_json::from_str(variables)
+                    .map_err(|e| format!("GraphQL variables are not valid JSON: {e}"))?
+            };
             let mut gql_body = serde_json::json!({
                 "query": query,
                 "variables": vars,
@@ -47,10 +52,19 @@ pub fn run_http(
     let req_method = reqwest::Method::from_bytes(method.as_bytes())
         .unwrap_or(reqwest::Method::GET);
 
-    let client = reqwest::blocking::Client::builder()
-        .timeout(Duration::from_secs(30))
-        .build()
-        .map_err(|e| e.to_string())?;
+    let mut client_builder = reqwest::blocking::Client::builder()
+        .timeout(Duration::from_secs(30));
+    if let Some((cert_path, key_path)) = client_cert {
+        let cert_pem = std::fs::read(cert_path).map_err(|e| format!("mTLS cert read error: {e}"))?;
+        let key_pem  = std::fs::read(key_path).map_err(|e| format!("mTLS key read error: {e}"))?;
+        // from_pem expects a single buffer with both key and cert (rustls-tls)
+        let mut combined = key_pem;
+        combined.extend_from_slice(&cert_pem);
+        let identity = reqwest::Identity::from_pem(&combined)
+            .map_err(|e| format!("mTLS identity error: {e}"))?;
+        client_builder = client_builder.identity(identity);
+    }
+    let client = client_builder.build().map_err(|e| e.to_string())?;
     let mut req_builder = client.request(req_method, &resolved_url);
 
     let is_multipart = matches!(resolved_body, ExecutionBody::Multipart(_));

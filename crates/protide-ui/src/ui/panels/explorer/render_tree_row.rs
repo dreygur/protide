@@ -16,6 +16,7 @@ impl ExplorerPanel {
         let path_for_right_click = item.path.clone();
         let path_for_select = item.path.clone();
         let path_for_action = item.path.clone();
+        let path_for_expand = item.path.clone();
         let is_folder = item.is_folder;
         let is_expanded = item.expanded;
         let display_name = item.name.trim_end_matches(".http").to_string();
@@ -34,9 +35,7 @@ impl ExplorerPanel {
         .selected(is_selected)
         .on_click(cx.listener(move |this, _, _, cx| {
             this.selected_item = Some(path_for_select.clone());
-            if is_folder {
-                this.toggle_collection_folder(path.clone(), cx);
-            } else {
+            if !is_folder {
                 this.load_request_file(path.clone(), cx);
             }
         }))
@@ -68,10 +67,16 @@ impl ExplorerPanel {
             .when(is_folder, |el| {
                 el.child(
                     div()
+                        .id(SharedString::from(format!("chevron-{}", idx)))
                         .w(px(10.0))
                         .flex()
                         .items_center()
                         .justify_center()
+                        .cursor_pointer()
+                        .on_click(cx.listener(move |this, _, _, cx| {
+                            cx.stop_propagation();
+                            this.toggle_collection_folder(path_for_expand.clone(), cx);
+                        }))
                         .child(if is_expanded {
                             icon(ICON_CHEVRON_DOWN, ICON_SM, theme.colors.text_muted)
                         } else {

@@ -1,6 +1,5 @@
 //! Params and Headers tab rendering for RequestPanel
 
-use std::ops::Range;
 
 use gpui::{
     div, prelude::*, px, Context, IntoElement,

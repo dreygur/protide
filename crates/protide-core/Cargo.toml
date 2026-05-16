@@ -62,3 +62,6 @@ default = []
 p2p-sync = ["dep:libp2p", "dep:blake3"]
 pake-auth = ["dep:spake2", "dep:chacha20poly1305", "dep:blake3", "dep:rand", "dep:zeroize"]
 full-sync = ["p2p-sync", "pake-auth"]
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(feature, values("p2p-sync", "pake-auth", "full-sync"))'] }

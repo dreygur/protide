@@ -1,6 +1,5 @@
 //! Body tab rendering for RequestPanel
 
-use std::ops::Range;
 
 use gpui::{
     div, prelude::*, px, Context, IntoElement,
@@ -21,18 +20,15 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
         if self.body_type == BodyType::Form {
             return self.render_form_body(cx);
         }
-        if self.body_type == BodyType::Binary {
-            return self.render_binary_body(cx);
-        }
 
         let theme = theme::current(cx);
+        let is_binary = self.body_type == BodyType::Binary;
 
         div()
             .w_full()
             .h_full()
             .flex()
             .flex_col()
-            .gap(px(8.0))
             .child(
                 div()
                     .h(px(40.0))
@@ -57,11 +53,16 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                     )
             )
             .child(
-                div()
-                    .flex_1()
-                    .w_full()
-                    .overflow_hidden()
-                    .child(self.body_editor.clone())
+                if is_binary {
+                    self.render_binary_body(cx)
+                } else {
+                    div()
+                        .flex_1()
+                        .w_full()
+                        .overflow_hidden()
+                        .child(self.body_editor.clone())
+                        .into_any_element()
+                }
             )
             .into_any_element()
     }
@@ -101,7 +102,8 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             });
 
         div()
-            .size_full()
+            .flex_1()
+            .w_full()
             .flex()
             .items_center()
             .justify_center()

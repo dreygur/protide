@@ -68,6 +68,10 @@ pub struct ExecutionRequest {
     /// Active environment variables for script context
     pub env_vars: HashMap<String, String>,
     pub variable_extractions: Vec<VariableExtraction>,
+    /// mTLS: PEM-encoded client certificate file path
+    pub client_cert_path: Option<std::path::PathBuf>,
+    /// mTLS: PEM-encoded private key file path
+    pub client_key_path: Option<std::path::PathBuf>,
 }
 
 /// Full result of executing a request
@@ -140,32 +144,44 @@ pub fn execute(req: ExecutionRequest) -> Result<ExecutionResult, String> {
     }
 
     // 2. Execute HTTP
-    let raw = run_http(&url, &req.method, &headers, &body, &req.mode)?;
+    let cert_refs = req.client_cert_path.as_deref().zip(req.client_key_path.as_deref());
+    let raw = run_http(&url, &req.method, &headers, &body, &req.mode, cert_refs)?;
 
     // 3. Post-script + tests
     let mut test_results: Vec<TestResult> = Vec::new();
-    if (!req.post_script.trim().is_empty() || !req.tests.trim().is_empty())
-        && let Ok(engine) = ScriptEngine::new() {
-            let script_resp =
-                ScriptResponseData::new(raw.status, &raw.status_text, raw.body.clone())
-                    .with_headers(raw.headers.clone())
-                    .with_time(raw.time.as_millis() as u64)
-                    .with_size(raw.size);
+    if !req.post_script.trim().is_empty() || !req.tests.trim().is_empty() {
+        let script_resp =
+            ScriptResponseData::new(raw.status, &raw.status_text, raw.body.clone())
+                .with_headers(raw.headers.clone())
+                .with_time(raw.time.as_millis() as u64)
+                .with_size(raw.size);
+        let mut ctx = crate::scripting::ScriptContext::new().with_env(req.env_vars.clone());
+        ctx.set_response(script_resp);
 
-            let mut ctx = crate::scripting::ScriptContext::new().with_env(req.env_vars.clone());
-            ctx.set_response(script_resp);
-
-            if !req.post_script.trim().is_empty()
-                && let Ok(outcome) = engine.run_post_script(&req.post_script, &mut ctx) {
-                    console_output.extend(outcome.console_output);
-                    env_changes.extend(outcome.env_changes);
+        match ScriptEngine::new() {
+            Err(e) => console_output.push(format!("[script error] engine init failed: {e}")),
+            Ok(engine) => {
+                if !req.post_script.trim().is_empty() {
+                    match engine.run_post_script(&req.post_script, &mut ctx) {
+                        Ok(outcome) => {
+                            console_output.extend(outcome.console_output);
+                            env_changes.extend(outcome.env_changes);
+                        }
+                        Err(e) => console_output.push(format!("[post-script error] {e}")),
+                    }
                 }
-            if !req.tests.trim().is_empty()
-                && let Ok(outcome) = engine.run_tests(&req.tests, &mut ctx) {
-                    console_output.extend(outcome.console_output);
-                    test_results = outcome.test_results;
+                if !req.tests.trim().is_empty() {
+                    match engine.run_tests(&req.tests, &mut ctx) {
+                        Ok(outcome) => {
+                            console_output.extend(outcome.console_output);
+                            test_results = outcome.test_results;
+                        }
+                        Err(e) => console_output.push(format!("[test error] {e}")),
+                    }
                 }
+            }
         }
+    }
 
     // 4. Variable extraction via @set JSONPath annotations
     let extracted_vars: Vec<(String, String)> = if !req.variable_extractions.is_empty() {

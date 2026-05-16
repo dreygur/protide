@@ -1,6 +1,5 @@
 //! URL bar rendering for RequestPanel
 
-use std::ops::Range;
 
 use gpui::{
     canvas, div, prelude::*, px, Context, IntoElement, MouseDownEvent, MouseMoveEvent,

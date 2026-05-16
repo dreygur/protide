@@ -452,9 +452,17 @@ impl Default for Opacity {
 
 impl gpui::Global for Theme {}
 
-/// Initialize theme based on system preference
+/// Return the theme matching the given window appearance.
+pub fn theme_for_appearance(appearance: gpui::WindowAppearance) -> Theme {
+    match appearance {
+        gpui::WindowAppearance::Light | gpui::WindowAppearance::VibrantLight => Theme::light(),
+        gpui::WindowAppearance::Dark | gpui::WindowAppearance::VibrantDark => Theme::dark(),
+    }
+}
+
+/// Install a global default so `current()` never panics before the first window opens.
+/// The real per-window theme is applied in `MainWindow::build`.
 pub fn init(cx: &mut App) {
-    // Default to dark theme (TODO: detect system preference)
     cx.set_global(Theme::dark());
 }
 
