@@ -107,7 +107,13 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
 
     pub(super) fn emit_socketio_event(&mut self, cx: &mut Context<Self>) {
         if self.sio_state != SioConnectionState::Connected { return; }
-        let payload = self.sio_payload_editor.read(cx).content().to_string();
+        let env_state = self.explorer_panel.as_ref().map(|p| p.read(cx).env_state().clone());
+        let substitute = |s: &str| -> String {
+            env_state.as_ref().map_or_else(|| s.to_string(), |e| e.substitute(s))
+        };
+        let payload = substitute(&self.sio_payload_editor.read(cx).content().to_string());
+        let namespace = substitute(&self.sio_namespace);
+        let event_name = substitute(&self.sio_event_name);
         let ack_id = if self.sio_want_ack {
             let id = self.sio_next_ack_id;
             self.sio_next_ack_id = self.sio_next_ack_id.wrapping_add(1);
@@ -117,8 +123,8 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
         };
         if let Some(tx) = &self.sio_send_tx {
             let _ = tx.send(SioCommand::Emit {
-                namespace: self.sio_namespace.clone(),
-                event_name: self.sio_event_name.clone(),
+                namespace,
+                event_name,
                 payload,
                 ack_id,
             });

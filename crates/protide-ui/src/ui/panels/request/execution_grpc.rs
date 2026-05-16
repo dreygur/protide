@@ -102,7 +102,6 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
         self.loading = true;
         cx.notify();
 
-        let message = self.grpc_message_editor.read(cx).content().to_string();
         let url = self.url.clone();
         let method = method.clone();
         let streaming_type = method.streaming_type;
@@ -112,6 +111,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             if let Some(ref env) = env_state { env.substitute(s) } else { s.to_string() }
         };
         let url = substitute(&url);
+        let message = substitute(&self.grpc_message_editor.read(cx).content().to_string());
         let metadata: Vec<(String, String)> = self.grpc_metadata.iter()
             .filter(|m| m.enabled && !m.key.is_empty())
             .map(|m| (substitute(&m.key), substitute(&m.value)))

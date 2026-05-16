@@ -11,7 +11,6 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
 
         let url = self.url.clone();
         let procedure = self.trpc_procedure.clone();
-        let params = self.trpc_params_editor.read(cx).content().to_string();
 
         let env_state = self.explorer_panel.as_ref().map(|p| p.read(cx).env_state().clone());
         let substitute = |s: &str| -> String {
@@ -20,6 +19,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
 
         let url = substitute(&url);
         let procedure = substitute(&procedure);
+        let params = substitute(&self.trpc_params_editor.read(cx).content().to_string());
 
         let mut headers: Vec<(String, String)> = self.headers.iter()
             .filter(|h| h.enabled && !h.key.is_empty())

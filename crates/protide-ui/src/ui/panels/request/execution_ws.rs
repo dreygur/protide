@@ -142,10 +142,12 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
 
     pub(super) fn send_websocket_message(&mut self, cx: &mut Context<Self>) {
         if self.ws_state != WsConnectionState::Connected { return; }
-        let message = self.ws_message_editor.read(cx).content();
-        if message.trim().is_empty() { return; }
+        let raw = self.ws_message_editor.read(cx).content().to_string();
+        if raw.trim().is_empty() { return; }
+        let env_state = self.explorer_panel.as_ref().map(|p| p.read(cx).env_state().clone());
+        let message = env_state.as_ref().map_or(raw.clone(), |e| e.substitute(&raw));
         if let Some(tx) = &self.ws_send_tx {
-            let _ = tx.send(WsCommand::Send(message.to_string()));
+            let _ = tx.send(WsCommand::Send(message));
             cx.notify();
         }
     }
