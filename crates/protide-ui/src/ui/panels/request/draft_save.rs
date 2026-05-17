@@ -56,6 +56,14 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             grpc_method_name: self.grpc_method.as_ref().map(|m| m.full_name.clone()),
             trpc_procedure:  self.trpc_procedure.clone(),
             trpc_params:     self.trpc_params_editor.read(cx).content().to_string(),
+            trpc_batch_calls: self.trpc_batch_calls.iter()
+                .map(|c| crate::session::TrpcBatchCallDraft {
+                    procedure: c.procedure.clone(),
+                    params: c.params.clone(),
+                    enabled: c.enabled,
+                })
+                .collect(),
+            trpc_selected_batch_idx: self.trpc_selected_batch_idx,
             sio_namespace:   self.sio_namespace.clone(),
             sio_event_name:  self.sio_event_name.clone(),
             sio_payload:     self.sio_payload_editor.read(cx).content().to_string(),
@@ -163,6 +171,19 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
         if !draft.trpc_params.is_empty() {
             let p = draft.trpc_params.clone();
             self.trpc_params_editor.update(cx, |ed, cx| ed.set_content(&p, cx));
+        }
+        self.trpc_batch_calls = draft.trpc_batch_calls.iter()
+            .map(|c| TrpcBatchCall { procedure: c.procedure.clone(), params: c.params.clone(), enabled: c.enabled })
+            .collect();
+        if self.trpc_batch_calls.is_empty() {
+            self.trpc_batch_calls.push(TrpcBatchCall { enabled: true, ..Default::default() });
+        }
+        self.trpc_selected_batch_idx = draft.trpc_selected_batch_idx;
+        if let Some(idx) = self.trpc_selected_batch_idx {
+            if let Some(call) = self.trpc_batch_calls.get(idx) {
+                let p = call.params.clone();
+                self.trpc_batch_params_editor.update(cx, |ed, cx| ed.set_content(&p, cx));
+            }
         }
 
         // Socket.IO

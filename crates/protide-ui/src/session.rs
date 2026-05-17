@@ -68,11 +68,21 @@ pub struct RequestDraft {
     // ── tRPC ─────────────────────────────────────────────────────────────────
     pub trpc_procedure: String,
     pub trpc_params: String,
+    pub trpc_batch_calls: Vec<TrpcBatchCallDraft>,
+    pub trpc_selected_batch_idx: Option<usize>,
 
     // ── Socket.IO ────────────────────────────────────────────────────────────
     pub sio_namespace: String,
     pub sio_event_name: String,
     pub sio_payload: String,
+}
+
+/// A single tRPC batch call captured in the draft.
+#[derive(Serialize, Deserialize, Default, Clone)]
+pub struct TrpcBatchCallDraft {
+    pub procedure: String,
+    pub params: String,
+    pub enabled: bool,
 }
 
 /// A single header row captured in the draft.

@@ -3,6 +3,39 @@ use super::*;
 use super::super::request_utils::status_text;
 
 impl<E: WebSocketExecutor> RequestPanel<E> {
+    /// Switch the selected batch call, saving the current editor content first.
+    pub(super) fn select_batch_call(&mut self, idx: usize, cx: &mut Context<Self>) {
+        // Save current editor content back to the previously selected call
+        if let Some(prev) = self.trpc_selected_batch_idx {
+            if let Some(call) = self.trpc_batch_calls.get_mut(prev) {
+                call.params = self.trpc_batch_params_editor.read(cx).content().to_string();
+            }
+        }
+        self.trpc_selected_batch_idx = Some(idx);
+        let params = self.trpc_batch_calls.get(idx)
+            .map(|c| c.params.clone())
+            .unwrap_or_else(|| "{}".to_string());
+        self.trpc_batch_params_editor.update(cx, |ed, cx| ed.set_content(&params, cx));
+        cx.notify();
+    }
+
+    pub(super) fn remove_batch_call(&mut self, idx: usize, cx: &mut Context<Self>) {
+        if self.trpc_batch_calls.len() > 1 {
+            self.trpc_batch_calls.remove(idx);
+            // Adjust selected index
+            self.trpc_selected_batch_idx = self.trpc_selected_batch_idx.and_then(|s| {
+                if s == idx { None }
+                else if s > idx { Some(s - 1) }
+                else { Some(s) }
+            });
+        } else {
+            self.trpc_batch_calls[0] = TrpcBatchCall { enabled: true, ..Default::default() };
+            self.trpc_selected_batch_idx = None;
+            self.trpc_batch_params_editor.update(cx, |ed, cx| ed.set_content("{}", cx));
+        }
+        cx.notify();
+    }
+
     pub(super) fn send_trpc_request(&mut self, cx: &mut Context<Self>) {
         if self.trpc_procedure.trim().is_empty() { return; }
 
@@ -90,6 +123,117 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                                 panel.set_response(ResponseData {
                                     status: 500,
                                     status_text: "tRPC Error".to_string(),
+                                    headers: vec![("content-type".to_string(), "application/json".to_string())],
+                                    body: error_body.clone(),
+                                    time: std::time::Duration::from_secs(0),
+                                    size: error_body.len(),
+                                }, cx);
+                            });
+                        });
+                    }
+                }
+                let _ = cx.update(|cx| { let _ = this.update(cx, |p, cx| { p.loading = false; cx.notify(); }); });
+            }
+        }).detach();
+    }
+
+    pub(super) fn send_trpc_batch_request(&mut self, cx: &mut Context<Self>) {
+        // Save current editor content to the selected batch call before reading
+        if let Some(idx) = self.trpc_selected_batch_idx {
+            if let Some(call) = self.trpc_batch_calls.get_mut(idx) {
+                call.params = self.trpc_batch_params_editor.read(cx).content().to_string();
+            }
+        }
+
+        let env_state = self.explorer_panel.as_ref().map(|p| p.read(cx).env_state().clone());
+        let substitute = |s: &str| -> String {
+            if let Some(ref env) = env_state { env.substitute(s) } else { s.to_string() }
+        };
+
+        let enabled_calls: Vec<protide_core::protocols::trpc::BatchCall> = self.trpc_batch_calls.iter()
+            .filter(|c| c.enabled && !c.procedure.trim().is_empty())
+            .map(|c| protide_core::protocols::trpc::BatchCall {
+                procedure: substitute(&c.procedure),
+                params: substitute(&c.params),
+            })
+            .collect();
+
+        if enabled_calls.is_empty() { return; }
+
+        self.loading = true;
+        cx.notify();
+
+        let url = substitute(&self.url);
+
+        let mut headers: Vec<(String, String)> = self.headers.iter()
+            .filter(|h| h.enabled && !h.key.is_empty())
+            .map(|h| (substitute(&h.key), substitute(&h.value)))
+            .collect();
+
+        match self.auth_type {
+            AuthType::Bearer => {
+                if !self.bearer_token.is_empty() {
+                    let token = substitute(&self.bearer_token);
+                    headers.push(("Authorization".to_string(), format!("Bearer {}", token)));
+                }
+            }
+            AuthType::Basic => {
+                if !self.basic_username.is_empty() {
+                    let username = substitute(&self.basic_username);
+                    let password = substitute(&self.basic_password);
+                    let credentials = base64::engine::general_purpose::STANDARD
+                        .encode(format!("{}:{}", username, password));
+                    headers.push(("Authorization".to_string(), format!("Basic {}", credentials)));
+                }
+            }
+            AuthType::ApiKey => {
+                if !self.api_key_name.is_empty() {
+                    let key_name = substitute(&self.api_key_name);
+                    let key_value = substitute(&self.api_key_value);
+                    if self.api_key_location == ApiKeyLocation::Header {
+                        headers.push((key_name, key_value));
+                    }
+                }
+            }
+            AuthType::None => {}
+            AuthType::ClientCert => {}
+        }
+
+        let response_panel = self.response_panel.clone();
+        log::info!("tRPC batch {} ({} calls)", url, enabled_calls.len());
+
+        cx.spawn(async move |this: gpui::WeakEntity<Self>, cx: &mut gpui::AsyncApp| {
+            let (tx, rx) = std::sync::mpsc::channel();
+            std::thread::spawn(move || {
+                let result = protide_core::protocols::trpc::execute_trpc_batch(&url, &enabled_calls, headers);
+                let _ = tx.send(result);
+            });
+
+            if let Ok(result) = rx.recv_timeout(std::time::Duration::from_secs(30)) {
+                match result {
+                    Ok((body, elapsed, status_code)) => {
+                        let body_size = body.len();
+                        let _ = cx.update(|cx| {
+                            response_panel.update(cx, |panel, cx| {
+                                panel.set_response(ResponseData {
+                                    status: status_code,
+                                    status_text: status_text(status_code).to_string(),
+                                    headers: vec![("content-type".to_string(), "application/json".to_string())],
+                                    body,
+                                    time: elapsed,
+                                    size: body_size,
+                                }, cx);
+                            });
+                        });
+                    }
+                    Err(e) => {
+                        log::error!("tRPC batch error: {}", e);
+                        let _ = cx.update(|cx| {
+                            response_panel.update(cx, |panel, cx| {
+                                let error_body = serde_json::json!({ "error": e }).to_string();
+                                panel.set_response(ResponseData {
+                                    status: 500,
+                                    status_text: "tRPC Batch Error".to_string(),
                                     headers: vec![("content-type".to_string(), "application/json".to_string())],
                                     body: error_body.clone(),
                                     time: std::time::Duration::from_secs(0),

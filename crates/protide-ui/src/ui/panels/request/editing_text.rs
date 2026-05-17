@@ -21,6 +21,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             EditTarget::GrpcMetaKey(i) => self.grpc_metadata.get(i).map(|m| m.key.as_str()).unwrap_or(""),
             EditTarget::GrpcMetaValue(i) => self.grpc_metadata.get(i).map(|m| m.value.as_str()).unwrap_or(""),
             EditTarget::TrpcProcedure => &self.trpc_procedure,
+            EditTarget::TrpcBatchProcedure(i) => self.trpc_batch_calls.get(i).map(|c| c.procedure.as_str()).unwrap_or(""),
             EditTarget::SioNamespace => &self.sio_namespace,
             EditTarget::SioEventName => &self.sio_event_name,
         }
@@ -44,6 +45,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             EditTarget::GrpcMetaKey(i) => self.grpc_metadata.get_mut(i).map(|m| &mut m.key),
             EditTarget::GrpcMetaValue(i) => self.grpc_metadata.get_mut(i).map(|m| &mut m.value),
             EditTarget::TrpcProcedure => Some(&mut self.trpc_procedure),
+            EditTarget::TrpcBatchProcedure(i) => self.trpc_batch_calls.get_mut(i).map(|c| &mut c.procedure),
             EditTarget::SioNamespace => Some(&mut self.sio_namespace),
             EditTarget::SioEventName => Some(&mut self.sio_event_name),
         }
@@ -201,6 +203,19 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                         && self.headers.last().map_or(false, |h| !h.key.is_empty() || !h.value.is_empty())
                     {
                         self.headers.push(KeyValuePair::default());
+                        cx.notify();
+                    }
+                }
+                EditTarget::TrpcBatchProcedure(i) => {
+                    if let Some(call) = self.trpc_batch_calls.get_mut(i) {
+                        if !call.enabled && !call.procedure.is_empty() {
+                            call.enabled = true;
+                        }
+                    }
+                    if i + 1 == self.trpc_batch_calls.len()
+                        && self.trpc_batch_calls.last().map_or(false, |c| !c.procedure.is_empty())
+                    {
+                        self.trpc_batch_calls.push(TrpcBatchCall { enabled: true, ..Default::default() });
                         cx.notify();
                     }
                 }

@@ -66,7 +66,7 @@ use super::explorer::ExplorerPanel;
 use super::request_types::{
     ApiKeyLocation, AuthType, BodyType, EditTarget, FormField, FormFieldType,
     GrpcMethodInfo, GrpcStreamingType, HttpMethod, KeyValuePair, RequestMode,
-    SioConnectionState, WsConnectionState,
+    SioConnectionState, TrpcBatchCall, WsConnectionState,
 };
 use base64::Engine;
 use super::response::{ResponseData, ResponsePanel};
@@ -176,6 +176,9 @@ pub struct RequestPanel<E: WebSocketExecutor = TungsteniteExecutor> {
     pub(super) grpc_method: Option<GrpcMethodInfo>,
     pub(super) trpc_procedure: String,
     pub(super) trpc_params_editor: Entity<CodeEditor>,
+    pub(super) trpc_batch_calls: Vec<TrpcBatchCall>,
+    pub(super) trpc_selected_batch_idx: Option<usize>,
+    pub(super) trpc_batch_params_editor: Entity<CodeEditor>,
     pub(super) sio_state: SioConnectionState,
     pub(super) sio_messages: SioRingBuffer,
     pub(super) sio_namespace: String,

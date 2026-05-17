@@ -255,7 +255,13 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                                         }
                                     }
                                     RequestMode::Grpc => this.send_grpc_request(cx),
-                                    RequestMode::Trpc => this.send_trpc_request(cx),
+                                    RequestMode::Trpc => {
+                                        if this.active_tab == 4 {
+                                            this.send_trpc_batch_request(cx);
+                                        } else {
+                                            this.send_trpc_request(cx);
+                                        }
+                                    }
                                 }
                             }))
                             .child(send_label)

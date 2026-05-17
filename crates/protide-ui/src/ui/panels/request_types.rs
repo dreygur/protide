@@ -51,8 +51,17 @@ pub enum EditTarget {
     GrpcMetaKey(usize),
     GrpcMetaValue(usize),
     TrpcProcedure,
+    TrpcBatchProcedure(usize),
     SioNamespace,
     SioEventName,
+}
+
+/// A single procedure call in a tRPC batch request
+#[derive(Clone, Default)]
+pub struct TrpcBatchCall {
+    pub procedure: String,
+    pub params: String,
+    pub enabled: bool,
 }
 
 /// Authentication type

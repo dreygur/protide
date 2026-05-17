@@ -57,6 +57,12 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                 .with_language(Language::Json)
                 .with_line_numbers(true)
         });
+        let trpc_batch_params_editor = cx.new(|cx| {
+            CodeEditor::new(cx)
+                .with_content("{}")
+                .with_language(Language::Json)
+                .with_line_numbers(true)
+        });
         let sio_payload_editor = cx.new(|cx| {
             CodeEditor::new(cx)
                 .with_content("{}")
@@ -163,6 +169,9 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             grpc_method: None,
             trpc_procedure: String::new(),
             trpc_params_editor,
+            trpc_batch_calls: vec![TrpcBatchCall { enabled: true, ..Default::default() }],
+            trpc_selected_batch_idx: None,
+            trpc_batch_params_editor,
             sio_state: SioConnectionState::Disconnected,
             sio_messages: SioRingBuffer::default(),
             sio_namespace: "/".to_string(),

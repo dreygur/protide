@@ -19,7 +19,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             RequestMode::WebSocket => &["Messages", "Headers"],
             RequestMode::SocketIo => &["Events", "Headers"],
             RequestMode::Grpc => &["Message", "Metadata", "Proto"],
-            RequestMode::Trpc => &["Procedure", "Parameters", "Headers", "Auth"],
+            RequestMode::Trpc => &["Procedure", "Parameters", "Headers", "Auth", "Batch"],
             RequestMode::Http => &["Params", "Headers", "Body", "Auth", "Scripts"],
         };
         let active_tab = self.active_tab;
@@ -42,7 +42,11 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                     RequestMode::WebSocket => if i == 1 { header_count } else { 0 },
                     RequestMode::SocketIo => if i == 1 { header_count } else { 0 },
                     RequestMode::Grpc => if i == 1 { header_count } else { 0 },
-                    RequestMode::Trpc => if i == 2 { header_count } else { 0 },
+                    RequestMode::Trpc => match i {
+                        2 => header_count,
+                        4 => self.trpc_batch_calls.iter().filter(|c| c.enabled && !c.procedure.is_empty()).count(),
+                        _ => 0,
+                    },
                     RequestMode::Http => match i {
                         0 => param_count,
                         1 => header_count,
@@ -147,6 +151,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                     1 => self.render_trpc_parameters_tab(cx),
                     2 => self.render_headers_tab(cx),
                     3 => self.render_auth_tab(cx),
+                    4 => self.render_trpc_batch_tab(cx),
                     _ => div().into_any_element(),
                 }
             }

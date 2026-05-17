@@ -108,6 +108,79 @@ pub fn execute_trpc(
     Ok((formatted, elapsed, status))
 }
 
+/// A single call in a tRPC batch request
+pub struct BatchCall {
+    pub procedure: String,
+    pub params: String,
+}
+
+/// Execute multiple tRPC calls in a single batch HTTP request (tRPC v11 native batch format).
+///
+/// Sends `POST {base}/{proc0},{proc1}?batch=1` with body `{"0":{"json":p0},"1":{"json":p1},...}`.
+///
+/// # Returns
+/// Result containing (response_body, elapsed_time, status_code) or error string
+pub fn execute_trpc_batch(
+    base_url: &str,
+    calls: &[BatchCall],
+    headers: Vec<(String, String)>,
+) -> Result<(String, Duration, u16), String> {
+    if calls.is_empty() {
+        return Err("No procedures in batch".to_string());
+    }
+
+    let start = std::time::Instant::now();
+
+    let procedures: Vec<&str> = calls.iter().map(|c| c.procedure.as_str()).collect();
+    let url = format!("{}/{}?batch=1", base_url, procedures.join(","));
+
+    let mut body = serde_json::Map::new();
+    for (i, call) in calls.iter().enumerate() {
+        let params: serde_json::Value = serde_json::from_str(&call.params)
+            .unwrap_or(serde_json::Value::Null);
+        body.insert(i.to_string(), serde_json::json!({"json": params}));
+    }
+
+    let client = reqwest::blocking::Client::builder()
+        .timeout(Duration::from_secs(30))
+        .build()
+        .map_err(|e| format!("Failed to build HTTP client: {}", e))?;
+
+    let mut req = client
+        .post(&url)
+        .header("Content-Type", "application/json")
+        .json(&serde_json::Value::Object(body));
+
+    for (key, value) in headers {
+        req = req.header(key, value);
+    }
+
+    let response = req.send()
+        .map_err(|e| format!("Request failed: {}", e))?;
+
+    let elapsed = start.elapsed();
+    let status = response.status().as_u16();
+    let body_text = response.text()
+        .map_err(|e| format!("Failed to read response: {}", e))?;
+
+    let response_json: serde_json::Value = serde_json::from_str(&body_text)
+        .map_err(|e| format!("Invalid JSON response: {}", e))?;
+
+    // Report the first error found in the batch response array
+    if let Some(arr) = response_json.as_array() {
+        for (i, item) in arr.iter().enumerate() {
+            if let Some(error) = item.get("error") {
+                let code = error.get("code").and_then(|c| c.as_i64()).unwrap_or(-1);
+                let message = error.get("message").and_then(|m| m.as_str()).unwrap_or("Unknown error");
+                return Err(format!("tRPC batch error in call {} (code {}): {}", i, code, message));
+            }
+        }
+    }
+
+    let formatted = serde_json::to_string_pretty(&response_json).unwrap_or(body_text);
+    Ok((formatted, elapsed, status))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

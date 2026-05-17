@@ -159,7 +159,7 @@ cargo test                       # 190 tests total
 ### Phase 7: tRPC Support
 - ✅ Endpoint configuration
 - ✅ Query/mutation procedures
-- ⚠️ No tRPC v11 batch support yet
+- ✅ tRPC v11 native batch support (POST {base}/{p1},{p2}?batch=1)
 
 ### Phase 13: API Documentation
 - ✅ Markdown export
