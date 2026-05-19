@@ -2,12 +2,13 @@
 
 ## Project Overview
 Native desktop API testing tool built with Rust + GPUI (Zed's GPU-accelerated UI framework).
-Supports HTTP, GraphQL, WebSocket, and gRPC protocols.
+Supports HTTP, GraphQL, WebSocket, gRPC, tRPC, and Socket.IO protocols.
 
-## Current State (Jan 2025)
-**Progress: ~90% of full plan (Phases 1-6, 8-12 complete)**
+## Current State (May 2026)
+**Progress: All original phases complete + extras (P2P collab, MCP server)**
 
 ### Completed Features
+
 **Core HTTP Client**
 - Full HTTP client with GET/POST/PUT/PATCH/DELETE
 - URL input with method selector dropdown
@@ -15,147 +16,161 @@ Supports HTTP, GraphQL, WebSocket, and gRPC protocols.
 - Query params editor (auto-syncs with URL)
 - Body editor (JSON, Raw, Form types with file uploads)
 - Authentication (Bearer, Basic, API Key in header/query)
-- Response viewer with JSON syntax highlighting
+- Response viewer with JSON syntax highlighting + collapsible tree
 - Request timing and size metrics
 
 **Protocol Support**
-- GraphQL mode with query/variables editors and syntax highlighting
-- WebSocket mode with connect/disconnect, message sending, and message history
-- gRPC mode with proto file loading, service/method selection, and metadata
-- Mode toggle (HTTP/GraphQL/WS/gRPC)
+- GraphQL: query/variables editors, syntax highlighting
+- WebSocket: connect/disconnect, message sending, history, autoscroll
+- Socket.IO: full execution with event support
+- gRPC: proto loading, service/method selection, metadata, all streaming types
+- tRPC: query/mutation procedures
+- Mode toggle across all protocols
 
 **Collections & Storage**
 - File-based collections (folders = collections, .http files = requests)
-- Environment variables with substitution ({{variable}})
+- Environment variables with substitution (`{{variable}}`)
 - Request history panel
 - Save request to .http file
 
-**Scripting & Testing (Phase 8)**
+**Scripting & Testing**
 - JavaScript engine (rquickjs) for pre/post-request scripts
-- Test assertions with expect() API
+- Test assertions with `expect()` API
 
-**Import/Export (Phase 10)**
+**Import/Export**
 - cURL command import
 - Postman Collection import
+- Bruno .bru file import
+- OpenAPI/Swagger import
+- Markdown export (`protide-core/src/export/markdown.rs`)
 
-**Request Chaining (Phase 11)**
+**Request Chaining**
 - JSONPath extraction from responses
-- Variable setting via @set annotations
+- Variable setting via `@set` annotations
 
-**Code Generation (Phase 12)**
-- Generate cURL, Python, JavaScript, Go, Rust code
+**Code Generation**
+- cURL, Python, JavaScript, Go, Rust
 
-**Mock Server (Phase 9)**
+**Mock Server**
 - Local HTTP server for mocking responses
 - Route configuration UI
+- Record/proxy mode: forwards requests to target, captures responses as static routes
+
+**Collaboration (Local-First Sync)**
+- CRDT-based state (LWW registers, Lamport timestamps)
+- P2P via libp2p (mDNS + Gossipsub)
+- BYOB file sync (Dropbox/Drive/GitHub)
+- UDP live probe for LAN presence
+- PAKE secure pairing
+- Presence panel UI
+
+**Tooling**
+- LSP server (`protide-lsp`): hover, completion, semantic tokens for .http files
+- MCP server (`protide-mcp`): JSON-RPC 2.0 over stdio, exposes `send_request` tool
+- Console panel: structured log bus
 
 **UI/UX**
 - System theme support (light/dark)
 - Ubuntu Mono font
+- JSON tree with drag-select
+- ActionRow component with scroll-safe hover-revealed actions
 
 ### Project Structure
 ```
-api-dash/
-├── Cargo.toml                      # Workspace manifest
+protide/
+├── Cargo.toml                          # Workspace manifest
 ├── crates/
-│   ├── api-dash/                   # Main desktop app
+│   ├── protide/                        # Binary entry point (main.rs only)
+│   ├── protide-ui/                     # All GPUI UI code
 │   │   └── src/
-│   │       ├── main.rs             # Entry point
-│   │       ├── app.rs              # App state
-│   │       ├── theme.rs            # Theme colors
-│   │       ├── workspace/mod.rs    # Workspace management
-│   │       ├── models/
-│   │       │   ├── mod.rs
-│   │       │   ├── environment.rs  # Environment variables
-│   │       │   └── request.rs      # Request model
-│   │       ├── protocols/
-│   │       │   ├── mod.rs
-│   │       │   └── http.rs         # Async HTTP client (unused, blocking used instead)
+│   │       ├── lib.rs
+│   │       ├── theme.rs
+│   │       ├── prefs.rs
+│   │       ├── session.rs
+│   │       ├── last_paths.rs
 │   │       └── ui/
-│   │           ├── mod.rs
-│   │           ├── main_window.rs  # Main window layout
+│   │           ├── main_window/        # Main window layout (split into 9 files)
 │   │           ├── components/
-│   │           │   ├── mod.rs
-│   │           │   └── text_input.rs   # Text input with selection
+│   │           │   ├── action_row.rs
+│   │           │   ├── code_editor/    # Syntax-highlighted editor
+│   │           │   ├── icons.rs
+│   │           │   ├── modal.rs
+│   │           │   ├── selectable_text.rs
+│   │           │   ├── text_input.rs
+│   │           │   └── ui_helpers.rs
 │   │           └── panels/
-│   │               ├── mod.rs
-│   │               ├── explorer.rs     # File tree + environments (~1900 lines)
-│   │               ├── history.rs      # Request history
-│   │               ├── response.rs     # Response viewer (~1200 lines)
-│   │               ├── request_types.rs    # Shared types
-│   │               ├── request_utils.rs    # URL encode/decode, base64
-│   │               └── request/
-│   │                   ├── mod.rs      # Core logic (~1500 lines)
-│   │                   ├── render.rs   # UI rendering (~1800 lines)
-│   │                   └── tests.rs    # Unit tests
-│   └── http-parser/                # .http file parser (reusable crate)
+│   │               ├── console.rs      # Log bus panel
+│   │               ├── docs/           # API documentation viewer
+│   │               ├── explorer/       # File tree + environments (split into ~15 files)
+│   │               ├── history.rs
+│   │               ├── mock_server/    # Mock server panel (split into 3 files)
+│   │               ├── presence.rs     # Collaboration presence UI
+│   │               ├── request/        # Request panel (split into ~40 files)
+│   │               ├── request_types.rs
+│   │               ├── request_utils.rs
+│   │               └── response/       # Response panel (split into ~12 files)
+│   ├── protide-core/                   # Business logic (no UI)
+│   │   └── src/
+│   │       ├── chaining/               # JSONPath extraction, @set
+│   │       ├── codegen/                # curl/python/js/go/rust generators
+│   │       ├── execution/              # http, ws, sio executors
+│   │       ├── export/                 # Markdown export
+│   │       ├── import/                 # curl, postman, bruno, openapi
+│   │       ├── mock_server/            # Local HTTP mock server
+│   │       ├── models/                 # Request, Environment models
+│   │       ├── protocols/              # grpc, trpc protocol logic
+│   │       ├── scripting/              # rquickjs JS engine
+│   │       ├── sync/                   # CRDT, P2P, PAKE, file sync
+│   │       └── workspace/
+│   ├── protide-lsp/                    # LSP server for .http files (tower-lsp)
+│   ├── protide-mcp/                    # MCP server (JSON-RPC 2.0 over stdio)
+│   └── http-parser/                    # .http file parser (reusable crate)
 │       └── src/
-│           ├── lib.rs
-│           ├── ast.rs              # AST types
-│           ├── lexer.rs            # Tokenizer
-│           └── parser.rs           # Parser
+│           ├── ast.rs
+│           ├── lexer.rs
+│           └── parser.rs
 ```
 
 ### Key Technical Decisions
-1. **HTTP requests**: Using `reqwest::blocking::Client` in background thread (not async) because GPUI doesn't play well with tokio async in UI code
+1. **HTTP requests**: `reqwest::blocking::Client` in background thread — GPUI doesn't play well with tokio async in UI code
 2. **File format**: Extended .http file format with annotations (`# @name`, `# @protocol`, etc.)
 3. **No database**: File-system based storage (collections = folders)
-4. **UI framework**: GPUI from Zed - GPU-accelerated, immediate mode style
+4. **UI framework**: GPUI from Zed — GPU-accelerated, immediate mode style
+5. **Collaboration**: Local-first CRDT, no central server required
+6. **MCP**: JSON-RPC 2.0 over stdio — lets AI tools (Claude, etc.) drive requests
 
 ### GPUI Reference
-- **Zed editor is the authoritative GPUI example source.** GPUI was invented and built by Zed. Always look at Zed's source code for correct GPUI patterns, event handling, rendering APIs, and idioms before guessing or inventing approaches.
+- **Zed editor is the authoritative GPUI example source.** Always look at Zed's source code for correct GPUI patterns before guessing.
 - Zed source: `~/.cargo/git/checkouts/zed-a70e2ad075855582/db5a9be/crates/`
-- **Rule: Before writing or fixing any GPUI layout/UI code, search Zed's source first.** Never guess, never trial-and-error. Find the canonical pattern in Zed, then apply it.
+- **Rule: Before writing or fixing any GPUI layout/UI code, search Zed's source first.**
 
 ### GPUI Gotchas
-- `overflow_scroll()` requires `.id()` on the element — but prefer custom scroll with `on_scroll_wheel` + viewport virtualization for large content (avoid rendering thousands of nodes)
-- `overflow_scroll()` must have explicit dimensions (`w_full()` + `flex_1()`, or `size_full()`) — without `w_full()`, percentage-based child widths don't resolve to the panel width, breaking `ml_auto()`, `w_full()` on children, and `absolute().right_0()` alignment
-- No `overflow_y_scroll()` or `overflow_x_scroll()` - only `overflow_scroll()`
-- Theme colors accessed via `theme::current(cx).colors.*`
-- Method colors: `theme.method_color("GET")` returns colored Hsla
-- `ScrollWheelEvent` / `on_scroll_wheel` available in `gpui::interactive`
+- `overflow_scroll()` requires `.id()` on the element
+- `overflow_scroll()` must have explicit dimensions (`w_full()` + `flex_1()`, or `size_full()`) — without `w_full()`, percentage-based child widths don't resolve, breaking `ml_auto()`, `w_full()` on children, and `absolute().right_0()` alignment
+- No `overflow_y_scroll()` or `overflow_x_scroll()` — only `overflow_scroll()`
+- Theme colors: `theme::current(cx).colors.*`
+- Method colors: `theme.method_color("GET")` returns `Hsla`
+- `ScrollWheelEvent` / `on_scroll_wheel` in `gpui::interactive`
 - Render one div per logical token/span — never one div per character (massive layout cost)
+- Spacer divs cause dark rendering artifacts — avoid them
 
 ### Running the App
 ```bash
-cargo run --release   # Release build recommended for performance
-cargo test            # 146 tests total
+cargo run --release   # Release build recommended
+cargo test            # ~190 tests total (19 http-parser + 93 protide-core + 78 protide-ui)
 ```
 
 ## Coding Rules
 
 - **Minimum code**: Write the least code that correctly solves the problem. No extra abstraction, no speculative generality, no padding.
-- **DRY**: Never write the same logic twice. Extract shared logic into functions, constants, or type aliases immediately — don't wait for a third occurrence.
-- **Reuse first**: Before writing anything new, look for an existing function, constant, or component that already does it. Prefer extending what exists over adding new things.
-- **No dead code**: Remove unused functions, fields, imports, and variables. Don't leave things "just in case."
+- **DRY**: Never write the same logic twice. Extract shared logic into functions, constants, or type aliases immediately.
+- **Reuse first**: Before writing anything new, look for an existing function, constant, or component that already does it.
+- **No dead code**: Remove unused functions, fields, imports, and variables.
+- **File size**: Max 333 lines per file (tests excluded). Split before exceeding.
 
-## Remaining Phases
+## Remaining / Future Work
 
-### Phase 6: gRPC Support
-- ✅ Proto file loading and parsing (protox + prost-reflect)
-- ✅ Service/method selection UI
-- ✅ Metadata editor
-- ✅ Unary execution (reqwest blocking)
-- ✅ Server streaming (async reqwest)
-- ✅ Client streaming
-- ✅ Bidirectional streaming
-- ✅ Streaming type detection & UI badge
-
-### Phase 7: tRPC Support
-- Endpoint configuration
-- Query/mutation procedures
-
-### Phase 13: API Documentation
-- Markdown/HTML export
-- Interactive explorer
-
-### Phase 14: Language Server (LSP)
-- Syntax highlighting for .http files
-- Autocomplete
-- VS Code/Zed extensions
-
-### Future Enhancements
-- Socket.IO support (extend WebSocket mode)
-- Bruno .bru file import
-- OpenAPI/Swagger import
-- Mock server record/proxy mode
+- VS Code / Zed extension packaging for LSP
+- Bruno import completeness (verify edge cases)
+- OpenAPI import completeness
+- Socket.IO: advanced namespaces/rooms UI

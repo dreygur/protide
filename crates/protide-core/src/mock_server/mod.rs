@@ -1,62 +1,56 @@
 //! Mock HTTP server for API testing
-//!
-//! Provides a local HTTP server that can be configured with mock responses.
 
 mod routes;
+mod server;
 
 pub use routes::{MockRoute, MockResponse, HttpMethod};
 
 use std::net::SocketAddr;
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, Mutex, RwLock};
 use tokio::sync::oneshot;
 
-/// Mock server state
 #[derive(Debug)]
 pub struct MockServer {
-    /// Configured routes
     routes: Arc<RwLock<Vec<MockRoute>>>,
-    /// Server shutdown signal
     shutdown_tx: Option<oneshot::Sender<()>>,
-    /// Server address when running
     addr: Option<SocketAddr>,
-    /// Port to run on
     port: u16,
+    record_mode: Arc<std::sync::atomic::AtomicBool>,
+    record_target: Option<String>,
+    recorded_routes: Arc<Mutex<Vec<MockRoute>>>,
 }
 
 impl MockServer {
-    /// Create a new mock server
     pub fn new(port: u16) -> Self {
         Self {
             routes: Arc::new(RwLock::new(Vec::new())),
             shutdown_tx: None,
             addr: None,
             port,
+            record_mode: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            record_target: None,
+            recorded_routes: Arc::new(Mutex::new(Vec::new())),
         }
     }
 
-    /// Check if server is running
     pub fn is_running(&self) -> bool {
         self.shutdown_tx.is_some()
     }
 
-    /// Get the server address
     pub fn addr(&self) -> Option<SocketAddr> {
         self.addr
     }
 
-    /// Get the base URL
     pub fn base_url(&self) -> Option<String> {
         self.addr.map(|addr| format!("http://{}", addr))
     }
 
-    /// Add a route
     pub fn add_route(&mut self, route: MockRoute) {
         if let Ok(mut routes) = self.routes.write() {
             routes.push(route);
         }
     }
 
-    /// Remove a route by index
     pub fn remove_route(&mut self, index: usize) {
         if let Ok(mut routes) = self.routes.write()
             && index < routes.len() {
@@ -64,12 +58,10 @@ impl MockServer {
             }
     }
 
-    /// Get all routes
     pub fn routes(&self) -> Vec<MockRoute> {
         self.routes.read().map(|r| r.clone()).unwrap_or_default()
     }
 
-    /// Update a route
     pub fn update_route(&mut self, index: usize, route: MockRoute) {
         if let Ok(mut routes) = self.routes.write()
             && index < routes.len() {
@@ -77,25 +69,42 @@ impl MockServer {
             }
     }
 
-    /// Clear all routes
     pub fn clear_routes(&mut self) {
         if let Ok(mut routes) = self.routes.write() {
             routes.clear();
         }
     }
 
-    /// Start the server
+    pub fn set_record_mode(&mut self, enabled: bool, target: Option<String>) {
+        self.record_mode.store(enabled, std::sync::atomic::Ordering::Relaxed);
+        self.record_target = target;
+    }
+
+    pub fn is_recording(&self) -> bool {
+        self.record_mode.load(std::sync::atomic::Ordering::Relaxed)
+    }
+
+    pub fn record_target(&self) -> Option<&str> {
+        self.record_target.as_deref()
+    }
+
+    pub fn drain_recorded(&mut self) -> Vec<MockRoute> {
+        self.recorded_routes.lock().map(|mut r| std::mem::take(&mut *r)).unwrap_or_default()
+    }
+
     pub fn start(&mut self) -> Result<SocketAddr, String> {
         if self.is_running() {
             return Err("Server already running".to_string());
         }
 
         let routes = self.routes.clone();
+        let record_mode = self.record_mode.clone();
+        let record_target = self.record_target.clone();
+        let recorded_routes = self.recorded_routes.clone();
         let port = self.port;
         let (shutdown_tx, shutdown_rx) = oneshot::channel();
         let (addr_tx, addr_rx) = std::sync::mpsc::channel();
 
-        // Spawn server in background thread with its own tokio runtime
         std::thread::spawn(move || {
             let rt = tokio::runtime::Builder::new_current_thread()
                 .enable_all()
@@ -103,7 +112,7 @@ impl MockServer {
                 .expect("Failed to create tokio runtime");
 
             rt.block_on(async move {
-                let app = create_router(routes);
+                let app = server::create_router(routes, record_mode, record_target, recorded_routes);
                 let addr = SocketAddr::from(([127, 0, 0, 1], port));
 
                 let listener = match tokio::net::TcpListener::bind(addr).await {
@@ -126,7 +135,6 @@ impl MockServer {
             });
         });
 
-        // Wait for server to start
         match addr_rx.recv_timeout(std::time::Duration::from_secs(5)) {
             Ok(Ok(addr)) => {
                 self.shutdown_tx = Some(shutdown_tx);
@@ -138,7 +146,6 @@ impl MockServer {
         }
     }
 
-    /// Stop the server
     pub fn stop(&mut self) {
         if let Some(tx) = self.shutdown_tx.take() {
             let _ = tx.send(());
@@ -156,139 +163,6 @@ impl Default for MockServer {
 impl Drop for MockServer {
     fn drop(&mut self) {
         self.stop();
-    }
-}
-
-/// Create the axum router
-fn create_router(routes: Arc<RwLock<Vec<MockRoute>>>) -> axum::Router {
-    use axum::{
-        body::Body,
-        extract::State,
-        http::{Request, StatusCode},
-        response::IntoResponse,
-        routing::any,
-    };
-
-    async fn handler(
-        State(routes): State<Arc<RwLock<Vec<MockRoute>>>>,
-        req: Request<Body>,
-    ) -> impl IntoResponse {
-        let method = req.method().to_string();
-        let path = req.uri().path().to_string();
-        let query = req.uri().query().unwrap_or("").to_string();
-
-        // Collect request headers for proxy forwarding
-        let req_headers: Vec<(String, String)> = req
-            .headers()
-            .iter()
-            .filter_map(|(k, v)| {
-                // Skip hop-by-hop headers
-                let key = k.as_str().to_lowercase();
-                if matches!(key.as_str(), "host" | "connection" | "transfer-encoding") {
-                    return None;
-                }
-                Some((k.to_string(), v.to_str().unwrap_or("").to_string()))
-            })
-            .collect();
-
-        // Read request body for proxy forwarding
-        let body_bytes = axum::body::to_bytes(req.into_body(), 16 * 1024 * 1024)
-            .await
-            .unwrap_or_default();
-
-        // Find matching route
-        let matched = {
-            let routes_guard = routes.read().unwrap();
-            routes_guard
-                .iter()
-                .find(|r| r.matches(&method, &path))
-                .cloned()
-        };
-
-        if let Some(route) = matched {
-            // Proxy mode: forward to target
-            if let Some(ref target) = route.proxy_target {
-                let full_url = if query.is_empty() {
-                    format!("{}{}", target.trim_end_matches('/'), path)
-                } else {
-                    format!("{}{}{}", target.trim_end_matches('/'), path, query)
-                };
-
-                return proxy_request(&method, &full_url, req_headers, body_bytes.to_vec())
-                    .await
-                    .into_response();
-            }
-
-            // Static response
-            if route.response.delay_ms > 0 {
-                tokio::time::sleep(std::time::Duration::from_millis(route.response.delay_ms)).await;
-            }
-
-            let response = &route.response;
-            let mut builder = axum::http::Response::builder().status(response.status);
-            for (key, value) in &response.headers {
-                builder = builder.header(key, value);
-            }
-            return builder
-                .body(Body::from(response.body.clone()))
-                .unwrap()
-                .into_response();
-        }
-
-        (StatusCode::NOT_FOUND, "No matching mock route").into_response()
-    }
-
-    axum::Router::new()
-        .route("/{*path}", any(handler))
-        .route("/", any(handler))
-        .with_state(routes)
-}
-
-/// Forward a request to `url` and return the response as an axum Response.
-async fn proxy_request(
-    method: &str,
-    url: &str,
-    headers: Vec<(String, String)>,
-    body: Vec<u8>,
-) -> axum::response::Response {
-    use axum::{body::Body, http::StatusCode};
-
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(30))
-        .build()
-        .unwrap_or_default();
-
-    let req_method = reqwest::Method::from_bytes(method.as_bytes())
-        .unwrap_or(reqwest::Method::GET);
-
-    let mut req = client.request(req_method, url).body(body);
-    for (k, v) in &headers {
-        req = req.header(k.as_str(), v.as_str());
-    }
-
-    match req.send().await {
-        Ok(resp) => {
-            let status = resp.status().as_u16();
-            let mut builder = axum::http::Response::builder().status(status);
-            for (k, v) in resp.headers() {
-                if let Ok(val) = v.to_str() {
-                    builder = builder.header(k.as_str(), val);
-                }
-            }
-            let body_bytes = resp.bytes().await.unwrap_or_default();
-            builder
-                .body(Body::from(body_bytes))
-                .unwrap_or_else(|_| {
-                    axum::http::Response::builder()
-                        .status(502)
-                        .body(Body::from("Proxy response build error"))
-                        .unwrap()
-                })
-        }
-        Err(e) => axum::http::Response::builder()
-            .status(StatusCode::BAD_GATEWAY)
-            .body(Body::from(format!("Proxy error: {}", e)))
-            .unwrap(),
     }
 }
 
@@ -316,14 +190,13 @@ mod tests {
 
     #[test]
     fn test_server_start_stop() {
-        let mut server = MockServer::new(0); // Use port 0 for random available port
+        let mut server = MockServer::new(0);
         server.add_route(MockRoute::new(
             HttpMethod::Get,
             "/health",
             MockResponse::ok(r#"{"status":"ok"}"#).with_header("Content-Type", "application/json"),
         ));
 
-        // Start server
         let result = server.start();
         assert!(result.is_ok());
         assert!(server.is_running());
@@ -331,7 +204,6 @@ mod tests {
         let addr = result.unwrap();
         assert!(addr.port() > 0);
 
-        // Stop server
         server.stop();
         assert!(!server.is_running());
     }
