@@ -78,9 +78,11 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
     pub(super) fn edit_selected_text(&self) -> String {
         if let Some(target) = self.active_edit {
             let text = self.get_edit_text(target);
-            let start = self.edit_selection.start.min(self.edit_selection.end);
-            let end = self.edit_selection.start.max(self.edit_selection.end);
-            text[start..end].to_string()
+            let char_start = self.edit_selection.start.min(self.edit_selection.end);
+            let char_end = self.edit_selection.start.max(self.edit_selection.end);
+            let byte_start = char_to_byte_offset(text, char_start);
+            let byte_end = char_to_byte_offset(text, char_end);
+            text[byte_start..byte_end].to_string()
         } else { String::new() }
     }
 

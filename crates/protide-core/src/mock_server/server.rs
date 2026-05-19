@@ -110,7 +110,9 @@ pub(super) fn create_router(
             for (key, value) in &response.headers {
                 builder = builder.header(key, value);
             }
-            return builder.body(Body::from(response.body.clone())).unwrap().into_response();
+            return builder.body(Body::from(response.body.clone()))
+                .unwrap_or_else(|_| axum::http::Response::builder().status(500).body(Body::from("invalid mock route headers")).unwrap())
+                .into_response();
         }
 
         (StatusCode::NOT_FOUND, "No matching mock route").into_response()

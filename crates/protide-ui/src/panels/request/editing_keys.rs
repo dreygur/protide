@@ -163,25 +163,29 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
 
     pub(super) fn body_cursor_up(&self) -> usize {
         let text = &self.body;
-        let cursor = self.edit_cursor();
-        if text.is_empty() || cursor == 0 { return 0; }
-        let line_start = text[..cursor].rfind('\n').map(|i| i + 1).unwrap_or(0);
-        if line_start == 0 { return 0; }
-        let col = cursor - line_start;
-        let prev_end = line_start - 1;
-        let prev_start = text[..prev_end].rfind('\n').map(|i| i + 1).unwrap_or(0);
-        prev_start + col.min(prev_end - prev_start)
+        let cursor_char = self.edit_cursor();
+        if text.is_empty() || cursor_char == 0 { return 0; }
+        let cursor_byte = char_to_byte_offset(text, cursor_char);
+        let line_start_byte = text[..cursor_byte].rfind('\n').map(|i| i + 1).unwrap_or(0);
+        if line_start_byte == 0 { return 0; }
+        let col = text[line_start_byte..cursor_byte].chars().count();
+        let prev_end_byte = line_start_byte - 1;
+        let prev_start_byte = text[..prev_end_byte].rfind('\n').map(|i| i + 1).unwrap_or(0);
+        let prev_line_len = text[prev_start_byte..prev_end_byte].chars().count();
+        text[..prev_start_byte].chars().count() + col.min(prev_line_len)
     }
 
     pub(super) fn body_cursor_down(&self) -> usize {
         let text = &self.body;
-        let cursor = self.edit_cursor();
+        let cursor_char = self.edit_cursor();
         if text.is_empty() { return 0; }
-        let line_start = text[..cursor].rfind('\n').map(|i| i + 1).unwrap_or(0);
-        let col = cursor - line_start;
-        let Some(nl) = text[cursor..].find('\n') else { return text.len(); };
-        let next_start = cursor + nl + 1;
-        let next_end = text[next_start..].find('\n').map(|i| next_start + i).unwrap_or(text.len());
-        next_start + col.min(next_end - next_start)
+        let cursor_byte = char_to_byte_offset(text, cursor_char);
+        let line_start_byte = text[..cursor_byte].rfind('\n').map(|i| i + 1).unwrap_or(0);
+        let col = text[line_start_byte..cursor_byte].chars().count();
+        let Some(nl) = text[cursor_byte..].find('\n') else { return text.chars().count(); };
+        let next_start_byte = cursor_byte + nl + 1;
+        let next_end_byte = text[next_start_byte..].find('\n').map(|i| next_start_byte + i).unwrap_or(text.len());
+        let next_line_len = text[next_start_byte..next_end_byte].chars().count();
+        text[..next_start_byte].chars().count() + col.min(next_line_len)
     }
 }

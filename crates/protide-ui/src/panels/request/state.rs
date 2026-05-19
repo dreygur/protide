@@ -36,7 +36,9 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             return;
         }
         self.request_mode = mode;
-        self.active_tab = 0; // Reset to first tab
+        self.active_tab = 0;
+        self.active_edit = None;
+        self.edit_selection = 0..0;
         match mode {
             RequestMode::GraphQL => {
                 self.method = HttpMethod::Post;
