@@ -178,8 +178,10 @@ fn parse_curl_args(input: &str) -> Result<Vec<String>, String> {
 
     for ch in input.chars() {
         if escape_next {
-            current.push(ch);
             escape_next = false;
+            if ch != '\n' {
+                current.push(ch);
+            }
             continue;
         }
 
@@ -303,5 +305,16 @@ mod tests {
         let args = parse_curl_args(r#"-H "Content-Type: application/json" -d '{"key": "value"}' https://example.com"#).unwrap();
         assert!(args.contains(&"Content-Type: application/json".to_string()));
         assert!(args.contains(&r#"{"key": "value"}"#.to_string()));
+    }
+
+    #[test]
+    fn test_multiline_backslash_continuation() {
+        let cmd = "curl -X POST \\\n  -H \"Content-Type: application/json\" \\\n  https://api.example.com/users";
+        let result = parse_curl(cmd).unwrap();
+        assert_eq!(result.requests.len(), 1);
+        let req = &result.requests[0];
+        assert_eq!(req.method, HttpMethod::Post);
+        assert_eq!(req.url, "https://api.example.com/users");
+        assert!(req.headers.iter().any(|h| h.key == "Content-Type"));
     }
 }
