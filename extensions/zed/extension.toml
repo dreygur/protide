@@ -1,0 +1,11 @@
+id = "protide-http"
+name = "Protide HTTP"
+description = "Language support for .http files (hover, completion, diagnostics, formatting, and more) via protide-lsp."
+version = "0.1.0"
+schema_version = 1
+authors = ["dreygur"]
+repository = "https://github.com/dreygur/protide"
+
+[language_servers.protide-lsp]
+name = "protide-lsp"
+languages = ["HTTP"]
