@@ -52,7 +52,7 @@ jobs:
         run: cargo build --release --locked
 
       - name: Install fpm
-        run: gem install fpm --no-document
+        run: sudo gem install fpm --no-document
 
       - name: Package
         run: |
