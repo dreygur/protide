@@ -43,10 +43,18 @@ impl ProtideExtension {
         }
 
         // 4. Download from GitHub releases
-        let release = zed::latest_github_release(
+        let release = match zed::latest_github_release(
             GITHUB_REPO,
             GithubReleaseOptions { require_assets: true, pre_release: false },
-        )?;
+        ) {
+            Ok(r) => r,
+            Err(_) => {
+                return Err(format!(
+                    "protide-lsp not found on PATH and no GitHub release available. \
+                     Install with: cargo install --git https://github.com/{GITHUB_REPO} protide-lsp"
+                ));
+            }
+        };
 
         let (os, arch) = zed::current_platform();
         let target = match (os, arch) {
