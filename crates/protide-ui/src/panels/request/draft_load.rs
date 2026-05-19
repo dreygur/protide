@@ -107,7 +107,11 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                 self.url_selection = len..len;
             }
             Protocol::Grpc => {
-                let server = req.url.splitn(4, '/').take(3).collect::<Vec<_>>().join("/");
+                // Extract scheme://host[:port] — everything up to the 3rd '/' (or whole URL if no path)
+                let server = {
+                    let parts: Vec<&str> = req.url.splitn(4, '/').collect();
+                    if parts.len() >= 3 { parts[..3].join("/") } else { req.url.clone() }
+                };
                 self.url = server;
                 let len = self.url.chars().count();
                 self.url_selection = len..len;
@@ -120,7 +124,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                 self.method = HttpMethod::Post;
                 let url = req.url.as_str();
                 if let Some(idx) = url.find("/trpc/") {
-                    self.url = url[..idx + 5].to_string();
+                    self.url = url[..idx + 6].to_string();
                     self.trpc_procedure = url[idx + 6..].to_string();
                 } else {
                     self.url = url.to_string();

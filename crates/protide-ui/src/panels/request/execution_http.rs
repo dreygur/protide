@@ -134,8 +134,8 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             && !api_key_name.is_empty()
             && !api_key_value.is_empty()
         {
-            if url.contains('?') { format!("{}&{}={}", url, api_key_name, api_key_value) }
-            else { format!("{}?{}={}", url, api_key_name, api_key_value) }
+            if url.contains('?') { format!("{}&{}={}", url, url_encode(&api_key_name), url_encode(&api_key_value)) }
+            else { format!("{}?{}={}", url, url_encode(&api_key_name), url_encode(&api_key_value)) }
         } else {
             url
         };

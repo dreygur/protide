@@ -74,7 +74,8 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
 
                     self.method = method;
                     self.url = request.url;
-                    self.url_selection = self.url.len()..self.url.len();
+                    let len = self.url.chars().count();
+                    self.url_selection = len..len;
 
                     self.headers = request.headers
                         .into_iter()
