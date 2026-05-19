@@ -69,6 +69,13 @@ impl ResponsePanel {
                         if this.json_selecting {
                             this.json_selecting = false;
                             this.copy_json_selection(cx);
+                            // Clear zero-length selections (plain clicks, not drags)
+                            if let Some(sel) = this.json_sel {
+                                if sel.start_row == sel.end_row && sel.start_offset == sel.end_offset {
+                                    this.json_sel = None;
+                                    cx.notify();
+                                }
+                            }
                         }
                     }))
                     .children(rows)

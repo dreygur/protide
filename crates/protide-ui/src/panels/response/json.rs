@@ -114,8 +114,59 @@ impl ResponsePanel {
         let bounds = self.json_tree_bounds?;
         let rel_y = f32::from(ey) - f32::from(bounds.origin.y);
         if rel_y < 0.0 { return None; }
-        let row = (rel_y / ROW_H) as usize;
-        (row < self.json_rows.len()).then_some(row)
+
+        // Perf mode: uniform row heights — simple division.
+        if self.json_rows.len() > WRAP_MODE_MAX_ROWS {
+            let row = (rel_y / ROW_H) as usize;
+            return (row < self.json_rows.len()).then_some(row);
+        }
+
+        // Wrap mode: rows have variable height. Accumulate estimated heights so a
+        // click on the 2nd/3rd visual line of a wrapped row maps to the correct row.
+        let container_w = f32::from(bounds.size.width);
+        let mut y = 0.0f32;
+        for (i, row) in self.json_rows.iter().enumerate() {
+            let h = self.estimate_row_height(row, container_w, i);
+            if rel_y < y + h {
+                return Some(i);
+            }
+            y += h;
+        }
+        self.json_rows.len().checked_sub(1)
+    }
+
+    fn estimate_row_height(&self, row: &JsonRow, container_w: f32, row_i: usize) -> f32 {
+        let available_w = (container_w - GUTTER_W - row.depth as f32 * INDENT_W - CHEVRON_W)
+            .max(JSON_CHAR_W * 10.0);
+        let text_w = match &row.kind {
+            RowKind::Leaf { key, val, .. } => {
+                let kw = key.as_deref().map(|k| (k.len() + 4) as f32 * JSON_CHAR_W).unwrap_or(0.0);
+                let vw = match val {
+                    PrimVal::Str { display, .. } => display.len() as f32 * JSON_CHAR_W,
+                    PrimVal::Num(n) => n.len() as f32 * JSON_CHAR_W,
+                    _ => JSON_CHAR_W * 5.0,
+                };
+                kw + vw
+            }
+            _ => JSON_CHAR_W * 3.0,
+        };
+        let text_lines = (text_w / available_w).ceil().max(1.0);
+        // Expandable strings (> COLLAPSE_CHARS) add a toggle button row.
+        // When expanded, they wrap the full text (already counted above).
+        let btn_extra = match &row.kind {
+            RowKind::Leaf { val: PrimVal::Str { display, .. }, .. }
+                if display.len() > COLLAPSE_CHARS + 3 =>
+            {
+                let visible_lines = if self.expanded_strings.contains(&row_i) {
+                    text_lines
+                } else {
+                    1.0  // collapsed: single truncated line
+                };
+                visible_lines * ROW_H + ROW_H  // content + button
+            }
+            _ => text_lines * ROW_H,
+        };
+        btn_extra
     }
 
     pub(super) fn json_val_char_at_x(&self, ex: Pixels, row_i: usize) -> usize {

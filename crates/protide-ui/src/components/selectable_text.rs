@@ -112,11 +112,15 @@ pub fn selectable_text_element(
         let (s, e) = if start <= end { (start, end) } else { (end, start) };
         let s = s.min(text.len());
         let e = e.min(text.len());
-        base
-            .child(SharedString::from(&text[..s]))
-            .child(div().bg(sel_color).child(SharedString::from(&text[s..e])))
-            .child(SharedString::from(&text[e..]))
-            .into_any_element()
+        if s < e {
+            base
+                .child(SharedString::from(&text[..s]))
+                .child(div().bg(sel_color).child(SharedString::from(&text[s..e])))
+                .child(SharedString::from(&text[e..]))
+                .into_any_element()
+        } else {
+            base.child(text).into_any_element()
+        }
     } else {
         // Common case: no selection — single text node, zero extra allocations.
         base.child(text).into_any_element()
@@ -147,14 +151,16 @@ pub fn render_selectable_json_value(
 
     // Only compute offsets when the selection actually touches this row.
     if let Some((s, e)) = sel_range.and_then(|r| r.offsets_for_row(row_index, text.len())) {
-        // Selection intersects this row: split into before / highlight / after.
-        // before and after are plain SharedString nodes — they inherit text_color
-        // from the parent div, so no per-segment wrapper div is needed.
-        base
-            .child(SharedString::from(&text[..s]))
-            .child(div().bg(sel_color).child(SharedString::from(&text[s..e])))
-            .child(SharedString::from(&text[e..]))
-            .into_any_element()
+        if s < e {
+            // Non-empty selection: split into before / highlight / after.
+            base
+                .child(SharedString::from(&text[..s]))
+                .child(div().bg(sel_color).child(SharedString::from(&text[s..e])))
+                .child(SharedString::from(&text[e..]))
+                .into_any_element()
+        } else {
+            base.child(SharedString::from(text)).into_any_element()
+        }
     } else {
         // Common case: no selection on this row — one allocation, one layout box.
         base.child(SharedString::from(text)).into_any_element()
