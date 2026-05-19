@@ -225,7 +225,7 @@ impl ResponsePanel {
             let text = self.json_row_display_text(i);
             let tl = text.len();
             let chunk = if sr == er {
-                &text[so.min(tl)..eo.min(tl)]
+                &text[so.min(eo).min(tl)..so.max(eo).min(tl)]
             } else if i == sr {
                 &text[so.min(tl)..]
             } else if i == er {

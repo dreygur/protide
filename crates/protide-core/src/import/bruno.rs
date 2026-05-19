@@ -175,6 +175,25 @@ pub fn parse_bruno(content: &str) -> Result<ImportResult, String> {
     Ok(result)
 }
 
+fn count_unquoted_braces(line: &str) -> (i32, i32) {
+    let mut opens = 0i32;
+    let mut closes = 0i32;
+    let mut quote: Option<char> = None;
+    let mut chars = line.chars().peekable();
+    while let Some(c) = chars.next() {
+        match c {
+            '\\' if quote.is_some() => { chars.next(); }
+            '\'' | '"' | '`' => {
+                if quote == Some(c) { quote = None; } else if quote.is_none() { quote = Some(c); }
+            }
+            '{' if quote.is_none() => opens += 1,
+            '}' if quote.is_none() => closes += 1,
+            _ => {}
+        }
+    }
+    (opens, closes)
+}
+
 fn parse_blocks(content: &str) -> Vec<(String, Vec<String>)> {
     let mut blocks: Vec<(String, Vec<String>)> = Vec::new();
     let mut current_name: Option<String> = None;
@@ -195,9 +214,7 @@ fn parse_blocks(content: &str) -> Vec<(String, Vec<String>)> {
                 depth = 1;
             }
         } else {
-            // Count all `{` and `}` on the line to handle JS content correctly.
-            let opens  = line.chars().filter(|&c| c == '{').count() as i32;
-            let closes = line.chars().filter(|&c| c == '}').count() as i32;
+            let (opens, closes) = count_unquoted_braces(line);
             depth += opens - closes;
 
             if depth <= 0 {
