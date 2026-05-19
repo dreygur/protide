@@ -71,6 +71,7 @@ fn main() -> Result<()> {
                     traffic_light_position: None,
                 }),
                 window_decorations: Some(gpui::WindowDecorations::Client),
+                app_id: Some("protide".into()),
                 icon: load_app_icon(),
                 ..Default::default()
             };
