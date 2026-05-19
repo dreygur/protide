@@ -22,11 +22,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             .into_iter()
             .map(|(key, value)| KeyValuePair { key, value, enabled: true })
             .collect();
-        if self.headers.is_empty() {
-            self.headers.push(KeyValuePair::default());
-        } else {
-            self.headers.push(KeyValuePair::default());
-        }
+        self.headers.push(KeyValuePair::default());
 
         if let Some(b) = body {
             self.set_body_content(&b, cx);
@@ -61,11 +57,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             .filter(|h| h.enabled)
             .map(|h| KeyValuePair { key: h.key.clone(), value: h.value.clone(), enabled: true })
             .collect();
-        if self.headers.is_empty() {
-            self.headers.push(KeyValuePair::default());
-        } else {
-            self.headers.push(KeyValuePair::default());
-        }
+        self.headers.push(KeyValuePair::default());
 
         match req.protocol() {
             Protocol::Http => {

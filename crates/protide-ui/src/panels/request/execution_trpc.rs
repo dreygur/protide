@@ -1,6 +1,6 @@
 use gpui::Context;
 use super::*;
-use super::super::request_utils::{base64_encode, status_text};
+use super::super::request_utils::status_text;
 
 impl<E: WebSocketExecutor> RequestPanel<E> {
     pub(super) fn send_trpc_request(&mut self, cx: &mut Context<Self>) {
@@ -64,42 +64,48 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                 let _ = tx.send(result);
             });
 
-            if let Ok(result) = rx.recv_timeout(std::time::Duration::from_secs(30)) {
-                match result {
-                    Ok((body, elapsed, status_code)) => {
-                        let body_size = body.len();
-                        let _ = cx.update(|cx| {
-                            response_panel.update(cx, |panel, cx| {
-                                panel.set_response(ResponseData {
-                                    status: status_code,
-                                    status_text: status_text(status_code).to_string(),
-                                    headers: vec![("content-type".to_string(), "application/json".to_string())],
-                                    body,
-                                    time: elapsed,
-                                    size: body_size,
-                                }, cx);
-                            });
+            match rx.recv_timeout(std::time::Duration::from_secs(30)) {
+                Ok(Ok((body, elapsed, status_code))) => {
+                    let body_size = body.len();
+                    let _ = cx.update(|cx| {
+                        response_panel.update(cx, |panel, cx| {
+                            panel.set_response(ResponseData {
+                                status: status_code,
+                                status_text: status_text(status_code).to_string(),
+                                headers: vec![("content-type".to_string(), "application/json".to_string())],
+                                body,
+                                time: elapsed,
+                                size: body_size,
+                            }, cx);
                         });
-                    }
-                    Err(e) => {
-                        log::error!("tRPC error: {}", e);
-                        let _ = cx.update(|cx| {
-                            response_panel.update(cx, |panel, cx| {
-                                let error_body = serde_json::json!({ "error": e }).to_string();
-                                panel.set_response(ResponseData {
-                                    status: 500,
-                                    status_text: "tRPC Error".to_string(),
-                                    headers: vec![("content-type".to_string(), "application/json".to_string())],
-                                    body: error_body.clone(),
-                                    time: std::time::Duration::from_secs(0),
-                                    size: error_body.len(),
-                                }, cx);
-                            });
-                        });
-                    }
+                    });
                 }
-                let _ = cx.update(|cx| { let _ = this.update(cx, |p, cx| { p.loading = false; cx.notify(); }); });
+                Ok(Err(e)) => {
+                    log::error!("tRPC error: {}", e);
+                    let _ = cx.update(|cx| {
+                        response_panel.update(cx, |panel, cx| {
+                            let error_body = serde_json::json!({ "error": e }).to_string();
+                            panel.set_response(ResponseData {
+                                status: 500,
+                                status_text: "tRPC Error".to_string(),
+                                headers: vec![("content-type".to_string(), "application/json".to_string())],
+                                body: error_body.clone(),
+                                time: std::time::Duration::from_secs(0),
+                                size: error_body.len(),
+                            }, cx);
+                        });
+                    });
+                }
+                Err(_) => {
+                    log::error!("tRPC request timed out");
+                    let _ = cx.update(|cx| {
+                        response_panel.update(cx, |panel, cx| {
+                            panel.set_error("tRPC request timed out (30s)".to_string(), cx);
+                        });
+                    });
+                }
             }
+            let _ = cx.update(|cx| { let _ = this.update(cx, |p, cx| { p.loading = false; cx.notify(); }); });
         }).detach();
     }
 }

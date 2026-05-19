@@ -89,11 +89,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
         self.headers = draft.headers.iter()
             .map(|h| KeyValuePair { key: h.key.clone(), value: h.value.clone(), enabled: h.enabled })
             .collect();
-        if self.headers.is_empty() {
-            self.headers.push(KeyValuePair::default());
-        } else {
-            self.headers.push(KeyValuePair::default());
-        }
+        self.headers.push(KeyValuePair::default());
 
         // Body
         self.body_type = match draft.body_type.as_str() {

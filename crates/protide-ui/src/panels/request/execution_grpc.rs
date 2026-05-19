@@ -140,31 +140,37 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                 let result = protide_core::protocols::grpc::execute_unary_blocking(&url, &method.full_name, &message, metadata, &proto_path);
                 let _ = tx.send(result);
             });
-            if let Ok(result) = rx.recv_timeout(std::time::Duration::from_secs(60)) {
-                match result {
-                    Ok((body, elapsed)) => {
-                        let body_size = body.len();
-                        let _ = cx.update(|cx| {
-                            response_panel.update(cx, |panel, cx| {
-                                panel.set_response(ResponseData {
-                                    status: 200, status_text: "OK".to_string(),
-                                    headers: vec![("content-type".to_string(), "application/grpc+json".to_string()), ("grpc-status".to_string(), "0".to_string())],
-                                    body, time: elapsed, size: body_size,
-                                }, cx);
-                            });
+            match rx.recv_timeout(std::time::Duration::from_secs(60)) {
+                Ok(Ok((body, elapsed))) => {
+                    let body_size = body.len();
+                    let _ = cx.update(|cx| {
+                        response_panel.update(cx, |panel, cx| {
+                            panel.set_response(ResponseData {
+                                status: 200, status_text: "OK".to_string(),
+                                headers: vec![("content-type".to_string(), "application/grpc+json".to_string()), ("grpc-status".to_string(), "0".to_string())],
+                                body, time: elapsed, size: body_size,
+                            }, cx);
                         });
-                    }
-                    Err(e) => {
-                        log::error!("gRPC error: {}", e);
-                        let _ = cx.update(|cx| {
-                            response_panel.update(cx, |panel, cx| {
-                                panel.set_response(ResponseData { status: 0, status_text: "Error".to_string(), headers: vec![], body: format!("gRPC Error: {}", e), time: std::time::Duration::ZERO, size: 0 }, cx);
-                            });
-                        });
-                    }
+                    });
                 }
-                let _ = cx.update(|cx| { let _ = this.update(cx, |p, cx| { p.loading = false; cx.notify(); }); });
+                Ok(Err(e)) => {
+                    log::error!("gRPC error: {}", e);
+                    let _ = cx.update(|cx| {
+                        response_panel.update(cx, |panel, cx| {
+                            panel.set_response(ResponseData { status: 0, status_text: "Error".to_string(), headers: vec![], body: format!("gRPC Error: {}", e), time: std::time::Duration::ZERO, size: 0 }, cx);
+                        });
+                    });
+                }
+                Err(_) => {
+                    log::error!("gRPC unary request timed out");
+                    let _ = cx.update(|cx| {
+                        response_panel.update(cx, |panel, cx| {
+                            panel.set_error("gRPC request timed out (60s)".to_string(), cx);
+                        });
+                    });
+                }
             }
+            let _ = cx.update(|cx| { let _ = this.update(cx, |p, cx| { p.loading = false; cx.notify(); }); });
         }).detach();
     }
 
