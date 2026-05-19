@@ -33,7 +33,9 @@ jobs:
             libfontconfig-dev \
             libudev-dev \
             libegl1-mesa-dev \
-            mesa-common-dev
+            mesa-common-dev \
+            ruby-dev \
+            rpm
 
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -46,9 +48,15 @@ jobs:
       - name: Build release binary
         run: cargo build --release --locked
 
-      - name: Create release archive
+      - name: Install fpm
+        run: gem install fpm --no-document
+
+      - name: Package
         run: |
           VERSION="${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || 'dev' }}"
+          PKG_VER="${VERSION#v}"
+
+          # .tar.gz
           ARCHIVE="protide-${VERSION}-x86_64-linux"
           mkdir -p "$ARCHIVE"
           cp target/release/protide "$ARCHIVE/"
@@ -57,8 +65,98 @@ jobs:
           cp packaging/install-desktop.sh "$ARCHIVE/"
           tar czf "${ARCHIVE}.tar.gz" "$ARCHIVE"
 
+          # .deb
+          fpm -s dir -t deb \
+            --name protide \
+            --version "$PKG_VER" \
+            --architecture amd64 \
+            --description "Native API testing tool — HTTP, GraphQL, WebSocket, gRPC and more" \
+            --url "https://github.com/dreygur/protide" \
+            --maintainer "dreygur" \
+            --package "protide-${VERSION}-amd64.deb" \
+            target/release/protide=/usr/bin/protide \
+            crates/protide/assets/=/usr/share/protide/assets/
+
+          # .rpm
+          fpm -s dir -t rpm \
+            --name protide \
+            --version "$PKG_VER" \
+            --architecture x86_64 \
+            --description "Native API testing tool — HTTP, GraphQL, WebSocket, gRPC and more" \
+            --url "https://github.com/dreygur/protide" \
+            --package "protide-${VERSION}-x86_64.rpm" \
+            target/release/protide=/usr/bin/protide \
+            crates/protide/assets/=/usr/share/protide/assets/
+
       - uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/tags/')
         with:
-          files: protide-*.tar.gz
+          files: |
+            protide-*.tar.gz
+            protide-*.deb
+            protide-*.rpm
           generate_release_notes: true
+
+  build-macos:
+    name: Build macOS
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+
+      - name: Build release binary
+        run: cargo build --release --locked
+
+      - name: Package .dmg
+        run: |
+          VERSION="${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || 'dev' }}"
+          PKG_VER="${VERSION#v}"
+
+          # Build .app bundle
+          APP="Protide.app"
+          mkdir -p "$APP/Contents/MacOS"
+          mkdir -p "$APP/Contents/Resources"
+          cp target/release/protide "$APP/Contents/MacOS/Protide"
+          cp -r crates/protide/assets "$APP/Contents/Resources/"
+
+          cat > "$APP/Contents/Info.plist" <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>CFBundleExecutable</key><string>Protide</string>
+            <key>CFBundleIdentifier</key><string>com.protide.app</string>
+            <key>CFBundleName</key><string>Protide</string>
+            <key>CFBundleVersion</key><string>${PKG_VER}</string>
+            <key>CFBundleShortVersionString</key><string>${PKG_VER}</string>
+            <key>CFBundlePackageType</key><string>APPL</string>
+            <key>LSMinimumSystemVersion</key><string>12.0</string>
+            <key>NSHighResolutionCapable</key><true/>
+          </dict>
+          </plist>
+          PLIST
+
+          # Staging folder with symlink to /Applications for drag-install UX
+          DMG_STAGE="dmg-stage"
+          mkdir -p "$DMG_STAGE"
+          cp -r "$APP" "$DMG_STAGE/"
+          ln -s /Applications "$DMG_STAGE/Applications"
+
+          hdiutil create \
+            -volname "Protide ${VERSION}" \
+            -srcfolder "$DMG_STAGE" \
+            -ov -format UDZO \
+            "protide-${VERSION}-macos.dmg"
+
+      - uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: protide-*.dmg
+          generate_release_notes: false
