@@ -3,12 +3,12 @@ use anyhow::Result;
 use gpui::{Menu, MenuItem, WindowOptions, size, px, AppContext as _};
 use gpui_component::Root;
 use gpui_component_assets::Assets;
-use protide_ui::ui::{
+use protide_ui::{
     MainWindow, register_keybindings,
     SendRequest, SaveRequest, ToggleSidebar, ToggleMockServer,
     ShowHelp, ShowAbout, Quit,
 };
-use protide_ui::ui::panels::RequestHistory;
+use protide_ui::panels::RequestHistory;
 
 const APP_ICON_PNG: &[u8] = include_bytes!("../assets/protide-logo.png");
 
