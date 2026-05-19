@@ -1,33 +1,8 @@
 //! Bruno (.bru) file format import
-//!
-//! Bruno uses a custom block-based format:
-//!
-//! ```text
-//! meta {
-//!   name: Get Users
-//!   type: http
-//!   seq: 1
-//! }
-//!
-//! get {
-//!   url: https://api.example.com/users
-//!   body: none
-//!   auth: none
-//! }
-//!
-//! headers {
-//!   Content-Type: application/json
-//! }
-//!
-//! body:json {
-//!   { "key": "value" }
-//! }
-//! ```
 
-use http_parser::{HttpMethod, KeyValue, Request};
+use http_parser::{HttpMethod, KeyValue, Protocol, Request, Scripts};
 use super::ImportResult;
 
-/// Parse a Bruno .bru file into an ImportResult.
 pub fn parse_bruno(content: &str) -> Result<ImportResult, String> {
     let mut result = ImportResult::new();
     let blocks = parse_blocks(content);
@@ -38,48 +13,135 @@ pub fn parse_bruno(content: &str) -> Result<ImportResult, String> {
     let mut headers: Vec<KeyValue> = Vec::new();
     let mut body = String::new();
     let mut query_params: Vec<KeyValue> = Vec::new();
+    let mut protocol: Option<Protocol> = None;
+    let mut scripts = Scripts::default();
 
     for (block_name, lines) in &blocks {
         match block_name.as_str() {
             "meta" => {
                 for line in lines {
-                    if let Some((k, v)) = parse_kv(line)
-                        && k == "name" {
-                            name = v;
+                    if let Some((k, v)) = split_kv(line) {
+                        match k.as_str() {
+                            "name" => name = v,
+                            "type" => {
+                                if v == "graphql" {
+                                    protocol = Some(Protocol::GraphQL);
+                                }
+                            }
+                            _ => {}
                         }
+                    }
                 }
             }
             "get" | "post" | "put" | "delete" | "patch" | "head" | "options" => {
                 method = block_name.to_uppercase();
                 for line in lines {
-                    if let Some((k, v)) = parse_kv(line)
-                        && k == "url" {
+                    if let Some((k, v)) = split_kv(line) {
+                        if k == "url" {
                             url = v;
                         }
+                    }
                 }
             }
             "headers" => {
                 for line in lines {
-                    if let Some((k, v)) = parse_colon_kv(line) {
-                        headers.push(KeyValue {
-                            key: k,
-                            value: v,
-                            enabled: true,
-                        });
+                    if let Some((k, v)) = split_kv(line) {
+                        let enabled = !k.starts_with('~');
+                        let key = k.trim_start_matches('~').to_string();
+                        headers.push(KeyValue { key, value: v, enabled });
                     }
                 }
             }
             "query" => {
                 for line in lines {
-                    if let Some((k, v)) = parse_colon_kv(line) {
+                    if let Some((k, v)) = split_kv(line) {
                         let enabled = !k.starts_with('~');
                         let key = k.trim_start_matches('~').to_string();
                         query_params.push(KeyValue { key, value: v, enabled });
                     }
                 }
             }
-            "body:json" | "body:text" | "body:xml" | "body:graphql" | "body:form-urlencoded" => {
+            "auth:bearer" => {
+                for line in lines {
+                    if let Some((k, v)) = split_kv(line) {
+                        if k == "token" {
+                            headers.push(KeyValue {
+                                key: "Authorization".to_string(),
+                                value: format!("Bearer {}", v),
+                                enabled: true,
+                            });
+                        }
+                    }
+                }
+            }
+            "auth:basic" => {
+                let mut user = String::new();
+                let mut pass = String::new();
+                for line in lines {
+                    if let Some((k, v)) = split_kv(line) {
+                        match k.as_str() {
+                            "username" => user = v,
+                            "password" => pass = v,
+                            _ => {}
+                        }
+                    }
+                }
+                if !user.is_empty() {
+                    use base64::{Engine, engine::general_purpose::STANDARD};
+                    let encoded = STANDARD.encode(format!("{}:{}", user, pass));
+                    headers.push(KeyValue {
+                        key: "Authorization".to_string(),
+                        value: format!("Basic {}", encoded),
+                        enabled: true,
+                    });
+                }
+            }
+            "auth:apikey" => {
+                let mut key_name = String::new();
+                let mut key_value = String::new();
+                let mut placement = String::from("header");
+                for line in lines {
+                    if let Some((k, v)) = split_kv(line) {
+                        match k.as_str() {
+                            "key" => key_name = v,
+                            "value" => key_value = v,
+                            "placement" => placement = v,
+                            _ => {}
+                        }
+                    }
+                }
+                if !key_name.is_empty() && placement == "header" {
+                    headers.push(KeyValue { key: key_name, value: key_value, enabled: true });
+                }
+            }
+            "body:json" | "body:text" | "body:xml" => {
                 body = lines.join("\n").trim().to_string();
+            }
+            "body:graphql" => {
+                body = lines.join("\n").trim().to_string();
+                protocol = Some(Protocol::GraphQL);
+            }
+            "body:form-urlencoded" => {
+                let pairs: Vec<String> = lines
+                    .iter()
+                    .filter_map(|l| split_kv(l))
+                    .filter(|(k, _)| !k.starts_with('~'))
+                    .map(|(k, v)| {
+                        format!("{}={}",
+                            urlencoding::encode(&k),
+                            urlencoding::encode(&v))
+                    })
+                    .collect();
+                body = pairs.join("&");
+            }
+            "script:pre-request" => {
+                scripts.pre_script = Some(lines.join("\n").trim().to_string());
+            }
+            "script:post-response" => {
+                scripts.post_script = Some(lines.join("\n").trim().to_string());
+            }
+            "tests" => {
+                scripts.tests = Some(lines.join("\n").trim().to_string());
             }
             _ => {}
         }
@@ -89,7 +151,6 @@ pub fn parse_bruno(content: &str) -> Result<ImportResult, String> {
         return Err("No URL found in Bruno file".to_string());
     }
 
-    // Append query params to URL if any
     let final_url = if query_params.is_empty() {
         url
     } else {
@@ -99,56 +160,51 @@ pub fn parse_bruno(content: &str) -> Result<ImportResult, String> {
             .map(|kv| format!("{}={}", urlencoding::encode(&kv.key), urlencoding::encode(&kv.value)))
             .collect::<Vec<_>>()
             .join("&");
-        if url.contains('?') {
-            format!("{}&{}", url, qs)
-        } else {
-            format!("{}?{}", url, qs)
-        }
+        if url.contains('?') { format!("{}&{}", url, qs) } else { format!("{}?{}", url, qs) }
     };
 
     let http_method = HttpMethod::from_str(&method).unwrap_or(HttpMethod::Get);
-
     let mut request = Request::new(http_method, final_url);
-    if !name.is_empty() {
-        request.meta.name = Some(name);
-    }
+    if !name.is_empty() { request.meta.name = Some(name); }
+    request.meta.protocol = protocol;
     request.headers = headers;
     request.body = if body.is_empty() { None } else { Some(body) };
+    request.scripts = scripts;
 
     result.requests.push(request);
     Ok(result)
 }
 
-/// Split .bru file into named blocks: `(block_name, lines_inside)`.
 fn parse_blocks(content: &str) -> Vec<(String, Vec<String>)> {
     let mut blocks: Vec<(String, Vec<String>)> = Vec::new();
     let mut current_name: Option<String> = None;
     let mut current_lines: Vec<String> = Vec::new();
-    let mut depth = 0usize;
+    let mut depth = 0i32;
 
     for line in content.lines() {
         let trimmed = line.trim();
 
         if current_name.is_none() {
-            // Look for block start: "name {" or "name:variant {"
+            // Block opener: "blockname {" (Bruno identifiers never contain spaces other than before `{`)
             if let Some(block_name) = trimmed.strip_suffix('{').map(|s| s.trim().to_string())
-                && !block_name.is_empty() {
-                    current_name = Some(block_name);
-                    current_lines.clear();
-                    depth = 1;
-                }
+                && !block_name.is_empty()
+                && !block_name.contains(' ')  // guard against JS lines like "if (x) {"
+            {
+                current_name = Some(block_name);
+                current_lines.clear();
+                depth = 1;
+            }
         } else {
-            if trimmed.ends_with('{') {
-                depth += 1;
-                current_lines.push(line.to_string());
-            } else if trimmed == "}" {
-                depth -= 1;
-                if depth == 0 {
-                    blocks.push((current_name.take().unwrap(), current_lines.clone()));
-                    current_lines.clear();
-                } else {
-                    current_lines.push(line.to_string());
-                }
+            // Count all `{` and `}` on the line to handle JS content correctly.
+            let opens  = line.chars().filter(|&c| c == '{').count() as i32;
+            let closes = line.chars().filter(|&c| c == '}').count() as i32;
+            depth += opens - closes;
+
+            if depth <= 0 {
+                // Block closed (the closing `}` may have been on this line)
+                blocks.push((current_name.take().unwrap(), current_lines.clone()));
+                current_lines.clear();
+                depth = 0;
             } else {
                 current_lines.push(line.to_string());
             }
@@ -158,18 +214,8 @@ fn parse_blocks(content: &str) -> Vec<(String, Vec<String>)> {
     blocks
 }
 
-/// Parse `key: value` (Bruno meta format)
-fn parse_kv(line: &str) -> Option<(String, String)> {
-    let trimmed = line.trim();
-    if trimmed.is_empty() || trimmed.starts_with('#') {
-        return None;
-    }
-    let (k, v) = trimmed.split_once(':')?;
-    Some((k.trim().to_string(), v.trim().to_string()))
-}
-
-/// Parse `Key: Value` (header/query format — value may contain colons)
-fn parse_colon_kv(line: &str) -> Option<(String, String)> {
+/// Split `key: value` on the first colon. Skips blank lines and `#` comments.
+fn split_kv(line: &str) -> Option<(String, String)> {
     let trimmed = line.trim();
     if trimmed.is_empty() || trimmed.starts_with('#') {
         return None;
@@ -198,6 +244,57 @@ get {
 headers {
   Content-Type: application/json
   X-API-Key: secret
+  ~X-Disabled: ignored
+}
+"#;
+
+    const SAMPLE_AUTH: &str = r#"
+meta {
+  name: Auth Request
+  type: http
+  seq: 1
+}
+
+post {
+  url: https://api.example.com/data
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: mytoken123
+}
+
+body:json {
+  {"key": "value"}
+}
+"#;
+
+    const SAMPLE_SCRIPTS: &str = r#"
+meta {
+  name: Scripted Request
+  type: http
+  seq: 1
+}
+
+get {
+  url: https://api.example.com/users
+  body: none
+  auth: none
+}
+
+script:pre-request {
+  bru.setVar("ts", Date.now());
+}
+
+script:post-response {
+  bru.setVar("userId", res.body.id);
+}
+
+tests {
+  test("status 200", function() {
+    expect(res.status).to.equal(200);
+  });
 }
 "#;
 
@@ -208,7 +305,12 @@ headers {
         let req = &result.requests[0];
         assert_eq!(req.url, "https://api.example.com/users");
         assert_eq!(req.meta.name.as_deref(), Some("Get Users"));
-        assert_eq!(req.headers.len(), 2);
+        // Disabled header (~X-Disabled) must be imported with enabled=false
+        let enabled: Vec<_> = req.headers.iter().filter(|h| h.enabled).collect();
+        let disabled: Vec<_> = req.headers.iter().filter(|h| !h.enabled).collect();
+        assert_eq!(enabled.len(), 2);
+        assert_eq!(disabled.len(), 1);
+        assert_eq!(disabled[0].key, "X-Disabled");
     }
 
     #[test]
@@ -218,5 +320,24 @@ headers {
         assert!(names.contains(&"meta"));
         assert!(names.contains(&"get"));
         assert!(names.contains(&"headers"));
+    }
+
+    #[test]
+    fn test_bearer_auth() {
+        let result = parse_bruno(SAMPLE_AUTH).unwrap();
+        let req = &result.requests[0];
+        let auth = req.headers.iter().find(|h| h.key == "Authorization").unwrap();
+        assert_eq!(auth.value, "Bearer mytoken123");
+        assert!(req.body.is_some());
+    }
+
+    #[test]
+    fn test_scripts() {
+        let result = parse_bruno(SAMPLE_SCRIPTS).unwrap();
+        let req = &result.requests[0];
+        assert!(req.scripts.pre_script.is_some());
+        assert!(req.scripts.post_script.is_some());
+        assert!(req.scripts.tests.is_some());
+        assert!(req.scripts.pre_script.as_ref().unwrap().contains("bru.setVar"));
     }
 }
