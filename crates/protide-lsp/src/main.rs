@@ -1,337 +1,604 @@
-use tower_lsp::jsonrpc::Result;
-use tower_lsp::lsp_types::*;
-use tower_lsp::{Client, LanguageServer, LspService, Server};
+//! gRPC protocol support using prost-reflect for dynamic proto handling
 
-struct HttpLsp {
-    client: Client,
+use prost::Message;
+use prost_reflect::{DescriptorPool, DynamicMessage};
+use std::path::Path;
+use std::time::Duration;
+
+/// gRPC method information
+#[derive(Debug, Clone)]
+pub struct GrpcMethod {
+    pub name: String,
+    pub full_name: String,
+    pub input_type: String,
+    pub output_type: String,
+    pub is_client_streaming: bool,
+    pub is_server_streaming: bool,
 }
 
-#[tower_lsp::async_trait]
-impl LanguageServer for HttpLsp {
-    async fn initialize(&self, _params: InitializeParams) -> Result<InitializeResult> {
-        Ok(InitializeResult {
-            capabilities: ServerCapabilities {
-                text_document_sync: Some(TextDocumentSyncCapability::Kind(
-                    TextDocumentSyncKind::FULL,
-                )),
-                hover_provider: Some(HoverProviderCapability::Simple(true)),
-                completion_provider: Some(CompletionOptions {
-                    trigger_characters: Some(vec!["@".to_string(), "#".to_string(), "{".to_string()]),
-                    ..Default::default()
-                }),
-                semantic_tokens_provider: Some(
-                    SemanticTokensServerCapabilities::SemanticTokensOptions(SemanticTokensOptions {
-                        legend: SemanticTokensLegend {
-                            token_types: vec![
-                                SemanticTokenType::KEYWORD,
-                                SemanticTokenType::STRING,
-                                SemanticTokenType::PROPERTY,
-                                SemanticTokenType::PARAMETER,
-                                SemanticTokenType::COMMENT,
-                                SemanticTokenType::NUMBER,
-                            ],
-                            token_modifiers: vec![SemanticTokenModifier::READONLY],
-                        },
-                        full: Some(SemanticTokensFullOptions::Bool(true)),
-                        ..Default::default()
-                    }),
-                ),
-                ..Default::default()
-            },
-            server_info: Some(ServerInfo {
-                name: "protide-lsp".to_string(),
-                version: Some(env!("CARGO_PKG_VERSION").to_string()),
-            }),
-        })
-    }
-
-    async fn initialized(&self, _: InitializedParams) {
-        self.client
-            .log_message(MessageType::INFO, "protide-lsp initialized")
-            .await;
-    }
-
-    async fn shutdown(&self) -> Result<()> {
-        Ok(())
-    }
-
-    async fn hover(&self, params: HoverParams) -> Result<Option<Hover>> {
-        let pos = params.text_document_position_params.position;
-        let uri = &params.text_document_position_params.text_document.uri;
-
-        let content = match std::fs::read_to_string(uri.path()) {
-            Ok(c) => c,
-            Err(_) => return Ok(None),
-        };
-
-        let line = content.lines().nth(pos.line as usize).unwrap_or("");
-        let word = word_at(line, pos.character as usize);
-
-        let docs = match word.to_uppercase().as_str() {
-            "GET" => Some("**GET** — Retrieve a resource. Safe and idempotent."),
-            "POST" => Some("**POST** — Submit data to create or process a resource."),
-            "PUT" => Some("**PUT** — Replace a resource entirely. Idempotent."),
-            "PATCH" => Some("**PATCH** — Partially update a resource."),
-            "DELETE" => Some("**DELETE** — Remove a resource. Idempotent."),
-            "HEAD" => Some("**HEAD** — Same as GET but returns only headers."),
-            "OPTIONS" => Some("**OPTIONS** — Describe communication options for a resource."),
-            "@NAME" | "NAME" if line.trim_start().starts_with("# @") => {
-                Some("**@name** — Assigns a name to this request for use in chaining with `@depends`.")
-            }
-            "@DESCRIPTION" | "DESCRIPTION" if line.trim_start().starts_with("# @") => {
-                Some("**@description** — Human-readable description of this request. Included in exported docs.")
-            }
-            "@PROTOCOL" | "PROTOCOL" if line.trim_start().starts_with("# @") => {
-                Some("**@protocol** — Override protocol detection.\nValues: `http`, `graphql`, `websocket`, `grpc`, `trpc`, `socketio`")
-            }
-            "@SET" | "SET" if line.trim_start().starts_with("# @") => {
-                Some("**@set** — Extract a value from the response and store it as a variable.\nSyntax: `# @set varName = $.path.to.value`")
-            }
-            "@DEPENDS" | "DEPENDS" if line.trim_start().starts_with("# @") => {
-                Some("**@depends** — Declare that this request depends on another named request.")
-            }
-            "@PROTO" | "PROTO" if line.trim_start().starts_with("# @") => {
-                Some("**@proto** — Path to the .proto file for gRPC requests.")
-            }
-            _ => None,
-        };
-
-        Ok(docs.map(|d| Hover {
-            contents: HoverContents::Markup(MarkupContent {
-                kind: MarkupKind::Markdown,
-                value: d.to_string(),
-            }),
-            range: None,
-        }))
-    }
-
-    async fn completion(&self, params: CompletionParams) -> Result<Option<CompletionResponse>> {
-        let pos = params.text_document_position.position;
-        let uri = &params.text_document_position.text_document.uri;
-
-        let content = match std::fs::read_to_string(uri.path()) {
-            Ok(c) => c,
-            Err(_) => return Ok(None),
-        };
-        let line = content.lines().nth(pos.line as usize).unwrap_or("").to_string();
-        let before = &line[..line.len().min(pos.character as usize)];
-
-        let items = if before.trim_start().starts_with("# @") {
-            annotation_completions()
-        } else if is_request_line(before) {
-            method_completions()
-        } else if before.contains(':') {
-            header_value_completions(before)
-        } else if !before.contains(' ') && !before.starts_with('#') {
-            header_name_completions()
-        } else {
-            vec![]
-        };
-
-        Ok(Some(CompletionResponse::Array(items)))
-    }
-
-    async fn semantic_tokens_full(
-        &self,
-        params: SemanticTokensParams,
-    ) -> Result<Option<SemanticTokensResult>> {
-        let uri = &params.text_document.uri;
-        let content = match std::fs::read_to_string(uri.path()) {
-            Ok(c) => c,
-            Err(_) => return Ok(None),
-        };
-        let tokens = tokenize(&content);
-        Ok(Some(SemanticTokensResult::Tokens(SemanticTokens {
-            result_id: None,
-            data: tokens,
-        })))
-    }
+/// gRPC service information
+#[derive(Debug, Clone)]
+pub struct GrpcService {
+    pub name: String,
+    pub full_name: String,
+    pub methods: Vec<GrpcMethod>,
 }
 
-fn word_at(line: &str, char_idx: usize) -> &str {
-    let chars: Vec<char> = line.chars().collect();
-    let start = chars[..char_idx.min(chars.len())]
-        .iter()
-        .rposition(|c| !c.is_alphanumeric() && *c != '_' && *c != '@')
-        .map(|i| i + 1)
-        .unwrap_or(0);
-    let end = chars[char_idx.min(chars.len())..]
-        .iter()
-        .position(|c| !c.is_alphanumeric() && *c != '_' && *c != '@')
-        .map(|i| char_idx + i)
-        .unwrap_or(chars.len());
-    let byte_start = chars[..start].iter().map(|c| c.len_utf8()).sum::<usize>();
-    let byte_end = chars[..end].iter().map(|c| c.len_utf8()).sum::<usize>();
-    &line[byte_start..byte_end]
+/// Parse a .proto file and return a DescriptorPool.
+/// Uses protox to compile the file without requiring system protoc.
+pub fn parse_proto_file(path: &Path) -> Result<DescriptorPool, String> {
+    let dir = path.parent().unwrap_or(Path::new("."));
+    let fds = protox::compile([path], [dir])
+        .map_err(|e| format!("Proto compile error: {}", e))?;
+    DescriptorPool::from_file_descriptor_set(fds)
+        .map_err(|e| format!("Descriptor pool error: {}", e))
 }
 
-fn is_request_line(before: &str) -> bool {
-    let upper = before.trim_start().to_uppercase();
-    ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"]
-        .iter()
-        .any(|m| upper.starts_with(m) || m.starts_with(upper.trim()))
-}
-
-fn annotation_completions() -> Vec<CompletionItem> {
-    [
-        ("@name", "Name this request for chaining"),
-        ("@description", "Human-readable description"),
-        ("@protocol", "Override protocol (http|graphql|websocket|grpc|trpc)"),
-        ("@set", "Extract response value to variable: @set var = $.path"),
-        ("@depends", "Declare dependency on named request"),
-        ("@proto", "Path to .proto file for gRPC"),
-    ]
-    .iter()
-    .map(|(label, detail)| CompletionItem {
-        label: label.to_string(),
-        kind: Some(CompletionItemKind::KEYWORD),
-        detail: Some(detail.to_string()),
-        ..Default::default()
-    })
-    .collect()
-}
-
-fn method_completions() -> Vec<CompletionItem> {
-    ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"]
-        .iter()
-        .map(|m| CompletionItem {
-            label: m.to_string(),
-            kind: Some(CompletionItemKind::KEYWORD),
-            ..Default::default()
+/// Extract services and methods from a descriptor pool.
+pub fn extract_services(pool: &DescriptorPool) -> Vec<GrpcService> {
+    pool.services()
+        .map(|svc| {
+            let methods = svc
+                .methods()
+                .map(|m| GrpcMethod {
+                    name: m.name().to_string(),
+                    full_name: m.full_name().to_string(),
+                    input_type: m.input().full_name().to_string(),
+                    output_type: m.output().full_name().to_string(),
+                    is_client_streaming: m.is_client_streaming(),
+                    is_server_streaming: m.is_server_streaming(),
+                })
+                .collect();
+            GrpcService {
+                name: svc.name().to_string(),
+                full_name: svc.full_name().to_string(),
+                methods,
+            }
         })
         .collect()
 }
 
-fn header_name_completions() -> Vec<CompletionItem> {
-    [
-        ("Content-Type", "application/json"),
-        ("Authorization", "Bearer <token>"),
-        ("Accept", "application/json"),
-        ("X-Request-ID", ""),
-        ("X-API-Key", ""),
-        ("Cache-Control", "no-cache"),
-    ]
-    .iter()
-    .map(|(name, value)| CompletionItem {
-        label: format!("{}: {}", name, value),
-        kind: Some(CompletionItemKind::PROPERTY),
-        insert_text: Some(format!("{}: ", name)),
-        ..Default::default()
-    })
-    .collect()
-}
+/// Execute a unary gRPC call (blocking).
+///
+/// `method_full_name` format: `ServiceName/MethodName` or `package.ServiceName/MethodName`
+/// (leading slash is optional).
+///
+/// Returns `(response_json, elapsed)` on success.
+pub fn execute_unary_blocking(
+    url: &str,
+    method_full_name: &str,
+    message_json: &str,
+    metadata: Vec<(String, String)>,
+    proto_path: &Path,
+) -> Result<(String, Duration), String> {
+    let start = std::time::Instant::now();
 
-fn header_value_completions(line: &str) -> Vec<CompletionItem> {
-    if line.to_lowercase().contains("content-type:") {
-        return ["application/json", "application/x-www-form-urlencoded", "multipart/form-data", "text/plain"]
-            .iter()
-            .map(|v| CompletionItem {
-                label: v.to_string(),
-                kind: Some(CompletionItemKind::VALUE),
-                ..Default::default()
-            })
-            .collect();
+    let pool = parse_proto_file(proto_path)?;
+
+    // Parse "Service/Method" or "pkg.Service/Method"
+    let method_path = method_full_name.trim_start_matches('/');
+    let slash_pos = method_path
+        .rfind('/')
+        .ok_or_else(|| format!("Invalid method name '{}': missing '/'", method_full_name))?;
+    let service_name = &method_path[..slash_pos];
+    let method_name = &method_path[slash_pos + 1..];
+
+    let service_desc = pool
+        .get_service_by_name(service_name)
+        .ok_or_else(|| format!("Service not found: '{}'", service_name))?;
+
+    let method_desc = service_desc
+        .methods()
+        .find(|m| m.name() == method_name)
+        .ok_or_else(|| format!("Method not found: '{}'", method_name))?;
+
+    let input_desc = method_desc.input();
+    let output_desc = method_desc.output();
+
+    // JSON → DynamicMessage → protobuf bytes
+    let request_msg = DynamicMessage::deserialize(
+        input_desc,
+        &mut serde_json::Deserializer::from_str(message_json),
+    )
+    .map_err(|e| format!("JSON parse error: {}", e))?;
+    let request_bytes = request_msg.encode_to_vec();
+    let grpc_body = grpc_encode_message(&request_bytes);
+
+    // Build HTTP URL: grpc:// → http://, grpcs:// → https://
+    let http_url = url
+        .trim_end_matches('/')
+        .replace("grpc://", "http://")
+        .replace("grpcs://", "https://");
+    let full_url = format!("{}/{}", http_url, method_path);
+    let use_h2c = http_url.starts_with("http://");
+
+    // Build reqwest blocking client with HTTP/2
+    let mut builder = reqwest::blocking::Client::builder()
+        .timeout(Duration::from_secs(30));
+    if use_h2c {
+        builder = builder.http2_prior_knowledge();
     }
-    vec![]
+    let client = builder
+        .build()
+        .map_err(|e| format!("Client build error: {}", e))?;
+
+    let mut req = client
+        .post(&full_url)
+        .header("content-type", "application/grpc+proto")
+        .header("te", "trailers")
+        .body(grpc_body);
+
+    for (key, value) in &metadata {
+        req = req.header(key.as_str(), value.as_str());
+    }
+
+    let response = req
+        .send()
+        .map_err(|e| format!("gRPC request failed: {}", e))?;
+
+    let elapsed = start.elapsed();
+
+    // Check grpc-status (status 0 = OK)
+    let grpc_status = response
+        .headers()
+        .get("grpc-status")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.parse::<u32>().ok())
+        .unwrap_or(0);
+
+    if grpc_status != 0 {
+        let grpc_message = response
+            .headers()
+            .get("grpc-message")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("Unknown gRPC error")
+            .to_string();
+        return Err(format!(
+            "gRPC error status {}: {}",
+            grpc_status, grpc_message
+        ));
+    }
+
+    let body_bytes = response
+        .bytes()
+        .map_err(|e| format!("Failed to read response body: {}", e))?;
+
+    let msg_bytes = grpc_decode_message(&body_bytes)?;
+
+    let response_msg = DynamicMessage::decode(output_desc, msg_bytes.as_ref())
+        .map_err(|e| format!("Protobuf decode error: {}", e))?;
+
+    let response_json = serde_json::to_string_pretty(&response_msg)
+        .map_err(|e| format!("JSON serialize error: {}", e))?;
+
+    Ok((response_json, elapsed))
 }
 
-// Semantic token types indices
-const TOK_KEYWORD: u32 = 0;
-const TOK_STRING: u32 = 1;
-const TOK_PROPERTY: u32 = 2;
-const TOK_PARAMETER: u32 = 3;
-const TOK_COMMENT: u32 = 4;
+fn grpc_encode_message(msg_bytes: &[u8]) -> Vec<u8> {
+    let mut buf = Vec::with_capacity(5 + msg_bytes.len());
+    buf.push(0u8); // compression flag: not compressed
+    buf.extend_from_slice(&(msg_bytes.len() as u32).to_be_bytes());
+    buf.extend_from_slice(msg_bytes);
+    buf
+}
 
-fn tokenize(content: &str) -> Vec<SemanticToken> {
-    let mut tokens = Vec::new();
-    let mut prev_line = 0u32;
-    let mut prev_start = 0u32;
+fn grpc_decode_message(data: &[u8]) -> Result<Vec<u8>, String> {
+    if data.len() < 5 {
+        return Err(format!(
+            "gRPC response too short ({} bytes, need at least 5)",
+            data.len()
+        ));
+    }
+    let _compressed = data[0];
+    let msg_len = u32::from_be_bytes([data[1], data[2], data[3], data[4]]) as usize;
+    if data.len() < 5 + msg_len {
+        return Err(format!(
+            "Incomplete gRPC response (got {} bytes, expected {})",
+            data.len(),
+            5 + msg_len
+        ));
+    }
+    Ok(data[5..5 + msg_len].to_vec())
+}
 
-    for (line_num, line) in content.lines().enumerate() {
-        let ln = line_num as u32;
-        let trimmed = line.trim_start();
+/// Streaming response chunk
+#[derive(Debug, Clone)]
+pub struct StreamingChunk {
+    pub data: String,
+    pub is_final: bool,
+    pub is_error: bool,
+}
 
-        let tok = if trimmed.starts_with("###") {
-            Some((0u32, line.len() as u32, TOK_KEYWORD))
-        } else if trimmed.starts_with("# @") || trimmed.starts_with("# @") {
-            Some((0, line.len() as u32, TOK_COMMENT))
-        } else if trimmed.starts_with('#') {
-            Some((0, line.len() as u32, TOK_COMMENT))
-        } else if let Some(rest) = try_request_line(trimmed) {
-            let method_end = line.find(' ').unwrap_or(line.len());
-            let indent = (line.len() - trimmed.len()) as u32;
-            tokens.push(make_token(ln, prev_line, indent, prev_start, method_end as u32, TOK_KEYWORD));
-            prev_line = ln;
-            prev_start = indent;
-            let url_start = indent + method_end as u32 + 1;
-            let url_len = rest.trim().len() as u32;
-            Some((url_start, url_len, TOK_STRING))
-        } else if trimmed.contains(':') && !trimmed.starts_with('{') {
-            let colon = line.find(':').unwrap_or(0);
-            let indent = (line.len() - trimmed.len()) as u32;
-            tokens.push(make_token(ln, prev_line, indent, prev_start, colon as u32, TOK_PROPERTY));
-            prev_line = ln;
-            prev_start = indent;
-            None
-        } else {
-            None
-        };
-
-        if let Some((start, len, tok_type)) = tok {
-            tokens.push(make_token(ln, prev_line, start, prev_start, len, tok_type));
-            prev_line = ln;
-            prev_start = start;
+#[allow(dead_code)]
+impl StreamingChunk {
+    fn error(msg: String) -> Self {
+        Self {
+            data: msg,
+            is_final: true,
+            is_error: true,
         }
+    }
 
-        // Highlight {{variables}} within the line
-        let mut search = line;
-        let mut offset = 0usize;
-        while let Some(open) = search.find("{{") {
-            if let Some(close) = search[open + 2..].find("}}") {
-                let var_start = (offset + open) as u32;
-                let var_len = (close + 4) as u32;
-                tokens.push(make_token(ln, prev_line, var_start, prev_start, var_len, TOK_PARAMETER));
-                prev_line = ln;
-                prev_start = var_start;
-                let skip = open + close + 4;
-                offset += skip;
-                search = &search[skip.min(search.len())..];
+    fn data(data: String, is_final: bool) -> Self {
+        Self {
+            data,
+            is_final,
+            is_error: false,
+        }
+    }
+}
+
+/// Execute server streaming gRPC using async HTTP/2.
+/// Returns a vector of response chunks (JSON strings).
+pub async fn execute_server_streaming(
+    url: &str,
+    method_full_name: &str,
+    message_json: &str,
+    metadata: Vec<(String, String)>,
+    proto_path: &Path,
+) -> Result<Vec<String>, String> {
+    let pool = parse_proto_file(proto_path)?;
+
+    let method_path = method_full_name.trim_start_matches('/');
+    let slash_pos = method_path
+        .rfind('/')
+        .ok_or_else(|| format!("Invalid method name '{}': missing '/'", method_full_name))?;
+    let service_name = &method_path[..slash_pos];
+    let method_name = &method_path[slash_pos + 1..];
+
+    let service_desc = pool
+        .get_service_by_name(service_name)
+        .ok_or_else(|| format!("Service not found: '{}'", service_name))?;
+
+    let method_desc = service_desc
+        .methods()
+        .find(|m| m.name() == method_name)
+        .ok_or_else(|| format!("Method not found: '{}'", method_name))?;
+
+    if !method_desc.is_server_streaming() {
+        return Err("Method is not server streaming".to_string());
+    }
+
+    let input_desc = method_desc.input();
+
+    let request_msg = DynamicMessage::deserialize(
+        input_desc,
+        &mut serde_json::Deserializer::from_str(message_json),
+    )
+    .map_err(|e| format!("JSON parse error: {}", e))?;
+    let request_bytes = request_msg.encode_to_vec();
+    let grpc_body = grpc_encode_message(&request_bytes);
+
+    let http_url = url
+        .trim_end_matches('/')
+        .replace("grpc://", "http://")
+        .replace("grpcs://", "https://");
+    let full_url = format!("{}/{}", http_url, method_path);
+    let use_h2c = http_url.starts_with("http://");
+
+    let mut builder = reqwest::Client::builder()
+        .connect_timeout(Duration::from_secs(10));
+    if use_h2c {
+        builder = builder.http2_prior_knowledge();
+    }
+    let client = builder
+        .build()
+        .map_err(|e| format!("Client build error: {}", e))?;
+
+    let mut req_builder = client
+        .post(&full_url)
+        .header("content-type", "application/grpc+proto")
+        .header("te", "trailers");
+
+    for (key, value) in &metadata {
+        req_builder = req_builder.header(key.as_str(), value.as_str());
+    }
+
+    let response = req_builder
+        .body(grpc_body)
+        .send()
+        .await
+        .map_err(|e| format!("gRPC request failed: {}", e))?;
+
+    let grpc_status = response
+        .headers()
+        .get("grpc-status")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.parse::<u32>().ok())
+        .unwrap_or(0);
+
+    if grpc_status != 0 {
+        let grpc_message = response
+            .headers()
+            .get("grpc-message")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("Unknown gRPC error")
+            .to_string();
+        return Err(format!("gRPC error status {}: {}", grpc_status, grpc_message));
+    }
+
+    let mut chunks = Vec::new();
+    let mut buffer = Vec::new();
+    let mut stream = response.bytes_stream();
+
+    use futures_util::StreamExt;
+    while let Some(chunk_result) = stream.next().await {
+        let chunk = chunk_result.map_err(|e| format!("Read error: {}", e))?;
+        buffer.extend_from_slice(&chunk);
+
+        while buffer.len() >= 5 {
+            let msg_len = u32::from_be_bytes([buffer[1], buffer[2], buffer[3], buffer[4]]) as usize;
+            if buffer.len() >= 5 + msg_len {
+                let msg_bytes = buffer.drain(5..5 + msg_len).collect::<Vec<_>>();
+                if let Ok(response_msg) = DynamicMessage::decode(method_desc.output(), msg_bytes.as_ref()) {
+                    if let Ok(json) = serde_json::to_string_pretty(&response_msg) {
+                        chunks.push(json);
+                    }
+                }
             } else {
                 break;
             }
         }
     }
 
-    tokens
+    Ok(chunks)
 }
 
-fn try_request_line(s: &str) -> Option<&str> {
-    let methods = ["GET ", "POST ", "PUT ", "PATCH ", "DELETE ", "HEAD ", "OPTIONS ", "WEBSOCKET ", "GRPC "];
-    for m in &methods {
-        if s.starts_with(m) {
-            return Some(&s[m.len()..]);
+/// Execute client streaming gRPC.
+/// Sends multiple messages and returns a single response.
+pub async fn execute_client_streaming(
+    url: &str,
+    method_full_name: &str,
+    messages: Vec<String>,
+    metadata: Vec<(String, String)>,
+    proto_path: &Path,
+) -> Result<String, String> {
+    if messages.is_empty() {
+        return Err("No messages to send".to_string());
+    }
+
+    let pool = parse_proto_file(proto_path)?;
+
+    let method_path = method_full_name.trim_start_matches('/');
+    let slash_pos = method_path
+        .rfind('/')
+        .ok_or_else(|| format!("Invalid method name '{}': missing '/'", method_full_name))?;
+    let service_name = &method_path[..slash_pos];
+    let method_name = &method_path[slash_pos + 1..];
+
+    let service_desc = pool
+        .get_service_by_name(service_name)
+        .ok_or_else(|| format!("Service not found: '{}'", service_name))?;
+
+    let method_desc = service_desc
+        .methods()
+        .find(|m| m.name() == method_name)
+        .ok_or_else(|| format!("Method not found: '{}'", method_name))?;
+
+    if !method_desc.is_client_streaming() {
+        return Err("Method is not client streaming".to_string());
+    }
+
+    let output_desc = method_desc.output();
+
+    let http_url = url
+        .trim_end_matches('/')
+        .replace("grpc://", "http://")
+        .replace("grpcs://", "https://");
+    let full_url = format!("{}/{}", http_url, method_path);
+    let use_h2c = http_url.starts_with("http://");
+
+    let mut builder = reqwest::Client::builder()
+        .connect_timeout(Duration::from_secs(10));
+    if use_h2c {
+        builder = builder.http2_prior_knowledge();
+    }
+    let client = builder
+        .build()
+        .map_err(|e| format!("Client build error: {}", e))?;
+
+    let mut req_builder = client
+        .post(&full_url)
+        .header("content-type", "application/grpc+proto")
+        .header("te", "trailers");
+
+    for (key, value) in &metadata {
+        req_builder = req_builder.header(key.as_str(), value.as_str());
+    }
+
+    let mut body = Vec::new();
+    for msg_json in &messages {
+        let inp_desc = method_desc.input();
+        let request_msg = DynamicMessage::deserialize(
+            inp_desc,
+            &mut serde_json::Deserializer::from_str(msg_json),
+        )
+        .map_err(|e| format!("JSON parse error: {}", e))?;
+        let request_bytes = request_msg.encode_to_vec();
+        body.extend_from_slice(&grpc_encode_message(&request_bytes));
+    }
+
+    let response = req_builder
+        .body(body)
+        .send()
+        .await
+        .map_err(|e| format!("gRPC request failed: {}", e))?;
+
+    let grpc_status = response
+        .headers()
+        .get("grpc-status")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.parse::<u32>().ok())
+        .unwrap_or(0);
+
+    if grpc_status != 0 {
+        let grpc_message = response
+            .headers()
+            .get("grpc-message")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("Unknown gRPC error")
+            .to_string();
+        return Err(format!("gRPC error status {}: {}", grpc_status, grpc_message));
+    }
+
+    let body_bytes = response
+        .bytes()
+        .await
+        .map_err(|e| format!("Failed to read response body: {}", e))?;
+
+    let msg_bytes = grpc_decode_message(&body_bytes)?;
+
+    let response_msg = DynamicMessage::decode(output_desc, msg_bytes.as_ref())
+        .map_err(|e| format!("Protobuf decode error: {}", e))?;
+
+    let response_json = serde_json::to_string_pretty(&response_msg)
+        .map_err(|e| format!("JSON serialize error: {}", e))?;
+
+    Ok(response_json)
+}
+
+/// Execute bidirectional streaming gRPC.
+/// Note: Full bidirectional streaming requires WebSocket or HTTP/2 upgrade.
+/// This implementation simulates it by sending all messages and collecting responses.
+pub async fn execute_bidi_streaming(
+    url: &str,
+    method_full_name: &str,
+    messages: Vec<String>,
+    metadata: Vec<(String, String)>,
+    proto_path: &Path,
+) -> Result<Vec<String>, String> {
+    if messages.is_empty() {
+        return Err("No messages to send".to_string());
+    }
+
+    let pool = parse_proto_file(proto_path)?;
+
+    let method_path = method_full_name.trim_start_matches('/');
+    let slash_pos = method_path
+        .rfind('/')
+        .ok_or_else(|| format!("Invalid method name '{}': missing '/'", method_full_name))?;
+    let service_name = &method_path[..slash_pos];
+    let method_name = &method_path[slash_pos + 1..];
+
+    let service_desc = pool
+        .get_service_by_name(service_name)
+        .ok_or_else(|| format!("Service not found: '{}'", service_name))?;
+
+    let method_desc = service_desc
+        .methods()
+        .find(|m| m.name() == method_name)
+        .ok_or_else(|| format!("Method not found: '{}'", method_name))?;
+
+    if !method_desc.is_server_streaming() || !method_desc.is_client_streaming() {
+        return Err("Method is not bidirectional streaming".to_string());
+    }
+
+    let http_url = url
+        .trim_end_matches('/')
+        .replace("grpc://", "http://")
+        .replace("grpcs://", "https://");
+    let full_url = format!("{}/{}", http_url, method_path);
+    let use_h2c = http_url.starts_with("http://");
+
+    let mut builder = reqwest::Client::builder()
+        .connect_timeout(Duration::from_secs(10));
+    if use_h2c {
+        builder = builder.http2_prior_knowledge();
+    }
+    let client = builder
+        .build()
+        .map_err(|e| format!("Client build error: {}", e))?;
+
+    let mut req_builder = client
+        .post(&full_url)
+        .header("content-type", "application/grpc+proto")
+        .header("te", "trailers");
+
+    for (key, value) in &metadata {
+        req_builder = req_builder.header(key.as_str(), value.as_str());
+    }
+
+    let mut body = Vec::new();
+    for msg_json in &messages {
+        let inp_desc = method_desc.input();
+        let request_msg = DynamicMessage::deserialize(
+            inp_desc,
+            &mut serde_json::Deserializer::from_str(msg_json),
+        )
+        .map_err(|e| format!("JSON parse error: {}", e))?;
+        let request_bytes = request_msg.encode_to_vec();
+        body.extend_from_slice(&grpc_encode_message(&request_bytes));
+    }
+
+    let response = req_builder
+        .body(body)
+        .send()
+        .await
+        .map_err(|e| format!("gRPC request failed: {}", e))?;
+
+    let grpc_status = response
+        .headers()
+        .get("grpc-status")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.parse::<u32>().ok())
+        .unwrap_or(0);
+
+    if grpc_status != 0 {
+        let grpc_message = response
+            .headers()
+            .get("grpc-message")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("Unknown gRPC error")
+            .to_string();
+        return Err(format!("gRPC error status {}: {}", grpc_status, grpc_message));
+    }
+
+    let mut chunks = Vec::new();
+    let mut buffer = Vec::new();
+    let mut stream = response.bytes_stream();
+
+    use futures_util::StreamExt;
+    while let Some(chunk_result) = stream.next().await {
+        let chunk = chunk_result.map_err(|e| format!("Read error: {}", e))?;
+        buffer.extend_from_slice(&chunk);
+
+        while buffer.len() >= 5 {
+            let msg_len = u32::from_be_bytes([buffer[1], buffer[2], buffer[3], buffer[4]]) as usize;
+            if buffer.len() >= 5 + msg_len {
+                let msg_bytes = buffer.drain(5..5 + msg_len).collect::<Vec<_>>();
+                if let Ok(response_msg) = DynamicMessage::decode(method_desc.output(), msg_bytes.as_ref()) {
+                    if let Ok(json) = serde_json::to_string_pretty(&response_msg) {
+                        chunks.push(json);
+                    }
+                }
+            } else {
+                break;
+            }
         }
     }
-    None
+
+    Ok(chunks)
 }
 
-fn make_token(line: u32, prev_line: u32, start: u32, prev_start: u32, len: u32, tok_type: u32) -> SemanticToken {
-    let delta_line = line - prev_line;
-    let delta_start = if delta_line == 0 { start - prev_start } else { start };
-    SemanticToken {
-        delta_line,
-        delta_start,
-        length: len,
-        token_type: tok_type,
-        token_modifiers_bitset: 0,
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_grpc_encode_decode_roundtrip() {
+        let msg = b"hello world";
+        let encoded = grpc_encode_message(msg);
+        assert_eq!(encoded[0], 0);
+        assert_eq!(
+            u32::from_be_bytes([encoded[1], encoded[2], encoded[3], encoded[4]]),
+            msg.len() as u32
+        );
+        let decoded = grpc_decode_message(&encoded).unwrap();
+        assert_eq!(decoded, msg);
     }
-}
 
-#[tokio::main]
-async fn main() {
-    env_logger::init();
-    let stdin = tokio::io::stdin();
-    let stdout = tokio::io::stdout();
-    let (service, socket) = LspService::new(|client| HttpLsp { client });
-    Server::new(stdin, stdout, socket).serve(service).await;
+    #[test]
+    fn test_grpc_decode_too_short() {
+        assert!(grpc_decode_message(&[0, 0, 0]).is_err());
+    }
 }

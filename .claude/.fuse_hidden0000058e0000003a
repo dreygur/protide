@@ -1,0 +1,33 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(grep -E \"\\\\.rs$\")",
+      "Bash(cargo build *)",
+      "Bash(kill %1)",
+      "Bash(cargo check *)",
+      "Bash(ldconfig -p)",
+      "Bash(dnf list *)",
+      "Bash(sudo dnf *)",
+      "Bash(cp \"/home/dreygur/.claude/projects/-mnt-sda1-Code-github-protide/14310c08-55c8-4d15-b567-e5b85b22ca87/tool-results/webfetch-1777740353288-u48itv.bin\" /tmp/design.gz)",
+      "Bash(gunzip -f /tmp/design.gz)",
+      "Read(//tmp/**)",
+      "Bash(cargo run *)",
+      "WebFetch(domain:docs.rs)",
+      "WebFetch(domain:crates.io)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "WebFetch(domain:api.github.com)",
+      "Bash(curl -s https://raw.githubusercontent.com/longbridge/gpui-component/main/crates/ui/src/lib.rs)",
+      "Bash(curl *)",
+      "Bash(cargo fetch *)",
+      "Bash(cargo update *)",
+      "Bash(cargo doc *)",
+      "Read(//home/dreygur/.cargo/git/checkouts/**)",
+      "Bash(cargo metadata *)",
+      "Bash(python3 -c \"import json,sys; pkgs=json.load\\(sys.stdin\\)['packages']; [print\\(p['manifest_path']\\) for p in pkgs if 'gpui' in p['name']]\")",
+      "Bash(awk -F'px\\\\\\\\\\(' '{print $2}')",
+      "Bash(awk 'NR>=1{lines[NR]=$0} /\\\\.on_click\\\\\\(/{found=NR; for\\(i=found-15;i<found;i++\\) if\\(lines[i]~/cursor_pointer/\\) {found=0; break}} found{print NR\": \"lines[found]; found=0}' crates/protide-ui/src/ui/panels/request/render.rs)",
+      "Bash(cat)",
+      "Bash(bash /tmp/pattern_search.sh)"
+    ]
+  }
+}
