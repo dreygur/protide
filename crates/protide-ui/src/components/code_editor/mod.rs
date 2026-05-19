@@ -377,12 +377,14 @@ impl CodeEditor {
         let pos = self.selection.head;
         if forward {
             if pos < self.buffer.len() {
-                self.buffer.delete(pos..pos + 1);
+                let next = self.buffer.next_char_boundary(pos);
+                self.buffer.delete(pos..next);
             }
         } else {
             if pos > 0 {
-                self.buffer.delete(pos - 1..pos);
-                self.selection = Selection::cursor(pos - 1);
+                let prev = self.buffer.prev_char_boundary(pos);
+                self.buffer.delete(prev..pos);
+                self.selection = Selection::cursor(prev);
             }
         }
         cx.notify();
@@ -397,7 +399,7 @@ impl CodeEditor {
 
     fn cursor_left(&mut self, extend: bool, cx: &mut Context<Self>) {
         let pos = if extend || self.selection.is_empty() {
-            self.selection.head.saturating_sub(1)
+            self.buffer.prev_char_boundary(self.selection.head)
         } else {
             self.selection.start()
         };
@@ -406,7 +408,7 @@ impl CodeEditor {
 
     fn cursor_right(&mut self, extend: bool, cx: &mut Context<Self>) {
         let pos = if extend || self.selection.is_empty() {
-            (self.selection.head + 1).min(self.buffer.len())
+            self.buffer.next_char_boundary(self.selection.head)
         } else {
             self.selection.end()
         };
@@ -857,39 +859,21 @@ impl CodeEditor {
     }
 }
 
-// Helper functions for word navigation
 fn is_word_char(c: char) -> bool {
     c.is_alphanumeric() || c == '_'
 }
 
-fn find_word_start(text: &str, pos: usize) -> usize {
-    if text.is_empty() || pos == 0 {
-        return 0;
-    }
-    let chars: Vec<char> = text.chars().collect();
-    let mut start = pos.min(chars.len().saturating_sub(1));
-
-    while start > 0 && !is_word_char(chars[start]) {
-        start -= 1;
-    }
-    while start > 0 && is_word_char(chars[start - 1]) {
-        start -= 1;
-    }
-    start
+// Both functions accept and return byte offsets into `text`.
+fn find_word_start(text: &str, byte_pos: usize) -> usize {
+    let before = &text[..byte_pos.min(text.len())];
+    let s1 = before.trim_end_matches(|c: char| !is_word_char(c));
+    s1.trim_end_matches(is_word_char).len()
 }
 
-fn find_word_end(text: &str, pos: usize) -> usize {
-    if text.is_empty() {
-        return 0;
-    }
-    let chars: Vec<char> = text.chars().collect();
-    let mut end = pos.min(chars.len().saturating_sub(1));
-
-    while end < chars.len() && !is_word_char(chars[end]) {
-        end += 1;
-    }
-    while end < chars.len() && is_word_char(chars[end]) {
-        end += 1;
-    }
-    end
+fn find_word_end(text: &str, byte_pos: usize) -> usize {
+    let byte_pos = byte_pos.min(text.len());
+    let after = &text[byte_pos..];
+    let s1 = after.trim_start_matches(|c: char| !is_word_char(c));
+    let s2 = s1.trim_start_matches(is_word_char);
+    text.len() - s2.len()
 }

@@ -121,6 +121,25 @@ impl TextBuffer {
         }
     }
 
+    /// Previous valid char boundary before `pos` (steps back one char)
+    pub fn prev_char_boundary(&self, pos: usize) -> usize {
+        if pos == 0 { return 0; }
+        let mut p = pos - 1;
+        while p > 0 && !self.content.is_char_boundary(p) {
+            p -= 1;
+        }
+        p
+    }
+
+    /// Next valid char boundary after `pos` (steps forward one char)
+    pub fn next_char_boundary(&self, pos: usize) -> usize {
+        let mut p = pos + 1;
+        while p < self.content.len() && !self.content.is_char_boundary(p) {
+            p += 1;
+        }
+        p.min(self.content.len())
+    }
+
     fn recompute_line_starts(&mut self) {
         self.line_starts.clear();
         self.line_starts.push(0);
