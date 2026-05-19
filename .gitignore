@@ -21,3 +21,6 @@ Thumbs.db
 .env.local
 
 /prot
+
+# Compiled WASM artifacts
+*.wasm

@@ -48,7 +48,8 @@ jobs:
 
       - name: Create release archive
         run: |
-          ARCHIVE="protide-${{ github.ref_name }}-x86_64-linux"
+          VERSION="${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || 'dev' }}"
+          ARCHIVE="protide-${VERSION}-x86_64-linux"
           mkdir -p "$ARCHIVE"
           cp target/release/protide "$ARCHIVE/"
           cp -r crates/protide/assets "$ARCHIVE/"
@@ -57,6 +58,7 @@ jobs:
           tar czf "${ARCHIVE}.tar.gz" "$ARCHIVE"
 
       - uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
         with:
           files: protide-*.tar.gz
           generate_release_notes: true

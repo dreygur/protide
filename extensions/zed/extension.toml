@@ -6,6 +6,10 @@ schema_version = 1
 authors = ["dreygur"]
 repository = "https://github.com/dreygur/protide"
 
+[grammars.http]
+repository = "https://github.com/rest-nvim/tree-sitter-http"
+commit = "db8b4398de90b6d0b6c780aba96aaa2cd8e9202c"
+
 [language_servers.protide-lsp]
 name = "protide-lsp"
 languages = ["HTTP"]

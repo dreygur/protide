@@ -76,15 +76,15 @@ fn highlight_inline(
     prev_start: &mut u32,
     tokens: &mut Vec<SemanticToken>,
 ) {
+    // Collect all inline spans first, then emit in position order to avoid delta underflow.
+    let mut spans: Vec<(u32, u32, u32)> = Vec::new(); // (start, len, tok_type)
+
+    // {{variables}}
     let mut search = line;
     let mut offset = 0usize;
     while let Some(open) = search.find("{{") {
         if let Some(close) = search[open + 2..].find("}}") {
-            let var_start = (offset + open) as u32;
-            let var_len = (close + 4) as u32;
-            tokens.push(make_token(ln, *prev_line, var_start, *prev_start, var_len, TOK_PARAMETER));
-            *prev_line = ln;
-            *prev_start = var_start;
+            spans.push((( offset + open) as u32, (close + 4) as u32, TOK_PARAMETER));
             let skip = open + close + 4;
             offset += skip;
             search = &search[skip.min(search.len())..];
@@ -93,26 +93,42 @@ fn highlight_inline(
         }
     }
 
-    // Highlight standalone numeric values (e.g. status codes in comments, port numbers)
-    let mut chars = line.char_indices().peekable();
-    while let Some((i, c)) = chars.next() {
+    // Standalone numeric literals (port numbers, status codes)
+    let mut i = 0usize;
+    while i < line.len() {
+        let c = line.as_bytes()[i];
         if c.is_ascii_digit() {
-            let prev_char = if i > 0 { line.as_bytes().get(i - 1).copied() } else { None };
-            if prev_char.map_or(true, |p| !p.is_ascii_alphanumeric() && p != b'_') {
+            let prev_ok = i == 0 || {
+                let p = line.as_bytes()[i - 1];
+                !p.is_ascii_alphanumeric() && p != b'_'
+            };
+            if prev_ok {
                 let end = line[i..]
                     .find(|ch: char| !ch.is_ascii_digit())
                     .map(|n| i + n)
                     .unwrap_or(line.len());
-                let next = line.as_bytes().get(end).copied();
-                if next.map_or(true, |n| !n.is_ascii_alphanumeric() && n != b'_') {
-                    let start = i as u32;
-                    let len = (end - i) as u32;
-                    tokens.push(make_token(ln, *prev_line, start, *prev_start, len, TOK_NUMBER));
-                    *prev_line = ln;
-                    *prev_start = start;
+                let next_ok = line.as_bytes().get(end)
+                    .map_or(true, |&n| !n.is_ascii_alphanumeric() && n != b'_');
+                if next_ok {
+                    spans.push((i as u32, (end - i) as u32, TOK_NUMBER));
                 }
+                i = end;
+                continue;
             }
         }
+        i += 1;
+    }
+
+    // Sort by start position, emit delta-encoded
+    spans.sort_unstable_by_key(|&(start, _, _)| start);
+    for (start, len, tok_type) in spans {
+        // Skip tokens that would underflow (can happen if spans overlap with outer tokens)
+        if start < *prev_start && *prev_line == ln {
+            continue;
+        }
+        tokens.push(make_token(ln, *prev_line, start, *prev_start, len, tok_type));
+        *prev_line = ln;
+        *prev_start = start;
     }
 }
 
