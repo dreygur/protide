@@ -188,7 +188,7 @@ impl TextInput {
 
     pub fn text(mut self, text: impl Into<String>) -> Self {
         self.text = text.into();
-        let len = self.text.len();
+        let len = self.text.chars().count();
         self.selection = len..len;
         self
     }
@@ -225,7 +225,7 @@ impl TextInput {
 
     pub fn set_text(&mut self, text: impl Into<String>, cx: &mut Context<Self>) {
         self.text = text.into();
-        let len = self.text.len();
+        let len = self.text.chars().count();
         self.selection = len..len;
         cx.notify();
     }
@@ -380,7 +380,7 @@ impl TextInput {
             0
         } else {
             let approx_char = (x / self.char_width()) as usize;
-            approx_char.min(self.text.len())
+            approx_char.min(self.text.chars().count())
         }
     }
 
@@ -694,9 +694,6 @@ impl Render for TextInput {
             .on_mouse_down(
                 gpui::MouseButton::Left,
                 cx.listener(move |this, event: &MouseDownEvent, window, cx| {
-                    this.input_left = padding + f32::from(event.position.x) - f32::from(event.position.x);
-                    // Approximate input_left from event - this is tricky without layout info
-                    // For now, use padding as approximation
                     this.input_left = padding;
                     this.focus.focus(window, cx);
                     this.handle_mouse_down(event, cx);

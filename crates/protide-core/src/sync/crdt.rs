@@ -59,13 +59,13 @@ impl CrdtStore {
     /// Mark an entry as deleted locally.
     /// Forces a higher timestamp than existing to ensure tombstone wins.
     pub fn delete_local(&mut self, id: Uuid) -> Option<CrdtEntry> {
-        let timestamp = match self.entries.get(&id) {
-            Some(existing) => std::cmp::max(timestamp_now(), existing.timestamp + 1),
-            None => timestamp_now(),
+        let (timestamp, data_type) = match self.entries.get(&id) {
+            Some(existing) => (std::cmp::max(timestamp_now(), existing.timestamp + 1), existing.data_type),
+            None => (timestamp_now(), DataType::Request),
         };
         let tombstone = CrdtEntry {
             id,
-            data_type: DataType::Request,
+            data_type,
             data: String::new(),
             timestamp,
             node_id: self.node_id.0.clone(),
