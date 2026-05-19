@@ -1,12 +1,28 @@
-<img src="crates/protide/assets/protide-logo.png" alt="Protide" width="64" align="left" style="margin-right: 16px" />
+<div align="center">
+  <img src="crates/protide/assets/protide-logo.png" alt="Protide" width="120" />
 
-# Protide
+  # Protide
 
-Native desktop API testing tool built with Rust and [GPUI](https://github.com/zed-industries/zed) (Zed's GPU-accelerated UI framework). Supports HTTP, GraphQL, WebSocket, gRPC, tRPC, and Socket.IO — with scripting, testing, mock server, P2P collaboration, and an LSP for `.http` files.
+  ![Build](https://img.shields.io/github/actions/workflow/status/dreygur/protide/release.yml?branch=main&label=build)
+  ![License](https://img.shields.io/badge/license-MIT-blue)
+  ![Rust](https://img.shields.io/badge/built%20with-Rust-orange)
+
+  [Issues](https://github.com/dreygur/protide/issues) • [Releases](https://github.com/dreygur/protide/releases)
+</div>
+
+---
 
 ![Protide screenshot](screenshot.png)
 
----
+## What is Protide?
+
+Protide is a native desktop API testing tool built with **Rust** and [GPUI](https://github.com/zed-industries/zed) — Zed's GPU-accelerated UI framework. It supports HTTP, GraphQL, WebSocket, gRPC, tRPC, and Socket.IO from a single interface.
+
+It ships with a language server (`protide-lsp`) for `.http` files, an MCP server for AI tool integration, and a Zed extension with tree-sitter syntax highlighting.
+
+```bash
+cargo install --git https://github.com/dreygur/protide protide-lsp
+```
 
 ## Features
 
@@ -51,14 +67,11 @@ Native desktop API testing tool built with Rust and [GPUI](https://github.com/ze
 - **MCP server** (`protide-mcp`) — JSON-RPC 2.0 over stdio, exposes `send_request` tool for AI assistants
 - **Zed extension** — syntax highlighting with tree-sitter, LSP integration
 
----
-
 ## Installation
 
 ### Build from source
 
 ```bash
-# Prerequisites: Rust stable, system libs (see below)
 git clone https://github.com/dreygur/protide
 cd protide
 cargo build --release
@@ -77,7 +90,7 @@ sudo apt-get install -y \
   libegl1-mesa-dev mesa-common-dev
 ```
 
-### LSP (for editor integration)
+### LSP
 
 ```bash
 cargo install --git https://github.com/dreygur/protide protide-lsp
@@ -85,11 +98,7 @@ cargo install --git https://github.com/dreygur/protide protide-lsp
 
 **Zed:** Install the *Protide HTTP* dev extension from `extensions/zed/`.
 
----
-
 ## .http File Format
-
-Protide uses an extended `.http` file format compatible with REST Client / httpYac conventions:
 
 ```http
 ### List posts
@@ -107,8 +116,6 @@ Authorization: Bearer {{token}}
 %}
 ```
 
-**Annotations:**
-
 | Annotation | Description |
 |---|---|
 | `# @name` | Request name (used for chaining) |
@@ -117,8 +124,6 @@ Authorization: Bearer {{token}}
 | `# @set var = $.path` | Extract response value into variable |
 | `# @depends name` | Declare dependency on another named request |
 | `# @tests` | Inline test block |
-
----
 
 ## License
 
