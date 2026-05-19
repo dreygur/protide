@@ -1,6 +1,6 @@
 use gpui::Context;
 use super::*;
-use super::super::request_utils::{base64_encode, url_encode};
+use super::super::request_utils::base64_encode;
 
 impl<E: WebSocketExecutor> RequestPanel<E> {
     /// Save the current request to a .http file
@@ -114,7 +114,3 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
         lines.join("\n")
     }
 }
-
-// Suppress unused import warning — url_encode is used transitively via url_sync
-#[allow(unused_imports)]
-use super::super::request_utils::url_encode as _url_encode_unused;

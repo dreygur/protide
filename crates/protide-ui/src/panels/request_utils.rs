@@ -53,30 +53,34 @@ pub fn url_encode(input: &str) -> String {
 
 /// URL decode a string from query parameters
 pub fn url_decode(input: &str) -> String {
-    let mut result = String::new();
+    let mut bytes: Vec<u8> = Vec::with_capacity(input.len());
     let mut chars = input.chars().peekable();
 
     while let Some(c) = chars.next() {
         match c {
-            '+' => result.push(' '),
+            '+' => bytes.push(b' '),
             '%' => {
                 let hex: String = chars.by_ref().take(2).collect();
                 if hex.len() == 2 {
                     if let Ok(byte) = u8::from_str_radix(&hex, 16) {
-                        result.push(byte as char);
+                        bytes.push(byte);
                     } else {
-                        result.push('%');
-                        result.push_str(&hex);
+                        bytes.push(b'%');
+                        bytes.extend_from_slice(hex.as_bytes());
                     }
                 } else {
-                    result.push('%');
-                    result.push_str(&hex);
+                    bytes.push(b'%');
+                    bytes.extend_from_slice(hex.as_bytes());
                 }
             }
-            _ => result.push(c),
+            _ => {
+                let mut buf = [0u8; 4];
+                bytes.extend_from_slice(c.encode_utf8(&mut buf).as_bytes());
+            }
         }
     }
-    result
+
+    String::from_utf8(bytes).unwrap_or_else(|e| String::from_utf8_lossy(e.as_bytes()).into_owned())
 }
 
 /// Base64 encode data (for Basic auth)
