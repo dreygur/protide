@@ -27,9 +27,6 @@ pub fn export_collection(root: &Path, format: ExportFormat) -> Result<String, St
 
 /// Minimal markdown → HTML wrapper (wraps in a styled HTML page).
 fn markdown_to_html(md: &str) -> String {
-    // Simple conversion: wrap each line, handle headers/code fences at basic level.
-    // For a full implementation a markdown crate could be added; this is sufficient
-    // for a readable HTML export without adding dependencies.
     let mut html = String::from(
         r#"<!DOCTYPE html>
 <html lang="en">
@@ -44,12 +41,10 @@ fn markdown_to_html(md: &str) -> String {
   code { background: #f5f5f5; padding: 2px 6px; border-radius: 3px; font-size: 0.9em; }
   pre { background: #f5f5f5; padding: 16px; overflow-x: auto; border-left: 4px solid #666; }
   pre code { background: none; padding: 0; }
-  .method { display: inline-block; padding: 2px 8px; color: #fff; border-radius: 3px; font-weight: bold; font-size: 0.85em; margin-right: 8px; }
-  .GET    { background: #61affe; }
-  .POST   { background: #49cc90; }
-  .PUT    { background: #fca130; }
-  .DELETE { background: #f93e3e; }
-  .PATCH  { background: #50e3c2; color: #333; }
+  table { border-collapse: collapse; width: 100%; margin: 1em 0; }
+  th, td { border: 1px solid #ddd; padding: 8px 12px; text-align: left; }
+  th { background: #f0f0f0; font-weight: 600; }
+  tr:nth-child(even) { background: #fafafa; }
   hr { border: none; border-top: 1px solid #eee; margin: 2em 0; }
 </style>
 </head>
@@ -57,8 +52,13 @@ fn markdown_to_html(md: &str) -> String {
 "#,
     );
 
+    let lines: Vec<&str> = md.lines().collect();
+    let mut i = 0;
     let mut in_code_block = false;
-    for line in md.lines() {
+
+    while i < lines.len() {
+        let line = lines[i];
+
         if line.starts_with("```") {
             if in_code_block {
                 html.push_str("</code></pre>\n");
@@ -68,28 +68,64 @@ fn markdown_to_html(md: &str) -> String {
                 html.push_str(&format!("<pre><code class=\"language-{}\">", escape_html(lang)));
                 in_code_block = true;
             }
+            i += 1;
             continue;
         }
         if in_code_block {
             html.push_str(&escape_html(line));
             html.push('\n');
+            i += 1;
             continue;
         }
-        if let Some(rest) = line.strip_prefix("### ") {
-            html.push_str(&format!("<h3>{}</h3>\n", escape_html(rest)));
+
+        // Table: collect consecutive | lines, skip separator row (|---|)
+        if line.starts_with('|') {
+            let mut rows: Vec<&str> = Vec::new();
+            while i < lines.len() && lines[i].starts_with('|') {
+                rows.push(lines[i]);
+                i += 1;
+            }
+            html.push_str("<table>\n");
+            let mut first_data = true;
+            for (ri, row) in rows.iter().enumerate() {
+                // Separator row: all cells are dashes/colons
+                let cells: Vec<&str> = row.trim_matches('|').split('|').collect();
+                if cells.iter().all(|c| c.trim().chars().all(|ch| ch == '-' || ch == ':' || ch == ' ')) {
+                    continue;
+                }
+                let tag = if ri == 0 { "th" } else { "td" };
+                if ri == 0 { html.push_str("<thead>\n"); }
+                else if first_data { html.push_str("<tbody>\n"); first_data = false; }
+                html.push_str("<tr>");
+                for cell in &cells {
+                    html.push_str(&format!("<{}>{}</{}>", tag, inline_format(cell.trim()), tag));
+                }
+                html.push_str("</tr>\n");
+                if ri == 0 { html.push_str("</thead>\n"); }
+            }
+            if !first_data { html.push_str("</tbody>\n"); }
+            html.push_str("</table>\n");
+            continue;
+        }
+
+        if let Some(rest) = line.strip_prefix("#### ") {
+            html.push_str(&format!("<h4>{}</h4>\n", inline_format(rest)));
+        } else if let Some(rest) = line.strip_prefix("### ") {
+            html.push_str(&format!("<h3>{}</h3>\n", inline_format(rest)));
         } else if let Some(rest) = line.strip_prefix("## ") {
-            html.push_str(&format!("<h2>{}</h2>\n", escape_html(rest)));
+            html.push_str(&format!("<h2>{}</h2>\n", inline_format(rest)));
         } else if let Some(rest) = line.strip_prefix("# ") {
-            html.push_str(&format!("<h1>{}</h1>\n", escape_html(rest)));
+            html.push_str(&format!("<h1>{}</h1>\n", inline_format(rest)));
         } else if line.starts_with("---") {
             html.push_str("<hr>\n");
-        } else if line.starts_with("- ") || line.starts_with("* ") {
-            html.push_str(&format!("<li>{}</li>\n", inline_format(&line[2..])));
+        } else if let Some(rest) = line.strip_prefix("- ").or_else(|| line.strip_prefix("* ")) {
+            html.push_str(&format!("<li>{}</li>\n", inline_format(rest)));
         } else if line.is_empty() {
-            html.push_str("<br>\n");
+            // skip — blank lines are structural separators, not visible breaks
         } else {
             html.push_str(&format!("<p>{}</p>\n", inline_format(line)));
         }
+        i += 1;
     }
 
     html.push_str("</body>\n</html>\n");
@@ -105,26 +141,24 @@ fn escape_html(s: &str) -> String {
 
 fn inline_format(s: &str) -> String {
     let escaped = escape_html(s);
-    // Handle inline `code`
     let mut out = String::new();
     let mut chars = escaped.chars().peekable();
     let mut in_code = false;
+    let mut in_bold = false;
     while let Some(c) = chars.next() {
         if c == '`' {
-            if in_code {
-                out.push_str("</code>");
-                in_code = false;
-            } else {
-                out.push_str("<code>");
-                in_code = true;
-            }
+            if in_code { out.push_str("</code>"); } else { out.push_str("<code>"); }
+            in_code = !in_code;
         } else if c == '*' && chars.peek() == Some(&'*') {
-            // Skip bold for simplicity
             chars.next();
-            out.push_str("<strong>");
+            if in_bold { out.push_str("</strong>"); } else { out.push_str("<strong>"); }
+            in_bold = !in_bold;
         } else {
             out.push(c);
         }
     }
+    // close any unclosed tags
+    if in_code { out.push_str("</code>"); }
+    if in_bold { out.push_str("</strong>"); }
     out
 }
