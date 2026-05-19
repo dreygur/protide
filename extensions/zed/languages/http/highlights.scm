@@ -4,6 +4,10 @@
 ; Request separator ###
 (request_separator) @keyword
 
+; Request separator title
+(request_separator
+  value: (_) @string.special)
+
 ; URL
 (request
   url: (target_url) @string.special.url)
@@ -17,7 +21,16 @@
 (header
   value: (_) @string)
 
-; Comments and @annotations
+; Annotation @ and keyword name (# @name, # @protocol, ...)
+(comment
+  "@" @keyword
+  name: (identifier) @attribute)
+
+; Annotation value (# @name list-countries)
+(comment
+  value: (_) @string)
+
+; Comments
 (comment) @comment
 
 ; Variable {{name}}
