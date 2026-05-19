@@ -165,7 +165,7 @@ impl MainWindow {
                             .text_color(theme.colors.text_secondary)
                             .hover(|s| s.bg(theme.colors.bg_elevated))
                             .on_click(|_, window, _cx: &mut App| {
-                                window.toggle_fullscreen();
+                                window.zoom_window();
                             })
                             .child(icon(ICON_MAXIMIZE, 12.0, theme.colors.text_secondary)),
                     )

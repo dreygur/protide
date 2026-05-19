@@ -25,6 +25,7 @@ fn main() -> Result<()> {
         .with_assets(Assets)
         .run(|cx| {
             gpui_component::init(cx);
+            gpui_component::Theme::global_mut(cx).window_border = gpui::transparent_black();
 
             cx.text_system()
                 .add_fonts(vec![
@@ -69,13 +70,14 @@ fn main() -> Result<()> {
                     appears_transparent: false,
                     traffic_light_position: None,
                 }),
+                window_decorations: Some(gpui::WindowDecorations::Client),
                 icon: load_app_icon(),
                 ..Default::default()
             };
 
             cx.open_window(window_options, |window, cx| {
                 let view = cx.new(|cx| MainWindow::build(window, cx));
-                cx.new(|cx| Root::new(view, window, cx))
+                cx.new(|cx| Root::new(view, window, cx).window_shadow_size(gpui::px(0.0)))
             })
             .expect("Failed to open main window");
         });
