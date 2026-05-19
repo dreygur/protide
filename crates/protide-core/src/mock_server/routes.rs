@@ -241,7 +241,6 @@ impl MockRoute {
         let parts: Vec<&str> = pattern.split('*').collect();
 
         if parts.len() == 1 {
-            // No wildcard
             return pattern == path;
         }
 
@@ -257,10 +256,24 @@ impl MockRoute {
 
         // Check suffix (after last *)
         let last = *parts.last().unwrap();
-        if !last.is_empty()
-            && !remaining.ends_with(last) {
+        if !last.is_empty() {
+            if !remaining.ends_with(last) {
                 return false;
             }
+            remaining = &remaining[..remaining.len() - last.len()];
+        }
+
+        // Check middle parts in order (greedy search)
+        for part in &parts[1..parts.len() - 1] {
+            if part.is_empty() {
+                continue;
+            }
+            if let Some(idx) = remaining.find(part) {
+                remaining = &remaining[idx + part.len()..];
+            } else {
+                return false;
+            }
+        }
 
         true
     }
