@@ -192,15 +192,15 @@ impl<'a> Lexer<'a> {
         let annotation = comment.trim_start_matches('@');
 
         // Script markers
-        if annotation == "pre-script" || annotation.starts_with("pre-script") {
+        if annotation == "pre-script" || annotation.starts_with("pre-script ") {
             self.in_script = Some(ScriptType::PreScript);
             return Token::ScriptMarker(ScriptType::PreScript);
         }
-        if annotation == "post-script" || annotation.starts_with("post-script") {
+        if annotation == "post-script" || annotation.starts_with("post-script ") {
             self.in_script = Some(ScriptType::PostScript);
             return Token::ScriptMarker(ScriptType::PostScript);
         }
-        if annotation == "tests" || annotation.starts_with("tests") {
+        if annotation == "tests" || annotation.starts_with("tests ") {
             self.in_script = Some(ScriptType::Tests);
             return Token::ScriptMarker(ScriptType::Tests);
         }
