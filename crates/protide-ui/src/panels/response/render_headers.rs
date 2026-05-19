@@ -223,7 +223,6 @@ impl ResponsePanel {
                                     .text_size(px(12.0))
                                     .font_weight(gpui::FontWeight::MEDIUM)
                                     .text_color(theme.colors.accent)
-                                    .overflow_hidden()
                                     .child(key.clone())
                             )
                             .child(div().w(px(4.0)))
@@ -232,7 +231,6 @@ impl ResponsePanel {
                                     .flex_1()
                                     .px(px(12.0))
                                     .py(px(8.0))
-                                    .overflow_hidden()
                                     .child(selectable_text_element(
                                         gpui::ElementId::Integer(i as u64),
                                         SharedString::from(value.as_str()),

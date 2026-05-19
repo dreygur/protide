@@ -24,9 +24,7 @@ pub(super) const JSON_CHAR_W: f32 = 7.5;      // JetBrains Mono 12.5px ≈ font_
 // Strings longer than COLLAPSE_CHARS get a "show more" toggle in wrap mode.
 pub(super) const COLLAPSE_CHARS: usize = 300;
 // Responses with more rows than this fall back to uniform_list (no wrapping).
-// Keep this low: wrap mode builds ALL row elements on every render frame, so
-// large row counts cause O(n) layout work on every cx.notify() and scroll tick.
-pub(super) const WRAP_MODE_MAX_ROWS: usize = 200;
+pub(super) const WRAP_MODE_MAX_ROWS: usize = 2000;
 
 use log::{debug, warn};
 use protide_core::chaining;
