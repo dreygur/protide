@@ -4,14 +4,14 @@ use super::routes::{HttpMethod, MockResponse, MockRoute};
 pub(super) struct RouterState {
     pub routes: Arc<RwLock<Vec<MockRoute>>>,
     pub record_mode: Arc<std::sync::atomic::AtomicBool>,
-    pub record_target: Option<String>,
+    pub record_target: Arc<RwLock<Option<String>>>,
     pub recorded_routes: Arc<Mutex<Vec<MockRoute>>>,
 }
 
 pub(super) fn create_router(
     routes: Arc<RwLock<Vec<MockRoute>>>,
     record_mode: Arc<std::sync::atomic::AtomicBool>,
-    record_target: Option<String>,
+    record_target: Arc<RwLock<Option<String>>>,
     recorded_routes: Arc<Mutex<Vec<MockRoute>>>,
 ) -> axum::Router {
     use axum::{
@@ -53,8 +53,9 @@ pub(super) fn create_router(
         };
 
         let recording = state.record_mode.load(Ordering::Relaxed);
+        let live_target = state.record_target.read().ok().and_then(|t| t.clone());
         if recording {
-            if let Some(ref target) = state.record_target {
+            if let Some(ref target) = live_target {
                 let full_url = if query.is_empty() {
                     format!("{}{}", target.trim_end_matches('/'), path)
                 } else {

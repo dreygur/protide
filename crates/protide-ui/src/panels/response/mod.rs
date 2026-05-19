@@ -184,11 +184,15 @@ impl ResponsePanel {
         let bounds = self.hdr_table_bounds.unwrap_or_default();
         let val_col_x = f32::from(bounds.origin.x) + self.resp_header_col1_w + HDR_SPACER_W + HDR_PADDING;
         let char_x = (f32::from(ex) - val_col_x).max(0.0);
-        let max_len = self.response.as_ref()
+        let char_idx = (char_x / HDR_CHAR_W) as usize;
+        let val = self.response.as_ref()
             .and_then(|r| r.headers.get(row))
-            .map(|(_, v)| v.len())
-            .unwrap_or(0);
-        ((char_x / HDR_CHAR_W) as usize).min(max_len)
+            .map(|(_, v)| v.as_str())
+            .unwrap_or("");
+        val.char_indices()
+            .nth(char_idx)
+            .map(|(byte_pos, _)| byte_pos)
+            .unwrap_or(val.len())
     }
 
     pub(super) fn show_copy_feedback(&mut self, feedback: CopyFeedback, cx: &mut Context<Self>) {

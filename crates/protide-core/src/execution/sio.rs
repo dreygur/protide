@@ -309,7 +309,7 @@ async fn run_connection(
                             let _ = event_tx.send(SioUiEvent::Event(SioEvent {
                                 direction: SioDirection::Received,
                                 namespace: ns,
-                                event_name: format!("ack#{}", ack_id.unwrap_or(0)),
+                                event_name: match ack_id { Some(id) => format!("ack#{}", id), None => "ack".to_string() },
                                 payload: data.to_string(),
                                 ack_id,
                                 is_ack: true,
@@ -355,7 +355,8 @@ where
     use futures_util::{SinkExt, StreamExt};
     use tokio_tungstenite::tungstenite::Message;
 
-    for _ in 0..2u8 {
+    let mut pings_handled = 0u8;
+    loop {
         match tokio::time::timeout(std::time::Duration::from_secs(10), read.next()).await {
             Ok(Some(Ok(Message::Text(text)))) => match parse_eio_type(&text) {
                 Some(('4', sio)) => match parse_sio_header(sio) {
@@ -375,8 +376,13 @@ where
                         return false;
                     }
                 },
-                // Some servers send EIO PING before the SIO CONNECT ack — reply and retry
+                // Some servers send EIO PINGs before the SIO CONNECT ack — reply and keep waiting
                 Some(('2', probe)) => {
+                    pings_handled += 1;
+                    if pings_handled > 5 {
+                        let _ = event_tx.send(SioUiEvent::Error("Too many EIO pings during connect".into()));
+                        return false;
+                    }
                     let pong = format!("3{}", probe);
                     if write.send(Message::Text(pong.into())).await.is_err() {
                         let _ = event_tx.send(SioUiEvent::Error("Write error during connect".into()));
@@ -397,9 +403,6 @@ where
             }
         }
     }
-
-    let _ = event_tx.send(SioUiEvent::Error("SIO CONNECT ack not received after ping exchange".into()));
-    false
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────

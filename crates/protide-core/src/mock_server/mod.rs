@@ -16,7 +16,7 @@ pub struct MockServer {
     addr: Option<SocketAddr>,
     port: u16,
     record_mode: Arc<std::sync::atomic::AtomicBool>,
-    record_target: Option<String>,
+    record_target: Arc<RwLock<Option<String>>>,
     recorded_routes: Arc<Mutex<Vec<MockRoute>>>,
 }
 
@@ -28,7 +28,7 @@ impl MockServer {
             addr: None,
             port,
             record_mode: Arc::new(std::sync::atomic::AtomicBool::new(false)),
-            record_target: None,
+            record_target: Arc::new(RwLock::new(None)),
             recorded_routes: Arc::new(Mutex::new(Vec::new())),
         }
     }
@@ -77,15 +77,17 @@ impl MockServer {
 
     pub fn set_record_mode(&mut self, enabled: bool, target: Option<String>) {
         self.record_mode.store(enabled, std::sync::atomic::Ordering::Relaxed);
-        self.record_target = target;
+        if let Ok(mut t) = self.record_target.write() {
+            *t = target;
+        }
     }
 
     pub fn is_recording(&self) -> bool {
         self.record_mode.load(std::sync::atomic::Ordering::Relaxed)
     }
 
-    pub fn record_target(&self) -> Option<&str> {
-        self.record_target.as_deref()
+    pub fn record_target(&self) -> Option<String> {
+        self.record_target.read().ok().and_then(|t| t.clone())
     }
 
     pub fn drain_recorded(&mut self) -> Vec<MockRoute> {
@@ -99,7 +101,7 @@ impl MockServer {
 
         let routes = self.routes.clone();
         let record_mode = self.record_mode.clone();
-        let record_target = self.record_target.clone();
+        let record_target = self.record_target.clone(); // Arc clone — handler sees live updates
         let recorded_routes = self.recorded_routes.clone();
         let port = self.port;
         let (shutdown_tx, shutdown_rx) = oneshot::channel();

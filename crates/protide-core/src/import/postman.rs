@@ -107,18 +107,17 @@ fn parse_request(item: &PostmanItem, request: &PostmanRequest, path: &[String]) 
                 })
             }
             Some("formdata") => {
-                // Form data - just serialize as JSON-like for now
                 b.formdata.as_ref().map(|params| {
-                    let pairs: Vec<String> = params.iter()
+                    params.iter()
                         .filter(|p| !p.disabled.unwrap_or(false))
                         .map(|p| {
-                            format!("{}: {}",
-                                p.key.as_deref().unwrap_or(""),
-                                p.value.as_deref().unwrap_or(""),
+                            format!("{}={}",
+                                urlencoding::encode(p.key.as_deref().unwrap_or("")),
+                                urlencoding::encode(p.value.as_deref().unwrap_or("")),
                             )
                         })
-                        .collect();
-                    pairs.join("\n")
+                        .collect::<Vec<_>>()
+                        .join("&")
                 })
             }
             Some("graphql") => {
