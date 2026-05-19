@@ -134,6 +134,17 @@ jobs:
           cp target/release/protide "$APP/Contents/MacOS/Protide"
           cp -r crates/protide/assets "$APP/Contents/Resources/"
 
+          # Build .icns from the 256x256 PNG
+          mkdir -p Protide.iconset
+          sips -z 16 16   crates/protide/assets/protide-logo.png --out Protide.iconset/icon_16x16.png
+          sips -z 32 32   crates/protide/assets/protide-logo.png --out Protide.iconset/icon_16x16@2x.png
+          sips -z 32 32   crates/protide/assets/protide-logo.png --out Protide.iconset/icon_32x32.png
+          sips -z 64 64   crates/protide/assets/protide-logo.png --out Protide.iconset/icon_32x32@2x.png
+          sips -z 128 128 crates/protide/assets/protide-logo.png --out Protide.iconset/icon_128x128.png
+          sips -z 256 256 crates/protide/assets/protide-logo.png --out Protide.iconset/icon_128x128@2x.png
+          sips -z 256 256 crates/protide/assets/protide-logo.png --out Protide.iconset/icon_256x256.png
+          iconutil -c icns Protide.iconset -o "$APP/Contents/Resources/Protide.icns"
+
           cat > "$APP/Contents/Info.plist" <<PLIST
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -142,6 +153,7 @@ jobs:
             <key>CFBundleExecutable</key><string>Protide</string>
             <key>CFBundleIdentifier</key><string>com.protide.app</string>
             <key>CFBundleName</key><string>Protide</string>
+            <key>CFBundleIconFile</key><string>Protide</string>
             <key>CFBundleVersion</key><string>${PKG_VER}</string>
             <key>CFBundleShortVersionString</key><string>${PKG_VER}</string>
             <key>CFBundlePackageType</key><string>APPL</string>

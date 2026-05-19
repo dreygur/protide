@@ -4,15 +4,17 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-BINARY="${1:-$(which protide 2>/dev/null || echo "$SCRIPT_DIR/../target/release/protide")}"
+# tar.gz layout: binary is a sibling of this script; source-tree layout: target/release/protide
+BINARY="${1:-$(which protide 2>/dev/null || ls "$SCRIPT_DIR/protide" "$SCRIPT_DIR/../target/release/protide" 2>/dev/null | head -1)}"
 
 ICON_DIR="$HOME/.local/share/icons/hicolor/256x256/apps"
 DESKTOP_DIR="$HOME/.local/share/applications"
 
 mkdir -p "$ICON_DIR" "$DESKTOP_DIR"
 
-# Install icon (copy from binary assets embedded at build time or from packaging/)
-ICON_SRC="$SCRIPT_DIR/../crates/protide/assets/protide-logo.png"
+# tar.gz layout: assets/ is a sibling of this script; source-tree layout: crates/protide/assets/
+ICON_SRC="$SCRIPT_DIR/assets/protide-logo.png"
+[[ -f "$ICON_SRC" ]] || ICON_SRC="$SCRIPT_DIR/../crates/protide/assets/protide-logo.png"
 if [[ -f "$ICON_SRC" ]]; then
     cp "$ICON_SRC" "$ICON_DIR/protide.png"
     echo "Installed icon → $ICON_DIR/protide.png"
