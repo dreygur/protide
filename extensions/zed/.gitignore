@@ -1,2 +1,3 @@
-extensions/zed/extension.wasm
-extensions/zed/target/
+extension.wasm
+target/
+grammars/**/*.wasm

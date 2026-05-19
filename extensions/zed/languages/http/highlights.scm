@@ -40,7 +40,3 @@
   name: (identifier) @variable)
 
 (variable_declaration "=" @operator)
-
-; Query params
-(query_param
-  key: (_) @property)
