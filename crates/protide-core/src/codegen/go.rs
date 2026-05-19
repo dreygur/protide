@@ -25,7 +25,7 @@ pub fn generate_go(request: &CodegenRequest) -> String {
     // Create request body
     if has_body {
         if let Some(body) = &request.body {
-            lines.push(format!("    body := strings.NewReader(`{}`)", body));
+            lines.push(format!("    body := strings.NewReader(\"{}\")", escape_go_string(body)));
             lines.push(String::new());
             lines.push(format!(
                 "    req, err := http.NewRequest(\"{}\", \"{}\", body)",

@@ -33,11 +33,7 @@ pub fn generate_rust(request: &CodegenRequest) -> String {
         && let Some(body) = &request.body {
             if is_json {
                 // Try to format as serde_json
-                if let Ok(_json_val) = serde_json::from_str::<serde_json::Value>(body) {
-                    lines.push(format!("        .body(r#\"{}\"#)", body));
-                } else {
-                    lines.push(format!("        .body(\"{}\")", escape_rust_string(body)));
-                }
+                lines.push(format!("        .body(\"{}\")", escape_rust_string(body)));
             } else {
                 lines.push(format!("        .body(\"{}\")", escape_rust_string(body)));
             }
