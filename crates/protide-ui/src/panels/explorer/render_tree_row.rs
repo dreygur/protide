@@ -1,4 +1,4 @@
-use gpui::{Context, IntoElement, MouseButton, MouseDownEvent, ParentElement, Pixels, Point, SharedString, Styled, Window, div, px};
+use gpui::{Context, IntoElement, MouseButton, MouseDownEvent, ParentElement, Pixels, Point, SharedString, Styled, div, px};
 use super::*;
 
 impl ExplorerPanel {
@@ -58,7 +58,6 @@ impl ExplorerPanel {
             );
         }
 
-        let rename_text = self.rename_text.clone();
         let content = div()
             .flex_1()
             .flex()
@@ -123,39 +122,7 @@ impl ExplorerPanel {
                         .child(display_name),
                 )
             })
-            .when(is_renaming, |el| {
-                el.child(
-                    div()
-                        .flex_1()
-                        .min_w(px(0.0))
-                        .h(px(28.0))
-                        .px(px(4.0))
-                        .flex()
-                        .items_center()
-                        .gap(px(0.0))
-                        .bg(theme.colors.bg_tertiary)
-                        .border_1()
-                        .border_color(theme.colors.accent)
-                        .overflow_hidden()
-                        .cursor_text()
-                        .on_mouse_down(MouseButton::Left, cx.listener(|this, _, window: &mut Window, cx| {
-                            cx.stop_propagation();
-                            this.edit_focus.focus(window, cx);
-                        }))
-                        .child(
-                            div()
-                                .text_size(px(12.0))
-                                .text_color(theme.colors.text_primary)
-                                .child(rename_text)
-                        )
-                        .child(
-                            div()
-                                .w(px(1.5))
-                                .h(px(14.0))
-                                .bg(theme.colors.accent)
-                        ),
-                )
-            })
+            .when(is_renaming, |el| el.child(self.render_rename_input(cx)))
             .when(is_folder && has_watcher, |el| {
                 el.child(div().w(px(4.0)))
                     .child(icon(ICON_LINK, ICON_SM, theme.colors.team_accent))

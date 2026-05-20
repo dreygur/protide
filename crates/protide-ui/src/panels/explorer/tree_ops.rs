@@ -44,6 +44,9 @@ impl ExplorerPanel {
             .file_name()
             .map(|n| n.to_string_lossy().to_string())
             .unwrap_or_default();
+        let n = self.rename_text.chars().count();
+        self.rename_selection = 0..n;
+        self.rename_is_selecting = false;
         self.renaming_item = Some(path);
         self.context_menu = None;
         cx.notify();
@@ -72,6 +75,8 @@ impl ExplorerPanel {
             }
         }
         self.rename_text.clear();
+        self.rename_selection = 0..0;
+        self.rename_is_selecting = false;
         cx.notify();
     }
 
@@ -79,6 +84,8 @@ impl ExplorerPanel {
     pub(super) fn cancel_rename(&mut self, cx: &mut Context<Self>) {
         self.renaming_item = None;
         self.rename_text.clear();
+        self.rename_selection = 0..0;
+        self.rename_is_selecting = false;
         cx.notify();
     }
 
