@@ -1,6 +1,5 @@
 //! Tab bar and tab content routing for RequestPanel
 
-use std::ops::Range;
 
 use gpui::{
     div, prelude::*, px, Context, IntoElement,
@@ -21,7 +20,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             RequestMode::SocketIo => &["Events", "Headers"],
             RequestMode::Grpc => &["Message", "Metadata", "Proto"],
             RequestMode::Trpc => &["Procedure", "Parameters", "Headers", "Auth"],
-            RequestMode::Http => &["Params", "Headers", "Body", "Auth", "Scripts"],
+            RequestMode::Http => &["Params", "Headers", "Body", "Auth", "Scripts", "Data"],
         };
         let active_tab = self.active_tab;
         let param_count = self.params.iter().filter(|p| p.enabled && !p.key.is_empty()).count();
@@ -131,6 +130,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                     2 => self.render_body_tab(cx),
                     3 => self.render_auth_tab(cx),
                     4 => self.render_scripts_tab(cx),
+                    5 => self.render_data_tab(cx),
                     _ => div().into_any_element(),
                 }
             }

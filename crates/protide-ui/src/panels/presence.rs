@@ -130,6 +130,7 @@ impl PresenceManager {
     }
 
     /// Generate a new pairing code
+    #[allow(unexpected_cfgs)]
     pub fn generate_code(&mut self) {
         #[cfg(feature = "pake-auth")]
         {

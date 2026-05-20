@@ -1,6 +1,6 @@
 use gpui::Context;
 use super::*;
-use super::super::request_utils::{base64_encode, status_text, url_encode};
+use super::super::request_utils::{base64_encode, url_encode};
 use super::graphql::dns_troubleshoot_hint;
 
 impl<E: WebSocketExecutor> RequestPanel<E> {

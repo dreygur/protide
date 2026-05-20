@@ -5,7 +5,7 @@ use gpui::{
 use std::{fs, path::PathBuf};
 use crate::theme;
 use crate::components::icons::{
-    ICON_CHEVRON_RIGHT, ICON_FILE, ICON_FOLDER, ICON_MD, ICON_SM, icon,
+    ICON_CHEVRON_RIGHT, ICON_FILE, ICON_FOLDER, ICON_SM, icon,
 };
 use super::DocsPanel;
 

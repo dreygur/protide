@@ -21,6 +21,7 @@ mod render_import;
 mod render_trpc;
 mod render_socketio;
 mod render_socketio_helpers;
+mod render_data;
 
 mod init;
 mod state;
@@ -48,12 +49,11 @@ mod tests;
 use std::ops::Range;
 use std::marker::PhantomData;
 use gpui::{
-    deferred, div, prelude::*, px, ClipboardItem, Context, Entity, FocusHandle, IntoElement,
-    KeyDownEvent, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement, Render,
+    deferred, div, prelude::*, px, Context, Entity, FocusHandle, IntoElement,
+    KeyDownEvent, MouseButton, MouseMoveEvent, ParentElement, Render,
     ScrollHandle, Styled, Subscription, Window,
 };
-use crate::components::{render_text_view_with_max, find_word_start, find_word_end};
-use crate::components::code_editor::{CodeEditor, Language};
+use crate::components::code_editor::CodeEditor;
 use protide_core::execution::{ExecutionBody, ExecutionMode, ExecutionRequest, FormPart, FormPartValue};
 use protide_core::execution::ws::{
     TungsteniteExecutor, WebSocketExecutor, WsCommand, WsConnectionParams, WsDirection, WsEvent,
@@ -69,11 +69,9 @@ use super::request_types::{
     GrpcMethodInfo, GrpcStreamingType, HttpMethod, KeyValuePair, RequestMode,
     SioConnectionState, WsConnectionState,
 };
-use super::request_utils::{base64_encode, status_text, url_decode, url_encode};
 use base64::Engine;
 use super::response::{ResponseData, ResponsePanel};
-use protide_core::codegen::{self as protide_codegen, CodegenRequest, Language as CodegenLanguage};
-use protide_core::import as protide_import;
+use protide_core::codegen::Language as CodegenLanguage;
 use http_parser::VariableExtraction;
 use crate::last_paths;
 
@@ -82,7 +80,6 @@ use crate::last_paths;
 pub struct GqlSchemaType {
     pub name: String,
     pub kind: String,
-    pub description: Option<String>,
 }
 
 /// State of the GraphQL schema for the current endpoint.
@@ -93,14 +90,6 @@ pub enum GraphqlSchemaState {
     Loading,
     Loaded(Vec<GqlSchemaType>),
     Error(String),
-}
-
-fn render_text_view(
-    text: &str, selection: &Range<usize>, is_focused: bool, font_size: f32,
-    text_color: gpui::Hsla, placeholder: Option<&str>, placeholder_color: gpui::Hsla,
-    selection_bg: gpui::Hsla,
-) -> gpui::AnyElement {
-    render_text_view_with_max(text, selection, is_focused, font_size, text_color, placeholder, placeholder_color, None, selection_bg)
 }
 
 fn char_to_byte_offset(text: &str, char_idx: usize) -> usize {
@@ -176,7 +165,6 @@ pub struct RequestPanel<E: WebSocketExecutor = TungsteniteExecutor> {
     pub(super) graphql_operation_name: String,
     pub(super) ws_state: WsConnectionState,
     pub(super) ws_messages: WsRingBuffer,
-    pub(super) ws_message_input: String,
     pub(super) ws_message_editor: Entity<CodeEditor>,
     ws_send_tx: Option<std::sync::mpsc::Sender<WsCommand>>,
     pub(super) ws_compose_h: f32,
@@ -200,6 +188,8 @@ pub struct RequestPanel<E: WebSocketExecutor = TungsteniteExecutor> {
     pub(super) sio_next_ack_id: u32,
     pub(super) sio_payload_editor: Entity<CodeEditor>,
     sio_send_tx: Option<std::sync::mpsc::Sender<SioCommand>>,
+    pub(super) sio_room_name: String,
+    pub(super) sio_active_rooms: Vec<String>,
     pub(super) kv_col_key_w: f32,
     pub(super) kv_col_drag: Option<(f32, f32)>,
     pub(super) script_pre_open: bool,
@@ -216,6 +206,9 @@ pub struct RequestPanel<E: WebSocketExecutor = TungsteniteExecutor> {
     pub(super) graphql_schema: GraphqlSchemaState,
     pub(super) graphql_schema_search: String,
     pub(super) console_panel: Option<Entity<ConsolePanel>>,
+    pub(super) csv_path: Option<std::path::PathBuf>,
+    pub(super) data_results: Vec<crate::panels::request_types::DataRunRow>,
+    pub(super) data_running: bool,
     _executor: PhantomData<E>,
 }
 

@@ -5,13 +5,14 @@ mod drag;
 mod help;
 mod overlays;
 mod render;
+mod render_sidebar;
 mod statusbar;
 mod sync;
 mod titlebar;
 
 use std::path::PathBuf;
 
-use gpui::{Context, Entity, FocusHandle, KeyBinding, Styled, WeakEntity, Window, prelude::*};
+use gpui::{Context, Entity, FocusHandle, KeyBinding, WeakEntity, Window, prelude::*};
 
 gpui::actions!(
     main_window,
@@ -46,7 +47,7 @@ pub fn register_keybindings(cx: &mut gpui::App) {
 
 use super::panels::presence::{ConnectionStatus, PeerSource, PresenceManager};
 use super::components::{TextInput, TextInputStyle};
-use super::panels::{ConsoleEntry, ConsolePanel, DocsPanel, ExplorerPanel, MockServerPanel, RequestPanel, ResponsePanel};
+use super::panels::{ConsoleEntry, ConsolePanel, DocsPanel, ExplorerPanel, MockServerPanel, RequestPanel, ResponsePanel, RunnerPanel};
 use crate::theme;
 use protide_core::sync::{SyncEngine, SyncEvent};
 use crate::components::icons::{
@@ -66,6 +67,8 @@ pub(super) enum ModalPending {
 /// Main window containing the application layout
 pub struct MainWindow {
     pub(super) explorer: Entity<ExplorerPanel>,
+    pub(super) runner_panel: Entity<RunnerPanel>,
+    pub(super) show_runner: bool,
     pub(super) request_panel: Entity<RequestPanel>,
     pub(super) response_panel: Entity<ResponsePanel>,
     pub(super) mock_server_panel: Entity<MockServerPanel>,
@@ -112,6 +115,7 @@ impl MainWindow {
     pub fn build(_window: &mut Window, cx: &mut Context<Self>) -> Self {
         let main_window_weak: WeakEntity<MainWindow> = cx.entity().downgrade();
         let explorer = cx.new(|cx| ExplorerPanel::new(cx, main_window_weak.clone()));
+        let runner_panel = cx.new(|cx| RunnerPanel::new(cx, main_window_weak.clone()));
         let response_panel = cx.new(ResponsePanel::new);
         let response_panel_clone = response_panel.clone();
         let request_panel = cx.new(|cx| RequestPanel::new(cx, response_panel_clone));
@@ -144,7 +148,7 @@ impl MainWindow {
             let ws_key = workspace.to_string_lossy().to_string();
             let saved_entry = session.workspaces.get(&ws_key).cloned();
             explorer.update(cx, |exp, cx| {
-                exp.init_workspace(workspace, saved_entry, cx);
+                exp.init_workspace(workspace.clone(), saved_entry, cx);
             });
         }
 
@@ -195,6 +199,8 @@ impl MainWindow {
 
         Self {
             explorer,
+            runner_panel,
+            show_runner: false,
             request_panel,
             response_panel,
             mock_server_panel,
@@ -231,6 +237,25 @@ impl MainWindow {
         }
     }
 
+    pub fn open_runner(
+        &mut self,
+        collection_path: PathBuf,
+        env_vars: std::collections::HashMap<String, String>,
+        cx: &mut Context<Self>,
+    ) {
+        self.show_runner = true;
+        self.runner_panel.update(cx, |panel, cx| {
+            panel.start(collection_path, env_vars, cx);
+        });
+        cx.notify();
+    }
+
+    pub fn close_runner(&mut self, cx: &mut Context<Self>) {
+        self.show_runner = false;
+        cx.notify();
+    }
+
+    /// Called by ExplorerPanel when the workspace root changes.
     pub(super) fn toggle_console(&mut self, cx: &mut Context<Self>) {
         self.show_console = !self.show_console;
         cx.notify();

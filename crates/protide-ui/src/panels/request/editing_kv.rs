@@ -9,6 +9,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
         }
     }
 
+    #[allow(dead_code)]
     pub(super) fn add_header(&mut self, cx: &mut Context<Self>) {
         self.headers.push(KeyValuePair::default());
         cx.notify();
@@ -76,6 +77,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
         }
     }
 
+    #[allow(dead_code)]
     pub(super) fn add_param(&mut self, cx: &mut Context<Self>) {
         self.params.push(KeyValuePair::default());
         cx.notify();

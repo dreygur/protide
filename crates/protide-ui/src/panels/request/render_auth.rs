@@ -8,13 +8,8 @@ use gpui::{
 };
 
 use crate::theme;
-use crate::components::icons::{
-    icon, ICON_SM,
-    ICON_FORM, ICON_USER, ICON_KEY, ICON_CIRCLE_X,
-    ICON_MD,
-};
 use protide_core::execution::ws::WebSocketExecutor;
-use super::super::request_types::{ApiKeyLocation, AuthType, EditTarget};
+use super::super::request_types::{AuthType, EditTarget};
 use super::RequestPanel;
 
 impl<E: WebSocketExecutor> RequestPanel<E> {

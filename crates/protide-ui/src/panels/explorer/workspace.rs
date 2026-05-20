@@ -233,11 +233,18 @@ impl ExplorerPanel {
                             output_dir.clone()
                         };
                         let mut created = 0;
-                        for request in &result.requests {
+                        for (i, request) in result.requests.iter().enumerate() {
                             let filename = request.meta.name.as_ref()
                                 .map(|n| sanitize_filename(n))
                                 .unwrap_or_else(|| format!("request-{}", created + 1));
-                            let filepath = collection_dir.join(format!("{}.http", filename));
+                            let parent = if let Some(Some(folder)) = result.request_folders.get(i) {
+                                let sub = collection_dir.join(sanitize_filename(folder));
+                                let _ = fs::create_dir_all(&sub);
+                                sub
+                            } else {
+                                collection_dir.clone()
+                            };
+                            let filepath = parent.join(format!("{}.http", filename));
                             match request_to_http_content(request) {
                                 Ok(c) => match fs::write(&filepath, &c) {
                                     Ok(_) => created += 1,
@@ -273,6 +280,42 @@ impl ExplorerPanel {
             }
         }
         cx.notify();
+    }
+
+    pub(super) fn run_collection_folder(&mut self, path: PathBuf, cx: &mut Context<Self>) {
+        let env_vars = self.env_state
+            .active()
+            .map(|e| e.variables.clone())
+            .unwrap_or_default();
+        if let Some(win) = self.main_window.upgrade() {
+            self.context_menu = None;
+            cx.notify();
+            win.update(cx, |win, cx| win.open_runner(path, env_vars, cx));
+        }
+    }
+
+    pub(super) fn export_openapi_folder(&mut self, path: PathBuf, cx: &mut Context<Self>) {
+        let dialog = rfd::FileDialog::new()
+            .set_title("Export OpenAPI 3.0")
+            .add_filter("JSON", &["json"])
+            .set_file_name("openapi.json");
+        self.context_menu = None;
+        cx.notify();
+        if let Some(save_path) = dialog.save_file() {
+            let modal_state = match protide_core::export::export_openapi(&path) {
+                Ok(content) => match std::fs::write(&save_path, &content) {
+                    Ok(_) => {
+                        info!("Exported OpenAPI to: {}", save_path.display());
+                        ModalState::info("Export Complete", format!("OpenAPI spec saved to {}", save_path.display()))
+                    }
+                    Err(e) => ModalState::error("Export Failed", format!("Failed to write file: {}", e)),
+                },
+                Err(e) => ModalState::error("Export Failed", e),
+            };
+            if let Some(win) = self.main_window.upgrade() {
+                win.update(cx, |win, cx| win.show_modal(modal_state, cx));
+            }
+        }
     }
 
     pub fn export_docs(&mut self, cx: &mut Context<Self>) {

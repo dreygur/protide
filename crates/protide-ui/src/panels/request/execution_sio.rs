@@ -102,7 +102,40 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             let _ = tx.send(SioCommand::Disconnect);
         }
         self.sio_state = SioConnectionState::Disconnected;
+        self.sio_active_rooms.clear();
         cx.notify();
+    }
+
+    pub(super) fn join_socketio_room(&mut self, cx: &mut Context<Self>) {
+        if self.sio_state != SioConnectionState::Connected { return; }
+        let room = self.sio_room_name.trim().to_string();
+        if room.is_empty() { return; }
+        if let Some(tx) = &self.sio_send_tx {
+            let _ = tx.send(SioCommand::Emit {
+                namespace: self.sio_namespace.clone(),
+                event_name: "join".to_string(),
+                payload: format!("\"{}\"", room),
+                ack_id: None,
+            });
+            if !self.sio_active_rooms.contains(&room) {
+                self.sio_active_rooms.push(room);
+            }
+            cx.notify();
+        }
+    }
+
+    pub(super) fn leave_socketio_room(&mut self, room: String, cx: &mut Context<Self>) {
+        if self.sio_state != SioConnectionState::Connected { return; }
+        if let Some(tx) = &self.sio_send_tx {
+            let _ = tx.send(SioCommand::Emit {
+                namespace: self.sio_namespace.clone(),
+                event_name: "leave".to_string(),
+                payload: format!("\"{}\"", room),
+                ack_id: None,
+            });
+            self.sio_active_rooms.retain(|r| r != &room);
+            cx.notify();
+        }
     }
 
     pub(super) fn emit_socketio_event(&mut self, cx: &mut Context<Self>) {

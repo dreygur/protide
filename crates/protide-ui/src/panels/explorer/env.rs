@@ -1,4 +1,4 @@
-use gpui::{ClipboardItem, Context, Window};
+use gpui::{Context, Window};
 use super::*;
 
 impl ExplorerPanel {

@@ -71,7 +71,7 @@ pub struct ExecutionRequest {
 }
 
 /// Full result of executing a request
-#[derive(serde::Serialize)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct ExecutionResult {
     pub status: u16,
     pub status_text: String,

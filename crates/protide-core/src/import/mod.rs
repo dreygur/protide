@@ -84,6 +84,8 @@ pub struct ImportResult {
     pub name: Option<String>,
     /// Parsed requests
     pub requests: Vec<Request>,
+    /// Optional subfolder for each request (same length as requests)
+    pub request_folders: Vec<Option<String>>,
     /// Any warnings during import
     pub warnings: Vec<String>,
 }
@@ -93,6 +95,7 @@ impl ImportResult {
         Self {
             name: None,
             requests: Vec::new(),
+            request_folders: Vec::new(),
             warnings: Vec::new(),
         }
     }
@@ -104,6 +107,12 @@ impl ImportResult {
 
     pub fn add_request(&mut self, request: Request) {
         self.requests.push(request);
+        self.request_folders.push(None);
+    }
+
+    pub fn add_request_in_folder(&mut self, request: Request, folder: Option<String>) {
+        self.requests.push(request);
+        self.request_folders.push(folder);
     }
 
     pub fn add_warning(&mut self, warning: impl Into<String>) {
