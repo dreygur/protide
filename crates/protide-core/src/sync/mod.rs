@@ -33,6 +33,20 @@ pub use types::*;
 
 use crate::sync::file_sync::{FileSync, FileSyncEvent};
 
+fn push_entry_event(entry: types::CrdtEntry, events: &mut Vec<SyncEvent>) {
+    if entry.data_type == DataType::WorkspaceFile {
+        if let Ok(v) = serde_json::from_str::<serde_json::Value>(&entry.data) {
+            events.push(SyncEvent::FileReceived {
+                relative_path: v["path"].as_str().unwrap_or_default().to_string(),
+                content: v["content"].as_str().unwrap_or_default().to_string(),
+                deleted: v["deleted"].as_bool().unwrap_or(false),
+            });
+        }
+    } else {
+        events.push(SyncEvent::EntryReceived(entry));
+    }
+}
+
 /// The master sync engine — coordinates all backends and exposes a unified
 /// event stream for the UI to consume.
 pub struct SyncEngine {
@@ -209,6 +223,17 @@ impl SyncEngine {
         Some(entry)
     }
 
+    /// Broadcast a workspace file change (create/modify/delete) to all P2P peers.
+    pub fn broadcast_workspace_file(&mut self, workspace_root: &std::path::Path, file_path: &std::path::Path, content: String, deleted: bool) {
+        let rel = file_path.strip_prefix(workspace_root).unwrap_or(file_path);
+        let payload = serde_json::json!({
+            "path": rel.to_string_lossy(),
+            "content": content,
+            "deleted": deleted,
+        }).to_string();
+        self.apply_local_change(DataType::WorkspaceFile, payload);
+    }
+
     /// Broadcast a live activity event via UDP
     pub fn broadcast_live_activity(
         &self,
@@ -234,7 +259,7 @@ impl SyncEngine {
                     FileSyncEvent::EntryReceived(entry) => {
                         match self.store.merge_remote(entry.clone()) {
                             MergeResult::Accepted(_) => {
-                                events.push(SyncEvent::EntryReceived(entry));
+                                push_entry_event(entry, &mut events);
                             }
                             MergeResult::Stale => {}
                         }
@@ -265,7 +290,7 @@ impl SyncEngine {
                     p2p::P2PEvent::EntryReceived(entry) => {
                         match self.store.merge_remote(entry.clone()) {
                             MergeResult::Accepted(_) => {
-                                events.push(SyncEvent::EntryReceived(entry));
+                                push_entry_event(entry, &mut events);
                             }
                             MergeResult::Stale => {}
                         }

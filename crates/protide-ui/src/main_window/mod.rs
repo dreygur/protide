@@ -241,6 +241,13 @@ impl MainWindow {
         cx.notify();
     }
 
+    /// Forward a local workspace file change to the sync engine for P2P broadcast.
+    pub fn broadcast_workspace_file(&mut self, workspace_root: &std::path::Path, file_path: &std::path::Path, content: String, deleted: bool) {
+        if let Some(ref mut engine) = self.sync_engine {
+            engine.broadcast_workspace_file(workspace_root, file_path, content, deleted);
+        }
+    }
+
     /// Called by ExplorerPanel when the workspace root changes.
     pub(super) fn toggle_console(&mut self, cx: &mut Context<Self>) {
         self.show_console = !self.show_console;

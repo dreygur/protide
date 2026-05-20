@@ -79,19 +79,44 @@ impl ExplorerPanel {
 
     /// Poll the file watcher and refresh the collection tree if changes detected.
     pub fn poll_workspace_changes(&mut self, cx: &mut Context<Self>) {
+        use protide_core::workspace::WorkspaceEvent;
         let watcher = self.workspace_watcher.clone();
         let workspace = self.workspace_path.clone();
         if let (Some(ws), Some(root)) = (watcher, workspace) {
             let events = ws.poll_events();
-            if events
-                .iter()
-                .any(|e| protide_core::workspace::is_relevant(e, &root))
-            {
-                let expanded = self.collect_expanded();
-                self.collection_items = self.scan_directory(&root);
-                self.apply_expanded(&expanded);
-                cx.notify();
+            let relevant: Vec<_> = events.into_iter()
+                .filter(|e| protide_core::workspace::is_relevant(e, &root))
+                .collect();
+            if relevant.is_empty() { return; }
+            for event in &relevant {
+                match event {
+                    WorkspaceEvent::FileCreated(p) | WorkspaceEvent::FileModified(p) => {
+                        if !self.sync_skip_paths.remove(p) {
+                            if let Ok(content) = fs::read_to_string(p) {
+                                let p = p.clone();
+                                let root = root.clone();
+                                if let Some(win) = self.main_window.upgrade() {
+                                    win.update(cx, |win, _| win.broadcast_workspace_file(&root, &p, content, false));
+                                }
+                            }
+                        }
+                    }
+                    WorkspaceEvent::FileDeleted(p) => {
+                        if !self.sync_skip_paths.remove(p) {
+                            let p = p.clone();
+                            let root = root.clone();
+                            if let Some(win) = self.main_window.upgrade() {
+                                win.update(cx, |win, _| win.broadcast_workspace_file(&root, &p, String::new(), true));
+                            }
+                        }
+                    }
+                    _ => {}
+                }
             }
+            let expanded = self.collect_expanded();
+            self.collection_items = self.scan_directory(&root);
+            self.apply_expanded(&expanded);
+            cx.notify();
         }
     }
 

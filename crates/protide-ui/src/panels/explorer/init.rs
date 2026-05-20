@@ -42,6 +42,7 @@ impl ExplorerPanel {
             drag_env: None,
             main_window,
             panel_bounds: gpui::Bounds::default(),
+            sync_skip_paths: std::collections::HashSet::new(),
         }
     }
 

@@ -30,6 +30,8 @@ pub enum DataType {
     Environment,
     EnvironmentState,
     CollectionMeta,
+    /// Actual workspace file content (path + bytes encoded as JSON)
+    WorkspaceFile,
 }
 
 /// A single CRDT entry — the atomic unit of sync
@@ -111,6 +113,8 @@ pub enum SyncEvent {
     P2PDiagnostic(String),
     /// Our own libp2p listen multiaddress — logged once on startup
     LocalAddr(String),
+    /// A workspace file arrived from a peer — write to disk and refresh
+    FileReceived { relative_path: String, content: String, deleted: bool },
 }
 
 /// Live activity from a peer (response console output)

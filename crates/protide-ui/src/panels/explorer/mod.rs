@@ -111,6 +111,8 @@ pub struct ExplorerPanel {
     pub(super) drag_env: Option<(f32, f32)>,
     pub(super) main_window: WeakEntity<MainWindow>,
     pub(super) panel_bounds: gpui::Bounds<Pixels>,
+    /// Paths written by incoming P2P sync — skip broadcasting back to avoid echo
+    pub sync_skip_paths: std::collections::HashSet<PathBuf>,
 }
 
 impl ExplorerPanel {
