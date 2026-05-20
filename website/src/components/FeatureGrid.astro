@@ -3,37 +3,37 @@ import SectionHeader from "./shared/SectionHeader.astro";
 
 const features = [
   {
-    icon: "⚡",
+    icon: '<circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/>',
     title: "Multi-Protocol",
-    desc: "HTTP, GraphQL, WebSocket, gRPC, tRPC, and Socket.IO — all from one tool with a unified .http file format.",
+    desc: "HTTP, GraphQL, WebSocket, gRPC, tRPC, and Socket.IO - all from one tool with a unified .http file format.",
     color: "var(--color-method-get)",
   },
   {
-    icon: "📁",
+    icon: '<path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2"/>',
     title: "File-Based Collections",
     desc: "No proprietary formats. Folders are collections, .http files are requests. Commit, diff, and review with Git.",
     color: "var(--color-method-post)",
   },
   {
-    icon: "⚙️",
+    icon: '<path d="m7 11 2-2-2-2"/><path d="M11 13h4"/><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/>',
     title: "JS Scripting & Testing",
     desc: "Pre/post-request scripts, test assertions with expect(), and request chaining via JSONPath extraction.",
     color: "var(--color-method-put)",
   },
   {
-    icon: "🎭",
+    icon: '<path d="M5 5a2 2 0 0 1 3.008-1.728l11.997 6.998a2 2 0 0 1 .003 3.458l-12 7A2 2 0 0 1 5 19z"/>',
     title: "Mock Server",
     desc: "Local HTTP mock server with route configuration and record/proxy mode to capture live traffic as static routes.",
     color: "var(--color-method-patch)",
   },
   {
-    icon: "🤝",
+    icon: '<rect x="16" y="16" width="6" height="6" rx="1"/><rect x="2" y="16" width="6" height="6" rx="1"/><rect x="9" y="2" width="6" height="6" rx="1"/><path d="M5 16v-3a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v3"/><path d="M12 12V8"/>',
     title: "Local-First Collab",
     desc: "P2P sync via mDNS auto-discovery. No accounts, no server. Devices on your LAN find each other automatically.",
     color: "var(--color-proto-ws)",
   },
   {
-    icon: "🤖",
+    icon: '<path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/>',
     title: "AI Integration",
     desc: "Built-in MCP server lets Claude and other AI assistants drive requests directly. LSP for .http files in any editor.",
     color: "var(--color-proto-grpc)",
@@ -51,11 +51,13 @@ const features = [
     <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
       {features.map((f) => (
         <article
-          class="group rounded-xl border p-6 transition-all duration-200 cursor-default"
+          class="group border p-6 transition-all duration-200 cursor-default"
           style={`border-color: var(--color-border); background: var(--color-bg-secondary); --card-accent: ${f.color}`}
           onmouseover={`this.style.borderColor='${f.color.replace("var(", "").replace(")", "")}'; this.style.borderColor=getComputedStyle(document.documentElement).getPropertyValue('${f.color.match(/--[^)]+/)?.[0] ?? ""}').trim() || '${f.color}'`}
         >
-          <div class="mb-4 text-2xl" aria-hidden="true">{f.icon}</div>
+          <div class="mb-4" aria-hidden="true">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style={`color: ${f.color}`} set:html={f.icon} />
+          </div>
           <h3 class="mb-2 font-semibold" style="color: var(--color-text-primary)">{f.title}</h3>
           <p class="text-sm leading-relaxed" style="color: var(--color-text-secondary)">{f.desc}</p>
         </article>

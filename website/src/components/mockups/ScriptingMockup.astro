@@ -1,67 +1,58 @@
 ---
-// Mimics the Protide scripting + test results panel
+// Mimics the Protide scripts tab: collapsible accordion sections for Pre-request, Post-response, Tests
 ---
 
-<div class="overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-secondary)] text-xs font-mono shadow-2xl">
-  <!-- Window chrome -->
-  <div class="flex items-center gap-1.5 border-b border-[var(--color-border)] bg-[var(--color-bg-primary)] px-4 py-3">
-    <span class="h-3 w-3 rounded-full bg-[#ff5f57]"></span>
-    <span class="h-3 w-3 rounded-full bg-[#febc2e]"></span>
-    <span class="h-3 w-3 rounded-full bg-[#28c840]"></span>
-    <span class="ml-4 text-[var(--color-text-muted)]">protide — scripts & tests</span>
+<div class="overflow-hidden border border-[var(--color-border)] bg-[var(--color-bg-secondary)] text-xs font-mono shadow-2xl">
+
+  <!-- Pre-request Script header (h=36, collapsed) -->
+  <div class="flex h-9 w-full cursor-default items-center gap-2 border-b px-3"
+    style="border-color: color-mix(in srgb, var(--color-border) 50%, transparent)">
+    <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: var(--color-text-muted)"><path d="m9 18 6-6-6-6"/></svg>
+    <div class="flex h-[18px] w-[18px] shrink-0 items-center justify-center" style="background: color-mix(in srgb, var(--color-method-post) 15%, transparent)">
+      <svg xmlns="http://www.w3.org/2000/svg" width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: var(--color-method-post)"><path d="m9 18 6-6-6-6"/></svg>
+    </div>
+    <span class="text-[12px] font-semibold" style="color: var(--color-text-primary)">Pre-request Script</span>
+    <span class="text-[10px]" style="color: var(--color-text-muted)">Runs before sending the request</span>
   </div>
 
-  <!-- Script tab bar -->
-  <div class="flex border-b border-[var(--color-border)]">
-    {[
-      { label: "Pre-request", active: false },
-      { label: "Post-request", active: true },
-      { label: "Tests", active: false },
-    ].map((tab) => (
-      <div class="px-4 py-2.5 border-b-2 cursor-default"
-        style={tab.active
-          ? "color: var(--color-accent); border-color: var(--color-accent)"
-          : "color: var(--color-text-muted); border-color: transparent"}>
-        {tab.label}
-      </div>
-    ))}
+  <!-- Post-response Script header (h=36, expanded) -->
+  <div class="flex h-9 w-full cursor-default items-center gap-2 border-b px-3"
+    style="border-color: color-mix(in srgb, var(--color-border) 50%, transparent)">
+    <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: var(--color-text-muted)"><path d="m6 9 6 6 6-6"/></svg>
+    <div class="flex h-[18px] w-[18px] shrink-0 items-center justify-center" style="background: color-mix(in srgb, var(--color-status-2xx) 15%, transparent)">
+      <svg xmlns="http://www.w3.org/2000/svg" width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: var(--color-status-2xx)"><path d="m15 18-6-6 6-6"/></svg>
+    </div>
+    <span class="text-[12px] font-semibold" style="color: var(--color-text-primary)">Post-response Script</span>
+    <span class="text-[10px]" style="color: var(--color-text-muted)">Runs after receiving response</span>
   </div>
 
-  <!-- Code editor -->
-  <div class="border-b border-[var(--color-border)] p-4">
-    <div class="flex flex-col gap-1 leading-5">
-      <div><span style="color: var(--color-text-muted)">1  </span><span style="color: var(--color-proto-graphql)">const</span><span style="color: var(--color-text-secondary)"> body </span><span style="color: var(--color-text-muted)">=</span><span style="color: var(--color-text-secondary)"> response.</span><span style="color: var(--color-method-post)">json</span><span style="color: var(--color-text-secondary)">();</span></div>
-      <div><span style="color: var(--color-text-muted)">2  </span></div>
-      <div><span style="color: var(--color-text-muted)">3  </span><span style="color: var(--color-method-post)">pm</span><span style="color: var(--color-text-secondary)">.</span><span style="color: var(--color-proto-graphql)">test</span><span style="color: var(--color-text-secondary)">(</span><span style="color: var(--color-method-put)">"Status is 200"</span><span style="color: var(--color-text-secondary)">, () </span><span style="color: var(--color-proto-graphql)">=&gt;</span><span style="color: var(--color-text-secondary)"> {"{"}</span></div>
-      <div><span style="color: var(--color-text-muted)">4    </span><span style="color: var(--color-method-post)">expect</span><span style="color: var(--color-text-secondary)">(response.</span><span style="color: var(--color-method-post)">status</span><span style="color: var(--color-text-secondary)">).</span><span style="color: var(--color-proto-graphql)">toBe</span><span style="color: var(--color-text-secondary)">(</span><span style="color: var(--color-method-put)">200</span><span style="color: var(--color-text-secondary)">);</span></div>
-      <div><span style="color: var(--color-text-muted)">5  </span><span style="color: var(--color-text-secondary)">{"}"});</span></div>
-      <div><span style="color: var(--color-text-muted)">6  </span></div>
-      <div><span style="color: var(--color-text-muted)">7  </span><span style="color: var(--color-method-post)">pm</span><span style="color: var(--color-text-secondary)">.</span><span style="color: var(--color-proto-graphql)">set</span><span style="color: var(--color-text-secondary)">(</span><span style="color: var(--color-method-put)">"user_id"</span><span style="color: var(--color-text-secondary)">, body.</span><span style="color: var(--color-method-post)">id</span><span style="color: var(--color-text-secondary)">);</span></div>
-      <div><span style="color: var(--color-text-muted)">8  </span><span style="color: var(--color-method-post)">pm</span><span style="color: var(--color-text-secondary)">.</span><span style="color: var(--color-proto-graphql)">set</span><span style="color: var(--color-text-secondary)">(</span><span style="color: var(--color-method-put)">"token"</span><span style="color: var(--color-text-secondary)">, body.</span><span style="color: var(--color-method-post)">access_token</span><span style="color: var(--color-text-secondary)">);</span></div>
+  <!-- Post-response editor (h=160px) -->
+  <div class="border-b px-4 py-3 leading-5" style="border-color: color-mix(in srgb, var(--color-border) 50%, transparent); height: 160px; overflow: hidden">
+    <div class="flex flex-col gap-1">
+      <div><span class="mr-3 select-none" style="color: var(--color-text-muted)">1</span><span style="color: var(--color-proto-graphql)">const</span><span style="color: var(--color-text-secondary)"> body = response.</span><span style="color: var(--color-method-post)">json</span><span style="color: var(--color-text-secondary)">();</span></div>
+      <div><span class="mr-3 select-none" style="color: var(--color-text-muted)">2</span></div>
+      <div><span class="mr-3 select-none" style="color: var(--color-text-muted)">3</span><span style="color: var(--color-method-post)">pm</span><span style="color: var(--color-text-secondary)">.</span><span style="color: var(--color-proto-graphql)">set</span><span style="color: var(--color-text-secondary)">(</span><span style="color: var(--color-method-put)">"user_id"</span><span style="color: var(--color-text-secondary)">, body.</span><span style="color: var(--color-method-post)">id</span><span style="color: var(--color-text-secondary)">);</span></div>
+      <div><span class="mr-3 select-none" style="color: var(--color-text-muted)">4</span><span style="color: var(--color-method-post)">pm</span><span style="color: var(--color-text-secondary)">.</span><span style="color: var(--color-proto-graphql)">set</span><span style="color: var(--color-text-secondary)">(</span><span style="color: var(--color-method-put)">"token"</span><span style="color: var(--color-text-secondary)">, body.</span><span style="color: var(--color-method-post)">access_token</span><span style="color: var(--color-text-secondary)">);</span></div>
     </div>
   </div>
 
-  <!-- Test results -->
-  <div class="p-4">
-    <div class="mb-2 flex items-center justify-between">
-      <span style="color: var(--color-text-muted)">Test results</span>
-      <span style="color: var(--color-accent)">3 passed · 0 failed</span>
+  <!-- Tests header (h=36, expanded) -->
+  <div class="flex h-9 w-full cursor-default items-center gap-2 border-b px-3"
+    style="border-color: color-mix(in srgb, var(--color-border) 50%, transparent)">
+    <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: var(--color-text-muted)"><path d="m6 9 6 6 6-6"/></svg>
+    <div class="flex h-[18px] w-[18px] shrink-0 items-center justify-center" style="background: color-mix(in srgb, var(--color-accent) 15%, transparent)">
+      <svg xmlns="http://www.w3.org/2000/svg" width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: var(--color-accent)"><path d="M20 6 9 17l-5-5"/></svg>
     </div>
-    <div class="flex flex-col gap-1.5">
-      {[
-        { pass: true,  label: "Status is 200" },
-        { pass: true,  label: "Response has id field" },
-        { pass: true,  label: "Token is non-empty string" },
-      ].map((t) => (
-        <div class="flex items-center gap-2">
-          <span class="font-bold" style={`color: ${t.pass ? "var(--color-accent)" : "var(--color-status-5xx)"}`}>
-            {t.pass ? "✓" : "✗"}
-          </span>
-          <span style={`color: ${t.pass ? "var(--color-text-secondary)" : "var(--color-status-5xx)"}`}>
-            {t.label}
-          </span>
-        </div>
-      ))}
+    <span class="text-[12px] font-semibold" style="color: var(--color-text-primary)">Tests</span>
+    <span class="text-[10px]" style="color: var(--color-text-muted)">Test assertions using expect()</span>
+  </div>
+
+  <!-- Tests editor -->
+  <div class="px-4 py-3 leading-5">
+    <div class="flex flex-col gap-1">
+      <div><span class="mr-3 select-none" style="color: var(--color-text-muted)">1</span><span style="color: var(--color-method-post)">pm</span><span style="color: var(--color-text-secondary)">.</span><span style="color: var(--color-proto-graphql)">test</span><span style="color: var(--color-text-secondary)">(</span><span style="color: var(--color-method-put)">"Status is 200"</span><span style="color: var(--color-text-secondary)">, () =&gt; {"{"}</span></div>
+      <div><span class="mr-3 select-none" style="color: var(--color-text-muted)">2</span><span style="color: var(--color-text-secondary)">  </span><span style="color: var(--color-method-post)">expect</span><span style="color: var(--color-text-secondary)">(response.</span><span style="color: var(--color-method-post)">status</span><span style="color: var(--color-text-secondary)">).</span><span style="color: var(--color-proto-graphql)">toBe</span><span style="color: var(--color-text-secondary)">(</span><span style="color: var(--color-method-put)">200</span><span style="color: var(--color-text-secondary)">);</span></div>
+      <div><span class="mr-3 select-none" style="color: var(--color-text-muted)">3</span><span style="color: var(--color-text-secondary)">{"}"});</span></div>
     </div>
   </div>
 </div>

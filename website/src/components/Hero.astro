@@ -22,7 +22,7 @@ const base = import.meta.env.BASE_URL;
     <div class="mb-8 inline-flex items-center gap-2 rounded-full border px-4 py-1.5 text-xs"
       style="border-color: var(--color-border); background: var(--color-bg-elevated); color: var(--color-text-secondary)">
       <span class="h-1.5 w-1.5 rounded-full" style="background: var(--color-accent)"></span>
-      Built with Rust &amp; GPUI &nbsp;·&nbsp; MIT License &nbsp;·&nbsp; v0.1.0 &nbsp;·&nbsp;
+      Built with Rust &amp; GPUI &nbsp;·&nbsp; MIT License &nbsp;·&nbsp; v0.1.0-alpha.3 &nbsp;·&nbsp;
       <span class="font-semibold" style="color: var(--color-method-put)">alpha</span>
     </div>
 
@@ -34,39 +34,27 @@ const base = import.meta.env.BASE_URL;
 
     <p class="mx-auto mb-10 max-w-2xl text-lg leading-relaxed" style="color: var(--color-text-secondary)">
       A GPU-accelerated desktop API client built with Rust. HTTP, GraphQL, WebSocket,
-      gRPC, tRPC, and Socket.IO — all from a single
-      <code class="rounded px-1.5 py-0.5 text-base" style="background: var(--color-bg-elevated); color: var(--color-accent)">.http</code>
+      gRPC, tRPC, and Socket.IO - all from a single
+      <code class="px-1.5 py-0.5 text-base" style="background: var(--color-bg-elevated); color: var(--color-accent)">.http</code>
       file.
     </p>
 
     <div class="flex flex-wrap items-center justify-center gap-4">
       <Button href="https://github.com/dreygur/protide/releases/latest" variant="primary" external>
-        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-          <polyline points="7 10 12 15 17 10"/>
-          <line x1="12" y1="15" x2="12" y2="3"/>
-        </svg>
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14"/><path d="m19 12-7 7-7-7"/></svg>
         Download
       </Button>
       <Button href="https://github.com/dreygur/protide" variant="outline" external>
-        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-          <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/>
-        </svg>
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg>
         View on GitHub
       </Button>
     </div>
 
     <!-- Screenshot -->
-    <div class="mt-16 overflow-hidden rounded-xl border shadow-2xl" style="border-color: var(--color-border)">
-      <div class="flex items-center gap-1.5 border-b px-4 py-3" style="border-color: var(--color-border); background: var(--color-bg-secondary)">
-        <span class="h-3 w-3 rounded-full bg-[#ff5f57]"></span>
-        <span class="h-3 w-3 rounded-full bg-[#febc2e]"></span>
-        <span class="h-3 w-3 rounded-full bg-[#28c840]"></span>
-        <span class="ml-4 text-xs" style="color: var(--color-text-muted)">protide</span>
-      </div>
+    <div class="mt-16 overflow-hidden border shadow-2xl" style="border-color: var(--color-border)">
       <img
         src={`${base}/screenshot.png`}
-        alt="Protide — API testing tool screenshot"
+        alt="Protide - API testing tool screenshot"
         class="w-full"
         loading="eager"
       />

@@ -31,7 +31,7 @@ const langs = [
         <div class="flex flex-wrap gap-3 mb-8">
           {langs.map((lang) => (
             <div
-              class="rounded-lg border px-4 py-2 text-sm font-semibold"
+              class="border px-4 py-2 text-sm font-semibold"
               style={`color: ${lang.color}; border-color: color-mix(in srgb, ${lang.color} 30%, transparent); background: color-mix(in srgb, ${lang.color} 8%, transparent)`}
             >
               {lang.name}
@@ -41,10 +41,10 @@ const langs = [
 
         <p class="text-sm leading-relaxed mb-6" style="color: var(--color-text-secondary)">
           Every request in your collection can be exported as production-ready client code.
-          Environment variables are resolved before export — no placeholders in the output.
+          Environment variables are resolved before export - no placeholders in the output.
         </p>
 
-        <div class="rounded-lg border p-4 font-mono text-xs" style="border-color: var(--color-border); background: var(--color-bg-secondary)">
+        <div class="border p-4 font-mono text-xs" style="border-color: var(--color-border); background: var(--color-bg-secondary)">
           <div style="color: var(--color-text-muted)" class="mb-2">Generated Rust (reqwest):</div>
           <div class="flex flex-col gap-0.5 leading-5">
             <div><span style="color: var(--color-proto-graphql)">let</span><span style="color: var(--color-text-secondary)"> resp = client</span></div>

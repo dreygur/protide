@@ -7,49 +7,89 @@ import SectionHeader from "./shared/SectionHeader.astro";
     <div class="grid grid-cols-1 items-center gap-16 lg:grid-cols-2">
       <!-- Left: file tree mockup -->
       <div class="order-2 lg:order-1">
-        <div class="overflow-hidden rounded-xl border text-xs font-mono shadow-2xl" style="border-color: var(--color-border); background: var(--color-bg-secondary)">
-          <!-- Window chrome -->
-          <div class="flex items-center gap-1.5 border-b px-4 py-3" style="border-color: var(--color-border); background: var(--color-bg-primary)">
-            <span class="h-3 w-3 rounded-full bg-[#ff5f57]"></span>
-            <span class="h-3 w-3 rounded-full bg-[#febc2e]"></span>
-            <span class="h-3 w-3 rounded-full bg-[#28c840]"></span>
-            <span class="ml-4" style="color: var(--color-text-muted)">protide — explorer</span>
+        <div class="overflow-hidden border text-xs font-mono shadow-2xl" style="border-color: var(--color-border); background: var(--color-bg-secondary)">
+          <!-- Explorer header: h=32px -->
+          <div class="flex h-8 items-center justify-between border-b px-3" style="border-color: var(--color-border); background: var(--color-bg-primary)">
+            <span class="text-[11px] font-semibold" style="color: var(--color-text-secondary)">Explorer</span>
+            <div class="flex items-center gap-1">
+              <div class="flex h-5 w-5 cursor-default items-center justify-center" style="color: var(--color-text-muted)">
+                <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>
+              </div>
+              <div class="flex h-5 w-5 cursor-default items-center justify-center" style="color: var(--color-text-muted)">
+                <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/></svg>
+              </div>
+            </div>
           </div>
 
           <!-- File tree -->
-          <div class="p-4 leading-6">
-            <div class="mb-1 flex items-center gap-1.5" style="color: var(--color-text-secondary)">
-              <span>▾</span>
-              <span class="font-semibold" style="color: var(--color-text-primary)">my-api/</span>
-            </div>
-            {[
-              { indent: 1, icon: "▾", name: "auth/", bold: true },
-              { indent: 2, icon: "·", name: "login.http", color: "var(--color-method-post)" },
-              { indent: 2, icon: "·", name: "refresh.http", color: "var(--color-method-post)" },
-              { indent: 1, icon: "▾", name: "users/", bold: true },
-              { indent: 2, icon: "·", name: "list.http", color: "var(--color-method-get)", active: true },
-              { indent: 2, icon: "·", name: "create.http", color: "var(--color-method-post)" },
-              { indent: 2, icon: "·", name: "delete.http", color: "var(--color-method-delete)" },
-              { indent: 1, icon: "·", name: ".env", color: "var(--color-text-muted)" },
-              { indent: 1, icon: "·", name: ".env.staging", color: "var(--color-text-muted)" },
-            ].map((row) => (
-              <div
-                class="flex items-center gap-1.5 rounded px-1"
-                style={`padding-left: ${row.indent * 16}px; background: ${row.active ? "color-mix(in srgb, var(--color-accent) 10%, transparent)" : "transparent"}; color: ${row.color ?? (row.bold ? "var(--color-text-primary)" : "var(--color-text-secondary)")}`}
-              >
-                <span style="color: var(--color-text-muted)">{row.icon}</span>
-                <span class={row.bold ? "font-semibold" : ""}>{row.name}</span>
-                {row.active && <span class="ml-auto text-xs" style="color: var(--color-accent)">open</span>}
-              </div>
-            ))}
+          <div class="py-1 leading-none" style="background: var(--color-bg-primary)">
+            {(() => {
+              type FolderRow = { type: "folder"; depth: number; name: string; open: boolean };
+              type FileRow   = { type: "file";   depth: number; name: string; badge: string; badgeColor: string; selected?: boolean };
+              type Row = FolderRow | FileRow;
+              const rows: Row[] = [
+                { type: "folder", depth: 0, name: "e2e", open: false },
+                { type: "folder", depth: 1, name: "graphql", open: false },
+                { type: "file",   depth: 2, name: "graphql-tests", badge: "GQL", badgeColor: "var(--color-proto-graphql)" },
+                { type: "folder", depth: 1, name: "grpc", open: false },
+                { type: "file",   depth: 2, name: "grpc-employee", badge: "gRPC", badgeColor: "var(--color-proto-grpc)", selected: true },
+                { type: "folder", depth: 1, name: "http", open: true },
+                { type: "file",   depth: 2, name: "http-api-tests", badge: "GET", badgeColor: "var(--color-method-get)" },
+                { type: "file",   depth: 2, name: "http-scripting", badge: "POST", badgeColor: "var(--color-method-post)" },
+                { type: "file",   depth: 2, name: "leaderboard", badge: "GET", badgeColor: "var(--color-method-get)" },
+                { type: "folder", depth: 1, name: "socketio", open: false },
+                { type: "file",   depth: 2, name: "socketio-echo", badge: "SIO", badgeColor: "var(--color-proto-sio)" },
+                { type: "folder", depth: 1, name: "trpc", open: false },
+                { type: "file",   depth: 2, name: "trpc-example", badge: "tRPC", badgeColor: "var(--color-proto-trpc)" },
+                { type: "folder", depth: 1, name: "websocket", open: false },
+                { type: "file",   depth: 2, name: "websocket-echo", badge: "WS", badgeColor: "var(--color-proto-ws)" },
+              ];
+              return rows.map((row) => (
+                <div
+                  class="flex h-[22px] w-full items-center gap-1"
+                  style={`padding-left: ${8 + row.depth * 16}px; background: ${"selected" in row && row.selected ? "color-mix(in srgb, var(--color-accent) 15%, transparent)" : "transparent"}`}
+                >
+                  {row.type === "folder" ? (
+                    <>
+                      <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: var(--color-text-muted); flex-shrink: 0">
+                        {row.open ? <path d="m6 9 6 6 6-6"/> : <path d="m9 18 6-6-6-6"/>}
+                      </svg>
+                      <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: var(--color-text-muted); flex-shrink: 0">
+                        {row.open
+                          ? <path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2"/>
+                          : <path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/>
+                        }
+                      </svg>
+                      <span class="text-[12px]" style="color: var(--color-text-primary)">{row.name}</span>
+                    </>
+                  ) : (
+                    <>
+                      <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: var(--color-text-muted); flex-shrink: 0; opacity: 0">
+                        <path d="M5 12h14"/>
+                      </svg>
+                      <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: var(--color-text-muted); flex-shrink: 0">
+                        <path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/>
+                        <path d="M14 2v4a2 2 0 0 0 2 2h4"/>
+                      </svg>
+                      <span class="px-[5px] py-px text-[9px] font-bold shrink-0" style={`background: color-mix(in srgb, ${row.badgeColor} 15%, transparent); color: ${row.badgeColor}`}>{row.badge}</span>
+                      <span class="text-[12px] truncate" style={`color: ${"selected" in row && row.selected ? "var(--color-accent)" : "var(--color-text-primary)"}`}>{row.name}</span>
+                      {"selected" in row && row.selected && (
+                        <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ml-auto mr-1 shrink-0" style="color: var(--color-accent)"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>
+                      )}
+                    </>
+                  )}
+                </div>
+              ));
+            })()}
           </div>
 
           <!-- Env selector -->
-          <div class="border-t flex items-center gap-2 px-4 py-2.5" style="border-color: var(--color-border)">
-            <span style="color: var(--color-text-muted)">ENV</span>
-            <span class="rounded px-2 py-0.5" style="background: var(--color-bg-elevated); color: var(--color-accent); border: 1px solid var(--color-border)">
-              development ▾
-            </span>
+          <div class="border-t flex items-center gap-2 px-3 py-2" style="border-color: var(--color-border); background: var(--color-bg-secondary)">
+            <span class="text-[10px] font-semibold" style="color: var(--color-text-muted)">ENV</span>
+            <div class="flex items-center gap-1 border px-2 py-0.5 text-[11px]" style="background: var(--color-bg-elevated); color: var(--color-accent); border-color: var(--color-border)">
+              development
+              <svg xmlns="http://www.w3.org/2000/svg" width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+            </div>
           </div>
         </div>
       </div>
@@ -65,7 +105,7 @@ import SectionHeader from "./shared/SectionHeader.astro";
 
         <div class="flex flex-col gap-4">
           {[
-            { icon: "→", text: "Folders are collections — open any folder as a workspace" },
+            { icon: "→", text: "Folders are collections - open any folder as a workspace" },
             { icon: "→", text: "Commit and diff requests in Git like any other code" },
             { icon: "→", text: "Environment variables with {{variable}} substitution" },
             { icon: "→", text: "Per-environment config: dev, staging, production" },

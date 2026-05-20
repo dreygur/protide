@@ -1,65 +1,56 @@
 ---
-// Mimics the Protide mock server routes panel
+// Mimics the actual Protide mock server panel: header + status bar + route cards. NO border-radius on interactive elements.
 ---
 
-<div class="overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-secondary)] text-xs font-mono shadow-2xl">
-  <!-- Window chrome -->
-  <div class="flex items-center gap-1.5 border-b border-[var(--color-border)] bg-[var(--color-bg-primary)] px-4 py-3">
-    <span class="h-3 w-3 rounded-full bg-[#ff5f57]"></span>
-    <span class="h-3 w-3 rounded-full bg-[#febc2e]"></span>
-    <span class="h-3 w-3 rounded-full bg-[#28c840]"></span>
-    <span class="ml-4 text-[var(--color-text-muted)]">protide — mock server</span>
+<div class="overflow-hidden border border-[var(--color-border)] bg-[var(--color-bg-primary)] text-xs font-mono shadow-2xl">
+
+  <!-- Panel header: "Mock Server" label + Stop button (status_client_error = #fb923c orange, NO border-radius) -->
+  <div class="flex items-center justify-between border-b border-[var(--color-border)] px-3 py-2">
+    <span class="text-sm" style="color: var(--color-text-primary)">Mock Server</span>
+    <div class="cursor-default border px-3 py-1 text-sm"
+      style="border-color: color-mix(in srgb, var(--color-status-4xx) 50%, transparent); background: color-mix(in srgb, var(--color-status-4xx) 10%, transparent); color: var(--color-status-4xx)">
+      Stop
+    </div>
   </div>
 
-  <!-- Toolbar -->
-  <div class="flex items-center justify-between border-b border-[var(--color-border)] px-4 py-3">
+  <!-- Status bar: 8px square dot (no border-radius) + url, bg_secondary -->
+  <div class="border-b border-[var(--color-border)] px-3 py-2" style="background: var(--color-bg-secondary)">
     <div class="flex items-center gap-2">
-      <span class="h-2 w-2 rounded-full" style="background: var(--color-accent)"></span>
-      <span style="color: var(--color-text-primary)">localhost:3001</span>
-      <span style="color: var(--color-text-muted)">running</span>
-    </div>
-    <div class="flex items-center gap-3">
-      <span style="color: var(--color-text-muted)">Record mode</span>
-      <!-- Toggle ON -->
-      <div class="relative h-5 w-9 cursor-default rounded-full" style="background: var(--color-accent)">
-        <div class="absolute right-1 top-0.5 h-4 w-4 rounded-full bg-[var(--color-bg-primary)]"></div>
-      </div>
+      <div class="h-2 w-2" style="background: var(--color-status-2xx)"></div>
+      <span class="text-xs" style="color: var(--color-text-secondary)">http://localhost:3001</span>
     </div>
   </div>
 
-  <!-- Column headers -->
-  <div class="grid grid-cols-[80px_1fr_60px_60px] gap-2 border-b border-[var(--color-border)] px-4 py-2"
-    style="color: var(--color-text-muted)">
-    <span>Method</span>
-    <span>Path</span>
-    <span>Status</span>
-    <span>Latency</span>
-  </div>
-
-  <!-- Routes -->
-  <div class="divide-y divide-[var(--color-border)]">
+  <!-- Route cards: flex-col gap-2 p-3, each card bg_secondary border, NO border-radius -->
+  <div class="flex flex-col gap-2 p-3">
     {[
-      { method: "GET",    path: "/api/users",        status: 200, latency: "12ms",  color: "var(--color-method-get)" },
-      { method: "POST",   path: "/api/auth/login",   status: 201, latency: "8ms",   color: "var(--color-method-post)" },
-      { method: "GET",    path: "/api/users/:id",    status: 200, latency: "5ms",   color: "var(--color-method-get)" },
-      { method: "PUT",    path: "/api/users/:id",    status: 200, latency: "10ms",  color: "var(--color-method-put)" },
-      { method: "GET",    path: "/api/missing",      status: 404, latency: "2ms",   color: "var(--color-method-get)" },
-      { method: "DELETE", path: "/api/users/:id",    status: 204, latency: "6ms",   color: "var(--color-method-delete)" },
+      { method: "GET",    path: "/api/users",      status: 200, color: "var(--color-method-get)" },
+      { method: "POST",   path: "/api/auth/login", status: 201, color: "var(--color-method-post)" },
+      { method: "GET",    path: "/api/users/:id",  status: 200, color: "var(--color-method-get)" },
+      { method: "PUT",    path: "/api/users/:id",  status: 200, color: "var(--color-method-put)" },
+      { method: "DELETE", path: "/api/users/:id",  status: 204, color: "var(--color-method-delete)" },
     ].map((route) => (
-      <div class="grid grid-cols-[80px_1fr_60px_60px] items-center gap-2 px-4 py-2.5 hover:bg-[var(--color-bg-elevated)] cursor-default">
-        <span class="font-semibold" style={`color: ${route.color}`}>{route.method}</span>
-        <span style="color: var(--color-text-secondary)">{route.path}</span>
-        <span style={`color: ${route.status < 300 ? "var(--color-status-2xx)" : route.status < 400 ? "var(--color-status-3xx)" : "var(--color-status-4xx)"}`}>
-          {route.status}
-        </span>
-        <span style="color: var(--color-text-muted)">{route.latency}</span>
+      <div class="flex items-center justify-between border px-2 py-1" style="background: var(--color-bg-secondary); border-color: var(--color-border)">
+        <div class="flex items-center gap-2">
+          <span class="text-xs font-bold" style={`color: ${route.color}`}>{route.method}</span>
+          <span class="text-sm" style="color: var(--color-text-primary)">{route.path}</span>
+        </div>
+        <div class="flex items-center gap-2">
+          <!-- status pill: px=8px py=1px, NO border-radius -->
+          <div class="px-2 py-px text-xs" style={`background: ${route.status < 300 ? "var(--color-status-2xx)" : route.status < 400 ? "var(--color-status-3xx)" : "var(--color-status-4xx)"}; color: var(--color-bg-primary)`}>
+            {route.status}
+          </div>
+          <span class="cursor-default text-xs" style="color: var(--color-status-4xx)">x</span>
+        </div>
       </div>
     ))}
   </div>
 
-  <!-- Recorded indicator -->
-  <div class="border-t border-[var(--color-border)] flex items-center gap-2 px-4 py-2">
-    <span class="h-1.5 w-1.5 rounded-full animate-pulse" style="background: var(--color-status-4xx)"></span>
-    <span style="color: var(--color-text-muted)">Proxying → https://api.example.com · 6 routes captured</span>
+  <!-- Record mode footer -->
+  <div class="border-t border-[var(--color-border)] px-3 py-2" style="background: var(--color-bg-secondary)">
+    <div class="flex items-center gap-2">
+      <span class="h-1.5 w-1.5 rounded-full animate-pulse" style="background: var(--color-accent)"></span>
+      <span style="color: var(--color-text-muted)">Record mode active - proxying to https://api.example.com</span>
+    </div>
   </div>
 </div>

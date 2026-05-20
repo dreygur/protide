@@ -1,60 +1,61 @@
 ---
-// Mimics the Protide code generation panel
+// Mimics the Protide codegen side panel: pill-style language tabs (bg+border, NO border-radius) + line-numbered code + copy button
 ---
 
-<div class="overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-secondary)] text-xs font-mono shadow-2xl">
-  <!-- Window chrome -->
-  <div class="flex items-center gap-1.5 border-b border-[var(--color-border)] bg-[var(--color-bg-primary)] px-4 py-3">
-    <span class="h-3 w-3 rounded-full bg-[#ff5f57]"></span>
-    <span class="h-3 w-3 rounded-full bg-[#febc2e]"></span>
-    <span class="h-3 w-3 rounded-full bg-[#28c840]"></span>
-    <span class="ml-4 text-[var(--color-text-muted)]">protide — code generation</span>
-  </div>
+<div class="overflow-hidden border border-[var(--color-border)] bg-[var(--color-bg-secondary)] text-xs font-mono shadow-2xl">
 
-  <!-- Language tabs -->
-  <div class="flex border-b border-[var(--color-border)] overflow-x-auto">
-    {[
-      { label: "cURL", active: true },
-      { label: "Python", active: false },
-      { label: "JavaScript", active: false },
-      { label: "Go", active: false },
-      { label: "Rust", active: false },
-    ].map((tab) => (
-      <div class="px-4 py-2.5 border-b-2 cursor-default whitespace-nowrap"
-        style={tab.active
-          ? "color: var(--color-accent); border-color: var(--color-accent)"
-          : "color: var(--color-text-muted); border-color: transparent"}>
-        {tab.label}
-      </div>
-    ))}
-  </div>
-
-  <!-- Generated code -->
-  <div class="relative p-4">
-    <div class="flex flex-col gap-1 leading-5">
-      <div><span style="color: var(--color-method-post)">curl</span><span style="color: var(--color-text-secondary)"> \</span></div>
-      <div><span style="color: var(--color-text-secondary)">  </span><span style="color: var(--color-method-put)">-X GET</span><span style="color: var(--color-text-secondary)"> \</span></div>
-      <div><span style="color: var(--color-text-secondary)">  </span><span style="color: var(--color-method-put)">'https://api.example.com/users/42'</span><span style="color: var(--color-text-secondary)"> \</span></div>
-      <div><span style="color: var(--color-text-secondary)">  </span><span style="color: var(--color-proto-graphql)">-H</span><span style="color: var(--color-text-secondary)"> </span><span style="color: var(--color-method-put)">'Authorization: Bearer eyJhbGc...'</span><span style="color: var(--color-text-secondary)"> \</span></div>
-      <div><span style="color: var(--color-text-secondary)">  </span><span style="color: var(--color-proto-graphql)">-H</span><span style="color: var(--color-text-secondary)"> </span><span style="color: var(--color-method-put)">'Accept: application/json'</span></div>
+  <!-- Toolbar: h=40px (toolbar size) px=12px gap=6px, border-b -->
+  <div class="flex h-10 items-center gap-1.5 border-b border-[var(--color-border)] px-3">
+    <!-- Language tabs: active = accent bg 15% + border accent 30%, px=8px py=3px text=11px MEDIUM, NO border-radius -->
+    <div class="flex flex-1 items-center gap-0.5">
+      {[
+        { label: "cURL",   active: true  },
+        { label: "Python", active: false },
+        { label: "JS",     active: false },
+        { label: "Go",     active: false },
+        { label: "Rust",   active: false },
+      ].map((tab) => (
+        <div class="cursor-default px-2 py-[3px] text-[11px] font-medium"
+          style={tab.active
+            ? "background: color-mix(in srgb, var(--color-accent) 15%, transparent); color: var(--color-accent); border: 1px solid color-mix(in srgb, var(--color-accent) 30%, transparent)"
+            : "color: var(--color-text-secondary)"}>
+          {tab.label}
+        </div>
+      ))}
     </div>
-
-    <!-- Copy button -->
-    <button
-      class="absolute right-4 top-4 rounded border border-[var(--color-border)] px-2 py-1 text-xs transition-colors hover:border-[var(--color-accent)]"
-      style="color: var(--color-text-muted); background: var(--color-bg-elevated)"
-    >
-      copy
-    </button>
+    <!-- Copy button: h=28px px=10px bg_elevated border, NO border-radius -->
+    <div class="flex h-7 cursor-default items-center gap-1 border border-[var(--color-border)] px-[10px] text-[11px]"
+      style="background: var(--color-bg-elevated); color: var(--color-text-secondary)">
+      <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
+      Copy
+    </div>
+    <!-- Close button: 28x28 -->
+    <div class="flex h-7 w-7 cursor-default items-center justify-center text-[11px]" style="color: var(--color-text-muted)">×</div>
   </div>
 
-  <!-- Response preview -->
-  <div class="border-t border-[var(--color-border)] px-4 py-3">
-    <div class="flex items-center gap-3">
-      <span class="rounded px-2 py-0.5" style="background: color-mix(in srgb, var(--color-status-2xx) 15%, transparent); color: var(--color-status-2xx)">
-        200 OK
-      </span>
-      <span style="color: var(--color-text-muted)">42ms · 1.2 KB</span>
+  <!-- Generated code: read-only editor, line numbers, leading-5 -->
+  <div class="p-4 leading-5">
+    <div class="flex flex-col gap-1">
+      <div class="flex gap-3">
+        <span class="w-4 shrink-0 select-none text-right text-[11px]" style="color: var(--color-text-muted)">1</span>
+        <div><span style="color: var(--color-method-post)">curl</span><span style="color: var(--color-text-secondary)"> \</span></div>
+      </div>
+      <div class="flex gap-3">
+        <span class="w-4 shrink-0 select-none text-right text-[11px]" style="color: var(--color-text-muted)">2</span>
+        <div><span style="color: var(--color-text-secondary)">  </span><span style="color: var(--color-method-put)">-X GET</span><span style="color: var(--color-text-secondary)"> \</span></div>
+      </div>
+      <div class="flex gap-3">
+        <span class="w-4 shrink-0 select-none text-right text-[11px]" style="color: var(--color-text-muted)">3</span>
+        <div><span style="color: var(--color-text-secondary)">  </span><span style="color: var(--color-method-put)">'https://api.example.com/users'</span><span style="color: var(--color-text-secondary)"> \</span></div>
+      </div>
+      <div class="flex gap-3">
+        <span class="w-4 shrink-0 select-none text-right text-[11px]" style="color: var(--color-text-muted)">4</span>
+        <div><span style="color: var(--color-text-secondary)">  </span><span style="color: var(--color-proto-graphql)">-H</span><span style="color: var(--color-text-secondary)"> </span><span style="color: var(--color-method-put)">'Authorization: Bearer eyJhbGc...'</span><span style="color: var(--color-text-secondary)"> \</span></div>
+      </div>
+      <div class="flex gap-3">
+        <span class="w-4 shrink-0 select-none text-right text-[11px]" style="color: var(--color-text-muted)">5</span>
+        <div><span style="color: var(--color-text-secondary)">  </span><span style="color: var(--color-proto-graphql)">-H</span><span style="color: var(--color-text-secondary)"> </span><span style="color: var(--color-method-put)">'Accept: application/json'</span></div>
+      </div>
     </div>
   </div>
 </div>
