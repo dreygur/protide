@@ -1,10 +1,12 @@
 import { defineConfig } from "astro/config";
 import tailwindcss from "@tailwindcss/vite";
+import sitemap from "@astrojs/sitemap";
 
 export default defineConfig({
-  site: "https://dreygur.github.io",
+  site: "https://dreygur.js.org",
   base: "/protide",
   output: "static",
+  integrations: [sitemap()],
   vite: {
     plugins: [tailwindcss()],
   },

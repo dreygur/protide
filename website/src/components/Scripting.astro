@@ -7,7 +7,7 @@ import ScriptingMockup from "./mockups/ScriptingMockup.astro";
   <div class="mx-auto max-w-6xl">
     <div class="grid grid-cols-1 items-center gap-16 lg:grid-cols-2">
       <!-- Left: text -->
-      <div>
+      <div data-animate style="--anim-delay: 0ms">
         <SectionHeader
           title="Test as you go"
           subtitle="JavaScript pre/post-request scripts let you automate, validate, and chain requests without leaving the app."
@@ -41,7 +41,7 @@ import ScriptingMockup from "./mockups/ScriptingMockup.astro";
       </div>
 
       <!-- Right: mockup -->
-      <div>
+      <div data-animate style="--anim-delay: 150ms">
         <ScriptingMockup />
       </div>
     </div>

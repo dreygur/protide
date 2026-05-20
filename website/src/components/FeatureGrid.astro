@@ -49,10 +49,11 @@ const features = [
     />
 
     <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-      {features.map((f) => (
+      {features.map((f, i) => (
         <article
+          data-animate
+          style={`--anim-delay: ${i * 75}ms; border-color: var(--color-border); background: var(--color-bg-secondary); --card-accent: ${f.color}`}
           class="group border p-6 transition-all duration-200 cursor-default"
-          style={`border-color: var(--color-border); background: var(--color-bg-secondary); --card-accent: ${f.color}`}
           onmouseover={`this.style.borderColor='${f.color.replace("var(", "").replace(")", "")}'; this.style.borderColor=getComputedStyle(document.documentElement).getPropertyValue('${f.color.match(/--[^)]+/)?.[0] ?? ""}').trim() || '${f.color}'`}
         >
           <div class="mb-4" aria-hidden="true">

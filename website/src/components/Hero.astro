@@ -19,27 +19,27 @@ const base = import.meta.env.BASE_URL;
 
   <div class="relative mx-auto max-w-5xl">
     <!-- Badge -->
-    <div class="mb-8 inline-flex items-center gap-2 rounded-full border px-4 py-1.5 text-xs"
+    <div data-animate style="--anim-delay: 0ms" class="mb-8 inline-flex items-center gap-2 rounded-full border px-4 py-1.5 text-xs"
       style="border-color: var(--color-border); background: var(--color-bg-elevated); color: var(--color-text-secondary)">
       <span class="h-1.5 w-1.5 rounded-full" style="background: var(--color-accent)"></span>
       Built with Rust &amp; GPUI &nbsp;·&nbsp; MIT License &nbsp;·&nbsp; v0.1.0-alpha.3 &nbsp;·&nbsp;
       <span class="font-semibold" style="color: var(--color-method-put)">alpha</span>
     </div>
 
-    <h1 class="mb-6 text-5xl font-bold leading-tight tracking-tight sm:text-6xl lg:text-7xl"
+    <h1 data-animate style="--anim-delay: 80ms" class="mb-6 text-5xl font-bold leading-tight tracking-tight sm:text-6xl lg:text-7xl"
       style="color: var(--color-text-primary)">
       API Testing,<br />
       <span style="color: var(--color-accent)">Natively Fast</span>
     </h1>
 
-    <p class="mx-auto mb-10 max-w-2xl text-lg leading-relaxed" style="color: var(--color-text-secondary)">
+    <p data-animate style="--anim-delay: 160ms; color: var(--color-text-secondary)" class="mx-auto mb-10 max-w-2xl text-lg leading-relaxed">
       A GPU-accelerated desktop API client built with Rust. HTTP, GraphQL, WebSocket,
       gRPC, tRPC, and Socket.IO - all from a single
       <code class="px-1.5 py-0.5 text-base" style="background: var(--color-bg-elevated); color: var(--color-accent)">.http</code>
       file.
     </p>
 
-    <div class="flex flex-wrap items-center justify-center gap-4">
+    <div data-animate style="--anim-delay: 240ms" class="flex flex-wrap items-center justify-center gap-4">
       <Button href="https://github.com/dreygur/protide/releases/latest" variant="primary" external>
         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14"/><path d="m19 12-7 7-7-7"/></svg>
         Download
@@ -51,7 +51,7 @@ const base = import.meta.env.BASE_URL;
     </div>
 
     <!-- Screenshot -->
-    <div class="mt-16 overflow-hidden border shadow-2xl" style="border-color: var(--color-border)">
+    <div data-animate style="--anim-delay: 380ms; border-color: var(--color-border)" class="mt-16 overflow-hidden border shadow-2xl">
       <img
         src={`${base}/screenshot.png`}
         alt="Protide - API testing tool screenshot"

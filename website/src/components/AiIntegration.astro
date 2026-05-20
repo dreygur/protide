@@ -11,7 +11,7 @@ import SectionHeader from "./shared/SectionHeader.astro";
 
     <div class="grid grid-cols-1 gap-8 lg:grid-cols-2">
       <!-- MCP card -->
-      <div class="border p-8" style="border-color: var(--color-border); background: var(--color-bg-primary)">
+      <div data-animate style="--anim-delay: 0ms; border-color: var(--color-border); background: var(--color-bg-primary)" class="border p-8">
         <div class="mb-4 flex items-center gap-3">
           <div class="flex h-10 w-10 items-center justify-center"
             style="background: color-mix(in srgb, var(--color-proto-grpc) 15%, transparent)">
@@ -44,7 +44,7 @@ import SectionHeader from "./shared/SectionHeader.astro";
       </div>
 
       <!-- LSP card -->
-      <div class="border p-8" style="border-color: var(--color-border); background: var(--color-bg-primary)">
+      <div data-animate style="--anim-delay: 120ms; border-color: var(--color-border); background: var(--color-bg-primary)" class="border p-8">
         <div class="mb-4 flex items-center gap-3">
           <div class="flex h-10 w-10 items-center justify-center"
             style="background: color-mix(in srgb, var(--color-method-post) 15%, transparent)">

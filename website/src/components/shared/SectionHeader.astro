@@ -10,7 +10,7 @@ const { title, subtitle, label, align = "center" } = Astro.props;
 const isCentered = align === "center";
 ---
 
-<div class={`mb-16 ${isCentered ? "text-center" : ""}`}>
+<div data-animate class={`mb-16 ${isCentered ? "text-center" : ""}`}>
   {label && (
     <p class={`mb-3 text-xs font-medium uppercase tracking-widest text-[var(--color-accent)] ${isCentered ? "" : ""}`}>
       {label}

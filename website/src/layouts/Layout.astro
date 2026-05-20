@@ -8,11 +8,35 @@ interface Props {
 
 const {
   title = "Protide - Native API Testing Tool",
-  description = "A fast, GPU-accelerated desktop API testing tool built with Rust. HTTP, GraphQL, WebSocket, gRPC, tRPC, Socket.IO - all from a single .http file.",
+  description = "A fast, GPU-accelerated desktop API testing tool built with Rust. HTTP, GraphQL, WebSocket, gRPC, tRPC, and Socket.IO - all from a single .http file. No Electron, no slow startup.",
 } = Astro.props;
 
-const base = import.meta.env.BASE_URL;
+const siteURL = "https://dreygur.js.org/protide";
 const canonicalURL = new URL(Astro.url.pathname, Astro.site);
+const ogImage = `${siteURL}/screenshot.png`;
+
+const jsonLd = {
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "Protide",
+  "applicationCategory": "DeveloperApplication",
+  "operatingSystem": "Windows, macOS, Linux",
+  "description": description,
+  "url": siteURL,
+  "softwareVersion": "0.1.0-alpha.3",
+  "license": "https://opensource.org/licenses/MIT",
+  "author": {
+    "@type": "Person",
+    "name": "dreygur",
+    "url": "https://github.com/dreygur"
+  },
+  "codeRepository": "https://github.com/dreygur/protide",
+  "offers": {
+    "@type": "Offer",
+    "price": "0",
+    "priceCurrency": "USD"
+  }
+};
 ---
 
 <!doctype html>
@@ -20,26 +44,78 @@ const canonicalURL = new URL(Astro.url.pathname, Astro.site);
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+    <!-- Primary -->
+    <title>{title}</title>
     <meta name="description" content={description} />
-    <meta property="og:title" content={title} />
-    <meta property="og:description" content={description} />
+    <meta name="author" content="dreygur" />
+    <meta name="keywords" content="API testing, HTTP client, REST client, GraphQL client, gRPC client, WebSocket, Rust, native, desktop, Postman alternative, Bruno alternative" />
+    <meta name="theme-color" content="#0d0d0f" />
+    <link rel="canonical" href={canonicalURL} />
+
+    <!-- Open Graph -->
     <meta property="og:type" content="website" />
     <meta property="og:url" content={canonicalURL} />
-    <meta property="og:image" content={`${base}/screenshot.png`} />
+    <meta property="og:site_name" content="Protide" />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:image" content={ogImage} />
+    <meta property="og:image:width" content="1280" />
+    <meta property="og:image:height" content="800" />
+    <meta property="og:image:alt" content="Protide API testing tool screenshot" />
+    <meta property="og:locale" content="en_US" />
+
+    <!-- Twitter -->
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content={title} />
     <meta name="twitter:description" content={description} />
-    <link rel="canonical" href={canonicalURL} />
-    <link rel="icon" type="image/png" href={`${base}/logo.png`} />
+    <meta name="twitter:image" content={ogImage} />
+    <meta name="twitter:image:alt" content="Protide API testing tool screenshot" />
+
+    <!-- Icons -->
+    <link rel="icon" type="image/png" href="/protide/logo.png" />
+    <link rel="apple-touch-icon" href="/protide/logo.png" />
+
+    <!-- Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
       href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap"
       rel="stylesheet"
     />
-    <title>{title}</title>
+
+    <!-- JSON-LD -->
+    <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
   </head>
   <body>
     <slot />
+    <style>
+      @media (prefers-reduced-motion: no-preference) {
+        [data-animate] {
+          opacity: 0;
+          transform: translateY(18px);
+          transition: opacity 0.55s ease, transform 0.55s ease;
+          transition-delay: var(--anim-delay, 0ms);
+        }
+        [data-animate].in-view {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+    </style>
+    <script>
+      const observer = new IntersectionObserver(
+        (entries) => {
+          for (const entry of entries) {
+            if (entry.isIntersecting) {
+              entry.target.classList.add("in-view");
+              observer.unobserve(entry.target);
+            }
+          }
+        },
+        { rootMargin: "0px 0px -48px 0px", threshold: 0.1 }
+      );
+      document.querySelectorAll("[data-animate]").forEach((el) => observer.observe(el));
+    </script>
   </body>
 </html>
