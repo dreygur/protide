@@ -14,6 +14,12 @@ pub fn icon(path: &'static str, size: f32, color: Hsla) -> impl IntoElement {
         .text_color(color)
 }
 
+/// Render a Lucide SVG icon without a fixed color — inherits `text_color` from parent.
+/// Use inside elements that set `.text_color()` on themselves with hover changes.
+pub fn icon_inherit(path: &'static str, size: f32) -> impl IntoElement {
+    svg().path(path).size(px(size))
+}
+
 // ── Path constants ─────────────────────────────────────────────────────────
 pub const ICON_CLOSE:          &str = "icons/close.svg";
 pub const ICON_CHECK:          &str = "icons/check.svg";
@@ -43,7 +49,6 @@ pub const ICON_PLUS:           &str = "icons/plus.svg";
 pub const ICON_MAXIMIZE:       &str = "icons/window-maximize.svg";
 pub const ICON_MINIMIZE:       &str = "icons/window-minimize.svg";
 pub const ICON_WINDOW_CLOSE:   &str = "icons/window-close.svg";
-pub const ICON_EXTERNAL:       &str = "icons/external-link.svg";
 pub const ICON_GLOBE:          &str = "icons/globe.svg";
 pub const ICON_EDIT:           &str = "icons/replace.svg";
 pub const ICON_KEY:            &str = "icons/eye.svg";
@@ -52,5 +57,6 @@ pub const ICON_TIMER:          &str = "icons/loader-circle.svg";
 pub const ICON_ELLIPSIS:       &str = "icons/ellipsis.svg";
 pub const ICON_CODE:           &str = "icons/square-terminal.svg";
 pub const ICON_LINK:           &str = "icons/external-link.svg";
+pub const ICON_EXPORT:         &str = "icons/arrow-up.svg";
 pub const ICON_NETWORK:        &str = "icons/network.svg";
 pub const ICON_TEAM:           &str = "icons/bot.svg";

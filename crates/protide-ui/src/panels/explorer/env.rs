@@ -24,6 +24,14 @@ impl ExplorerPanel {
         cx.notify();
     }
 
+    /// Select an environment and immediately open its editor.
+    pub(super) fn open_env_editor_for(&mut self, index: usize, cx: &mut Context<Self>) {
+        self.env_state.set_active(Some(index));
+        self.env_dropdown_open = false;
+        self.env_editor_open = true;
+        cx.notify();
+    }
+
     pub(super) fn add_variable(&mut self, cx: &mut Context<Self>) {
         if let Some(env) = self.env_state.active_mut() {
             let key = format!("var_{}", env.variables.len() + 1);
