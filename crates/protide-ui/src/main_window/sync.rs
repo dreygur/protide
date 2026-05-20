@@ -191,8 +191,13 @@ impl MainWindow {
             changed = true;
         }
 
+        let count_before = self.presence.peer_count();
+        self.presence.reap_stale();
+        if self.presence.peer_count() != count_before {
+            changed = true;
+        }
+
         if changed {
-            self.presence.reap_stale();
             let now = std::time::Instant::now();
             if now.duration_since(self.last_p2p_notify).as_millis() >= 100 {
                 self.last_p2p_notify = now;
