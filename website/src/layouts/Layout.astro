@@ -25,12 +25,12 @@ const canonicalURL = new URL(Astro.url.pathname, Astro.site);
     <meta property="og:description" content={description} />
     <meta property="og:type" content="website" />
     <meta property="og:url" content={canonicalURL} />
-    <meta property="og:image" content={`${base}screenshot.png`} />
+    <meta property="og:image" content={`${base}/screenshot.png`} />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content={title} />
     <meta name="twitter:description" content={description} />
     <link rel="canonical" href={canonicalURL} />
-    <link rel="icon" type="image/png" href={`${base}logo.png`} />
+    <link rel="icon" type="image/png" href={`${base}/logo.png`} />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
