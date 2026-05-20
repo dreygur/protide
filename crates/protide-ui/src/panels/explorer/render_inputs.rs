@@ -1,4 +1,4 @@
-use gpui::{AnyElement, Context, IntoElement, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement, SharedString, Styled, canvas, div, px};
+use gpui::{AnyElement, Context, IntoElement, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement, SharedString, Styled, Window, canvas, div, px};
 use super::*;
 
 impl ExplorerPanel {
@@ -247,5 +247,61 @@ impl ExplorerPanel {
                     .text_color(theme.colors.text_muted)
                     .child("Use {{var}} in URL, headers, body, or auth"),
             )
+    }
+
+    pub(super) fn render_rename_input(&self, cx: &Context<Self>) -> impl IntoElement {
+        let theme = theme::current(cx);
+        let text = self.rename_text.clone();
+        let selection = self.rename_selection.clone();
+
+        div()
+            .id("rename-input")
+            .flex_1()
+            .min_w(px(0.0))
+            .h(px(28.0))
+            .px(px(4.0))
+            .flex()
+            .items_center()
+            .bg(theme.colors.bg_tertiary)
+            .border_1()
+            .border_color(theme.colors.accent)
+            .overflow_hidden()
+            .cursor_text()
+            .on_mouse_down(MouseButton::Left, cx.listener(move |this, event: &MouseDownEvent, window: &mut Window, cx| {
+                cx.stop_propagation();
+                this.edit_focus.focus(window, cx);
+                this.handle_rename_mouse_down(event, cx);
+            }))
+            .on_mouse_move(cx.listener(|this, event: &MouseMoveEvent, _, cx| {
+                this.handle_rename_mouse_move(event, cx);
+            }))
+            .on_mouse_up(MouseButton::Left, cx.listener(|this, _, _, cx| {
+                this.rename_is_selecting = false;
+                cx.notify();
+            }))
+            .child({
+                let entity = cx.entity();
+                canvas(
+                    move |bounds, _, cx| {
+                        entity.update(cx, |this, _| {
+                            this.rename_input_origin = f32::from(bounds.origin.x) + 4.0;
+                        });
+                    },
+                    |_, _, _, _| {},
+                )
+                .absolute().top_0().left_0().size_full()
+            })
+            .child(render_text_view_with_max_scrolled(
+                &text,
+                &selection,
+                true,
+                12.0,
+                theme.colors.text_primary,
+                None,
+                theme.colors.text_muted,
+                None,
+                theme.colors.accent.opacity(0.25),
+                0.0,
+            ))
     }
 }

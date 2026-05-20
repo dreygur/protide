@@ -39,18 +39,18 @@ impl ExplorerPanel {
                             .flex()
                             .items_center()
                             .child(if self.history_expanded {
-                                icon(ICON_CHEVRON_DOWN, ICON_SM, theme.colors.text_muted)
+                                icon(ICON_CHEVRON_DOWN, ICON_SM, theme.colors.text_secondary)
                             } else {
-                                icon(ICON_CHEVRON_RIGHT, ICON_SM, theme.colors.text_muted)
+                                icon(ICON_CHEVRON_RIGHT, ICON_SM, theme.colors.text_secondary)
                             })
                             .child(div().w(px(crate::theme::sizes::CHEVRON_ICON_GAP)))
-                            .child(icon(ICON_TIMER, ICON_MD, theme.colors.text_muted))
+                            .child(icon(ICON_TIMER, ICON_MD, theme.colors.text_secondary))
                             .child(div().w(px(crate::theme::sizes::ICON_TEXT_GAP)))
                             .child(
                                 div()
                                     .text_size(px(12.0))
                                     .font_weight(gpui::FontWeight::MEDIUM)
-                                    .text_color(theme.colors.text_secondary)
+                                    .text_color(theme.colors.text_primary)
                                     .child("History"),
                             ),
                     )

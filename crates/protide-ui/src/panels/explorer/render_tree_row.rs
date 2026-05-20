@@ -58,7 +58,6 @@ impl ExplorerPanel {
             );
         }
 
-        let rename_text = self.rename_text.clone();
         let content = div()
             .flex_1()
             .flex()
@@ -123,24 +122,7 @@ impl ExplorerPanel {
                         .child(display_name),
                 )
             })
-            .when(is_renaming, |el| {
-                el.child(
-                    div()
-                        .flex_1()
-                        .min_w(px(0.0))
-                        .h(px(28.0))
-                        .px(px(4.0))
-                        .flex()
-                        .items_center()
-                        .bg(theme.colors.bg_tertiary)
-                        .border_1()
-                        .border_color(theme.colors.accent)
-                        .overflow_hidden()
-                        .text_size(px(12.0))
-                        .text_color(theme.colors.text_primary)
-                        .child(rename_text),
-                )
-            })
+            .when(is_renaming, |el| el.child(self.render_rename_input(cx)))
             .when(is_folder && has_watcher, |el| {
                 el.child(div().w(px(4.0)))
                     .child(icon(ICON_LINK, ICON_SM, theme.colors.team_accent))
@@ -175,16 +157,20 @@ impl ExplorerPanel {
         let theme = theme::current(cx);
         let path_for_rename = path.clone();
         let path_for_delete = path.clone();
+        let path_for_run = path.clone();
+        let path_for_export = path.clone();
+        let path_for_clone = path.clone();
         let is_folder = path.is_dir();
 
-        const MENU_W: f32 = 140.0;
-        const MENU_H: f32 = 64.0;
+        let extra_h = if is_folder { 56.0 } else { 28.0 };
+        const MENU_W: f32 = 160.0;
+        let menu_h = 64.0 + extra_h;
         let x = f32::from(position.x) - f32::from(self.panel_bounds.origin.x);
         let y = f32::from(position.y) - f32::from(self.panel_bounds.origin.y);
         let panel_w = f32::from(self.panel_bounds.size.width);
         let panel_h = f32::from(self.panel_bounds.size.height);
         let left = if x + MENU_W > panel_w { px((x - MENU_W).max(0.0)) } else { px(x) };
-        let top  = if y + MENU_H > panel_h { px((y - MENU_H).max(0.0)) } else { px(y) };
+        let top  = if y + menu_h > panel_h { px((y - menu_h).max(0.0)) } else { px(y) };
 
         div()
             .absolute()
@@ -203,6 +189,77 @@ impl ExplorerPanel {
                 div()
                     .flex()
                     .flex_col()
+                    .when(is_folder, |el| {
+                        el.child(
+                            div()
+                                .id("context-menu-run")
+                                .w_full()
+                                .h(px(28.0))
+                                .flex()
+                                .items_center()
+                                .px(px(12.0))
+                                .gap(px(8.0))
+                                .cursor_pointer()
+                                .hover(|s| s.bg(theme.colors.bg_tertiary))
+                                .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, _, cx| {
+                                    this.run_collection_folder(path_for_run.clone(), cx);
+                                }))
+                                .child(icon(ICON_PLAY, ICON_MD, theme.colors.status_success))
+                                .child(
+                                    div()
+                                        .text_size(px(12.0))
+                                        .text_color(theme.colors.text_primary)
+                                        .child("Run Collection"),
+                                ),
+                        )
+                        .child(
+                            div()
+                                .id("context-menu-export-oas")
+                                .w_full()
+                                .h(px(28.0))
+                                .flex()
+                                .items_center()
+                                .px(px(12.0))
+                                .gap(px(8.0))
+                                .cursor_pointer()
+                                .hover(|s| s.bg(theme.colors.bg_tertiary))
+                                .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, _, cx| {
+                                    this.export_openapi_folder(path_for_export.clone(), cx);
+                                }))
+                                .child(icon(ICON_LINK, ICON_MD, theme.colors.accent))
+                                .child(
+                                    div()
+                                        .text_size(px(12.0))
+                                        .text_color(theme.colors.text_primary)
+                                        .child("Export OpenAPI"),
+                                ),
+                        )
+                    })
+                    .when(!is_folder, |el| {
+                        el.child(
+                            div()
+                                .id("context-menu-clone")
+                                .w_full()
+                                .h(px(28.0))
+                                .flex()
+                                .items_center()
+                                .px(px(12.0))
+                                .gap(px(8.0))
+                                .cursor_pointer()
+                                .hover(|s| s.bg(theme.colors.bg_tertiary))
+                                .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, _, cx| {
+                                    this.context_menu = None;
+                                    this.clone_file(path_for_clone.clone(), cx);
+                                }))
+                                .child(icon(ICON_COPY, ICON_MD, theme.colors.text_muted))
+                                .child(
+                                    div()
+                                        .text_size(px(12.0))
+                                        .text_color(theme.colors.text_primary)
+                                        .child("Duplicate"),
+                                ),
+                        )
+                    })
                     .child(
                         div()
                             .id("context-menu-rename")
@@ -214,8 +271,9 @@ impl ExplorerPanel {
                             .gap(px(8.0))
                             .cursor_pointer()
                             .hover(|s| s.bg(theme.colors.bg_tertiary))
-                            .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, _, cx| {
+                            .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, window, cx| {
                                 this.start_rename_item(path_for_rename.clone(), cx);
+                                this.edit_focus.focus(window, cx);
                             }))
                             .child(icon(ICON_EDIT, ICON_MD, theme.colors.text_muted))
                             .child(

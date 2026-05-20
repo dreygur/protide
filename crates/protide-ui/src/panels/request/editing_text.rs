@@ -1,4 +1,4 @@
-use gpui::{ClipboardItem, Context, MouseDownEvent, MouseMoveEvent, MouseUpEvent, Window};
+use gpui::{Context, MouseDownEvent, MouseMoveEvent, MouseUpEvent, Window};
 use super::*;
 use crate::components::{find_word_start, find_word_end};
 
@@ -23,6 +23,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             EditTarget::TrpcProcedure => &self.trpc_procedure,
             EditTarget::SioNamespace => &self.sio_namespace,
             EditTarget::SioEventName => &self.sio_event_name,
+            EditTarget::SioRoomName => &self.sio_room_name,
         }
     }
 
@@ -46,6 +47,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             EditTarget::TrpcProcedure => Some(&mut self.trpc_procedure),
             EditTarget::SioNamespace => Some(&mut self.sio_namespace),
             EditTarget::SioEventName => Some(&mut self.sio_event_name),
+            EditTarget::SioRoomName => Some(&mut self.sio_room_name),
         }
     }
 

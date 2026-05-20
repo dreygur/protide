@@ -146,7 +146,6 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             graphql_operation_name: String::new(),
             ws_state: WsConnectionState::Disconnected,
             ws_messages: WsRingBuffer::default(),
-            ws_message_input: String::new(),
             ws_message_editor,
             ws_send_tx: None,
             ws_compose_h: 120.0,
@@ -170,6 +169,8 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             sio_next_ack_id: 1,
             sio_payload_editor,
             sio_send_tx: None,
+            sio_room_name: String::new(),
+            sio_active_rooms: Vec::new(),
             kv_col_key_w: 150.0,
             kv_col_drag: None,
             script_pre_open: true,
@@ -186,6 +187,19 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             graphql_schema: GraphqlSchemaState::Idle,
             graphql_schema_search: String::new(),
             console_panel: None,
+            csv_path: None,
+            data_results: Vec::new(),
+            data_running: false,
+            timeout_input: cx.new(|cx| {
+                crate::components::TextInput::new(cx, "req-timeout")
+                    .text("30")
+                    .placeholder("30")
+            }),
+            verify_ssl: true,
+            kv_row_drag: None,
+            kv_row_drag_over: None,
+            form_row_drag: None,
+            form_row_drag_over: None,
             _executor: PhantomData,
         }
     }

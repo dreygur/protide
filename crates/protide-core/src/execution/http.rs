@@ -19,6 +19,8 @@ pub fn run_http(
     headers: &[(String, String)],
     body: &ExecutionBody,
     mode: &ExecutionMode,
+    timeout_secs: u64,
+    verify_ssl: bool,
 ) -> Result<RawResponse, String> {
     let start = Instant::now();
 
@@ -48,7 +50,8 @@ pub fn run_http(
         .unwrap_or(reqwest::Method::GET);
 
     let client = reqwest::blocking::Client::builder()
-        .timeout(Duration::from_secs(30))
+        .timeout(Duration::from_secs(timeout_secs))
+        .danger_accept_invalid_certs(!verify_ssl)
         .build()
         .map_err(|e| e.to_string())?;
     let mut req_builder = client.request(req_method, &resolved_url);

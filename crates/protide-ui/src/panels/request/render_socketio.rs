@@ -1,7 +1,5 @@
 //! Socket.IO events tab rendering for RequestPanel
 
-use std::ops::Range;
-
 use gpui::{
     div, prelude::*, px, Context, IntoElement,
     ParentElement, Styled,
@@ -9,7 +7,6 @@ use gpui::{
 
 use crate::theme;
 use protide_core::execution::ws::WebSocketExecutor;
-use protide_core::execution::sio::SioEvent;
 use super::super::request_types::{EditTarget, SioConnectionState};
 use super::RequestPanel;
 use super::render_socketio_helpers::{render_sio_status_bar, render_sio_event_item};
@@ -24,8 +21,11 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
 
         let ns_editing = self.active_edit == Some(EditTarget::SioNamespace);
         let name_editing = self.active_edit == Some(EditTarget::SioEventName);
+        let room_editing = self.active_edit == Some(EditTarget::SioRoomName);
         let ns = self.sio_namespace.clone();
         let event_name = self.sio_event_name.clone();
+        let room_name = self.sio_room_name.clone();
+        let active_rooms = self.sio_active_rooms.clone();
         let want_ack = self.sio_want_ack;
         let edit_sel = self.edit_selection.clone();
 
@@ -86,11 +86,13 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                                 &event_name,
                                 "message",
                                 name_editing,
-                                if name_editing { edit_sel } else { 0..0 },
+                                if name_editing { edit_sel.clone() } else { 0..0 },
                                 cx,
                             ))
                     )
             )
+            // Rooms row
+            .child(self.render_socketio_rooms(room_name, room_editing, if room_editing { edit_sel } else { 0..0 }, &active_rooms, is_connected, cx))
             // Event history
             .child(
                 div()
@@ -125,6 +127,99 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             // Emit composer
             .child(self.render_socketio_compose(want_ack, is_connected, cx))
             .into_any_element()
+    }
+
+    fn render_socketio_rooms(
+        &mut self,
+        room_name: String,
+        room_editing: bool,
+        room_sel: std::ops::Range<usize>,
+        active_rooms: &[String],
+        is_connected: bool,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
+        let theme = theme::current(cx);
+        div().flex().flex_col().gap(px(4.0))
+            .child(div().text_size(px(10.0)).font_weight(gpui::FontWeight::SEMIBOLD)
+                .text_color(theme.colors.text_muted).child("ROOMS"))
+            .child(
+                div()
+                    .flex()
+                    .gap(px(6.0))
+                    .items_center()
+                    .child(
+                        div()
+                            .flex_1()
+                            .child(self.render_kv_input_flex(
+                                "sio-room-name-input".to_string(),
+                                EditTarget::SioRoomName,
+                                &room_name,
+                                "room-name",
+                                room_editing,
+                                room_sel,
+                                cx,
+                            ))
+                    )
+                    .child(
+                        div()
+                            .id("sio-join-btn")
+                            .px(px(10.0))
+                            .py(px(5.0))
+                            .text_size(px(11.0))
+                            .font_weight(gpui::FontWeight::MEDIUM)
+                            .cursor_pointer()
+                            .when(is_connected, |el| {
+                                el.bg(theme.colors.accent.opacity(0.15))
+                                    .text_color(theme.colors.accent)
+                                    .hover(|s| s.bg(theme.colors.accent.opacity(0.25)))
+                            })
+                            .when(!is_connected, |el| {
+                                el.bg(theme.colors.text_muted.opacity(0.1))
+                                    .text_color(theme.colors.text_muted)
+                                    .cursor(gpui::CursorStyle::Arrow)
+                            })
+                            .on_click(cx.listener(move |this, _, _, cx| {
+                                if is_connected { this.join_socketio_room(cx); }
+                            }))
+                            .child("Join")
+                    )
+            )
+            .when(!active_rooms.is_empty(), |el| {
+                el.child(
+                    div()
+                        .flex()
+                        .flex_wrap()
+                        .gap(px(4.0))
+                        .children(active_rooms.iter().map(|room| {
+                            let r = room.clone();
+                            div()
+                                .flex()
+                                .items_center()
+                                .gap(px(4.0))
+                                .px(px(8.0))
+                                .py(px(2.0))
+                                .bg(theme.colors.accent.opacity(0.1))
+                                .child(
+                                    div()
+                                        .text_size(px(11.0))
+                                        .text_color(theme.colors.accent)
+                                        .child(room.clone())
+                                )
+                                .child(
+                                    div()
+                                        .id(gpui::SharedString::from(format!("leave-room-{}", room)))
+                                        .text_size(px(10.0))
+                                        .text_color(theme.colors.text_muted)
+                                        .cursor_pointer()
+                                        .hover(|s| s.text_color(theme.colors.error))
+                                        .on_click(cx.listener(move |this, _, _, cx| {
+                                            this.leave_socketio_room(r.clone(), cx);
+                                        }))
+                                        .child("✕")
+                                )
+                        }))
+                )
+            })
     }
 
     fn render_socketio_compose(&mut self, want_ack: bool, is_connected: bool, cx: &mut Context<Self>) -> impl IntoElement {

@@ -1,4 +1,4 @@
-use gpui::{ClipboardItem, Context, Window};
+use gpui::{Context, Window};
 use super::*;
 
 impl ExplorerPanel {
@@ -21,6 +21,14 @@ impl ExplorerPanel {
     pub(super) fn select_environment(&mut self, index: Option<usize>, cx: &mut Context<Self>) {
         self.env_state.set_active(index);
         self.env_dropdown_open = false;
+        cx.notify();
+    }
+
+    /// Select an environment and immediately open its editor.
+    pub(super) fn open_env_editor_for(&mut self, index: usize, cx: &mut Context<Self>) {
+        self.env_state.set_active(Some(index));
+        self.env_dropdown_open = false;
+        self.env_editor_open = true;
         cx.notify();
     }
 
@@ -123,7 +131,7 @@ impl ExplorerPanel {
                         .nth(i)
                         .map(|(k, v)| (k.clone(), v.clone()))
                     {
-                        env.variables.remove(&old_key);
+                        env.variables.shift_remove(&old_key);
                         if !text.is_empty() {
                             env.variables.insert(text, value);
                         }
@@ -212,6 +220,16 @@ impl ExplorerPanel {
         self.edit_selection = new_pos..new_pos;
         self.set_edit_text(target, current);
         self.update_env_scroll(target);
+        cx.notify();
+    }
+
+    pub(super) fn reorder_env_var(&mut self, from: usize, to: usize, cx: &mut Context<Self>) {
+        if let Some(env) = self.env_state.active_mut() {
+            let len = env.variables.len();
+            if from < len && to < len {
+                env.variables.move_index(from, to);
+            }
+        }
         cx.notify();
     }
 

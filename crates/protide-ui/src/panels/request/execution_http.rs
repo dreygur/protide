@@ -1,6 +1,6 @@
 use gpui::Context;
 use super::*;
-use super::super::request_utils::{base64_encode, status_text, url_encode};
+use super::super::request_utils::{base64_encode, url_encode};
 use super::graphql::dns_troubleshoot_hint;
 
 impl<E: WebSocketExecutor> RequestPanel<E> {
@@ -126,7 +126,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
 
         let env_vars: std::collections::HashMap<String, String> = env_state.as_ref()
             .and_then(|e| e.active())
-            .map(|env| env.variables.clone())
+            .map(|env| env.variables.iter().map(|(k, v)| (k.clone(), v.clone())).collect())
             .unwrap_or_default();
 
         let final_url = if auth_type == AuthType::ApiKey
@@ -165,6 +165,8 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
         let log_url = final_url.clone();
         log::info!("[{}] → {} {}", log_protocol, log_method, log_url);
 
+        let timeout_secs: u64 = self.timeout_input.read(cx).get_text().trim().parse().unwrap_or(30);
+        let verify_ssl = self.verify_ssl;
         let req = ExecutionRequest {
             method: method.as_str().to_string(),
             url: final_url.clone(),
@@ -176,6 +178,8 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             tests: tests_script,
             env_vars,
             variable_extractions,
+            timeout_secs,
+            verify_ssl,
         };
 
         cx.spawn(async move |this: gpui::WeakEntity<Self>, cx: &mut gpui::AsyncApp| {

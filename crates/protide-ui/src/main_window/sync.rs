@@ -143,6 +143,29 @@ impl MainWindow {
                         panel.log(ConsoleEntry::system(format!("[P2P] Listening on: {}", addr)), cx);
                     });
                 }
+                SyncEvent::FileReceived { relative_path, content, deleted } => {
+                    let workspace = self.explorer.read(cx).workspace_path().cloned();
+                    if let Some(workspace) = workspace {
+                        let full_path = workspace.join(&relative_path);
+                        self.explorer.update(cx, |exp, _| {
+                            exp.sync_skip_paths.insert(full_path.clone());
+                        });
+                        if deleted {
+                            let _ = std::fs::remove_file(&full_path);
+                        } else {
+                            if let Some(parent) = full_path.parent() {
+                                let _ = std::fs::create_dir_all(parent);
+                            }
+                            let _ = std::fs::write(&full_path, &content);
+                        }
+                        self.console_panel.update(cx, |panel, cx| {
+                            let action = if deleted { "deleted" } else { "synced" };
+                            panel.log(ConsoleEntry::team(format!("[sync] {} {}", action, relative_path)), cx);
+                        });
+                        should_refresh_collections = true;
+                        changed = true;
+                    }
+                }
             }
         }
 
@@ -168,8 +191,13 @@ impl MainWindow {
             changed = true;
         }
 
+        let count_before = self.presence.peer_count();
+        self.presence.reap_stale();
+        if self.presence.peer_count() != count_before {
+            changed = true;
+        }
+
         if changed {
-            self.presence.reap_stale();
             let now = std::time::Instant::now();
             if now.duration_since(self.last_p2p_notify).as_millis() >= 100 {
                 self.last_p2p_notify = now;

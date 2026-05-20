@@ -2,6 +2,7 @@
 
 use http_parser::{HttpMethod, KeyValue, Protocol, Request, Scripts};
 use super::ImportResult;
+use serde_json;
 
 pub fn parse_bruno(content: &str) -> Result<ImportResult, String> {
     let mut result = ImportResult::new();
@@ -15,6 +16,7 @@ pub fn parse_bruno(content: &str) -> Result<ImportResult, String> {
     let mut query_params: Vec<KeyValue> = Vec::new();
     let mut protocol: Option<Protocol> = None;
     let mut scripts = Scripts::default();
+    let mut graphql_vars: Option<String> = None;
 
     for (block_name, lines) in &blocks {
         match block_name.as_str() {
@@ -110,8 +112,12 @@ pub fn parse_bruno(content: &str) -> Result<ImportResult, String> {
                         }
                     }
                 }
-                if !key_name.is_empty() && placement == "header" {
-                    headers.push(KeyValue { key: key_name, value: key_value, enabled: true });
+                if !key_name.is_empty() {
+                    if placement == "query" {
+                        query_params.push(KeyValue { key: key_name, value: key_value, enabled: true });
+                    } else {
+                        headers.push(KeyValue { key: key_name, value: key_value, enabled: true });
+                    }
                 }
             }
             "body:json" | "body:text" | "body:xml" => {
@@ -120,6 +126,23 @@ pub fn parse_bruno(content: &str) -> Result<ImportResult, String> {
             "body:graphql" => {
                 body = lines.join("\n").trim().to_string();
                 protocol = Some(Protocol::GraphQL);
+            }
+            "body:graphql:vars" => {
+                graphql_vars = Some(lines.join("\n").trim().to_string());
+            }
+            "body:multipart-form" => {
+                let pairs: Vec<String> = lines
+                    .iter()
+                    .filter_map(|l| split_kv(l))
+                    .filter(|(k, _)| !k.starts_with('~'))
+                    .map(|(k, v)| format!("{}={}", k, v))
+                    .collect();
+                body = pairs.join("&");
+                headers.push(KeyValue {
+                    key: "Content-Type".to_string(),
+                    value: "multipart/form-data".to_string(),
+                    enabled: true,
+                });
             }
             "body:form-urlencoded" => {
                 let pairs: Vec<String> = lines
@@ -149,6 +172,20 @@ pub fn parse_bruno(content: &str) -> Result<ImportResult, String> {
 
     if url.is_empty() {
         return Err("No URL found in Bruno file".to_string());
+    }
+
+    // Wrap GraphQL query in canonical {"query":...,"variables":...} JSON
+    if protocol == Some(Protocol::GraphQL) && !body.is_empty() {
+        let vars_val = graphql_vars
+            .as_deref()
+            .and_then(|v| serde_json::from_str::<serde_json::Value>(v).ok())
+            .unwrap_or(serde_json::Value::Null);
+        let wrapped = if vars_val.is_null() {
+            serde_json::json!({ "query": body })
+        } else {
+            serde_json::json!({ "query": body, "variables": vars_val })
+        };
+        body = serde_json::to_string_pretty(&wrapped).unwrap_or(body);
     }
 
     let final_url = if query_params.is_empty() {
@@ -356,5 +393,90 @@ tests {
         assert!(req.scripts.post_script.is_some());
         assert!(req.scripts.tests.is_some());
         assert!(req.scripts.pre_script.as_ref().unwrap().contains("bru.setVar"));
+    }
+
+    #[test]
+    fn test_apikey_query_placement() {
+        let bru = r#"
+meta {
+  name: Apikey Query
+  type: http
+  seq: 1
+}
+
+get {
+  url: https://api.example.com/data
+  body: none
+  auth: apikey
+}
+
+auth:apikey {
+  key: api_key
+  value: secret123
+  placement: query
+}
+"#;
+        let result = parse_bruno(bru).unwrap();
+        let req = &result.requests[0];
+        assert!(req.url.contains("api_key=secret123"), "query param missing from URL");
+        assert!(!req.headers.iter().any(|h| h.key == "api_key"), "apikey must not be in headers");
+    }
+
+    #[test]
+    fn test_graphql_with_variables() {
+        let bru = r#"
+meta {
+  name: GQL Query
+  type: graphql
+  seq: 1
+}
+
+post {
+  url: https://api.example.com/graphql
+  body: graphql
+  auth: none
+}
+
+body:graphql {
+  query GetUser($id: ID!) { user(id: $id) { name } }
+}
+
+body:graphql:vars {
+  {"id": "42"}
+}
+"#;
+        let result = parse_bruno(bru).unwrap();
+        let req = &result.requests[0];
+        assert_eq!(req.meta.protocol, Some(Protocol::GraphQL));
+        let body = req.body.as_ref().unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(body).expect("body must be JSON");
+        assert!(parsed.get("query").is_some());
+        assert_eq!(parsed["variables"]["id"].as_str(), Some("42"));
+    }
+
+    #[test]
+    fn test_multipart_form() {
+        let bru = r#"
+meta {
+  name: Upload
+  type: http
+  seq: 1
+}
+
+post {
+  url: https://api.example.com/upload
+  body: multipart-form
+  auth: none
+}
+
+body:multipart-form {
+  name: John
+  file: /path/to/file.txt
+}
+"#;
+        let result = parse_bruno(bru).unwrap();
+        let req = &result.requests[0];
+        assert!(req.headers.iter().any(|h| h.key == "Content-Type" && h.value == "multipart/form-data"));
+        assert!(req.body.as_ref().map(|b| b.contains("name=John")).unwrap_or(false));
     }
 }

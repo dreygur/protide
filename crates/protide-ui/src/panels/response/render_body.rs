@@ -65,6 +65,15 @@ impl ResponsePanel {
         }
 
         let line_count = self.body_viewer.read(cx).content().lines().count();
+        let search_active = self.search_active;
+        let search_query = self.search_input.read(cx).get_text().to_string();
+        let match_count = if search_active && !search_query.is_empty() {
+            let body = self.body_viewer.read(cx).content().to_string();
+            let q = search_query.to_lowercase();
+            body.to_lowercase().matches(q.as_str()).count()
+        } else {
+            0
+        };
 
         div()
             .w_full()
@@ -80,7 +89,7 @@ impl ResponsePanel {
                     .flex()
                     .items_center()
                     .relative()
-                    // Left: Format badge + line count
+                    // Left: Format badge + line count + search toggle
                     .child(
                         div()
                             .flex()
@@ -101,6 +110,31 @@ impl ResponsePanel {
                                     .text_size(px(11.0))
                                     .text_color(theme.colors.text_muted)
                                     .child(format!("{} lines", line_count))
+                            )
+                            .child(
+                                div()
+                                    .id("resp-search-toggle")
+                                    .px(px(6.0))
+                                    .py(px(2.0))
+                                    .text_size(px(10.0))
+                                    .cursor_pointer()
+                                    .border_1()
+                                    .when(search_active, |el| {
+                                        el.border_color(theme.colors.accent)
+                                          .text_color(theme.colors.accent)
+                                          .bg(theme.colors.accent.opacity(0.08))
+                                    })
+                                    .when(!search_active, |el| {
+                                        el.border_color(theme.colors.border)
+                                          .text_color(theme.colors.text_muted)
+                                          .bg(theme.colors.bg_secondary)
+                                    })
+                                    .hover(|s| s.bg(theme.colors.bg_tertiary))
+                                    .on_click(cx.listener(move |this, _, _, cx| {
+                                        this.search_active = !this.search_active;
+                                        cx.notify();
+                                    }))
+                                    .child("Search")
                             )
                     )
                     // Right: Copy button — deferred so it paints above the JSON tree below
@@ -135,6 +169,57 @@ impl ResponsePanel {
                             )
                             .child(if is_copied { "Copied!" } else { "Copy" })
                     ).with_priority(1))
+            })
+            // Search bar row
+            .when(search_active, |el| {
+                el.child(
+                    div()
+                        .w_full()
+                        .flex()
+                        .items_center()
+                        .gap(px(8.0))
+                        .child(
+                            div()
+                                .flex_1()
+                                .h(px(28.0))
+                                .border_1()
+                                .border_color(theme.colors.border)
+                                .bg(theme.colors.bg_secondary)
+                                .child(self.search_input.clone())
+                        )
+                        .child(
+                            div()
+                                .text_size(px(11.0))
+                                .min_w(px(60.0))
+                                .text_color(if match_count > 0 {
+                                    theme.colors.status_success
+                                } else if search_query.is_empty() {
+                                    theme.colors.text_muted
+                                } else {
+                                    theme.colors.status_client_error
+                                })
+                                .child(if search_query.is_empty() {
+                                    "0 matches".to_string()
+                                } else {
+                                    format!("{} match{}", match_count, if match_count == 1 { "" } else { "es" })
+                                })
+                        )
+                        .child(
+                            div()
+                                .id("resp-search-close")
+                                .px(px(6.0))
+                                .py(px(2.0))
+                                .text_size(px(10.0))
+                                .cursor_pointer()
+                                .text_color(theme.colors.text_muted)
+                                .hover(|s| s.text_color(theme.colors.text_primary))
+                                .on_click(cx.listener(|this, _, _, cx| {
+                                    this.search_active = false;
+                                    cx.notify();
+                                }))
+                                .child("✕")
+                        )
+                )
             })
             // Body content: JSON tree (uniform_list) if parseable, else CodeEditor
             .child(

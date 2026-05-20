@@ -1,8 +1,10 @@
 //! Export functionality for API collections
 
 mod markdown;
+mod openapi;
 
 pub use markdown::export_collection_markdown;
+pub use openapi::export_openapi;
 
 use std::path::Path;
 
@@ -11,6 +13,7 @@ use std::path::Path;
 pub enum ExportFormat {
     Markdown,
     Html,
+    OpenApi,
 }
 
 /// Export a collection directory to the given format.
@@ -22,6 +25,7 @@ pub fn export_collection(root: &Path, format: ExportFormat) -> Result<String, St
             let md = export_collection_markdown(root)?;
             Ok(markdown_to_html(&md))
         }
+        ExportFormat::OpenApi => export_openapi(root),
     }
 }
 

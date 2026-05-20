@@ -27,6 +27,8 @@ impl Render for MainWindow {
             .flex()
             .flex_col()
             .bg(theme.colors.bg_primary)
+            .border_1()
+            .border_color(theme.colors.border)
             .text_color(theme.colors.text_primary)
             .track_focus(&self.focus)
             .key_context("MainWindow")
@@ -51,34 +53,7 @@ impl Render for MainWindow {
                     .flex()
                     .overflow_hidden()
                     .when(self.sidebar_collapsed, |el| el.child(self.render_collapsed_sidebar(cx)))
-                    .when(!self.sidebar_collapsed, |el| {
-                        el.child(
-                            div()
-                                .w(px(self.sidebar_width))
-                                .h_full()
-                                .flex_shrink_0()
-                                .bg(theme.colors.bg_secondary)
-                                .overflow_hidden()
-                                .child(self.explorer.clone()),
-                        )
-                        .child(
-                            div()
-                                .id("sidebar-resize-handle")
-                                .w(px(4.0))
-                                .h_full()
-                                .flex_shrink_0()
-                                .border_l_1()
-                                .border_color(theme.colors.border)
-                                .cursor_col_resize()
-                                .hover(|s| s.bg(theme.colors.accent.opacity(0.25)))
-                                .on_mouse_down(
-                                    MouseButton::Left,
-                                    cx.listener(|this, event: &gpui::MouseDownEvent, _, _| {
-                                        this.drag_sidebar = Some((f32::from(event.position.x), this.sidebar_width));
-                                    }),
-                                ),
-                        )
-                    })
+                    .when(!self.sidebar_collapsed, |el| el.child(self.render_sidebar(cx)))
                     .child(
                         div()
                             .flex_1()
@@ -295,5 +270,26 @@ impl Render for MainWindow {
             .when_some(import_modal, |el, modal| el.child(modal))
             .when(self.show_help, |el| el.child(self.render_help_overlay(cx)))
             .when(self.show_about, |el| el.child(self.render_about_overlay(cx)))
+            .when(self.show_runner, |el| {
+                let theme = theme::current(cx);
+                el.child(
+                    div()
+                        .absolute().top_0().left_0().w_full().h_full()
+                        .flex().items_center().justify_center()
+                        .bg(theme.colors.bg_primary.opacity(0.6))
+                        .on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| {
+                            this.close_runner(cx);
+                        }))
+                        .child(
+                            div()
+                                .w(px(440.0)).h(px(520.0))
+                                .rounded_md()
+                                .overflow_hidden()
+                                .shadow_lg()
+                                .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                                .child(self.runner_panel.clone()),
+                        )
+                )
+            })
     }
 }

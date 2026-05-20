@@ -3,7 +3,7 @@
 use std::ops::Range;
 
 use gpui::{
-    div, prelude::*, px, Context, IntoElement,
+    div, px, Context, IntoElement,
     ParentElement, Styled,
 };
 

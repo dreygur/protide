@@ -1,6 +1,5 @@
 //! Form body rendering for RequestPanel
 
-use std::ops::Range;
 
 use gpui::{
     div, prelude::*, px, Context, IntoElement,
@@ -8,10 +7,6 @@ use gpui::{
 };
 
 use crate::theme;
-use crate::components::icons::{
-    ICON_FOLDER,
-    icon, ICON_MD,
-};
 use protide_core::execution::ws::WebSocketExecutor;
 use super::super::request_types::{BodyType, EditTarget, FormFieldType};
 use super::RequestPanel;
@@ -71,6 +66,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                 .py(px(6.0))
                 .border_b_1().border_color(theme.colors.border)
                 .mb(px(4.0))
+                .child(div().w(px(12.0)))
                 .child(div().size(px(16.0)))
                 .child(
                     div()
@@ -104,12 +100,14 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
         );
 
         // Form fields list
+        let dragging_form = self.form_row_drag.is_some();
         for (i, is_enabled, key, value, field_type, has_file) in form_data {
             let can_remove = form_len > 1;
             let is_file_type = field_type == FormFieldType::File;
             let is_editing_key = active_edit == Some(EditTarget::FormKey(i));
             let is_editing_value = active_edit == Some(EditTarget::FormValue(i));
             let is_row_editing = is_editing_key || is_editing_value;
+            let drop_here = dragging_form && self.form_row_drag_over == Some(i);
 
             container = container.child(
                 div()
@@ -121,6 +119,8 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                     .py(px(4.0))
                     .px(px(2.0))
                     .when(!is_row_editing, |el| el.hover(|s| s.bg(theme.colors.bg_tertiary.opacity(0.3))))
+                    .when(drop_here, |el| el.border_t_2().border_color(theme.colors.accent))
+                    .child(self.render_form_row_drag_handle(i, cx))
                     .child(
                         self.render_kv_checkbox(format!("form-checkbox-{}", i).into(), is_enabled, cx)
                             .on_click({

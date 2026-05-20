@@ -1,4 +1,4 @@
-use gpui::{Context, IntoElement, ParentElement, SharedString, Styled, div, px};
+use gpui::{Context, IntoElement, MouseButton, MouseDownEvent, ParentElement, SharedString, Styled, div, px};
 use super::*;
 
 impl ExplorerPanel {
@@ -20,6 +20,7 @@ impl ExplorerPanel {
                     .collect()
             })
             .unwrap_or_default();
+        let dragging_env = self.env_row_drag.is_some();
 
         let env_count = self.env_state.environments.len();
         let active_index = self.env_state.active_index;
@@ -179,6 +180,7 @@ impl ExplorerPanel {
                             let is_editing_key = self.active_edit == Some(EnvEditTarget::VarKey(i));
                             let is_editing_value = self.active_edit == Some(EnvEditTarget::VarValue(i));
                             let key_for_remove = key.clone();
+                            let drop_here = dragging_env && self.env_row_drag_over == Some(i);
 
                             div()
                                 .w_full()
@@ -190,6 +192,22 @@ impl ExplorerPanel {
                                 .when(idx % 2 == 0, |el| {
                                     el.bg(theme.colors.bg_tertiary.opacity(0.2))
                                 })
+                                .when(drop_here, |el| el.border_t_2().border_color(theme.colors.accent))
+                                .child(
+                                    div()
+                                        .id(SharedString::from(format!("env-grip-{}", i)))
+                                        .w(px(12.0))
+                                        .h(px(28.0))
+                                        .flex().items_center().justify_center()
+                                        .cursor_grab()
+                                        .on_mouse_down(MouseButton::Left, cx.listener(move |this, event: &MouseDownEvent, _, cx| {
+                                            this.env_row_drag = Some((i, f32::from(event.position.y)));
+                                            this.env_row_drag_over = Some(i);
+                                            cx.notify();
+                                        }))
+                                        .child(icon(ICON_MENU, ICON_SM, theme.colors.text_muted.opacity(0.3)))
+                                        .hover(|s| s.opacity(0.8))
+                                )
                                 .child(self.render_text_input_w(
                                     format!("var-key-{}", i),
                                     EnvEditTarget::VarKey(i),

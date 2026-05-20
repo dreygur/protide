@@ -7,6 +7,7 @@ use gpui::{
     IntoElement, MouseButton, MouseDownEvent, Pixels, Point, Render, ScrollHandle,
     SharedString, Styled, UniformListScrollHandle, WeakEntity, Window,
 };
+use gpui_component::scroll::ScrollableElement;
 
 pub(super) const GUTTER_W: f32 = 44.0;
 pub(super) const INDENT_W: f32 = 16.0;
@@ -55,7 +56,7 @@ pub mod render_extract;
 pub mod render_util;
 
 pub use types::*;
-pub use json::{PrimVal, RowKind, JsonCtxMenu, JsonRow, flatten_json};
+pub use json::{PrimVal, RowKind, JsonCtxMenu, JsonRow};
 
 /// Response viewer panel
 pub struct ResponsePanel {
@@ -81,6 +82,8 @@ pub struct ResponsePanel {
     pub(super) json_scroll_handle: UniformListScrollHandle,
     /// Scroll position for the JSON tree div (wrap mode, ≤2000 rows)
     pub(super) json_scroll_handle_div: ScrollHandle,
+    /// Scroll handle for the response-content area (drives the custom scrollbar)
+    pub(super) content_scroll_handle: ScrollHandle,
     /// Row indices (0-based) of long strings the user has expanded via "show more"
     pub(super) expanded_strings: std::collections::HashSet<usize>,
     /// Test results from script execution
@@ -115,6 +118,10 @@ pub struct ResponsePanel {
     pub(super) json_sel: Option<SelectionRange>,
     /// Whether a JSON tree selection drag is in progress
     pub(super) json_selecting: bool,
+    /// Whether the search bar is visible
+    pub(super) search_active: bool,
+    /// Text input for body search
+    pub(super) search_input: Entity<TextInput>,
 }
 
 impl ResponsePanel {
@@ -126,6 +133,9 @@ impl ResponsePanel {
         });
         let jsonpath_input = cx.new(|cx| {
             TextInput::new(cx, "$.data.id")
+        });
+        let search_input = cx.new(|cx| {
+            TextInput::new(cx, "resp-search").placeholder("Search…")
         });
         let extraction_editor = cx.new(|cx| {
             CodeEditor::new(cx)
@@ -144,6 +154,7 @@ impl ResponsePanel {
             json_rows: Vec::new(),
             json_scroll_handle: UniformListScrollHandle::new(),
             json_scroll_handle_div: ScrollHandle::new(),
+            content_scroll_handle: ScrollHandle::new(),
             expanded_strings: std::collections::HashSet::new(),
             test_results: Vec::new(),
             jsonpath_input,
@@ -162,6 +173,8 @@ impl ResponsePanel {
             json_tree_bounds: None,
             json_sel: None,
             json_selecting: false,
+            search_active: false,
+            search_input,
         }
     }
 

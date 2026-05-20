@@ -5,7 +5,7 @@ impl ExplorerPanel {
     pub fn new(cx: &mut Context<Self>, main_window: WeakEntity<MainWindow>) -> Self {
         Self {
             request_panel: None,
-            history_expanded: true,
+            history_expanded: false,
             collections_expanded: true,
             workspace_path: None,
             workspace_watcher: None,
@@ -29,14 +29,20 @@ impl ExplorerPanel {
             context_menu: None,
             renaming_item: None,
             rename_text: String::new(),
+            rename_selection: 0..0,
+            rename_is_selecting: false,
+            rename_input_origin: 0.0,
             env_col_key_w: 90.0,
             env_col_drag: None,
+            env_row_drag: None,
+            env_row_drag_over: None,
             collections_h: crate::prefs::get_f32("explorer.collections_h", 220.0),
             env_h: crate::prefs::get_f32("explorer.env_h", 200.0),
             drag_coll: None,
             drag_env: None,
             main_window,
             panel_bounds: gpui::Bounds::default(),
+            sync_skip_paths: std::collections::HashSet::new(),
         }
     }
 

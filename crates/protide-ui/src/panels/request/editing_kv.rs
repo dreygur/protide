@@ -1,5 +1,6 @@
 use gpui::Context;
 use super::*;
+use super::super::request_types::KvList;
 
 impl<E: WebSocketExecutor> RequestPanel<E> {
     pub(super) fn toggle_header(&mut self, index: usize, cx: &mut Context<Self>) {
@@ -9,6 +10,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
         }
     }
 
+    #[allow(dead_code)]
     pub(super) fn add_header(&mut self, cx: &mut Context<Self>) {
         self.headers.push(KeyValuePair::default());
         cx.notify();
@@ -76,6 +78,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
         }
     }
 
+    #[allow(dead_code)]
     pub(super) fn add_param(&mut self, cx: &mut Context<Self>) {
         self.params.push(KeyValuePair::default());
         cx.notify();
@@ -166,5 +169,26 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             }
             cx.notify();
         }
+    }
+
+    pub(super) fn reorder_kv(&mut self, list: KvList, from: usize, to: usize, cx: &mut Context<Self>) {
+        let vec = match list {
+            KvList::Params => &mut self.params,
+            KvList::Headers => &mut self.headers,
+            KvList::GrpcMeta => &mut self.grpc_metadata,
+        };
+        if from < vec.len() && to < vec.len() {
+            let item = vec.remove(from);
+            vec.insert(to.min(vec.len()), item);
+        }
+        cx.notify();
+    }
+
+    pub(super) fn reorder_form_field(&mut self, from: usize, to: usize, cx: &mut Context<Self>) {
+        if from < self.form_data.len() && to < self.form_data.len() {
+            let item = self.form_data.remove(from);
+            self.form_data.insert(to.min(self.form_data.len()), item);
+        }
+        cx.notify();
     }
 }

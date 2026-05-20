@@ -79,7 +79,7 @@ impl ParsedCookie {
 
 /// Active text selection within the header value column
 #[derive(Debug, Clone, Copy)]
-pub(super) struct HdrSel {
+pub(crate) struct HdrSel {
     pub row: usize,
     pub range: (usize, usize), // (anchor_byte, head_byte) — un-normalized
     pub selecting: bool,
@@ -88,7 +88,7 @@ pub(super) struct HdrSel {
 /// Copy feedback type
 #[derive(Clone, Copy, PartialEq, Eq)]
 #[allow(dead_code)]
-pub(super) enum CopyFeedback {
+pub(crate) enum CopyFeedback {
     Body,
     Headers,
     Cookies,

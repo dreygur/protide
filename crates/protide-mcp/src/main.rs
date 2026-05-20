@@ -189,6 +189,8 @@ async fn call_tool(id: Value, params: &Value) -> Response {
         tests: args.tests,
         env_vars: args.env_vars,
         variable_extractions: vec![],
+        timeout_secs: 30,
+        verify_ssl: true,
     };
 
     let result = tokio::task::spawn_blocking(move || protide_core::execution::execute(req))

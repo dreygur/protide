@@ -53,6 +53,7 @@ pub enum EditTarget {
     TrpcProcedure,
     SioNamespace,
     SioEventName,
+    SioRoomName,
 }
 
 /// Authentication type
@@ -190,3 +191,21 @@ pub enum SioConnectionState {
     Connecting,
     Connected,
 }
+
+/// Result row from a data-driven CSV test run
+#[derive(Debug, Clone)]
+pub struct DataRunRow {
+    pub row: usize,
+    pub status: Option<u16>,
+    pub passed: bool,
+    pub error: Option<String>,
+}
+
+/// Identifies which KV list is being row-dragged
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum KvList {
+    Params,
+    Headers,
+    GrpcMeta,
+}
+

@@ -1,14 +1,11 @@
 //! File explorer panel - displays the workspace file tree, request history, and environment selector
 
-use log::{debug, error, info, warn};
+use log::{error, info, warn};
 
 use crate::components::modal::ModalState;
 use crate::main_window::MainWindow;
 use gpui::{
-    ClipboardItem, Context, Entity, FocusHandle, IntoElement, KeyDownEvent, MouseButton,
-    MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement, Pixels, Point, Render,
-    SharedString, Styled, Subscription, WeakEntity, Window, canvas, deferred,
-    div, prelude::*, px,
+    Context, Entity, FocusHandle, Pixels, Point, Subscription, WeakEntity, prelude::*,
 };
 use std::fs;
 use std::ops::Range;
@@ -21,16 +18,19 @@ use crate::last_paths;
 use crate::theme;
 use crate::components::icons::{
     ICON_ARROW_DOWN, ICON_CHEVRON_DOWN, ICON_CHEVRON_RIGHT, ICON_CHEVRON_UP, ICON_CLOSE,
-    ICON_DELETE, ICON_EDIT, ICON_EXTERNAL, ICON_FILE, ICON_FOLDER, ICON_FOLDER_OPEN, ICON_INFO,
-    ICON_LINK, ICON_MD, ICON_MENU, ICON_PLUS, ICON_REFRESH, ICON_SETTINGS, ICON_SM, ICON_TIMER,
+    ICON_COPY, ICON_DELETE, ICON_EDIT, ICON_EXPORT, ICON_FILE, ICON_FOLDER,
+    ICON_FOLDER_OPEN, ICON_INFO, ICON_LINK, ICON_MD, ICON_MENU, ICON_PLAY, ICON_PLUS,
+    ICON_REFRESH, ICON_SETTINGS, ICON_SM, ICON_TIMER,
     icon,
 };
+use crate::components::tooltip_text;
 use http_parser::Protocol;
 use crate::components::{ActionRow, ghost_action_btn, icon_btn, render_text_view_with_max_scrolled};
 use protide_core::models::{Environment, EnvironmentState};
 
 pub mod init;
 pub mod workspace;
+pub mod workspace_io;
 pub mod tree_nav;
 pub mod tree_ops;
 pub mod tree_scan;
@@ -98,14 +98,21 @@ pub struct ExplorerPanel {
     pub(super) context_menu: Option<(PathBuf, Point<Pixels>)>,
     pub(super) renaming_item: Option<PathBuf>,
     pub(super) rename_text: String,
+    pub(super) rename_selection: std::ops::Range<usize>,
+    pub(super) rename_is_selecting: bool,
+    pub(super) rename_input_origin: f32,
     pub(super) env_col_key_w: f32,
     pub(super) env_col_drag: Option<(f32, f32)>,
+    pub(super) env_row_drag: Option<(usize, f32)>,
+    pub(super) env_row_drag_over: Option<usize>,
     pub(super) collections_h: f32,
     pub(super) env_h: f32,
     pub(super) drag_coll: Option<(f32, f32)>,
     pub(super) drag_env: Option<(f32, f32)>,
     pub(super) main_window: WeakEntity<MainWindow>,
     pub(super) panel_bounds: gpui::Bounds<Pixels>,
+    /// Paths written by incoming P2P sync — skip broadcasting back to avoid echo
+    pub sync_skip_paths: std::collections::HashSet<PathBuf>,
 }
 
 impl ExplorerPanel {

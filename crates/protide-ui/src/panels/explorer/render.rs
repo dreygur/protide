@@ -1,4 +1,4 @@
-use gpui::{Context, IntoElement, KeyDownEvent, MouseButton, MouseDownEvent, MouseMoveEvent, ParentElement, Render, Styled, Window, canvas, deferred, div, px};
+use gpui::{Context, IntoElement, KeyDownEvent, MouseButton, MouseDownEvent, MouseMoveEvent, ParentElement, Render, Styled, Window, canvas, deferred, div, px, MouseUpEvent};
 use super::*;
 
 impl Render for ExplorerPanel {
@@ -14,6 +14,11 @@ impl Render for ExplorerPanel {
             .flex_col()
             .bg(theme.colors.bg_secondary)
             .track_focus(&self.edit_focus)
+            .on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| {
+                if this.renaming_item.is_some() {
+                    this.cancel_rename(cx);
+                }
+            }))
             .child({
                 let entity = cx.entity();
                 canvas(
@@ -92,16 +97,26 @@ impl Render for ExplorerPanel {
                             .child("+"),
                     ),
             )
-            .child(
-                div()
-                    .w_full()
-                    .h(px(if self.collections_expanded { self.collections_h } else { 48.0 }))
-                    .overflow_hidden()
-                    .bg(theme.colors.bg_secondary)
-                    .child(self.render_collections_section(cx)),
-            )
-            .when(self.collections_expanded, |el| {
+            .when(!self.history_expanded, |el| {
                 el.child(
+                    div()
+                        .w_full()
+                        .flex_1()
+                        .overflow_hidden()
+                        .bg(theme.colors.bg_secondary)
+                        .child(self.render_collections_section(cx)),
+                )
+            })
+            .when(self.history_expanded, |el| {
+                el.child(
+                    div()
+                        .w_full()
+                        .h(px(if self.collections_expanded { self.collections_h } else { 48.0 }))
+                        .overflow_hidden()
+                        .bg(theme.colors.bg_secondary)
+                        .child(self.render_collections_section(cx)),
+                )
+                .child(
                     div()
                         .id("drag-handle-coll")
                         .w_full()
@@ -116,16 +131,25 @@ impl Render for ExplorerPanel {
                             }),
                         ),
                 )
+                .child(
+                    div()
+                        .id("explorer-history-area")
+                        .flex_1()
+                        .w_full()
+                        .overflow_scroll()
+                        .bg(theme.colors.bg_secondary)
+                        .child(self.render_history_section(cx)),
+                )
             })
-            .child(
-                div()
-                    .id("explorer-history-area")
-                    .flex_1()
-                    .w_full()
-                    .overflow_scroll()
-                    .bg(theme.colors.bg_secondary)
-                    .child(self.render_history_section(cx)),
-            )
+            .when(!self.history_expanded, |el| {
+                el.child(
+                    div()
+                        .id("explorer-history-area-collapsed")
+                        .w_full()
+                        .bg(theme.colors.bg_secondary)
+                        .child(self.render_history_section(cx)),
+                )
+            })
             .when(self.env_editor_open, |el| {
                 el.child(
                     div()
@@ -225,6 +249,42 @@ impl Render for ExplorerPanel {
                                     cx.notify();
                                 }),
                             ),
+                    )
+                    .with_priority(2),
+                )
+            })
+            .when(self.env_row_drag.is_some(), |el| {
+                el.child(
+                    deferred(
+                        div()
+                            .id("env-row-drag-overlay")
+                            .absolute()
+                            .inset_0()
+                            .cursor_grab()
+                            .on_mouse_move(cx.listener(|this, event: &MouseMoveEvent, _, cx| {
+                                if let Some((src, start_y)) = this.env_row_drag {
+                                    let len = this.env_state.active()
+                                        .map(|e| e.variables.len())
+                                        .unwrap_or(0);
+                                    if len > 1 {
+                                        let delta = f32::from(event.position.y) - start_y;
+                                        let idx = (src as i32 + (delta / 40.0).round() as i32)
+                                            .clamp(0, len as i32 - 1) as usize;
+                                        if this.env_row_drag_over != Some(idx) {
+                                            this.env_row_drag_over = Some(idx);
+                                            cx.notify();
+                                        }
+                                    }
+                                }
+                            }))
+                            .on_mouse_up(MouseButton::Left, cx.listener(|this, _: &MouseUpEvent, _, cx| {
+                                let drag = this.env_row_drag.take();
+                                let over = this.env_row_drag_over.take();
+                                if let (Some((src, _)), Some(dst)) = (drag, over) {
+                                    if src != dst { this.reorder_env_var(src, dst, cx); }
+                                }
+                                cx.notify();
+                            })),
                     )
                     .with_priority(2),
                 )

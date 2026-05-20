@@ -14,7 +14,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
         self.graphql_schema = GraphqlSchemaState::Loading;
         cx.notify();
 
-        cx.spawn(async move |this, mut cx| {
+        cx.spawn(async move |this, cx| {
             let result = cx.background_executor()
                 .spawn(async move { run_graphql_introspection(&url) })
                 .await;
@@ -29,7 +29,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
 
     /// Import a GraphQL schema from a local .graphql or .json file.
     pub(super) fn import_graphql_schema_file(&mut self, cx: &mut Context<Self>) {
-        cx.spawn(async move |this, mut cx| {
+        cx.spawn(async move |this, cx| {
             let picked = rfd::AsyncFileDialog::new()
                 .add_filter("GraphQL Schema", &["graphql", "gql", "json"])
                 .pick_file()
@@ -92,7 +92,6 @@ pub(super) fn extract_schema_types(json: &serde_json::Value) -> GraphqlSchemaSta
                     Some(GqlSchemaType {
                         name,
                         kind: t.get("kind").and_then(|k| k.as_str()).unwrap_or("").to_string(),
-                        description: t.get("description").and_then(|d| d.as_str()).map(|s| s.to_string()),
                     })
                 })
                 .collect();
@@ -123,7 +122,6 @@ pub(super) fn parse_schema_file(path: &std::path::Path) -> GraphqlSchemaState {
                         return Some(GqlSchemaType {
                             name,
                             kind: prefix.trim().to_uppercase(),
-                            description: None,
                         });
                     }
                 }

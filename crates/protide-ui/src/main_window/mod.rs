@@ -5,13 +5,14 @@ mod drag;
 mod help;
 mod overlays;
 mod render;
+mod render_sidebar;
 mod statusbar;
 mod sync;
 mod titlebar;
 
 use std::path::PathBuf;
 
-use gpui::{Context, Entity, FocusHandle, KeyBinding, Styled, WeakEntity, Window, prelude::*};
+use gpui::{Context, Entity, FocusHandle, KeyBinding, WeakEntity, Window, prelude::*};
 
 gpui::actions!(
     main_window,
@@ -46,7 +47,7 @@ pub fn register_keybindings(cx: &mut gpui::App) {
 
 use super::panels::presence::{ConnectionStatus, PeerSource, PresenceManager};
 use super::components::{TextInput, TextInputStyle};
-use super::panels::{ConsoleEntry, ConsolePanel, DocsPanel, ExplorerPanel, MockServerPanel, RequestPanel, ResponsePanel};
+use super::panels::{ConsoleEntry, ConsolePanel, DocsPanel, ExplorerPanel, MockServerPanel, RequestPanel, ResponsePanel, RunnerPanel};
 use crate::theme;
 use protide_core::sync::{SyncEngine, SyncEvent};
 use crate::components::icons::{
@@ -66,6 +67,8 @@ pub(super) enum ModalPending {
 /// Main window containing the application layout
 pub struct MainWindow {
     pub(super) explorer: Entity<ExplorerPanel>,
+    pub(super) runner_panel: Entity<RunnerPanel>,
+    pub(super) show_runner: bool,
     pub(super) request_panel: Entity<RequestPanel>,
     pub(super) response_panel: Entity<ResponsePanel>,
     pub(super) mock_server_panel: Entity<MockServerPanel>,
@@ -109,9 +112,10 @@ pub struct MainWindow {
 }
 
 impl MainWindow {
-    pub fn build(_window: &mut Window, cx: &mut Context<Self>) -> Self {
+    pub fn build(_window: &mut Window, cx: &mut Context<Self>, sync_engine: Option<SyncEngine>) -> Self {
         let main_window_weak: WeakEntity<MainWindow> = cx.entity().downgrade();
         let explorer = cx.new(|cx| ExplorerPanel::new(cx, main_window_weak.clone()));
+        let runner_panel = cx.new(|cx| RunnerPanel::new(cx, main_window_weak.clone()));
         let response_panel = cx.new(ResponsePanel::new);
         let response_panel_clone = response_panel.clone();
         let request_panel = cx.new(|cx| RequestPanel::new(cx, response_panel_clone));
@@ -144,7 +148,7 @@ impl MainWindow {
             let ws_key = workspace.to_string_lossy().to_string();
             let saved_entry = session.workspaces.get(&ws_key).cloned();
             explorer.update(cx, |exp, cx| {
-                exp.init_workspace(workspace, saved_entry, cx);
+                exp.init_workspace(workspace.clone(), saved_entry, cx);
             });
         }
 
@@ -160,25 +164,11 @@ impl MainWindow {
         });
 
         let mut presence = PresenceManager::new();
-        presence.generate_code();
-
-        let node_name = std::env::var("USER")
-            .or_else(|_| std::env::var("USERNAME"))
-            .unwrap_or_else(|_| "developer".into());
-        let pairing_code_str = if presence.pairing_code.is_empty() {
-            None
-        } else {
-            Some(presence.pairing_code.to_string())
-        };
-        let mut sync_engine = SyncEngine::new(protide_core::sync::SyncConfig {
-            node_name,
-            p2p_enabled: true,
-            live_probe_enabled: true,
-            pairing_code: pairing_code_str,
-            ..Default::default()
-        });
-        let _ = sync_engine.init();
-        let sync_engine = Some(sync_engine);
+        if let Some(code) = sync_engine.as_ref().and_then(|e| e.config().pairing_code.as_deref()) {
+            let s = gpui::SharedString::from(code.to_string());
+            presence.pairing_code = s.clone();
+            presence.generated_code = s;
+        }
 
         let poll_weak = cx.entity().downgrade();
         cx.spawn(async move |_, cx| {
@@ -195,6 +185,8 @@ impl MainWindow {
 
         Self {
             explorer,
+            runner_panel,
+            show_runner: false,
             request_panel,
             response_panel,
             mock_server_panel,
@@ -231,6 +223,32 @@ impl MainWindow {
         }
     }
 
+    pub fn open_runner(
+        &mut self,
+        collection_path: PathBuf,
+        env_vars: std::collections::HashMap<String, String>,
+        cx: &mut Context<Self>,
+    ) {
+        self.show_runner = true;
+        self.runner_panel.update(cx, |panel, cx| {
+            panel.start(collection_path, env_vars, cx);
+        });
+        cx.notify();
+    }
+
+    pub fn close_runner(&mut self, cx: &mut Context<Self>) {
+        self.show_runner = false;
+        cx.notify();
+    }
+
+    /// Forward a local workspace file change to the sync engine for P2P broadcast.
+    pub fn broadcast_workspace_file(&mut self, workspace_root: &std::path::Path, file_path: &std::path::Path, content: String, deleted: bool) {
+        if let Some(ref mut engine) = self.sync_engine {
+            engine.broadcast_workspace_file(workspace_root, file_path, content, deleted);
+        }
+    }
+
+    /// Called by ExplorerPanel when the workspace root changes.
     pub(super) fn toggle_console(&mut self, cx: &mut Context<Self>) {
         self.show_console = !self.show_console;
         cx.notify();
@@ -257,6 +275,13 @@ impl MainWindow {
     pub fn toggle_sidebar(&mut self, cx: &mut Context<Self>) {
         self.sidebar_collapsed = !self.sidebar_collapsed;
         cx.notify();
+    }
+
+    pub fn ensure_sidebar_visible(&mut self, cx: &mut Context<Self>) {
+        if self.sidebar_collapsed {
+            self.sidebar_collapsed = false;
+            cx.notify();
+        }
     }
 
     pub(super) fn toggle_mock_server(&mut self, cx: &mut Context<Self>) {
