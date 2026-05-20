@@ -112,7 +112,7 @@ pub struct MainWindow {
 }
 
 impl MainWindow {
-    pub fn build(_window: &mut Window, cx: &mut Context<Self>) -> Self {
+    pub fn build(_window: &mut Window, cx: &mut Context<Self>, sync_engine: Option<SyncEngine>) -> Self {
         let main_window_weak: WeakEntity<MainWindow> = cx.entity().downgrade();
         let explorer = cx.new(|cx| ExplorerPanel::new(cx, main_window_weak.clone()));
         let runner_panel = cx.new(|cx| RunnerPanel::new(cx, main_window_weak.clone()));
@@ -164,25 +164,11 @@ impl MainWindow {
         });
 
         let mut presence = PresenceManager::new();
-        presence.generate_code();
-
-        let node_name = std::env::var("USER")
-            .or_else(|_| std::env::var("USERNAME"))
-            .unwrap_or_else(|_| "developer".into());
-        let pairing_code_str = if presence.pairing_code.is_empty() {
-            None
-        } else {
-            Some(presence.pairing_code.to_string())
-        };
-        let mut sync_engine = SyncEngine::new(protide_core::sync::SyncConfig {
-            node_name,
-            p2p_enabled: true,
-            live_probe_enabled: true,
-            pairing_code: pairing_code_str,
-            ..Default::default()
-        });
-        let _ = sync_engine.init();
-        let sync_engine = Some(sync_engine);
+        if let Some(code) = sync_engine.as_ref().and_then(|e| e.config().pairing_code.as_deref()) {
+            let s = gpui::SharedString::from(code.to_string());
+            presence.pairing_code = s.clone();
+            presence.generated_code = s;
+        }
 
         let poll_weak = cx.entity().downgrade();
         cx.spawn(async move |_, cx| {

@@ -10,7 +10,7 @@ name = "protide_ui"
 path = "src/lib.rs"
 
 [dependencies]
-protide-core = { path = "../protide-core", features = ["full-sync"] }
+protide-core = { path = "../protide-core" }
 http-parser = { workspace = true }
 
 gpui = { workspace = true }

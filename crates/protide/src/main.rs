@@ -9,6 +9,7 @@ use protide_ui::{
     ShowHelp, ShowAbout, Quit,
 };
 use protide_ui::panels::RequestHistory;
+use protide_core::sync::{SyncEngine, SyncConfig};
 
 const APP_ICON_PNG: &[u8] = include_bytes!("../assets/protide-logo.png");
 
@@ -76,8 +77,22 @@ fn main() -> Result<()> {
                 ..Default::default()
             };
 
+            let node_name = std::env::var("USER")
+                .or_else(|_| std::env::var("USERNAME"))
+                .unwrap_or_else(|_| "developer".into());
+            let pairing_code = protide_core::sync::pake::generate_pairing_code();
+            let mut engine = SyncEngine::new(SyncConfig {
+                node_name,
+                p2p_enabled: true,
+                live_probe_enabled: true,
+                pairing_code: Some(pairing_code),
+                ..Default::default()
+            });
+            let _ = engine.init();
+            let sync_engine = Some(engine);
+
             cx.open_window(window_options, |window, cx| {
-                let view = cx.new(|cx| MainWindow::build(window, cx));
+                let view = cx.new(|cx| MainWindow::build(window, cx, sync_engine));
                 cx.new(|cx| Root::new(view, window, cx).window_shadow_size(gpui::px(0.0)))
             })
             .expect("Failed to open main window");
