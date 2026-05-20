@@ -74,7 +74,7 @@ pub struct PresenceManager {
     pub generated_code: SharedString,
     /// Connection state for the join flow
     pub connection_status: ConnectionStatus,
-    /// Flips every tick while Handshaking — drives pulsing border
+    /// Flips every tick while Handshaking - drives pulsing border
     pub handshake_tick: bool,
 }
 
@@ -150,7 +150,7 @@ impl PresenceManager {
         }
     }
 
-    /// Flip the pulse tick — call once per second while Handshaking
+    /// Flip the pulse tick - call once per second while Handshaking
     pub fn tick_handshake(&mut self) {
         if self.connection_status == ConnectionStatus::Handshaking {
             self.handshake_tick = !self.handshake_tick;
@@ -379,7 +379,7 @@ impl PresenceManager {
                                     .child(if has_code { code.clone() } else { SharedString::from("------") })
                             )
                     )
-                    // Copy code button — hover/cursor/click only when a code exists
+                    // Copy code button - hover/cursor/click only when a code exists
                     .child(
                         div()
                             .id("pairing-copy-btn")
@@ -423,7 +423,7 @@ impl PresenceManager {
                     .w_full()
                     .bg(theme.colors.team_accent.opacity(0.2))
             )
-            // ── Join Peer (interactive — provided by caller) ──────────────────
+            // ── Join Peer (interactive - provided by caller) ──────────────────
             .child(
                 div()
                     .px(px(12.0))
@@ -441,7 +441,7 @@ impl PresenceManager {
                     )
                     .child(join_section)
             )
-            // ── Peers Found Nearby (mDNS) — shown when peers visible ──────────
+            // ── Peers Found Nearby (mDNS) - shown when peers visible ──────────
             .when(!nearby.is_empty(), |el| {
                 el
                     .child(

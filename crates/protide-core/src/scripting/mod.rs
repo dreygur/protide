@@ -39,7 +39,7 @@ impl ScriptEngine {
         })
     }
 
-    /// Create a script engine with a custom deadline — intended for tests only.
+    /// Create a script engine with a custom deadline - intended for tests only.
     #[cfg(test)]
     pub fn new_with_timeout_ms(timeout_ms: u64) -> Result<Self, ScriptError> {
         Ok(Self {

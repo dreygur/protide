@@ -1,7 +1,7 @@
 # Protide Design Language
 
 > Single source of truth for colors, spacing, sizing, and interaction patterns.
-> When building UI, match what's here — don't invent new values.
+> When building UI, match what's here - don't invent new values.
 
 ---
 
@@ -15,7 +15,7 @@
 4. **Accent = green (dark) / blue (light).** Accent marks the single active/selected
    state. Don't use accent for decoration.
 5. **One elevated surface per stack.** `bg_elevated` is for inputs and floating
-   elements only — don't nest elevated surfaces.
+   elements only - don't nest elevated surfaces.
 
 ---
 
@@ -72,24 +72,24 @@ Accent tints (use these for backgrounds, not the raw accent):
 
 | Method | Color |
 |---|---|
-| GET | `method_get` — green `#4ade80` |
-| POST | `method_post` — blue `#60a5fa` |
-| PUT | `method_put` — yellow `#fbbf24` |
-| PATCH | `method_patch` — orange `#fb923c` |
-| DELETE | `method_delete` — red `#f87171` |
-| HEAD | `method_head` — purple `#a78bfa` |
-| OPTIONS | `method_options` — slate `#94a3b8` |
+| GET | `method_get` - green `#4ade80` |
+| POST | `method_post` - blue `#60a5fa` |
+| PUT | `method_put` - yellow `#fbbf24` |
+| PATCH | `method_patch` - orange `#fb923c` |
+| DELETE | `method_delete` - red `#f87171` |
+| HEAD | `method_head` - purple `#a78bfa` |
+| OPTIONS | `method_options` - slate `#94a3b8` |
 
-Use `theme.method_color(method_str)` — never match manually.
+Use `theme.method_color(method_str)` - never match manually.
 Method chip: `method_color.opacity(0.12)` bg, `method_color` text.
 
 ### Protocols
 
 | Protocol | Color |
 |---|---|
-| WebSocket | `protocol_ws` — emerald `#34d399` |
-| gRPC | `protocol_grpc` — indigo `#818cf8` |
-| GraphQL | `protocol_graphql` — pink `#f472b6` |
+| WebSocket | `protocol_ws` - emerald `#34d399` |
+| gRPC | `protocol_grpc` - indigo `#818cf8` |
+| GraphQL | `protocol_graphql` - pink `#f472b6` |
 
 ### Status Codes
 
@@ -100,7 +100,7 @@ Method chip: `method_color.opacity(0.12)` bg, `method_color` text.
 | 4xx | `status_client_error` (orange) |
 | 5xx | `status_server_error` (red) |
 
-Use `theme.status_color(status_code)` — never match manually.
+Use `theme.status_color(status_code)` - never match manually.
 
 ### Semantic Alerts
 
@@ -122,9 +122,9 @@ All sizes are in pixels. Use `text_size(px(N))`.
 | `xs` | 10 | Badges, counts, column headers, timestamps |
 | `sm` | 12 | List items, captions, input labels, tab labels |
 | `base` | 13 | Body text, dropdowns, modal text |
-| `md` | 14 | — (reserved, rarely needed) |
-| `lg` | 15 | — (reserved) |
-| `xl` | 16 | — (reserved) |
+| `md` | 14 | - (reserved, rarely needed) |
+| `lg` | 15 | - (reserved) |
+| `xl` | 16 | - (reserved) |
 
 **Weights:**
 
@@ -150,7 +150,7 @@ Font family: Ubuntu Mono (monospace). All UI text uses this font.
 | `base` | 16 | Standard content padding |
 | `lg` | 24 | Section gap |
 | `xl` | 32 | Large section gap |
-| `xxl` | 48 | — |
+| `xxl` | 48 | - |
 
 Common padding patterns:
 - Row horizontal padding: `px(px(12.0))` (use `md`)
@@ -190,10 +190,10 @@ Resize dividers between sections:
 
 | Token | px | Use |
 |---|---|---|
-| `radius.sm` | 4 | Subtle rounding — badges, small chips |
-| `radius.md` | 6 | Standard — inputs, buttons, cards |
-| `radius.lg` | 8 | Pronounced — modals, dropdowns |
-| `radius.xl` | 12 | Large — (reserved) |
+| `radius.sm` | 4 | Subtle rounding - badges, small chips |
+| `radius.md` | 6 | Standard - inputs, buttons, cards |
+| `radius.lg` | 8 | Pronounced - modals, dropdowns |
+| `radius.xl` | 12 | Large - (reserved) |
 
 > Note: GPUI has limited rounded-corner support in current use.
 > Most components use sharp corners (`border_1()` only) for IDE aesthetic.
@@ -396,7 +396,7 @@ Inactive tab:
 ### Content Toolbar (sub-tab action bars)
 
 Rows that sit above content (e.g. the response body row with format badge and Copy
-button). Height is implicit — whatever the tallest child needs. Always push action
+button). Height is implicit - whatever the tallest child needs. Always push action
 buttons to the **right** using a `flex_1` spacer, **not** `justify_between`.
 
 ```rust
@@ -407,7 +407,7 @@ div()
         .child(badge)
         .child(caption_text)
     )
-    // Right: action button — absolute right_0, not flex-based
+    // Right: action button - absolute right_0, not flex-based
     .child(
         div()
             .absolute().right_0()
@@ -417,7 +417,7 @@ div()
     )
 ```
 
-**Never use `justify_between` or `flex_1` spacer** for this — flex child widths
+**Never use `justify_between` or `flex_1` spacer** for this - flex child widths
 do not resolve reliably inside `overflow_scroll` regions in GPUI. Absolute
 positioning is the only guaranteed approach.
 
@@ -469,7 +469,7 @@ All split positions persist to `~/.config/protide/prefs.json`.
 ### Explorer Sidebar (left)
 
 ```
-Header (40px) — workspace name + new-request button
+Header (40px) - workspace name + new-request button
 ─────────────────────────────────────────────────
 Collections (collections_h, default 220px, resizable)
 drag handle (4px)

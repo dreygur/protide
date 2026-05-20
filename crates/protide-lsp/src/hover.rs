@@ -4,11 +4,11 @@ use crate::symbols::var_at_cursor;
 pub fn hover_at(content: &str, pos: Position) -> Option<Hover> {
     let line = content.lines().nth(pos.line as usize).unwrap_or("");
 
-    // {{variable}} hover — show @set expression or note it's an env var
+    // {{variable}} hover - show @set expression or note it's an env var
     if let Some(var_name) = var_at_cursor(line, pos.character as usize) {
         let value = find_set_expr(content, var_name)
             .map(|expr| format!("**`{{{{{var_name}}}}}`** → `{expr}`"))
-            .unwrap_or_else(|| format!("**`{{{{{var_name}}}}}`** — environment variable"));
+            .unwrap_or_else(|| format!("**`{{{{{var_name}}}}}`** - environment variable"));
         return Some(Hover {
             contents: HoverContents::Markup(MarkupContent {
                 kind: MarkupKind::Markdown,
@@ -20,30 +20,30 @@ pub fn hover_at(content: &str, pos: Position) -> Option<Hover> {
 
     let word = word_at(line, pos.character as usize);
     let docs = match word.to_uppercase().as_str() {
-        "GET" => "**GET** — Retrieve a resource. Safe and idempotent.",
-        "POST" => "**POST** — Submit data to create or process a resource.",
-        "PUT" => "**PUT** — Replace a resource entirely. Idempotent.",
-        "PATCH" => "**PATCH** — Partially update a resource.",
-        "DELETE" => "**DELETE** — Remove a resource. Idempotent.",
-        "HEAD" => "**HEAD** — Same as GET but returns only headers.",
-        "OPTIONS" => "**OPTIONS** — Describe communication options for a resource.",
+        "GET" => "**GET** - Retrieve a resource. Safe and idempotent.",
+        "POST" => "**POST** - Submit data to create or process a resource.",
+        "PUT" => "**PUT** - Replace a resource entirely. Idempotent.",
+        "PATCH" => "**PATCH** - Partially update a resource.",
+        "DELETE" => "**DELETE** - Remove a resource. Idempotent.",
+        "HEAD" => "**HEAD** - Same as GET but returns only headers.",
+        "OPTIONS" => "**OPTIONS** - Describe communication options for a resource.",
         "@NAME" | "NAME" if line.trim_start().starts_with("# @") => {
-            "**@name** — Assigns a name to this request for use in chaining with `@depends`."
+            "**@name** - Assigns a name to this request for use in chaining with `@depends`."
         }
         "@DESCRIPTION" | "DESCRIPTION" if line.trim_start().starts_with("# @") => {
-            "**@description** — Human-readable description of this request. Included in exported docs."
+            "**@description** - Human-readable description of this request. Included in exported docs."
         }
         "@PROTOCOL" | "PROTOCOL" if line.trim_start().starts_with("# @") => {
-            "**@protocol** — Override protocol detection.\nValues: `http`, `graphql`, `websocket`, `grpc`, `trpc`, `socketio`"
+            "**@protocol** - Override protocol detection.\nValues: `http`, `graphql`, `websocket`, `grpc`, `trpc`, `socketio`"
         }
         "@SET" | "SET" if line.trim_start().starts_with("# @") => {
-            "**@set** — Extract a value from the response and store it as a variable.\nSyntax: `# @set varName = $.path.to.value`"
+            "**@set** - Extract a value from the response and store it as a variable.\nSyntax: `# @set varName = $.path.to.value`"
         }
         "@DEPENDS" | "DEPENDS" if line.trim_start().starts_with("# @") => {
-            "**@depends** — Declare that this request depends on another named request."
+            "**@depends** - Declare that this request depends on another named request."
         }
         "@PROTO" | "PROTO" if line.trim_start().starts_with("# @") => {
-            "**@proto** — Path to the .proto file for gRPC requests."
+            "**@proto** - Path to the .proto file for gRPC requests."
         }
         _ => return None,
     };

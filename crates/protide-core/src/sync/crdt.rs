@@ -3,7 +3,7 @@ use uuid::Uuid;
 
 use super::types::{timestamp_now, CrdtEntry, DataType, NodeId};
 
-/// In-memory CRDT store — holds the current state merged from all peers
+/// In-memory CRDT store - holds the current state merged from all peers
 #[derive(Debug, Clone)]
 pub struct CrdtStore {
     /// All entries keyed by UUID

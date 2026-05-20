@@ -1,4 +1,4 @@
-//! Collection runner — executes all requests in a folder sequentially.
+//! Collection runner - executes all requests in a folder sequentially.
 //! Environment changes from each request carry forward to the next.
 
 pub mod data_driven;

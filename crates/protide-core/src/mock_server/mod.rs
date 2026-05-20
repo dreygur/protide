@@ -101,7 +101,7 @@ impl MockServer {
 
         let routes = self.routes.clone();
         let record_mode = self.record_mode.clone();
-        let record_target = self.record_target.clone(); // Arc clone — handler sees live updates
+        let record_target = self.record_target.clone(); // Arc clone - handler sees live updates
         let recorded_routes = self.recorded_routes.clone();
         let port = self.port;
         let (shutdown_tx, shutdown_rx) = oneshot::channel();

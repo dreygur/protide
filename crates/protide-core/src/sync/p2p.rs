@@ -62,7 +62,7 @@ pub enum P2PEvent {
         kind: String,
         pake_bytes: Vec<u8>,
     },
-    /// Our own listen multiaddress — emitted once the swarm binds a port
+    /// Our own listen multiaddress - emitted once the swarm binds a port
     LocalAddr(String),
 }
 
@@ -171,7 +171,7 @@ impl P2PSync {
                                 libp2p::yamux::Config::default,
                             )
                             .map_err(|e| format!("TCP transport error: {}", e))?
-                            .with_quic()   // QUIC/UDP alongside TCP — better NAT traversal
+                            .with_quic()   // QUIC/UDP alongside TCP - better NAT traversal
                             .with_dns()
                             .map_err(|e| format!("DNS error: {}", e))?
                             .with_behaviour(|key: &identity::Keypair| {

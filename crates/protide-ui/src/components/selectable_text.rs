@@ -41,7 +41,7 @@ impl SelectionRange {
             return None;
         }
         if sr == er {
-            // Both offsets are in the same row — min/max to normalize direction.
+            // Both offsets are in the same row - min/max to normalize direction.
             let s = so.min(eo).min(text_len);
             let e = so.max(eo).min(text_len);
             return Some((s, e));
@@ -59,7 +59,7 @@ impl SelectionRange {
 }
 
 
-/// Returns `true` when the selection actually changes — use this to gate `cx.notify()`.
+/// Returns `true` when the selection actually changes - use this to gate `cx.notify()`.
 ///
 /// Without this guard, every `MouseMove` triggers a full view re-render even when the
 /// cursor hasn't advanced to a different character, causing continuous CPU spikes.
@@ -86,7 +86,7 @@ pub fn selection_changed(
 
 /// Build a selectable text element for use in div-based layouts.
 /// Returns an `AnyElement` with the selection highlight already baked in.
-/// Does NOT handle mouse events — those should be attached at the parent level.
+/// Does NOT handle mouse events - those should be attached at the parent level.
 ///
 /// Hot-path optimisation: the no-selection case (the vast majority of rows)
 /// emits a single text node with no child divs, so GPUI lays out one box
@@ -122,7 +122,7 @@ pub fn selectable_text_element(
             base.child(text).into_any_element()
         }
     } else {
-        // Common case: no selection — single text node, zero extra allocations.
+        // Common case: no selection - single text node, zero extra allocations.
         base.child(text).into_any_element()
     }
 }
@@ -162,7 +162,7 @@ pub fn render_selectable_json_value(
             base.child(SharedString::from(text)).into_any_element()
         }
     } else {
-        // Common case: no selection on this row — one allocation, one layout box.
+        // Common case: no selection on this row - one allocation, one layout box.
         base.child(SharedString::from(text)).into_any_element()
     }
 }

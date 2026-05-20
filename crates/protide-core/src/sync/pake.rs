@@ -8,7 +8,7 @@ use rand::RngCore;
 
 const PAKE_IDENTITY: &[u8] = b"protide-p2p-pairing";
 
-/// A SPAKE2 handshake result — two peers derive a shared key from a
+/// A SPAKE2 handshake result - two peers derive a shared key from a
 /// low-entropy password/pairing code without revealing it over the wire.
 #[derive(Debug, Clone)]
 pub struct PakeSession {

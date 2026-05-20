@@ -73,7 +73,7 @@ impl ResponsePanel {
                                     .child("response headers")
                             )
                     )
-                    // Copy headers button — deferred so it paints above the headers table below
+                    // Copy headers button - deferred so it paints above the headers table below
                     .child(deferred(
                         div()
                             .id("copy-headers-btn")

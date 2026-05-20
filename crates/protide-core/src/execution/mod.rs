@@ -55,7 +55,7 @@ pub enum ExecutionMode {
     },
 }
 
-/// Everything needed to execute a request — all values already env-substituted by the UI
+/// Everything needed to execute a request - all values already env-substituted by the UI
 pub struct ExecutionRequest {
     pub method: String,
     pub url: String,
@@ -94,7 +94,7 @@ fn ser_duration_millis<S: serde::Serializer>(d: &Duration, s: S) -> Result<S::Ok
 }
 
 /// Execute an HTTP/GraphQL request including pre/post scripts and variable extraction.
-/// Blocking — must be called from a background thread (e.g., std::thread::spawn).
+/// Blocking - must be called from a background thread (e.g., std::thread::spawn).
 pub fn execute(req: ExecutionRequest) -> Result<ExecutionResult, String> {
     let mut url = req.url.clone();
     let mut headers = req.headers.clone();

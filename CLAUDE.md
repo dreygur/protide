@@ -132,12 +132,12 @@ protide/
 ```
 
 ### Key Technical Decisions
-1. **HTTP requests**: `reqwest::blocking::Client` in background thread — GPUI doesn't play well with tokio async in UI code
+1. **HTTP requests**: `reqwest::blocking::Client` in background thread - GPUI doesn't play well with tokio async in UI code
 2. **File format**: Extended .http file format with annotations (`# @name`, `# @protocol`, etc.)
 3. **No database**: File-system based storage (collections = folders)
-4. **UI framework**: GPUI from Zed — GPU-accelerated, immediate mode style
+4. **UI framework**: GPUI from Zed - GPU-accelerated, immediate mode style
 5. **Collaboration**: Local-first CRDT, no central server required
-6. **MCP**: JSON-RPC 2.0 over stdio — lets AI tools (Claude, etc.) drive requests
+6. **MCP**: JSON-RPC 2.0 over stdio - lets AI tools (Claude, etc.) drive requests
 
 ### GPUI Reference
 - **Zed editor is the authoritative GPUI example source.** Always look at Zed's source code for correct GPUI patterns before guessing.
@@ -146,13 +146,13 @@ protide/
 
 ### GPUI Gotchas
 - `overflow_scroll()` requires `.id()` on the element
-- `overflow_scroll()` must have explicit dimensions (`w_full()` + `flex_1()`, or `size_full()`) — without `w_full()`, percentage-based child widths don't resolve, breaking `ml_auto()`, `w_full()` on children, and `absolute().right_0()` alignment
-- No `overflow_y_scroll()` or `overflow_x_scroll()` — only `overflow_scroll()`
+- `overflow_scroll()` must have explicit dimensions (`w_full()` + `flex_1()`, or `size_full()`) - without `w_full()`, percentage-based child widths don't resolve, breaking `ml_auto()`, `w_full()` on children, and `absolute().right_0()` alignment
+- No `overflow_y_scroll()` or `overflow_x_scroll()` - only `overflow_scroll()`
 - Theme colors: `theme::current(cx).colors.*`
 - Method colors: `theme.method_color("GET")` returns `Hsla`
 - `ScrollWheelEvent` / `on_scroll_wheel` in `gpui::interactive`
-- Render one div per logical token/span — never one div per character (massive layout cost)
-- Spacer divs cause dark rendering artifacts — avoid them
+- Render one div per logical token/span - never one div per character (massive layout cost)
+- Spacer divs cause dark rendering artifacts - avoid them
 
 ### Running the App
 ```bash

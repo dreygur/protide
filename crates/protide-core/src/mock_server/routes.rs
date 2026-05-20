@@ -156,7 +156,7 @@ pub struct MockRoute {
     pub response: MockResponse,
     /// Whether route is enabled
     pub enabled: bool,
-    /// Optional proxy target URL — when set, the request is forwarded here
+    /// Optional proxy target URL - when set, the request is forwarded here
     /// instead of returning the static response.
     /// E.g. "https://api.example.com" → request to /users becomes https://api.example.com/users
     pub proxy_target: Option<String>,

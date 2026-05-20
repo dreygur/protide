@@ -1,4 +1,4 @@
-//! Icon helper — wraps GPUI svg() with a fixed size and color.
+//! Icon helper - wraps GPUI svg() with a fixed size and color.
 //! Icons come from gpui-component-assets (Lucide icon set).
 
 use gpui::{svg, px, IntoElement, Hsla, Styled};
@@ -14,7 +14,7 @@ pub fn icon(path: &'static str, size: f32, color: Hsla) -> impl IntoElement {
         .text_color(color)
 }
 
-/// Render a Lucide SVG icon without a fixed color — inherits `text_color` from parent.
+/// Render a Lucide SVG icon without a fixed color - inherits `text_color` from parent.
 /// Use inside elements that set `.text_color()` on themselves with hover changes.
 pub fn icon_inherit(path: &'static str, size: f32) -> impl IntoElement {
     svg().path(path).size(px(size))

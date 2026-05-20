@@ -13,7 +13,7 @@ const MAGIC_PREAMBLE: &[u8] = b"PROTIDE_LIVE";
 
 /// UDP broadcast-based live activity sharing for local network collaboration.
 ///
-/// Zero-configuration — peers on the same subnet automatically discover
+/// Zero-configuration - peers on the same subnet automatically discover
 /// each other's live request activity. No servers, no accounts.
 pub struct LiveProbe {
     socket: UdpSocket,

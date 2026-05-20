@@ -89,7 +89,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                         div()
                             .text_size(px(11.0))
                             .text_color(theme.colors.text_muted)
-                            .child(if verify_ssl { "enabled" } else { "disabled — unsafe" }),
+                            .child(if verify_ssl { "enabled" } else { "disabled - unsafe" }),
                     ),
             )
             .into_any_element()

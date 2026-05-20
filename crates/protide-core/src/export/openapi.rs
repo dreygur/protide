@@ -133,7 +133,7 @@ fn split_url(url: &str) -> (String, String, Vec<(String, String)>) {
 fn build_operation(req: &http_parser::Request, query_params: Vec<(String, String)>) -> Value {
     let mut parameters: Vec<Value> = Vec::new();
 
-    // Header parameters (skip Content-Type — goes in requestBody)
+    // Header parameters (skip Content-Type - goes in requestBody)
     for h in req.headers.iter().filter(|h| h.enabled && !h.key.eq_ignore_ascii_case("content-type")) {
         parameters.push(json!({
             "in": "header",

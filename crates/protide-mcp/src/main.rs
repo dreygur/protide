@@ -1,4 +1,4 @@
-//! Protide MCP server — JSON-RPC 2.0 over stdio (Model Context Protocol)
+//! Protide MCP server - JSON-RPC 2.0 over stdio (Model Context Protocol)
 //!
 //! Usage: pipe JSON-RPC messages to stdin, one per line.
 //! Responses are written to stdout, one per line.

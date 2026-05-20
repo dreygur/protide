@@ -19,7 +19,7 @@ impl JsRuntime {
         Ok(Self { timeout_ms: DEFAULT_SCRIPT_TIMEOUT_MS })
     }
 
-    /// Construct with a custom deadline — intended for tests only.
+    /// Construct with a custom deadline - intended for tests only.
     #[cfg(test)]
     pub fn with_timeout_ms(timeout_ms: u64) -> Result<Self, ScriptError> {
         Ok(Self { timeout_ms })

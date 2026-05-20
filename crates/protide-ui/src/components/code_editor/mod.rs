@@ -533,7 +533,7 @@ impl Render for CodeEditor {
                 .left_0()
                 .size_full()
             )
-            // Toolbar with beautify button (top right) — deferred so it paints above siblings
+            // Toolbar with beautify button (top right) - deferred so it paints above siblings
             .when(show_beautify, |el| {
                 el.child(deferred(
                     div()
@@ -719,7 +719,7 @@ impl CodeEditor {
                                         .bg(theme.accent)
                                 )
                             })
-                            // StyledText — single GPU text paint per line, one TextRun per token
+                            // StyledText - single GPU text paint per line, one TextRun per token
                             .child({
                                 let mono_font = font(self.config.font_family.as_str());
                                 let runs: Vec<TextRun> = tokens.into_iter().map(|token| {

@@ -2,7 +2,7 @@ use gpui::Context;
 use super::*;
 
 impl ExplorerPanel {
-    /// Delete a collection item — shows confirm modal in MainWindow.
+    /// Delete a collection item - shows confirm modal in MainWindow.
     pub(super) fn delete_collection_item(&mut self, path: PathBuf, cx: &mut Context<Self>) {
         let filename = path
             .file_name()

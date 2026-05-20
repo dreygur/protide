@@ -12,7 +12,7 @@
 //! CRDT entries (LWW registers) and propagated to peers via the configured
 //! transport layer. Conflicts are resolved automatically by Lamport timestamp.
 //!
-//! The sync engine is "Git-inspired" — each node maintains a local HEAD state,
+//! The sync engine is "Git-inspired" - each node maintains a local HEAD state,
 //! and remote changes arrive as "commits" that are fast-forward merged.
 
 pub mod crdt;
@@ -47,7 +47,7 @@ fn push_entry_event(entry: types::CrdtEntry, events: &mut Vec<SyncEvent>) {
     }
 }
 
-/// The master sync engine — coordinates all backends and exposes a unified
+/// The master sync engine - coordinates all backends and exposes a unified
 /// event stream for the UI to consume.
 pub struct SyncEngine {
     /// Our node identity
@@ -68,7 +68,7 @@ pub struct SyncEngine {
     event_rx: Receiver<SyncEvent>,
     /// Number of events processed
     event_count: u64,
-    /// Pending PAKE handshake state (Bob's side — stored until Alice's response arrives)
+    /// Pending PAKE handshake state (Bob's side - stored until Alice's response arrives)
     #[cfg(feature = "pake-auth")]
     pake_pending: Option<spake2::Spake2<spake2::Ed25519Group>>,
     /// The pairing code used for the pending handshake
@@ -275,7 +275,7 @@ impl SyncEngine {
             }
         }
 
-        // Poll P2P events — two-phase: read all events, then send any PAKE responses
+        // Poll P2P events - two-phase: read all events, then send any PAKE responses
         #[cfg(feature = "p2p-sync")]
         {
             let p2p_events: Vec<_> = self.p2p_sync.as_ref()
@@ -372,7 +372,7 @@ impl SyncEngine {
                 }
             }
 
-            // Send PAKE responses (requires mutable borrow — done after the read loop)
+            // Send PAKE responses (requires mutable borrow - done after the read loop)
             for (topic, data) in pake_resps {
                 if let Some(ref p2p) = self.p2p_sync {
                     p2p.publish_on_topic(&topic, data);
@@ -475,7 +475,7 @@ impl SyncEngine {
         Ok(())
     }
 
-    /// Perform a periodic tick — call this from a timer (e.g., every 1 second)
+    /// Perform a periodic tick - call this from a timer (e.g., every 1 second)
     pub fn tick(&mut self) -> Vec<SyncEvent> {
         self.poll()
     }

@@ -8,7 +8,7 @@ use uuid::Uuid;
 
 use super::types::{CrdtEntry, NodeId};
 
-/// BYOB file sync — watches a `.protide/` folder and synchronizes individual `.crdt` files.
+/// BYOB file sync - watches a `.protide/` folder and synchronizes individual `.crdt` files.
 ///
 /// Each CRDT entry is stored as a separate JSON file keyed by UUID.
 /// This eliminates merge conflicts at the file level since each request

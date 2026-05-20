@@ -81,7 +81,7 @@ pub struct Colors {
 impl Colors {
     pub fn dark() -> Self {
         Self {
-            // Backgrounds — Zed-style ultra-dark IDE palette
+            // Backgrounds - Zed-style ultra-dark IDE palette
             bg_primary: rgb(0x0d0d0f).into(),    // app bg
             bg_secondary: rgb(0x111113).into(),  // sidebar bg
             bg_tertiary: rgb(0x131315).into(),   // panel bg (request/response)
@@ -96,11 +96,11 @@ impl Colors {
             border: rgb(0x252529).into(),
             border_focused: rgb(0x4ade80).into(),
 
-            // Accent — green like Zed
+            // Accent - green like Zed
             accent: rgb(0x4ade80).into(),
             accent_hover: rgb(0x6ee7a0).into(),
 
-            // HTTP Methods — design spec colors
+            // HTTP Methods - design spec colors
             method_get: rgb(0x4ade80).into(),    // green
             method_post: rgb(0x60a5fa).into(),   // blue
             method_put: rgb(0xfbbf24).into(),    // yellow
@@ -344,7 +344,7 @@ impl Default for Typography {
     }
 }
 
-/// Raw dimension constants — use these in components that lack `cx`.
+/// Raw dimension constants - use these in components that lack `cx`.
 /// All interactive components of the same tier should share these values.
 pub mod sizes {
     pub const INPUT_XS: f32 = 24.0;     // inline / extra-small input

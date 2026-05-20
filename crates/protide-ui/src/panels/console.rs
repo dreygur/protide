@@ -1,4 +1,4 @@
-//! Unified request/response console — tiered logging with Info, Debug, and Error levels.
+//! Unified request/response console - tiered logging with Info, Debug, and Error levels.
 
 use std::collections::VecDeque;
 
@@ -515,7 +515,7 @@ impl Render for ConsolePanel {
                                                 .child(SharedString::from(entry.method.clone()))
                                         )
                                     })
-                                    // URL (truncated) — double-click to select & copy
+                                    // URL (truncated) - double-click to select & copy
                                     .child(
                                         div()
                                             .id(SharedString::from(format!("console-url-{}", i)))
@@ -571,7 +571,7 @@ impl Render for ConsolePanel {
                                             .child(SharedString::from(if has_error {
                                                 "ERR".to_string()
                                             } else if status == 0 {
-                                                "—".to_string()
+                                                "-".to_string()
                                             } else {
                                                 status.to_string()
                                             }))

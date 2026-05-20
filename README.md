@@ -16,7 +16,7 @@
 
 ## What is Protide?
 
-Protide is a native desktop API testing tool built with **Rust** and [GPUI](https://github.com/zed-industries/zed) — Zed's GPU-accelerated UI framework. It supports HTTP, GraphQL, WebSocket, gRPC, tRPC, and Socket.IO from a single interface.
+Protide is a native desktop API testing tool built with **Rust** and [GPUI](https://github.com/zed-industries/zed) - Zed's GPU-accelerated UI framework. It supports HTTP, GraphQL, WebSocket, gRPC, tRPC, and Socket.IO from a single interface.
 
 It ships with a language server (`protide-lsp`) for `.http` files, an MCP server for AI tool integration, and a Zed extension with tree-sitter syntax highlighting.
 
@@ -27,19 +27,19 @@ cargo install --git https://github.com/dreygur/protide protide-lsp
 ## Features
 
 **Protocols**
-- HTTP/HTTPS — GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS
-- GraphQL — query/variables editor with syntax highlighting
-- WebSocket — connect/disconnect, send messages, history
-- gRPC — proto loading, service/method selection, all streaming types
-- tRPC — query and mutation procedures
-- Socket.IO — full event support
+- HTTP/HTTPS - GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS
+- GraphQL - query/variables editor with syntax highlighting
+- WebSocket - connect/disconnect, send messages, history
+- gRPC - proto loading, service/method selection, all streaming types
+- tRPC - query and mutation procedures
+- Socket.IO - full event support
 
 **Request Editor**
 - URL input with method selector
 - Headers, query params, body (JSON, Raw, XML, Form, Binary)
-- Authentication — Bearer, Basic, API Key (header or query)
+- Authentication - Bearer, Basic, API Key (header or query)
 - Environment variables with `{{variable}}` substitution
-- Code generation — cURL, Python, JavaScript, Go, Rust
+- Code generation - cURL, Python, JavaScript, Go, Rust
 
 **Collections & Storage**
 - File-based collections (folders = collections, `.http` files = requests)
@@ -54,18 +54,18 @@ cargo install --git https://github.com/dreygur/protide protide-lsp
 
 **Mock Server**
 - Local HTTP mock server with configurable routes
-- Record/proxy mode — forwards to real server, captures responses as static routes
+- Record/proxy mode - forwards to real server, captures responses as static routes
 
 **Collaboration**
 - CRDT-based local-first sync (LWW registers, Lamport timestamps)
-- P2P via [libp2p](https://libp2p.io/) — mDNS discovery + Gossipsub
+- P2P via [libp2p](https://libp2p.io/) - mDNS discovery + Gossipsub
 - Bring-your-own-backend file sync (Dropbox, Google Drive, GitHub)
 - PAKE secure pairing for LAN peers
 
 **Tooling**
-- **LSP** (`protide-lsp`) — hover, completion, diagnostics, formatting, semantic tokens, rename, code actions for `.http` files
-- **MCP server** (`protide-mcp`) — JSON-RPC 2.0 over stdio, exposes `send_request` tool for AI assistants
-- **Zed extension** — syntax highlighting with tree-sitter, LSP integration
+- **LSP** (`protide-lsp`) - hover, completion, diagnostics, formatting, semantic tokens, rename, code actions for `.http` files
+- **MCP server** (`protide-mcp`) - JSON-RPC 2.0 over stdio, exposes `send_request` tool for AI assistants
+- **Zed extension** - syntax highlighting with tree-sitter, LSP integration
 
 ## Installation
 

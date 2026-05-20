@@ -127,7 +127,7 @@ impl<'a> Lexer<'a> {
             return Token::RequestSeparator;
         }
 
-        // Annotations and comments — body is always over when we see a # line
+        // Annotations and comments - body is always over when we see a # line
         if trimmed.starts_with('#') {
             self.in_body = false;
             let comment = trimmed.trim_start_matches('#').trim();

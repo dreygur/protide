@@ -115,7 +115,7 @@ impl ResponsePanel {
         let rel_y = f32::from(ey) - f32::from(bounds.origin.y);
         if rel_y < 0.0 { return None; }
 
-        // Perf mode: uniform row heights — simple division.
+        // Perf mode: uniform row heights - simple division.
         if self.json_rows.len() > WRAP_MODE_MAX_ROWS {
             let row = (rel_y / ROW_H) as usize;
             return (row < self.json_rows.len()).then_some(row);

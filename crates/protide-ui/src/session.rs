@@ -1,4 +1,4 @@
-//! Session persistence — saves and restores workspace state across app restarts.
+//! Session persistence - saves and restores workspace state across app restarts.
 //! File: ~/.config/protide/session.json
 
 use std::collections::HashMap;

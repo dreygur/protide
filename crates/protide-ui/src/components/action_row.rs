@@ -1,7 +1,7 @@
 /// ActionRow: a reusable row with hover-revealed ghost action buttons.
 ///
 /// Hover visibility is implemented with GPUI's `.group()` / `.group_hover()`
-/// mechanism — action icons use no `on_scroll_wheel` or `on_mouse_move`
+/// mechanism - action icons use no `on_scroll_wheel` or `on_mouse_move`
 /// handlers, so they never intercept scroll events.  Only `on_click` on the
 /// action buttons calls `cx.stop_propagation()` to block the row click.
 use gpui::{
@@ -29,7 +29,7 @@ pub struct ActionRow {
 impl ActionRow {
     /// Create a new ActionRow.
     ///
-    /// `group` must be unique per row — use the item index or a stable key.
+    /// `group` must be unique per row - use the item index or a stable key.
     pub fn new(
         id: impl Into<ElementId>,
         group: impl Into<SharedString>,
@@ -116,7 +116,7 @@ impl IntoElement for ActionRow {
             .children(self.content)
             // Action container: always in layout (preserves right-edge spacing),
             // invisible normally, visible when the row group is hovered.
-            // No scroll/wheel handlers — zero interference with parent scrollers.
+            // No scroll/wheel handlers - zero interference with parent scrollers.
             .when(has_actions, |el| {
                 el.child(
                     div()

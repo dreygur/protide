@@ -34,7 +34,7 @@ pub enum DataType {
     WorkspaceFile,
 }
 
-/// A single CRDT entry — the atomic unit of sync
+/// A single CRDT entry - the atomic unit of sync
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CrdtEntry {
     /// Globally unique ID for this entry
@@ -78,7 +78,7 @@ impl CrdtEntry {
         }
     }
 
-    /// Merge with another entry (LWW — latest timestamp wins, NodeId breaks ties)
+    /// Merge with another entry (LWW - latest timestamp wins, NodeId breaks ties)
     pub fn merge(&self, other: &Self) -> Self {
         if other.timestamp > self.timestamp
             || (other.timestamp == self.timestamp && other.node_id > self.node_id)
@@ -105,15 +105,15 @@ pub enum SyncEvent {
     BackendStatus { backend: SyncBackend, ready: bool },
     /// Error occurred
     SyncError(String),
-    /// PAKE handshake completed successfully — both sides derived the shared key
+    /// PAKE handshake completed successfully - both sides derived the shared key
     HandshakeComplete { peer_id: String, peer_name: String },
     /// PAKE handshake failed (wrong code or crypto error)
     HandshakeFailed { reason: String },
     /// Internal P2P diagnostic log (mDNS discovery, PAKE steps, DHT events)
     P2PDiagnostic(String),
-    /// Our own libp2p listen multiaddress — logged once on startup
+    /// Our own libp2p listen multiaddress - logged once on startup
     LocalAddr(String),
-    /// A workspace file arrived from a peer — write to disk and refresh
+    /// A workspace file arrived from a peer - write to disk and refresh
     FileReceived { relative_path: String, content: String, deleted: bool },
 }
 

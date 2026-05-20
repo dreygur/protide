@@ -99,7 +99,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                 self.url_selection = len..len;
             }
             Protocol::Grpc => {
-                // Extract scheme://host[:port] — everything up to the 3rd '/' (or whole URL if no path)
+                // Extract scheme://host[:port] - everything up to the 3rd '/' (or whole URL if no path)
                 let server = {
                     let parts: Vec<&str> = req.url.splitn(4, '/').collect();
                     if parts.len() >= 3 { parts[..3].join("/") } else { req.url.clone() }

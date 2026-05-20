@@ -81,7 +81,7 @@ impl ParsedCookie {
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct HdrSel {
     pub row: usize,
-    pub range: (usize, usize), // (anchor_byte, head_byte) — un-normalized
+    pub range: (usize, usize), // (anchor_byte, head_byte) - un-normalized
     pub selecting: bool,
 }
 

@@ -1,4 +1,4 @@
-//! Data-driven testing — run a single request once per CSV row.
+//! Data-driven testing - run a single request once per CSV row.
 
 use std::collections::HashMap;
 use async_channel::Sender;
@@ -29,7 +29,7 @@ pub struct DataDrivenResult {
 }
 
 /// Parse `csv_content` and run `request` once per data row.
-/// Blocking — call from a background thread.
+/// Blocking - call from a background thread.
 pub fn run_data_driven(
     request: &Request,
     csv_content: &str,

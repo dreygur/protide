@@ -81,7 +81,7 @@ impl ResponsePanel {
             .flex()
             .flex_col()
             .gap(px(8.0))
-            // Toolbar row — relative so Copy button can anchor to right_0
+            // Toolbar row - relative so Copy button can anchor to right_0
             .child({
                 let is_copied = self.copy_feedback == Some(CopyFeedback::Body);
                 div()
@@ -137,7 +137,7 @@ impl ResponsePanel {
                                     .child("Search")
                             )
                     )
-                    // Right: Copy button — deferred so it paints above the JSON tree below
+                    // Right: Copy button - deferred so it paints above the JSON tree below
                     .child(deferred(
                         div()
                             .id("copy-body-btn")

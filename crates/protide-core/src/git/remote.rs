@@ -99,7 +99,7 @@ impl GitRepo {
     }
 }
 
-/// Default credential callback — uses SSH agent or git credential helper via libgit2.
+/// Default credential callback - uses SSH agent or git credential helper via libgit2.
 fn default_credentials(
     url: &str,
     username: Option<&str>,

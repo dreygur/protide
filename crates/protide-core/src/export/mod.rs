@@ -125,7 +125,7 @@ fn markdown_to_html(md: &str) -> String {
         } else if let Some(rest) = line.strip_prefix("- ").or_else(|| line.strip_prefix("* ")) {
             html.push_str(&format!("<li>{}</li>\n", inline_format(rest)));
         } else if line.is_empty() {
-            // skip — blank lines are structural separators, not visible breaks
+            // skip - blank lines are structural separators, not visible breaks
         } else {
             html.push_str(&format!("<p>{}</p>\n", inline_format(line)));
         }

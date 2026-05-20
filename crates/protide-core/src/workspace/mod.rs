@@ -1,4 +1,4 @@
-//! Workspace management — loading and watching .http file collections
+//! Workspace management - loading and watching .http file collections
 
 use notify::{Event, RecommendedWatcher, RecursiveMode, Result as NotifyResult, Watcher};
 use std::path::{Path, PathBuf};

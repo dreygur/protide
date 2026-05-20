@@ -1,6 +1,6 @@
 [package]
 name = "protide-mcp"
-description = "MCP stdio server for Protide — exposes HTTP execution as AI-callable tools"
+description = "MCP stdio server for Protide - exposes HTTP execution as AI-callable tools"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

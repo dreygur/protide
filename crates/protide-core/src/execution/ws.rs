@@ -13,7 +13,7 @@ pub enum WsDirection {
     Received,
 }
 
-/// A single WebSocket message — stored in the ring buffer.
+/// A single WebSocket message - stored in the ring buffer.
 #[derive(Debug, Clone)]
 pub struct WsMessage {
     pub direction: WsDirection,
@@ -109,7 +109,7 @@ impl Default for WsRingBuffer {
 
 // ── Executor trait ────────────────────────────────────────────────────────────
 
-/// Abstracts over WebSocket backends — enables mock executors in tests.
+/// Abstracts over WebSocket backends - enables mock executors in tests.
 ///
 /// The `'static` supertrait is required so `RequestPanel<E>` can be used as a
 /// GPUI entity (which demands `'static` on its type parameter).
@@ -232,7 +232,7 @@ async fn run_connection(
                         break
                     }
                     Ok(Some(Err(_))) => break,
-                    Ok(Some(Ok(_))) => {} // binary, pong — ignore
+                    Ok(Some(Ok(_))) => {} // binary, pong - ignore
                     Err(_) => {}          // timeout, loop again
                 }
             }

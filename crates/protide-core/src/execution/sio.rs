@@ -222,7 +222,7 @@ async fn run_connection(
     // Server sends "0{...json...}" immediately after the WebSocket upgrade.
     match tokio::time::timeout(std::time::Duration::from_secs(10), read.next()).await {
         Ok(Some(Ok(Message::Text(text)))) => match parse_eio_type(&text) {
-            Some(('0', _)) => {} // OPEN — we don't need sid/pingInterval
+            Some(('0', _)) => {} // OPEN - we don't need sid/pingInterval
             _ => {
                 let _ = event_tx.send(SioUiEvent::Error("Unexpected EIO handshake packet".into()));
                 return;
@@ -325,7 +325,7 @@ async fn run_connection(
             }
             Ok(Some(Ok(Message::Close(_)))) | Ok(None) => break,
             Ok(Some(Err(_))) => break,
-            Ok(Some(Ok(_))) => {} // binary, ping, pong — ignore
+            Ok(Some(Ok(_))) => {} // binary, ping, pong - ignore
             Err(_) => {}          // 50 ms timeout, loop again
         }
     }
@@ -334,7 +334,7 @@ async fn run_connection(
 }
 
 /// Wait for the SIO CONNECT ack. Returns true on success, false on error.
-/// Some servers send an EIO PING before the SIO CONNECT ack — we handle one
+/// Some servers send an EIO PING before the SIO CONNECT ack - we handle one
 /// such ping transparently before giving up.
 async fn await_sio_connect_ack<W, R>(
     write: &mut W,
@@ -376,7 +376,7 @@ where
                         return false;
                     }
                 },
-                // Some servers send EIO PINGs before the SIO CONNECT ack — reply and keep waiting
+                // Some servers send EIO PINGs before the SIO CONNECT ack - reply and keep waiting
                 Some(('2', probe)) => {
                     pings_handled += 1;
                     if pings_handled > 5 {

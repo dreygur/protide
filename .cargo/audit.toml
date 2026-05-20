@@ -2,8 +2,8 @@
 ignore = [
     # hickory-proto 0.25.x via libp2p-mdns 0.48 / libp2p 0.56 (latest).
     # No fix available: waiting on libp2p >=0.57 to bump hickory-proto to 0.26.1.
-    "RUSTSEC-2026-0118",  # NSEC3 unbounded loop — no fixed version exists yet
-    "RUSTSEC-2026-0119",  # O(n²) name compression — fixed in hickory-proto 0.26.1
+    "RUSTSEC-2026-0118",  # NSEC3 unbounded loop - no fixed version exists yet
+    "RUSTSEC-2026-0119",  # O(n²) name compression - fixed in hickory-proto 0.26.1
 
     # Unmaintained transitive deps pulled in by gpui/zed git dependencies.
     # Cannot be upgraded without upstream gpui changes.

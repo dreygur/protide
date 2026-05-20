@@ -42,7 +42,7 @@ pub(super) fn render_json_row(
         .into_any_element()
     }).collect();
 
-    // Chevron column — top-aligned in wrap mode so it sits next to the first text line
+    // Chevron column - top-aligned in wrap mode so it sits next to the first text line
     let is_open   = matches!(&row.kind, RowKind::Open { .. });
     let is_folded = matches!(&row.kind, RowKind::Folded { .. });
     let chevron = {
@@ -74,7 +74,7 @@ pub(super) fn render_json_row(
 
     let content: gpui::AnyElement = match &row.kind {
         RowKind::Leaf { key, val, .. } => {
-            // Display text is pre-computed at flatten time — no allocs on the render path.
+            // Display text is pre-computed at flatten time - no allocs on the render path.
             let (txt, col, is_str): (SharedString, _, bool) = match val {
                 PrimVal::Null     => (SharedString::new_static("null"),                  c_secondary, false),
                 PrimVal::Bool(b)  => (SharedString::new_static(if *b { "true" } else { "false" }), c_patch, false),
@@ -157,7 +157,7 @@ pub(super) fn render_json_row(
                     .child(
                         div().flex_1().min_w(px(0.)).overflow_hidden().text_ellipsis().whitespace_nowrap()
                             .text_color(col)
-                            .child(txt),  // SharedString — no alloc
+                            .child(txt),  // SharedString - no alloc
                     )
                     .into_any_element()
             }

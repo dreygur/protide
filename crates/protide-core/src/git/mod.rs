@@ -83,7 +83,7 @@ impl GitRepo {
             self.repo.reset_default(Some(commit.as_object()), ["*"].iter())
                 .map_err(|e| format!("Unstage failed: {}", e))
         } else {
-            // No HEAD yet (initial commit) — just clear the index
+            // No HEAD yet (initial commit) - just clear the index
             let mut index = self.repo.index().map_err(|e| e.to_string())?;
             index.clear().map_err(|e| e.to_string())?;
             index.write().map_err(|e| e.to_string())
