@@ -171,9 +171,7 @@ impl P2PSync {
                                 libp2p::yamux::Config::default,
                             )
                             .map_err(|e| format!("TCP transport error: {}", e))?
-                            .with_quic()   // QUIC/UDP alongside TCP - better NAT traversal
-                            .with_dns()
-                            .map_err(|e| format!("DNS error: {}", e))?
+                            .with_quic()
                             .with_behaviour(|key: &identity::Keypair| {
                                 let pid = key.public().to_peer_id();
 

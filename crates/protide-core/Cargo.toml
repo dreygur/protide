@@ -52,7 +52,6 @@ protox = { workspace = true }
 
 async-channel = { workspace = true }
 csv = { workspace = true }
-git2 = { workspace = true }
 
 # Optional sync dependencies
 libp2p = { workspace = true, optional = true }

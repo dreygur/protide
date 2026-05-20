@@ -3,7 +3,6 @@ pub mod codegen;
 pub mod collection_runner;
 pub mod execution;
 pub mod export;
-pub mod git;
 pub mod import;
 pub mod mock_server;
 pub mod models;
