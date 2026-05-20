@@ -26,7 +26,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
         let on_message_script = self.pre_script_editor.read(cx).content().to_string();
         let env_vars: std::collections::HashMap<String, String> = env_state.as_ref()
             .and_then(|e| e.active())
-            .map(|env| env.variables.clone())
+            .map(|env| env.variables.iter().map(|(k, v)| (k.clone(), v.clone())).collect())
             .unwrap_or_default();
         let explorer_panel = self.explorer_panel.clone();
         let ws_console_panel = self.console_panel.clone();

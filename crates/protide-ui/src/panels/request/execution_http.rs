@@ -126,7 +126,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
 
         let env_vars: std::collections::HashMap<String, String> = env_state.as_ref()
             .and_then(|e| e.active())
-            .map(|env| env.variables.clone())
+            .map(|env| env.variables.iter().map(|(k, v)| (k.clone(), v.clone())).collect())
             .unwrap_or_default();
 
         let final_url = if auth_type == AuthType::ApiKey

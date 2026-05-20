@@ -123,7 +123,7 @@ impl ExplorerPanel {
                         .nth(i)
                         .map(|(k, v)| (k.clone(), v.clone()))
                     {
-                        env.variables.remove(&old_key);
+                        env.variables.shift_remove(&old_key);
                         if !text.is_empty() {
                             env.variables.insert(text, value);
                         }

@@ -157,7 +157,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             .map(|p| p.read(cx).env_state().clone());
         let env_vars: HashMap<String, String> = env_state.as_ref()
             .and_then(|e| e.active())
-            .map(|env| env.variables.clone())
+            .map(|env| env.variables.iter().map(|(k, v)| (k.clone(), v.clone())).collect())
             .unwrap_or_default();
 
         let request = self.build_http_request_model(cx);

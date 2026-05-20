@@ -80,9 +80,9 @@ impl ExplorerPanel {
     }
 
     pub(super) fn run_collection_folder(&mut self, path: PathBuf, cx: &mut Context<Self>) {
-        let env_vars = self.env_state
+        let env_vars: std::collections::HashMap<String, String> = self.env_state
             .active()
-            .map(|e| e.variables.clone())
+            .map(|e| e.variables.iter().map(|(k, v)| (k.clone(), v.clone())).collect())
             .unwrap_or_default();
         if let Some(win) = self.main_window.upgrade() {
             self.context_menu = None;

@@ -2,8 +2,8 @@
 
 #![allow(dead_code)]
 
+use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use std::path::PathBuf;
 
 /// An environment containing variables
@@ -12,7 +12,7 @@ pub struct Environment {
     /// Environment name
     pub name: String,
     /// Variables in this environment
-    pub variables: HashMap<String, String>,
+    pub variables: IndexMap<String, String>,
     /// Path to the environment file
     #[serde(skip)]
     pub file_path: Option<PathBuf>,
@@ -22,7 +22,7 @@ impl Environment {
     pub fn new(name: impl Into<String>) -> Self {
         Self {
             name: name.into(),
-            variables: HashMap::new(),
+            variables: IndexMap::new(),
             file_path: None,
         }
     }
@@ -39,7 +39,7 @@ impl Environment {
 
     /// Remove a variable
     pub fn remove(&mut self, key: &str) {
-        self.variables.remove(key);
+        self.variables.shift_remove(key);
     }
 
     /// Substitute variables in a string
