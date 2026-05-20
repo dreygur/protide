@@ -9,9 +9,29 @@ const base = import.meta.env.BASE_URL;
       <span class="text-base font-semibold tracking-tight" style="color: var(--color-text-primary)">
         Protide
       </span>
+      <span class="rounded-full px-2 py-0.5 text-xs font-semibold" style="background: color-mix(in srgb, var(--color-method-put) 15%, transparent); color: var(--color-method-put); border: 1px solid color-mix(in srgb, var(--color-method-put) 30%, transparent)">
+        alpha
+      </span>
     </a>
 
     <div class="flex items-center gap-3">
+      <a
+        href="https://github.com/dreygur/protide/issues/new"
+        target="_blank"
+        rel="noopener noreferrer"
+        class="hidden items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-colors hover:border-[var(--color-accent)] hover:text-[var(--color-accent)] sm:flex"
+        style="border-color: var(--color-border); color: var(--color-text-secondary)"
+        aria-label="Open an issue"
+      >
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="12" cy="18" r="3"/>
+          <circle cx="6" cy="6" r="3"/>
+          <circle cx="18" cy="6" r="3"/>
+          <path d="M6 9v1a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V9"/>
+          <line x1="12" y1="12" x2="12" y2="15"/>
+        </svg>
+        Open Issue
+      </a>
       <a
         href="https://github.com/dreygur/protide/releases/latest"
         target="_blank"
