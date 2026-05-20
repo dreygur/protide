@@ -45,6 +45,11 @@ impl ExplorerPanel {
             self.restore_workspace_session(&entry, cx);
         }
 
+        self.collections_expanded = true;
+        if let Some(win) = self.main_window.upgrade() {
+            win.update(cx, |w, cx| w.ensure_sidebar_visible(cx));
+        }
+
         cx.notify();
     }
 
@@ -83,7 +88,9 @@ impl ExplorerPanel {
                 .iter()
                 .any(|e| protide_core::workspace::is_relevant(e, &root))
             {
+                let expanded = self.collect_expanded();
                 self.collection_items = self.scan_directory(&root);
+                self.apply_expanded(&expanded);
                 cx.notify();
             }
         }
@@ -91,8 +98,10 @@ impl ExplorerPanel {
 
     /// Refresh collections by rescanning the workspace directory
     pub fn refresh_collections(&mut self, cx: &mut Context<Self>) {
-        if let Some(workspace) = &self.workspace_path {
-            self.collection_items = self.scan_directory(workspace);
+        if let Some(workspace) = self.workspace_path.clone() {
+            let expanded = self.collect_expanded();
+            self.collection_items = self.scan_directory(&workspace);
+            self.apply_expanded(&expanded);
             cx.notify();
         }
     }
