@@ -160,6 +160,8 @@ fn build_execution_request(req: &Request, env: &HashMap<String, String>) -> Exec
         tests: req.scripts.tests.clone().unwrap_or_default(),
         env_vars: env.clone(),
         variable_extractions: req.meta.variable_extractions.clone(),
+        timeout_secs: 30,
+        verify_ssl: true,
     }
 }
 

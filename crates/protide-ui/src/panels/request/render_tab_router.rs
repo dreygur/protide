@@ -20,7 +20,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             RequestMode::SocketIo => &["Events", "Headers"],
             RequestMode::Grpc => &["Message", "Metadata", "Proto"],
             RequestMode::Trpc => &["Procedure", "Parameters", "Headers", "Auth"],
-            RequestMode::Http => &["Params", "Headers", "Body", "Auth", "Scripts", "Data"],
+            RequestMode::Http => &["Params", "Headers", "Body", "Auth", "Scripts", "Data", "Settings"],
         };
         let active_tab = self.active_tab;
         let param_count = self.params.iter().filter(|p| p.enabled && !p.key.is_empty()).count();
@@ -131,6 +131,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                     3 => self.render_auth_tab(cx),
                     4 => self.render_scripts_tab(cx),
                     5 => self.render_data_tab(cx),
+                    6 => self.render_settings_tab(cx),
                     _ => div().into_any_element(),
                 }
             }

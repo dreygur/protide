@@ -22,6 +22,7 @@ mod render_trpc;
 mod render_socketio;
 mod render_socketio_helpers;
 mod render_data;
+mod render_settings;
 
 mod init;
 mod state;
@@ -209,6 +210,8 @@ pub struct RequestPanel<E: WebSocketExecutor = TungsteniteExecutor> {
     pub(super) csv_path: Option<std::path::PathBuf>,
     pub(super) data_results: Vec<crate::panels::request_types::DataRunRow>,
     pub(super) data_running: bool,
+    pub(super) timeout_input: Entity<crate::components::TextInput>,
+    pub(super) verify_ssl: bool,
     _executor: PhantomData<E>,
 }
 

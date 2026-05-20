@@ -190,6 +190,12 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             csv_path: None,
             data_results: Vec::new(),
             data_running: false,
+            timeout_input: cx.new(|cx| {
+                crate::components::TextInput::new(cx, "req-timeout")
+                    .text("30")
+                    .placeholder("30")
+            }),
+            verify_ssl: true,
             _executor: PhantomData,
         }
     }

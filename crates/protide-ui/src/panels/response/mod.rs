@@ -115,6 +115,10 @@ pub struct ResponsePanel {
     pub(super) json_sel: Option<SelectionRange>,
     /// Whether a JSON tree selection drag is in progress
     pub(super) json_selecting: bool,
+    /// Whether the search bar is visible
+    pub(super) search_active: bool,
+    /// Text input for body search
+    pub(super) search_input: Entity<TextInput>,
 }
 
 impl ResponsePanel {
@@ -126,6 +130,9 @@ impl ResponsePanel {
         });
         let jsonpath_input = cx.new(|cx| {
             TextInput::new(cx, "$.data.id")
+        });
+        let search_input = cx.new(|cx| {
+            TextInput::new(cx, "resp-search").placeholder("Search…")
         });
         let extraction_editor = cx.new(|cx| {
             CodeEditor::new(cx)
@@ -162,6 +169,8 @@ impl ResponsePanel {
             json_tree_bounds: None,
             json_sel: None,
             json_selecting: false,
+            search_active: false,
+            search_input,
         }
     }
 

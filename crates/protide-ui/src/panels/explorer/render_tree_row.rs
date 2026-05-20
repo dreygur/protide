@@ -177,9 +177,10 @@ impl ExplorerPanel {
         let path_for_delete = path.clone();
         let path_for_run = path.clone();
         let path_for_export = path.clone();
+        let path_for_clone = path.clone();
         let is_folder = path.is_dir();
 
-        let extra_h = if is_folder { 56.0 } else { 0.0 };
+        let extra_h = if is_folder { 56.0 } else { 28.0 };
         const MENU_W: f32 = 160.0;
         let menu_h = 64.0 + extra_h;
         let x = f32::from(position.x) - f32::from(self.panel_bounds.origin.x);
@@ -249,6 +250,31 @@ impl ExplorerPanel {
                                         .text_size(px(12.0))
                                         .text_color(theme.colors.text_primary)
                                         .child("Export OpenAPI"),
+                                ),
+                        )
+                    })
+                    .when(!is_folder, |el| {
+                        el.child(
+                            div()
+                                .id("context-menu-clone")
+                                .w_full()
+                                .h(px(28.0))
+                                .flex()
+                                .items_center()
+                                .px(px(12.0))
+                                .gap(px(8.0))
+                                .cursor_pointer()
+                                .hover(|s| s.bg(theme.colors.bg_tertiary))
+                                .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, _, cx| {
+                                    this.context_menu = None;
+                                    this.clone_file(path_for_clone.clone(), cx);
+                                }))
+                                .child(icon(ICON_COPY, ICON_MD, theme.colors.text_muted))
+                                .child(
+                                    div()
+                                        .text_size(px(12.0))
+                                        .text_color(theme.colors.text_primary)
+                                        .child("Duplicate"),
                                 ),
                         )
                     })

@@ -68,6 +68,8 @@ pub struct ExecutionRequest {
     /// Active environment variables for script context
     pub env_vars: HashMap<String, String>,
     pub variable_extractions: Vec<VariableExtraction>,
+    pub timeout_secs: u64,
+    pub verify_ssl: bool,
 }
 
 /// Full result of executing a request
@@ -140,7 +142,7 @@ pub fn execute(req: ExecutionRequest) -> Result<ExecutionResult, String> {
     }
 
     // 2. Execute HTTP
-    let raw = run_http(&url, &req.method, &headers, &body, &req.mode)?;
+    let raw = run_http(&url, &req.method, &headers, &body, &req.mode, req.timeout_secs, req.verify_ssl)?;
 
     // 3. Post-script + tests
     let mut test_results: Vec<TestResult> = Vec::new();

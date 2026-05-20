@@ -18,7 +18,7 @@ use crate::last_paths;
 use crate::theme;
 use crate::components::icons::{
     ICON_ARROW_DOWN, ICON_CHEVRON_DOWN, ICON_CHEVRON_RIGHT, ICON_CHEVRON_UP, ICON_CLOSE,
-    ICON_DELETE, ICON_EDIT, ICON_EXTERNAL, ICON_FILE, ICON_FOLDER, ICON_FOLDER_OPEN, ICON_INFO,
+    ICON_COPY, ICON_DELETE, ICON_EDIT, ICON_EXTERNAL, ICON_FILE, ICON_FOLDER, ICON_FOLDER_OPEN, ICON_INFO,
     ICON_LINK, ICON_MD, ICON_MENU, ICON_PLAY, ICON_PLUS, ICON_REFRESH, ICON_SETTINGS, ICON_SM, ICON_TIMER,
     icon,
 };
@@ -28,6 +28,7 @@ use protide_core::models::{Environment, EnvironmentState};
 
 pub mod init;
 pub mod workspace;
+pub mod workspace_io;
 pub mod tree_nav;
 pub mod tree_ops;
 pub mod tree_scan;
