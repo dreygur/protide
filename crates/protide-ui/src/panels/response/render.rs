@@ -54,6 +54,8 @@ impl Render for ResponsePanel {
                     .w_full()
                     .p(px(12.0))
                     .overflow_scroll()
+                    .relative()
+                    .track_scroll(&self.content_scroll_handle)
                     // Right-click to show copy context menu
                     .when(has_response, |el| {
                         el.on_mouse_down(
@@ -65,7 +67,8 @@ impl Render for ResponsePanel {
                             }),
                         )
                     })
-                    .child(self.render_content(cx)),
+                    .child(self.render_content(cx))
+                    .vertical_scrollbar(&self.content_scroll_handle),
             )
             // Body-level right-click context menu (copy / clear)
             .when_some(context_menu_pos, |el, pos| {
