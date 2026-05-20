@@ -1,0 +1,75 @@
+---
+import Button from "./shared/Button.astro";
+
+const base = import.meta.env.BASE_URL;
+---
+
+<section class="relative overflow-hidden px-6 py-24 text-center">
+  <!-- Dot grid background -->
+  <div
+    class="pointer-events-none absolute inset-0 opacity-[0.04]"
+    style="background-image: radial-gradient(var(--color-text-muted) 1px, transparent 1px); background-size: 28px 28px;"
+  ></div>
+
+  <!-- Radial glow -->
+  <div
+    class="pointer-events-none absolute left-1/2 top-0 h-[500px] w-[700px] -translate-x-1/2 rounded-full blur-3xl"
+    style="background: radial-gradient(ellipse, color-mix(in srgb, var(--color-accent) 8%, transparent) 0%, transparent 70%);"
+  ></div>
+
+  <div class="relative mx-auto max-w-5xl">
+    <!-- Badge -->
+    <div class="mb-8 inline-flex items-center gap-2 rounded-full border px-4 py-1.5 text-xs"
+      style="border-color: var(--color-border); background: var(--color-bg-elevated); color: var(--color-text-secondary)">
+      <span class="h-1.5 w-1.5 rounded-full" style="background: var(--color-accent)"></span>
+      Built with Rust &amp; GPUI &nbsp;·&nbsp; MIT License &nbsp;·&nbsp; v0.1.0 &nbsp;·&nbsp;
+      <span class="font-semibold" style="color: var(--color-method-put)">alpha</span>
+    </div>
+
+    <h1 class="mb-6 text-5xl font-bold leading-tight tracking-tight sm:text-6xl lg:text-7xl"
+      style="color: var(--color-text-primary)">
+      API Testing,<br />
+      <span style="color: var(--color-accent)">Natively Fast</span>
+    </h1>
+
+    <p class="mx-auto mb-10 max-w-2xl text-lg leading-relaxed" style="color: var(--color-text-secondary)">
+      A GPU-accelerated desktop API client built with Rust. HTTP, GraphQL, WebSocket,
+      gRPC, tRPC, and Socket.IO — all from a single
+      <code class="rounded px-1.5 py-0.5 text-base" style="background: var(--color-bg-elevated); color: var(--color-accent)">.http</code>
+      file.
+    </p>
+
+    <div class="flex flex-wrap items-center justify-center gap-4">
+      <Button href="https://github.com/dreygur/protide/releases/latest" variant="primary" external>
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+          <polyline points="7 10 12 15 17 10"/>
+          <line x1="12" y1="15" x2="12" y2="3"/>
+        </svg>
+        Download
+      </Button>
+      <Button href="https://github.com/dreygur/protide" variant="outline" external>
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+          <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/>
+        </svg>
+        View on GitHub
+      </Button>
+    </div>
+
+    <!-- Screenshot -->
+    <div class="mt-16 overflow-hidden rounded-xl border shadow-2xl" style="border-color: var(--color-border)">
+      <div class="flex items-center gap-1.5 border-b px-4 py-3" style="border-color: var(--color-border); background: var(--color-bg-secondary)">
+        <span class="h-3 w-3 rounded-full bg-[#ff5f57]"></span>
+        <span class="h-3 w-3 rounded-full bg-[#febc2e]"></span>
+        <span class="h-3 w-3 rounded-full bg-[#28c840]"></span>
+        <span class="ml-4 text-xs" style="color: var(--color-text-muted)">protide</span>
+      </div>
+      <img
+        src={`${base}screenshot.png`}
+        alt="Protide — API testing tool screenshot"
+        class="w-full"
+        loading="eager"
+      />
+    </div>
+  </div>
+</section>

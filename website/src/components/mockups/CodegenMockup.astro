@@ -1,0 +1,60 @@
+---
+// Mimics the Protide code generation panel
+---
+
+<div class="overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-secondary)] text-xs font-mono shadow-2xl">
+  <!-- Window chrome -->
+  <div class="flex items-center gap-1.5 border-b border-[var(--color-border)] bg-[var(--color-bg-primary)] px-4 py-3">
+    <span class="h-3 w-3 rounded-full bg-[#ff5f57]"></span>
+    <span class="h-3 w-3 rounded-full bg-[#febc2e]"></span>
+    <span class="h-3 w-3 rounded-full bg-[#28c840]"></span>
+    <span class="ml-4 text-[var(--color-text-muted)]">protide — code generation</span>
+  </div>
+
+  <!-- Language tabs -->
+  <div class="flex border-b border-[var(--color-border)] overflow-x-auto">
+    {[
+      { label: "cURL", active: true },
+      { label: "Python", active: false },
+      { label: "JavaScript", active: false },
+      { label: "Go", active: false },
+      { label: "Rust", active: false },
+    ].map((tab) => (
+      <div class="px-4 py-2.5 border-b-2 cursor-default whitespace-nowrap"
+        style={tab.active
+          ? "color: var(--color-accent); border-color: var(--color-accent)"
+          : "color: var(--color-text-muted); border-color: transparent"}>
+        {tab.label}
+      </div>
+    ))}
+  </div>
+
+  <!-- Generated code -->
+  <div class="relative p-4">
+    <div class="flex flex-col gap-1 leading-5">
+      <div><span style="color: var(--color-method-post)">curl</span><span style="color: var(--color-text-secondary)"> \</span></div>
+      <div><span style="color: var(--color-text-secondary)">  </span><span style="color: var(--color-method-put)">-X GET</span><span style="color: var(--color-text-secondary)"> \</span></div>
+      <div><span style="color: var(--color-text-secondary)">  </span><span style="color: var(--color-method-put)">'https://api.example.com/users/42'</span><span style="color: var(--color-text-secondary)"> \</span></div>
+      <div><span style="color: var(--color-text-secondary)">  </span><span style="color: var(--color-proto-graphql)">-H</span><span style="color: var(--color-text-secondary)"> </span><span style="color: var(--color-method-put)">'Authorization: Bearer eyJhbGc...'</span><span style="color: var(--color-text-secondary)"> \</span></div>
+      <div><span style="color: var(--color-text-secondary)">  </span><span style="color: var(--color-proto-graphql)">-H</span><span style="color: var(--color-text-secondary)"> </span><span style="color: var(--color-method-put)">'Accept: application/json'</span></div>
+    </div>
+
+    <!-- Copy button -->
+    <button
+      class="absolute right-4 top-4 rounded border border-[var(--color-border)] px-2 py-1 text-xs transition-colors hover:border-[var(--color-accent)]"
+      style="color: var(--color-text-muted); background: var(--color-bg-elevated)"
+    >
+      copy
+    </button>
+  </div>
+
+  <!-- Response preview -->
+  <div class="border-t border-[var(--color-border)] px-4 py-3">
+    <div class="flex items-center gap-3">
+      <span class="rounded px-2 py-0.5" style="background: color-mix(in srgb, var(--color-status-2xx) 15%, transparent); color: var(--color-status-2xx)">
+        200 OK
+      </span>
+      <span style="color: var(--color-text-muted)">42ms · 1.2 KB</span>
+    </div>
+  </div>
+</div>

@@ -1,0 +1,50 @@
+@theme {
+  /* ── Backgrounds ── */
+  --color-bg-primary:   #0d0d0f;
+  --color-bg-secondary: #111113;
+  --color-bg-tertiary:  #131315;
+  --color-bg-elevated:  #1b1b1e;
+
+  /* ── Text ── */
+  --color-text-primary:   #e4e4ed;
+  --color-text-secondary: #7f7f92;
+  --color-text-muted:     #3e3e4a;
+
+  /* ── Border ── */
+  --color-border: #252529;
+
+  /* ── Accent ── */
+  --color-accent:       #4ade80;
+  --color-accent-hover: #6ee7a0;
+
+  /* ── HTTP Method colors ── */
+  --color-method-get:    #4ade80;
+  --color-method-post:   #60a5fa;
+  --color-method-put:    #fbbf24;
+  --color-method-patch:  #fb923c;
+  --color-method-delete: #f87171;
+  --color-method-head:   #a78bfa;
+
+  /* ── Protocol colors ── */
+  --color-proto-ws:       #34d399;
+  --color-proto-grpc:     #818cf8;
+  --color-proto-graphql:  #f472b6;
+  --color-proto-trpc:     #60a5fa;
+  --color-proto-sio:      #34d399;
+
+  /* ── Status codes ── */
+  --color-status-2xx: #4ade80;
+  --color-status-3xx: #fbbf24;
+  --color-status-4xx: #fb923c;
+  --color-status-5xx: #f87171;
+
+  /* ── Typography ── */
+  --font-family-sans: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font-family-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* ── Radius ── */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 12px;
+}

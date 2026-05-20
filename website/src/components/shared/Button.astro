@@ -1,0 +1,24 @@
+---
+interface Props {
+  href: string;
+  variant?: "primary" | "outline";
+  external?: boolean;
+  class?: string;
+}
+
+const { href, variant = "outline", external = false, class: className = "" } = Astro.props;
+
+const base = "inline-flex items-center gap-2 rounded-lg px-6 py-3 text-sm font-semibold transition-all duration-200 no-underline";
+const variants = {
+  primary: `${base} bg-[var(--color-accent)] text-[var(--color-bg-primary)] hover:bg-[var(--color-accent-hover)]`,
+  outline: `${base} border border-[var(--color-border)] bg-[var(--color-bg-elevated)] text-[var(--color-text-primary)] hover:border-[var(--color-accent)] hover:text-[var(--color-accent)]`,
+};
+---
+
+<a
+  href={href}
+  class={`${variants[variant]} ${className}`}
+  {...external ? { target: "_blank", rel: "noopener noreferrer" } : {}}
+>
+  <slot />
+</a>

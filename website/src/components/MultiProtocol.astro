@@ -1,0 +1,51 @@
+---
+import SectionHeader from "./shared/SectionHeader.astro";
+import RequestMockup from "./mockups/RequestMockup.astro";
+import Badge from "./shared/Badge.astro";
+
+const protocols = [
+  { label: "WebSocket", type: "protocol" as const, desc: "Real-time bidirectional messaging with history" },
+  { label: "gRPC", type: "protocol" as const, desc: "Proto loading, all streaming types, metadata" },
+  { label: "GraphQL", type: "protocol" as const, desc: "Query/variables editor with syntax highlighting" },
+  { label: "tRPC", type: "protocol" as const, desc: "Query and mutation procedures" },
+  { label: "Socket.IO", type: "protocol" as const, desc: "Full event support and namespaces" },
+];
+---
+
+<section class="border-y px-6 py-24" style="border-color: var(--color-border); background: var(--color-bg-secondary)">
+  <div class="mx-auto max-w-6xl">
+    <div class="grid grid-cols-1 items-center gap-16 lg:grid-cols-2">
+      <!-- Left: text -->
+      <div>
+        <SectionHeader
+          title="One tool. Every protocol."
+          subtitle="Switch between HTTP, GraphQL, WebSocket, gRPC and more without changing your workflow or file format."
+          align="left"
+          label="Multi-Protocol"
+        />
+
+        <div class="flex flex-col gap-4">
+          {protocols.map((p) => (
+            <div class="flex items-start gap-3">
+              <Badge label={p.label} type={p.type} size="sm" />
+              <span class="text-sm leading-relaxed pt-0.5" style="color: var(--color-text-secondary)">{p.desc}</span>
+            </div>
+          ))}
+        </div>
+
+        <div class="mt-8 rounded-lg border p-4" style="border-color: var(--color-border); background: var(--color-bg-elevated)">
+          <p class="text-xs font-mono leading-relaxed" style="color: var(--color-text-muted)">
+            <span style="color: var(--color-text-secondary)"># Switch protocol with a single annotation:</span><br />
+            <span style="color: var(--color-method-put)"># @protocol</span>
+            <span style="color: var(--color-accent)"> websocket</span>
+          </p>
+        </div>
+      </div>
+
+      <!-- Right: mockup -->
+      <div>
+        <RequestMockup />
+      </div>
+    </div>
+  </div>
+</section>

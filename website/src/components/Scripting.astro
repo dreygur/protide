@@ -1,0 +1,49 @@
+---
+import SectionHeader from "./shared/SectionHeader.astro";
+import ScriptingMockup from "./mockups/ScriptingMockup.astro";
+---
+
+<section class="border-y px-6 py-24" style="border-color: var(--color-border); background: var(--color-bg-secondary)">
+  <div class="mx-auto max-w-6xl">
+    <div class="grid grid-cols-1 items-center gap-16 lg:grid-cols-2">
+      <!-- Left: text -->
+      <div>
+        <SectionHeader
+          title="Test as you go"
+          subtitle="JavaScript pre/post-request scripts let you automate, validate, and chain requests without leaving the app."
+          align="left"
+          label="Scripting & Testing"
+        />
+
+        <div class="flex flex-col gap-4 mb-8">
+          {[
+            { icon: "→", text: "Pre-request scripts for auth setup, token refresh, or dynamic headers" },
+            { icon: "→", text: "Post-request assertions with a Postman-compatible expect() API" },
+            { icon: "→", text: "JSONPath extraction — pull values from responses into variables" },
+            { icon: "→", text: "@set annotations chain requests: use response data in the next call" },
+            { icon: "→", text: "Full test suite view with pass/fail counts per request" },
+          ].map((item) => (
+            <div class="flex items-start gap-3">
+              <span class="mt-0.5 font-semibold" style="color: var(--color-accent)">{item.icon}</span>
+              <span class="text-sm leading-relaxed" style="color: var(--color-text-secondary)">{item.text}</span>
+            </div>
+          ))}
+        </div>
+
+        <div class="rounded-lg border p-4 font-mono text-xs" style="border-color: var(--color-border); background: var(--color-bg-elevated)">
+          <div style="color: var(--color-text-muted)" class="mb-1">Request chaining:</div>
+          <div>
+            <span style="color: var(--color-method-put)"># @set</span>
+            <span style="color: var(--color-text-secondary)"> token </span>
+            <span style="color: var(--color-accent)">$.access_token</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right: mockup -->
+      <div>
+        <ScriptingMockup />
+      </div>
+    </div>
+  </div>
+</section>

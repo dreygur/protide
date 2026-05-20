@@ -24,3 +24,8 @@ Thumbs.db
 
 # Compiled WASM artifacts
 *.wasm
+
+# Website
+website/node_modules/
+website/dist/
+website/.astro/

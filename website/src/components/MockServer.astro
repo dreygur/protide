@@ -1,0 +1,47 @@
+---
+import SectionHeader from "./shared/SectionHeader.astro";
+import MockServerMockup from "./mockups/MockServerMockup.astro";
+---
+
+<section class="border-y px-6 py-24" style="border-color: var(--color-border); background: var(--color-bg-secondary)">
+  <div class="mx-auto max-w-6xl">
+    <div class="grid grid-cols-1 items-center gap-16 lg:grid-cols-2">
+      <!-- Left: text -->
+      <div>
+        <SectionHeader
+          title="Mock APIs before they exist"
+          subtitle="Run a local HTTP server alongside your requests. Configure static routes or record real traffic automatically."
+          align="left"
+          label="Mock Server"
+        />
+
+        <div class="flex flex-col gap-4 mb-8">
+          {[
+            { icon: "→", text: "Configurable routes with custom status codes and response bodies" },
+            { icon: "→", text: "Record/proxy mode: forward to real server, capture every response" },
+            { icon: "→", text: "Hot-reload route changes without restarting" },
+            { icon: "→", text: "Test frontend apps against mocked backends during development" },
+          ].map((item) => (
+            <div class="flex items-start gap-3">
+              <span class="mt-0.5 font-semibold" style="color: var(--color-accent)">{item.icon}</span>
+              <span class="text-sm leading-relaxed" style="color: var(--color-text-secondary)">{item.text}</span>
+            </div>
+          ))}
+        </div>
+
+        <!-- Callout -->
+        <div class="rounded-lg border-l-2 p-4" style="border-color: var(--color-accent); background: color-mix(in srgb, var(--color-accent) 6%, transparent)">
+          <p class="text-sm font-semibold mb-1" style="color: var(--color-accent)">Record mode</p>
+          <p class="text-sm leading-relaxed" style="color: var(--color-text-secondary)">
+            Point Protide at your real API, flip the switch, and every request is captured as a static mock route. Ship without hitting production.
+          </p>
+        </div>
+      </div>
+
+      <!-- Right: mockup -->
+      <div>
+        <MockServerMockup />
+      </div>
+    </div>
+  </div>
+</section>

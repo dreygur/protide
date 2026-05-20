@@ -1,0 +1,67 @@
+---
+// Mimics the Protide scripting + test results panel
+---
+
+<div class="overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-secondary)] text-xs font-mono shadow-2xl">
+  <!-- Window chrome -->
+  <div class="flex items-center gap-1.5 border-b border-[var(--color-border)] bg-[var(--color-bg-primary)] px-4 py-3">
+    <span class="h-3 w-3 rounded-full bg-[#ff5f57]"></span>
+    <span class="h-3 w-3 rounded-full bg-[#febc2e]"></span>
+    <span class="h-3 w-3 rounded-full bg-[#28c840]"></span>
+    <span class="ml-4 text-[var(--color-text-muted)]">protide — scripts & tests</span>
+  </div>
+
+  <!-- Script tab bar -->
+  <div class="flex border-b border-[var(--color-border)]">
+    {[
+      { label: "Pre-request", active: false },
+      { label: "Post-request", active: true },
+      { label: "Tests", active: false },
+    ].map((tab) => (
+      <div class="px-4 py-2.5 border-b-2 cursor-default"
+        style={tab.active
+          ? "color: var(--color-accent); border-color: var(--color-accent)"
+          : "color: var(--color-text-muted); border-color: transparent"}>
+        {tab.label}
+      </div>
+    ))}
+  </div>
+
+  <!-- Code editor -->
+  <div class="border-b border-[var(--color-border)] p-4">
+    <div class="flex flex-col gap-1 leading-5">
+      <div><span style="color: var(--color-text-muted)">1  </span><span style="color: var(--color-proto-graphql)">const</span><span style="color: var(--color-text-secondary)"> body </span><span style="color: var(--color-text-muted)">=</span><span style="color: var(--color-text-secondary)"> response.</span><span style="color: var(--color-method-post)">json</span><span style="color: var(--color-text-secondary)">();</span></div>
+      <div><span style="color: var(--color-text-muted)">2  </span></div>
+      <div><span style="color: var(--color-text-muted)">3  </span><span style="color: var(--color-method-post)">pm</span><span style="color: var(--color-text-secondary)">.</span><span style="color: var(--color-proto-graphql)">test</span><span style="color: var(--color-text-secondary)">(</span><span style="color: var(--color-method-put)">"Status is 200"</span><span style="color: var(--color-text-secondary)">, () </span><span style="color: var(--color-proto-graphql)">=&gt;</span><span style="color: var(--color-text-secondary)"> {"{"}</span></div>
+      <div><span style="color: var(--color-text-muted)">4    </span><span style="color: var(--color-method-post)">expect</span><span style="color: var(--color-text-secondary)">(response.</span><span style="color: var(--color-method-post)">status</span><span style="color: var(--color-text-secondary)">).</span><span style="color: var(--color-proto-graphql)">toBe</span><span style="color: var(--color-text-secondary)">(</span><span style="color: var(--color-method-put)">200</span><span style="color: var(--color-text-secondary)">);</span></div>
+      <div><span style="color: var(--color-text-muted)">5  </span><span style="color: var(--color-text-secondary)">{"}"});</span></div>
+      <div><span style="color: var(--color-text-muted)">6  </span></div>
+      <div><span style="color: var(--color-text-muted)">7  </span><span style="color: var(--color-method-post)">pm</span><span style="color: var(--color-text-secondary)">.</span><span style="color: var(--color-proto-graphql)">set</span><span style="color: var(--color-text-secondary)">(</span><span style="color: var(--color-method-put)">"user_id"</span><span style="color: var(--color-text-secondary)">, body.</span><span style="color: var(--color-method-post)">id</span><span style="color: var(--color-text-secondary)">);</span></div>
+      <div><span style="color: var(--color-text-muted)">8  </span><span style="color: var(--color-method-post)">pm</span><span style="color: var(--color-text-secondary)">.</span><span style="color: var(--color-proto-graphql)">set</span><span style="color: var(--color-text-secondary)">(</span><span style="color: var(--color-method-put)">"token"</span><span style="color: var(--color-text-secondary)">, body.</span><span style="color: var(--color-method-post)">access_token</span><span style="color: var(--color-text-secondary)">);</span></div>
+    </div>
+  </div>
+
+  <!-- Test results -->
+  <div class="p-4">
+    <div class="mb-2 flex items-center justify-between">
+      <span style="color: var(--color-text-muted)">Test results</span>
+      <span style="color: var(--color-accent)">3 passed · 0 failed</span>
+    </div>
+    <div class="flex flex-col gap-1.5">
+      {[
+        { pass: true,  label: "Status is 200" },
+        { pass: true,  label: "Response has id field" },
+        { pass: true,  label: "Token is non-empty string" },
+      ].map((t) => (
+        <div class="flex items-center gap-2">
+          <span class="font-bold" style={`color: ${t.pass ? "var(--color-accent)" : "var(--color-status-5xx)"}`}>
+            {t.pass ? "✓" : "✗"}
+          </span>
+          <span style={`color: ${t.pass ? "var(--color-text-secondary)" : "var(--color-status-5xx)"}`}>
+            {t.label}
+          </span>
+        </div>
+      ))}
+    </div>
+  </div>
+</div>

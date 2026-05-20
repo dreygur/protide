@@ -1,0 +1,101 @@
+---
+// Matches the actual Protide collaboration panel UI
+---
+
+<div class="overflow-hidden rounded-xl border text-xs font-mono shadow-2xl" style="border-color: var(--color-accent); background: var(--color-bg-secondary)">
+  <!-- Window chrome with session badge -->
+  <div class="flex items-center gap-1.5 border-b px-4 py-3" style="border-color: var(--color-border); background: var(--color-bg-primary)">
+    <span class="h-3 w-3 rounded-full bg-[#ff5f57]"></span>
+    <span class="h-3 w-3 rounded-full bg-[#febc2e]"></span>
+    <span class="h-3 w-3 rounded-full bg-[#28c840]"></span>
+    <!-- Session code badge in titlebar -->
+    <div class="ml-3 flex items-center gap-1.5 rounded-full border px-2.5 py-1"
+      style="border-color: var(--color-accent); background: color-mix(in srgb, var(--color-accent) 10%, transparent)">
+      <span class="h-1.5 w-1.5 rounded-full" style="background: var(--color-accent)"></span>
+      <span style="color: var(--color-accent)">protide-4535</span>
+    </div>
+  </div>
+
+  <!-- Panel header -->
+  <div class="flex items-center justify-between border-b px-4 py-3" style="border-color: var(--color-border)">
+    <div class="flex items-center gap-2">
+      <!-- collab icon -->
+      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: var(--color-text-secondary)">
+        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+        <circle cx="9" cy="7" r="4"/>
+        <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+        <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+      </svg>
+      <span class="font-semibold" style="color: var(--color-text-primary)">Collaboration</span>
+    </div>
+    <div class="rounded border px-2 py-0.5 text-xs" style="border-color: var(--color-accent); color: var(--color-accent); background: color-mix(in srgb, var(--color-accent) 10%, transparent)">
+      2 peers
+    </div>
+  </div>
+
+  <div class="p-4 flex flex-col gap-5">
+    <!-- YOUR CODE section -->
+    <div>
+      <p class="mb-2 text-xs uppercase tracking-widest" style="color: var(--color-text-muted)">Your Code</p>
+
+      <!-- Code display box -->
+      <div class="mb-2 rounded border px-4 py-3 text-center text-base font-bold tracking-widest"
+        style="border-color: var(--color-accent); background: color-mix(in srgb, var(--color-accent) 6%, transparent); color: var(--color-accent)">
+        protide-4535
+      </div>
+
+      <!-- Copy Code button -->
+      <button class="flex w-full items-center justify-center gap-2 rounded border py-2 text-xs transition-colors"
+        style="border-color: var(--color-accent); color: var(--color-accent); background: color-mix(in srgb, var(--color-accent) 8%, transparent)">
+        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+          <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+        </svg>
+        Copy Code
+      </button>
+    </div>
+
+    <!-- PEERS section -->
+    <div>
+      <p class="mb-2 text-xs uppercase tracking-widest" style="color: var(--color-text-muted)">Connected Peers</p>
+      <div class="flex flex-col gap-2">
+        {[
+          { initials: "A", name: "alex-macbook", color: "var(--color-proto-grpc)" },
+          { initials: "S", name: "sara-workstation", color: "var(--color-proto-graphql)" },
+        ].map((peer) => (
+          <div class="flex items-center gap-3 rounded border px-3 py-2" style="border-color: var(--color-border); background: var(--color-bg-elevated)">
+            <div class="flex h-6 w-6 items-center justify-center rounded font-bold text-xs"
+              style={`background: color-mix(in srgb, ${peer.color} 20%, transparent); color: ${peer.color}`}>
+              {peer.initials}
+            </div>
+            <span style="color: var(--color-text-secondary)">{peer.name}</span>
+            <div class="ml-auto flex items-center gap-1.5">
+              <span class="h-1.5 w-1.5 rounded-full" style="background: var(--color-accent)"></span>
+              <span style="color: var(--color-accent)">synced</span>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+
+    <!-- JOIN PEER section -->
+    <div>
+      <p class="mb-2 text-xs uppercase tracking-widest" style="color: var(--color-text-muted)">Join Peer</p>
+
+      <!-- Pairing code input -->
+      <div class="mb-3 rounded border px-3 py-2.5" style="border-color: var(--color-border); background: var(--color-bg-elevated)">
+        <span style="color: var(--color-text-muted)">enter pairing code...</span>
+      </div>
+
+      <!-- Buttons -->
+      <div class="flex gap-2">
+        <button class="flex-1 rounded border py-2 text-xs" style="border-color: var(--color-border); color: var(--color-text-secondary)">
+          Paste &amp; Join
+        </button>
+        <button class="flex-1 rounded border py-2 text-xs font-semibold" style="border-color: var(--color-accent); color: var(--color-accent); background: color-mix(in srgb, var(--color-accent) 10%, transparent)">
+          Connect
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
