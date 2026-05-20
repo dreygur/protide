@@ -7,6 +7,7 @@ use gpui::{
     IntoElement, MouseButton, MouseDownEvent, Pixels, Point, Render, ScrollHandle,
     SharedString, Styled, UniformListScrollHandle, WeakEntity, Window,
 };
+use gpui_component::scroll::ScrollableElement;
 
 pub(super) const GUTTER_W: f32 = 44.0;
 pub(super) const INDENT_W: f32 = 16.0;
@@ -81,6 +82,8 @@ pub struct ResponsePanel {
     pub(super) json_scroll_handle: UniformListScrollHandle,
     /// Scroll position for the JSON tree div (wrap mode, ≤2000 rows)
     pub(super) json_scroll_handle_div: ScrollHandle,
+    /// Scroll handle for the response-content area (drives the custom scrollbar)
+    pub(super) content_scroll_handle: ScrollHandle,
     /// Row indices (0-based) of long strings the user has expanded via "show more"
     pub(super) expanded_strings: std::collections::HashSet<usize>,
     /// Test results from script execution
@@ -151,6 +154,7 @@ impl ResponsePanel {
             json_rows: Vec::new(),
             json_scroll_handle: UniformListScrollHandle::new(),
             json_scroll_handle_div: ScrollHandle::new(),
+            content_scroll_handle: ScrollHandle::new(),
             expanded_strings: std::collections::HashSet::new(),
             test_results: Vec::new(),
             jsonpath_input,

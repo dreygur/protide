@@ -9,7 +9,7 @@ mod text_input;
 mod ui_helpers;
 
 pub use action_row::ActionRow;
-pub use ui_helpers::{ghost_action_btn, icon_btn, toolbar_btn};
+pub use ui_helpers::{ghost_action_btn, icon_btn, toolbar_btn, tooltip_text};
 
 #[allow(unused_imports)]
 pub use text_input::{

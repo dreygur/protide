@@ -5,7 +5,7 @@ impl ExplorerPanel {
     pub fn new(cx: &mut Context<Self>, main_window: WeakEntity<MainWindow>) -> Self {
         Self {
             request_panel: None,
-            history_expanded: true,
+            history_expanded: false,
             collections_expanded: true,
             workspace_path: None,
             workspace_watcher: None,

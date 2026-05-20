@@ -1,4 +1,4 @@
-use gpui::{Context, IntoElement, ParentElement, SharedString, Styled, div, px};
+use gpui::{Context, IntoElement, MouseButton, ParentElement, SharedString, Styled, div, px};
 use super::*;
 
 impl ExplorerPanel {
@@ -175,7 +175,6 @@ impl ExplorerPanel {
             .border_1()
             .border_color(theme.colors.border)
             .bg(theme.colors.bg_primary)
-            .overflow_hidden()
             .flex()
             .flex_col()
             .child(
@@ -255,14 +254,37 @@ impl ExplorerPanel {
                                             .child(name),
                                     ),
                             )
-                            .when(var_count > 0, |el| {
-                                el.child(
-                                    div()
-                                        .text_size(px(10.0))
-                                        .text_color(theme.colors.text_muted)
-                                        .child(format!("{} vars", var_count)),
-                                )
-                            })
+                            .child(
+                                div()
+                                    .flex()
+                                    .items_center()
+                                    .gap(px(6.0))
+                                    .when(var_count > 0, |el| {
+                                        el.child(
+                                            div()
+                                                .text_size(px(10.0))
+                                                .text_color(theme.colors.text_muted)
+                                                .child(format!("{} vars", var_count)),
+                                        )
+                                    })
+                                    .child(
+                                        div()
+                                            .id(SharedString::from(format!("env-edit-{}", i)))
+                                            .size(px(18.0))
+                                            .flex()
+                                            .items_center()
+                                            .justify_center()
+                                            .cursor_pointer()
+                                            .opacity(0.4)
+                                            .hover(|s| s.opacity(1.0))
+                                            .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, _, cx| {
+                                                cx.stop_propagation();
+                                                this.open_env_editor_for(i, cx);
+                                            }))
+                                            .child(icon(ICON_EDIT, ICON_SM, theme.colors.text_secondary))
+                                            .tooltip(tooltip_text("Edit environment")),
+                                    ),
+                            )
                     }),
             )
             .child(

@@ -259,7 +259,7 @@ impl ExplorerPanel {
                                 .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, _, cx| {
                                     this.export_openapi_folder(path_for_export.clone(), cx);
                                 }))
-                                .child(icon(ICON_EXTERNAL, ICON_MD, theme.colors.accent))
+                                .child(icon(ICON_LINK, ICON_MD, theme.colors.accent))
                                 .child(
                                     div()
                                         .text_size(px(12.0))

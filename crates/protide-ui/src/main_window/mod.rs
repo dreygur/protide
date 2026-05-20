@@ -284,6 +284,13 @@ impl MainWindow {
         cx.notify();
     }
 
+    pub fn ensure_sidebar_visible(&mut self, cx: &mut Context<Self>) {
+        if self.sidebar_collapsed {
+            self.sidebar_collapsed = false;
+            cx.notify();
+        }
+    }
+
     pub(super) fn toggle_mock_server(&mut self, cx: &mut Context<Self>) {
         self.show_mock_server = !self.show_mock_server;
         cx.notify();

@@ -97,16 +97,26 @@ impl Render for ExplorerPanel {
                             .child("+"),
                     ),
             )
-            .child(
-                div()
-                    .w_full()
-                    .h(px(if self.collections_expanded { self.collections_h } else { 48.0 }))
-                    .overflow_hidden()
-                    .bg(theme.colors.bg_secondary)
-                    .child(self.render_collections_section(cx)),
-            )
-            .when(self.collections_expanded, |el| {
+            .when(!self.history_expanded, |el| {
                 el.child(
+                    div()
+                        .w_full()
+                        .flex_1()
+                        .overflow_hidden()
+                        .bg(theme.colors.bg_secondary)
+                        .child(self.render_collections_section(cx)),
+                )
+            })
+            .when(self.history_expanded, |el| {
+                el.child(
+                    div()
+                        .w_full()
+                        .h(px(if self.collections_expanded { self.collections_h } else { 48.0 }))
+                        .overflow_hidden()
+                        .bg(theme.colors.bg_secondary)
+                        .child(self.render_collections_section(cx)),
+                )
+                .child(
                     div()
                         .id("drag-handle-coll")
                         .w_full()
@@ -121,16 +131,25 @@ impl Render for ExplorerPanel {
                             }),
                         ),
                 )
+                .child(
+                    div()
+                        .id("explorer-history-area")
+                        .flex_1()
+                        .w_full()
+                        .overflow_scroll()
+                        .bg(theme.colors.bg_secondary)
+                        .child(self.render_history_section(cx)),
+                )
             })
-            .child(
-                div()
-                    .id("explorer-history-area")
-                    .flex_1()
-                    .w_full()
-                    .overflow_scroll()
-                    .bg(theme.colors.bg_secondary)
-                    .child(self.render_history_section(cx)),
-            )
+            .when(!self.history_expanded, |el| {
+                el.child(
+                    div()
+                        .id("explorer-history-area-collapsed")
+                        .w_full()
+                        .bg(theme.colors.bg_secondary)
+                        .child(self.render_history_section(cx)),
+                )
+            })
             .when(self.env_editor_open, |el| {
                 el.child(
                     div()

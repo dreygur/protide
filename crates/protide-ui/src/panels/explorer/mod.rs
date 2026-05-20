@@ -5,7 +5,7 @@ use log::{error, info, warn};
 use crate::components::modal::ModalState;
 use crate::main_window::MainWindow;
 use gpui::{
-    Context, Entity, FocusHandle, Pixels, Point, Styled, Subscription, WeakEntity, prelude::*,
+    Context, Entity, FocusHandle, Pixels, Point, Subscription, WeakEntity, prelude::*,
 };
 use std::fs;
 use std::ops::Range;
@@ -18,10 +18,12 @@ use crate::last_paths;
 use crate::theme;
 use crate::components::icons::{
     ICON_ARROW_DOWN, ICON_CHEVRON_DOWN, ICON_CHEVRON_RIGHT, ICON_CHEVRON_UP, ICON_CLOSE,
-    ICON_COPY, ICON_DELETE, ICON_EDIT, ICON_EXTERNAL, ICON_FILE, ICON_FOLDER, ICON_FOLDER_OPEN, ICON_INFO,
-    ICON_LINK, ICON_MD, ICON_MENU, ICON_PLAY, ICON_PLUS, ICON_REFRESH, ICON_SETTINGS, ICON_SM, ICON_TIMER,
+    ICON_COPY, ICON_DELETE, ICON_EDIT, ICON_EXPORT, ICON_FILE, ICON_FOLDER,
+    ICON_FOLDER_OPEN, ICON_INFO, ICON_LINK, ICON_MD, ICON_MENU, ICON_PLAY, ICON_PLUS,
+    ICON_REFRESH, ICON_SETTINGS, ICON_SM, ICON_TIMER,
     icon,
 };
+use crate::components::tooltip_text;
 use http_parser::Protocol;
 use crate::components::{ActionRow, ghost_action_btn, icon_btn, render_text_view_with_max_scrolled};
 use protide_core::models::{Environment, EnvironmentState};
