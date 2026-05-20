@@ -11,10 +11,10 @@ use crate::theme;
 use crate::components::{render_text_view_with_max};
 use crate::components::icons::{
     icon, ICON_SM,
-    ICON_CLOSE, ICON_CHECK,
+    ICON_CLOSE, ICON_CHECK, ICON_MENU,
 };
 use protide_core::execution::ws::WebSocketExecutor;
-use super::super::request_types::EditTarget;
+use super::super::request_types::{EditTarget, KvList};
 use super::RequestPanel;
 
 impl<E: WebSocketExecutor> RequestPanel<E> {
@@ -47,6 +47,40 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             .child(format!("{} {}", count, suffix))
     }
 
+    pub(super) fn render_kv_row_drag_handle(&self, list: KvList, row: usize, cx: &Context<Self>) -> impl IntoElement {
+        let theme = theme::current(cx);
+        div()
+            .id(SharedString::from(format!("kv-grip-{:?}-{}", list, row)))
+            .w(px(12.0))
+            .h(px(28.0))
+            .flex().items_center().justify_center()
+            .cursor_grab()
+            .on_mouse_down(gpui::MouseButton::Left, cx.listener(move |this, event: &gpui::MouseDownEvent, _, cx| {
+                this.kv_row_drag = Some((list, row, f32::from(event.position.y)));
+                this.kv_row_drag_over = Some(row);
+                cx.notify();
+            }))
+            .child(icon(ICON_MENU, ICON_SM, theme.colors.text_muted.opacity(0.3)))
+            .hover(|s| s.opacity(0.8))
+    }
+
+    pub(super) fn render_form_row_drag_handle(&self, row: usize, cx: &Context<Self>) -> impl IntoElement {
+        let theme = theme::current(cx);
+        div()
+            .id(SharedString::from(format!("form-grip-{}", row)))
+            .w(px(12.0))
+            .h(px(28.0))
+            .flex().items_center().justify_center()
+            .cursor_grab()
+            .on_mouse_down(gpui::MouseButton::Left, cx.listener(move |this, event: &gpui::MouseDownEvent, _, cx| {
+                this.form_row_drag = Some((row, f32::from(event.position.y)));
+                this.form_row_drag_over = Some(row);
+                cx.notify();
+            }))
+            .child(icon(ICON_MENU, ICON_SM, theme.colors.text_muted.opacity(0.3)))
+            .hover(|s| s.opacity(0.8))
+    }
+
     pub(super) fn render_kv_table_header(&self, key_label: &'static str, value_label: &'static str, count: usize, cx: &Context<Self>) -> impl IntoElement {
         let theme = theme::current(cx);
         div()
@@ -55,6 +89,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             .py(px(6.0))
             .border_b_1().border_color(theme.colors.border)
             .mb(px(4.0))
+            .child(div().w(px(12.0)))
             .child(div().size(px(16.0)))
             .child(
                 div()

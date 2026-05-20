@@ -98,6 +98,8 @@ pub struct ExplorerPanel {
     pub(super) rename_text: String,
     pub(super) env_col_key_w: f32,
     pub(super) env_col_drag: Option<(f32, f32)>,
+    pub(super) env_row_drag: Option<(usize, f32)>,
+    pub(super) env_row_drag_over: Option<usize>,
     pub(super) collections_h: f32,
     pub(super) env_h: f32,
     pub(super) drag_coll: Option<(f32, f32)>,

@@ -8,7 +8,7 @@ use gpui::{
 
 use crate::theme;
 use protide_core::execution::ws::WebSocketExecutor;
-use super::super::request_types::{EditTarget, GrpcStreamingType};
+use super::super::request_types::{EditTarget, GrpcStreamingType, KvList};
 use super::RequestPanel;
 
 impl<E: WebSocketExecutor> RequestPanel<E> {
@@ -159,6 +159,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
         let meta_data: Vec<_> = self.grpc_metadata.iter().enumerate().map(|(i, m)| {
             (i, m.enabled, m.key.clone(), m.value.clone())
         }).collect();
+        let dragging_grpc = self.kv_row_drag.map(|(l, _, _)| l) == Some(KvList::GrpcMeta);
 
         let mut container = div()
             .w_full()
@@ -174,6 +175,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             let is_editing_key = active_edit == Some(EditTarget::GrpcMetaKey(i));
             let is_editing_value = active_edit == Some(EditTarget::GrpcMetaValue(i));
             let is_row_editing = is_editing_key || is_editing_value;
+            let drop_here = dragging_grpc && self.kv_row_drag_over == Some(i);
 
             container = container.child(
                 div()
@@ -185,6 +187,8 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                     .py(px(4.0))
                     .px(px(2.0))
                     .when(!is_row_editing, |el| el.hover(|s| s.bg(theme.colors.bg_tertiary.opacity(0.3))))
+                    .when(drop_here, |el| el.border_t_2().border_color(theme.colors.accent))
+                    .child(self.render_kv_row_drag_handle(KvList::GrpcMeta, i, cx))
                     .child(
                         self.render_kv_checkbox(format!("grpc-meta-cb-{}", i).into(), is_enabled, cx)
                             .on_click(cx.listener(move |this, _, _, cx| {

@@ -201,3 +201,11 @@ pub struct DataRunRow {
     pub error: Option<String>,
 }
 
+/// Identifies which KV list is being row-dragged
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum KvList {
+    Params,
+    Headers,
+    GrpcMeta,
+}
+

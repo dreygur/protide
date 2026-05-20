@@ -8,7 +8,7 @@ use gpui::{
 
 use crate::theme;
 use protide_core::execution::ws::WebSocketExecutor;
-use super::super::request_types::{EditTarget};
+use super::super::request_types::{EditTarget, KvList};
 use super::RequestPanel;
 
 impl<E: WebSocketExecutor> RequestPanel<E> {
@@ -21,6 +21,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
         let params_data: Vec<_> = self.params.iter().enumerate().map(|(i, param)| {
             (i, param.enabled, param.key.clone(), param.value.clone())
         }).collect();
+        let dragging_params = self.kv_row_drag.map(|(l, _, _)| l) == Some(KvList::Params);
 
         let mut container = div()
             .w_full()
@@ -36,6 +37,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             let is_editing_key = active_edit == Some(EditTarget::ParamKey(i));
             let is_editing_value = active_edit == Some(EditTarget::ParamValue(i));
             let is_row_editing = is_editing_key || is_editing_value;
+            let drop_here = dragging_params && self.kv_row_drag_over == Some(i);
 
             container = container.child(
                 div()
@@ -47,6 +49,8 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                     .py(px(4.0))
                     .px(px(2.0))
                     .when(!is_row_editing, |el| el.hover(|s| s.bg(theme.colors.bg_tertiary.opacity(0.3))))
+                    .when(drop_here, |el| el.border_t_2().border_color(theme.colors.accent))
+                    .child(self.render_kv_row_drag_handle(KvList::Params, i, cx))
                     .child(
                         self.render_kv_checkbox(format!("param-checkbox-{}", i).into(), is_enabled, cx)
                             .on_click(cx.listener(move |this, _, _, cx| this.toggle_param(i, cx)))
@@ -94,6 +98,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
         let headers_data: Vec<_> = self.headers.iter().enumerate().map(|(i, header)| {
             (i, header.enabled, header.key.clone(), header.value.clone())
         }).collect();
+        let dragging_headers = self.kv_row_drag.map(|(l, _, _)| l) == Some(KvList::Headers);
 
         let mut container = div()
             .w_full()
@@ -109,6 +114,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             let is_editing_key = active_edit == Some(EditTarget::HeaderKey(i));
             let is_editing_value = active_edit == Some(EditTarget::HeaderValue(i));
             let is_row_editing = is_editing_key || is_editing_value;
+            let drop_here = dragging_headers && self.kv_row_drag_over == Some(i);
 
             container = container.child(
                 div()
@@ -120,6 +126,8 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                     .py(px(4.0))
                     .px(px(2.0))
                     .when(!is_row_editing, |el| el.hover(|s| s.bg(theme.colors.bg_tertiary.opacity(0.3))))
+                    .when(drop_here, |el| el.border_t_2().border_color(theme.colors.accent))
+                    .child(self.render_kv_row_drag_handle(KvList::Headers, i, cx))
                     .child(
                         self.render_kv_checkbox(format!("header-checkbox-{}", i).into(), is_enabled, cx)
                             .on_click(cx.listener(move |this, _, _, cx| {

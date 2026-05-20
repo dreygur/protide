@@ -1,4 +1,4 @@
-use gpui::{Context, IntoElement, MouseButton, MouseDownEvent, ParentElement, Pixels, Point, SharedString, Styled, div, px};
+use gpui::{Context, IntoElement, MouseButton, MouseDownEvent, ParentElement, Pixels, Point, SharedString, Styled, Window, div, px};
 use super::*;
 
 impl ExplorerPanel {
@@ -132,13 +132,28 @@ impl ExplorerPanel {
                         .px(px(4.0))
                         .flex()
                         .items_center()
+                        .gap(px(0.0))
                         .bg(theme.colors.bg_tertiary)
                         .border_1()
                         .border_color(theme.colors.accent)
                         .overflow_hidden()
-                        .text_size(px(12.0))
-                        .text_color(theme.colors.text_primary)
-                        .child(rename_text),
+                        .cursor_text()
+                        .on_mouse_down(MouseButton::Left, cx.listener(|this, _, window: &mut Window, cx| {
+                            cx.stop_propagation();
+                            this.edit_focus.focus(window, cx);
+                        }))
+                        .child(
+                            div()
+                                .text_size(px(12.0))
+                                .text_color(theme.colors.text_primary)
+                                .child(rename_text)
+                        )
+                        .child(
+                            div()
+                                .w(px(1.5))
+                                .h(px(14.0))
+                                .bg(theme.colors.accent)
+                        ),
                 )
             })
             .when(is_folder && has_watcher, |el| {
@@ -289,8 +304,9 @@ impl ExplorerPanel {
                             .gap(px(8.0))
                             .cursor_pointer()
                             .hover(|s| s.bg(theme.colors.bg_tertiary))
-                            .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, _, cx| {
+                            .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, window, cx| {
                                 this.start_rename_item(path_for_rename.clone(), cx);
+                                this.edit_focus.focus(window, cx);
                             }))
                             .child(icon(ICON_EDIT, ICON_MD, theme.colors.text_muted))
                             .child(

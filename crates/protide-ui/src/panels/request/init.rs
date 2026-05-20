@@ -196,6 +196,10 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                     .placeholder("30")
             }),
             verify_ssl: true,
+            kv_row_drag: None,
+            kv_row_drag_over: None,
+            form_row_drag: None,
+            form_row_drag_over: None,
             _executor: PhantomData,
         }
     }

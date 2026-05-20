@@ -215,6 +215,16 @@ impl ExplorerPanel {
         cx.notify();
     }
 
+    pub(super) fn reorder_env_var(&mut self, from: usize, to: usize, cx: &mut Context<Self>) {
+        if let Some(env) = self.env_state.active_mut() {
+            let len = env.variables.len();
+            if from < len && to < len {
+                env.variables.move_index(from, to);
+            }
+        }
+        cx.notify();
+    }
+
     /// Calculate character index from x position
     pub(super) fn edit_index_for_x(&self, x: f32, char_width: f32) -> usize {
         if let Some(target) = self.active_edit {

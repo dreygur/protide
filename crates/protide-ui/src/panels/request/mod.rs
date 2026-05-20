@@ -67,7 +67,7 @@ use super::console::{ConsoleEntry, ConsoleEntrySource, ConsolePanel, LogLevel};
 use super::explorer::ExplorerPanel;
 use super::request_types::{
     ApiKeyLocation, AuthType, BodyType, EditTarget, FormField, FormFieldType,
-    GrpcMethodInfo, GrpcStreamingType, HttpMethod, KeyValuePair, RequestMode,
+    GrpcMethodInfo, GrpcStreamingType, HttpMethod, KeyValuePair, KvList, RequestMode,
     SioConnectionState, WsConnectionState,
 };
 use base64::Engine;
@@ -212,6 +212,10 @@ pub struct RequestPanel<E: WebSocketExecutor = TungsteniteExecutor> {
     pub(super) data_running: bool,
     pub(super) timeout_input: Entity<crate::components::TextInput>,
     pub(super) verify_ssl: bool,
+    pub(super) kv_row_drag: Option<(KvList, usize, f32)>,
+    pub(super) kv_row_drag_over: Option<usize>,
+    pub(super) form_row_drag: Option<(usize, f32)>,
+    pub(super) form_row_drag_over: Option<usize>,
     _executor: PhantomData<E>,
 }
 
@@ -259,5 +263,63 @@ impl<E: WebSocketExecutor> Render for RequestPanel<E> {
                         this.kv_col_drag = None; cx.notify();
                     }))
             ).with_priority(1)))
+            .when(self.kv_row_drag.is_some(), |el| el.child(deferred(
+                div().id("kv-row-drag-overlay")
+                    .absolute().top_0().left_0().w_full().h_full()
+                    .cursor_grab()
+                    .on_mouse_move(cx.listener(|this, event: &MouseMoveEvent, _, cx| {
+                        if let Some((list, src, start_y)) = this.kv_row_drag {
+                            let len = match list {
+                                KvList::Params => this.params.len(),
+                                KvList::Headers => this.headers.len(),
+                                KvList::GrpcMeta => this.grpc_metadata.len(),
+                            };
+                            if len > 1 {
+                                let delta = f32::from(event.position.y) - start_y;
+                                let idx = (src as i32 + (delta / 36.0).round() as i32)
+                                    .clamp(0, len as i32 - 1) as usize;
+                                if this.kv_row_drag_over != Some(idx) {
+                                    this.kv_row_drag_over = Some(idx);
+                                    cx.notify();
+                                }
+                            }
+                        }
+                    }))
+                    .on_mouse_up(MouseButton::Left, cx.listener(|this, _, _, cx| {
+                        let drag = this.kv_row_drag.take();
+                        let over = this.kv_row_drag_over.take();
+                        if let (Some((list, src, _)), Some(dst)) = (drag, over) {
+                            if src != dst { this.reorder_kv(list, src, dst, cx); }
+                        }
+                        cx.notify();
+                    }))
+            ).with_priority(2)))
+            .when(self.form_row_drag.is_some(), |el| el.child(deferred(
+                div().id("form-row-drag-overlay")
+                    .absolute().top_0().left_0().w_full().h_full()
+                    .cursor_grab()
+                    .on_mouse_move(cx.listener(|this, event: &MouseMoveEvent, _, cx| {
+                        if let Some((src, start_y)) = this.form_row_drag {
+                            let len = this.form_data.len();
+                            if len > 1 {
+                                let delta = f32::from(event.position.y) - start_y;
+                                let idx = (src as i32 + (delta / 36.0).round() as i32)
+                                    .clamp(0, len as i32 - 1) as usize;
+                                if this.form_row_drag_over != Some(idx) {
+                                    this.form_row_drag_over = Some(idx);
+                                    cx.notify();
+                                }
+                            }
+                        }
+                    }))
+                    .on_mouse_up(MouseButton::Left, cx.listener(|this, _, _, cx| {
+                        let drag = this.form_row_drag.take();
+                        let over = this.form_row_drag_over.take();
+                        if let (Some((src, _)), Some(dst)) = (drag, over) {
+                            if src != dst { this.reorder_form_field(src, dst, cx); }
+                        }
+                        cx.notify();
+                    }))
+            ).with_priority(2)))
     }
 }

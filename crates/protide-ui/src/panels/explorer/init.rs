@@ -31,6 +31,8 @@ impl ExplorerPanel {
             rename_text: String::new(),
             env_col_key_w: 90.0,
             env_col_drag: None,
+            env_row_drag: None,
+            env_row_drag_over: None,
             collections_h: crate::prefs::get_f32("explorer.collections_h", 220.0),
             env_h: crate::prefs::get_f32("explorer.env_h", 200.0),
             drag_coll: None,
