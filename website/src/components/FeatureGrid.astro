@@ -1,0 +1,65 @@
+---
+import SectionHeader from "./shared/SectionHeader.astro";
+
+const features = [
+  {
+    icon: "⚡",
+    title: "Multi-Protocol",
+    desc: "HTTP, GraphQL, WebSocket, gRPC, tRPC, and Socket.IO — all from one tool with a unified .http file format.",
+    color: "var(--color-method-get)",
+  },
+  {
+    icon: "📁",
+    title: "File-Based Collections",
+    desc: "No proprietary formats. Folders are collections, .http files are requests. Commit, diff, and review with Git.",
+    color: "var(--color-method-post)",
+  },
+  {
+    icon: "⚙️",
+    title: "JS Scripting & Testing",
+    desc: "Pre/post-request scripts, test assertions with expect(), and request chaining via JSONPath extraction.",
+    color: "var(--color-method-put)",
+  },
+  {
+    icon: "🎭",
+    title: "Mock Server",
+    desc: "Local HTTP mock server with route configuration and record/proxy mode to capture live traffic as static routes.",
+    color: "var(--color-method-patch)",
+  },
+  {
+    icon: "🤝",
+    title: "Local-First Collab",
+    desc: "P2P sync via mDNS auto-discovery. No accounts, no server. Devices on your LAN find each other automatically.",
+    color: "var(--color-proto-ws)",
+  },
+  {
+    icon: "🤖",
+    title: "AI Integration",
+    desc: "Built-in MCP server lets Claude and other AI assistants drive requests directly. LSP for .http files in any editor.",
+    color: "var(--color-proto-grpc)",
+  },
+];
+---
+
+<section class="px-6 py-24">
+  <div class="mx-auto max-w-6xl">
+    <SectionHeader
+      title="Everything you need to test APIs"
+      subtitle="No Electron. No slow startup. A native desktop app that starts in milliseconds."
+    />
+
+    <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      {features.map((f) => (
+        <article
+          class="group rounded-xl border p-6 transition-all duration-200 cursor-default"
+          style={`border-color: var(--color-border); background: var(--color-bg-secondary); --card-accent: ${f.color}`}
+          onmouseover={`this.style.borderColor='${f.color.replace("var(", "").replace(")", "")}'; this.style.borderColor=getComputedStyle(document.documentElement).getPropertyValue('${f.color.match(/--[^)]+/)?.[0] ?? ""}').trim() || '${f.color}'`}
+        >
+          <div class="mb-4 text-2xl" aria-hidden="true">{f.icon}</div>
+          <h3 class="mb-2 font-semibold" style="color: var(--color-text-primary)">{f.title}</h3>
+          <p class="text-sm leading-relaxed" style="color: var(--color-text-secondary)">{f.desc}</p>
+        </article>
+      ))}
+    </div>
+  </div>
+</section>

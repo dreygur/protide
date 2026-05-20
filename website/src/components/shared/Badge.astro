@@ -1,0 +1,23 @@
+---
+import { METHOD_COLORS, PROTOCOL_COLORS } from "../../lib/theme.ts";
+
+interface Props {
+  label: string;
+  type: "method" | "protocol";
+  size?: "sm" | "md";
+}
+
+const { label, type, size = "md" } = Astro.props;
+const color =
+  (type === "method" ? METHOD_COLORS[label] : PROTOCOL_COLORS[label]) ??
+  "var(--color-accent)";
+
+const padding = size === "sm" ? "px-2 py-0.5 text-xs" : "px-3 py-1 text-sm";
+---
+
+<span
+  class={`rounded-md font-semibold ${padding}`}
+  style={`color: ${color}; background: color-mix(in srgb, ${color} 12%, transparent); border: 1px solid color-mix(in srgb, ${color} 25%, transparent);`}
+>
+  {label}
+</span>

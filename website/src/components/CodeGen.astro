@@ -1,0 +1,59 @@
+---
+import SectionHeader from "./shared/SectionHeader.astro";
+import CodegenMockup from "./mockups/CodegenMockup.astro";
+
+const langs = [
+  { name: "cURL", color: "var(--color-method-get)" },
+  { name: "Python", color: "var(--color-method-post)" },
+  { name: "JavaScript", color: "var(--color-method-put)" },
+  { name: "Go", color: "var(--color-proto-ws)" },
+  { name: "Rust", color: "var(--color-method-delete)" },
+];
+---
+
+<section class="px-6 py-24">
+  <div class="mx-auto max-w-6xl">
+    <div class="grid grid-cols-1 items-center gap-16 lg:grid-cols-2">
+      <!-- Left: mockup -->
+      <div>
+        <CodegenMockup />
+      </div>
+
+      <!-- Right: text -->
+      <div>
+        <SectionHeader
+          title="Export to any language"
+          subtitle="Convert any request to ready-to-paste code with one click."
+          align="left"
+          label="Code Generation"
+        />
+
+        <div class="flex flex-wrap gap-3 mb-8">
+          {langs.map((lang) => (
+            <div
+              class="rounded-lg border px-4 py-2 text-sm font-semibold"
+              style={`color: ${lang.color}; border-color: color-mix(in srgb, ${lang.color} 30%, transparent); background: color-mix(in srgb, ${lang.color} 8%, transparent)`}
+            >
+              {lang.name}
+            </div>
+          ))}
+        </div>
+
+        <p class="text-sm leading-relaxed mb-6" style="color: var(--color-text-secondary)">
+          Every request in your collection can be exported as production-ready client code.
+          Environment variables are resolved before export — no placeholders in the output.
+        </p>
+
+        <div class="rounded-lg border p-4 font-mono text-xs" style="border-color: var(--color-border); background: var(--color-bg-secondary)">
+          <div style="color: var(--color-text-muted)" class="mb-2">Generated Rust (reqwest):</div>
+          <div class="flex flex-col gap-0.5 leading-5">
+            <div><span style="color: var(--color-proto-graphql)">let</span><span style="color: var(--color-text-secondary)"> resp = client</span></div>
+            <div><span style="color: var(--color-text-secondary)">    .</span><span style="color: var(--color-method-post)">get</span><span style="color: var(--color-text-secondary)">(</span><span style="color: var(--color-method-put)">"https://api.example.com/users"</span><span style="color: var(--color-text-secondary)">)</span></div>
+            <div><span style="color: var(--color-text-secondary)">    .</span><span style="color: var(--color-method-post)">bearer_auth</span><span style="color: var(--color-text-secondary)">(token)</span></div>
+            <div><span style="color: var(--color-text-secondary)">    .</span><span style="color: var(--color-method-post)">send</span><span style="color: var(--color-text-secondary)">().</span><span style="color: var(--color-proto-graphql)">await</span><span style="color: var(--color-text-secondary)">?;</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>

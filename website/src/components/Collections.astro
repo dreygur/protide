@@ -1,0 +1,83 @@
+---
+import SectionHeader from "./shared/SectionHeader.astro";
+---
+
+<section class="px-6 py-24">
+  <div class="mx-auto max-w-6xl">
+    <div class="grid grid-cols-1 items-center gap-16 lg:grid-cols-2">
+      <!-- Left: file tree mockup -->
+      <div class="order-2 lg:order-1">
+        <div class="overflow-hidden rounded-xl border text-xs font-mono shadow-2xl" style="border-color: var(--color-border); background: var(--color-bg-secondary)">
+          <!-- Window chrome -->
+          <div class="flex items-center gap-1.5 border-b px-4 py-3" style="border-color: var(--color-border); background: var(--color-bg-primary)">
+            <span class="h-3 w-3 rounded-full bg-[#ff5f57]"></span>
+            <span class="h-3 w-3 rounded-full bg-[#febc2e]"></span>
+            <span class="h-3 w-3 rounded-full bg-[#28c840]"></span>
+            <span class="ml-4" style="color: var(--color-text-muted)">protide — explorer</span>
+          </div>
+
+          <!-- File tree -->
+          <div class="p-4 leading-6">
+            <div class="mb-1 flex items-center gap-1.5" style="color: var(--color-text-secondary)">
+              <span>▾</span>
+              <span class="font-semibold" style="color: var(--color-text-primary)">my-api/</span>
+            </div>
+            {[
+              { indent: 1, icon: "▾", name: "auth/", bold: true },
+              { indent: 2, icon: "·", name: "login.http", color: "var(--color-method-post)" },
+              { indent: 2, icon: "·", name: "refresh.http", color: "var(--color-method-post)" },
+              { indent: 1, icon: "▾", name: "users/", bold: true },
+              { indent: 2, icon: "·", name: "list.http", color: "var(--color-method-get)", active: true },
+              { indent: 2, icon: "·", name: "create.http", color: "var(--color-method-post)" },
+              { indent: 2, icon: "·", name: "delete.http", color: "var(--color-method-delete)" },
+              { indent: 1, icon: "·", name: ".env", color: "var(--color-text-muted)" },
+              { indent: 1, icon: "·", name: ".env.staging", color: "var(--color-text-muted)" },
+            ].map((row) => (
+              <div
+                class="flex items-center gap-1.5 rounded px-1"
+                style={`padding-left: ${row.indent * 16}px; background: ${row.active ? "color-mix(in srgb, var(--color-accent) 10%, transparent)" : "transparent"}; color: ${row.color ?? (row.bold ? "var(--color-text-primary)" : "var(--color-text-secondary)")}`}
+              >
+                <span style="color: var(--color-text-muted)">{row.icon}</span>
+                <span class={row.bold ? "font-semibold" : ""}>{row.name}</span>
+                {row.active && <span class="ml-auto text-xs" style="color: var(--color-accent)">open</span>}
+              </div>
+            ))}
+          </div>
+
+          <!-- Env selector -->
+          <div class="border-t flex items-center gap-2 px-4 py-2.5" style="border-color: var(--color-border)">
+            <span style="color: var(--color-text-muted)">ENV</span>
+            <span class="rounded px-2 py-0.5" style="background: var(--color-bg-elevated); color: var(--color-accent); border: 1px solid var(--color-border)">
+              development ▾
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right: text -->
+      <div class="order-1 lg:order-2">
+        <SectionHeader
+          title="Collections that live in your filesystem"
+          subtitle="No proprietary formats, no cloud lock-in. Your requests are plain .http files in folders."
+          align="left"
+          label="Collections"
+        />
+
+        <div class="flex flex-col gap-4">
+          {[
+            { icon: "→", text: "Folders are collections — open any folder as a workspace" },
+            { icon: "→", text: "Commit and diff requests in Git like any other code" },
+            { icon: "→", text: "Environment variables with {{variable}} substitution" },
+            { icon: "→", text: "Per-environment config: dev, staging, production" },
+            { icon: "→", text: "Import from Postman, Bruno, OpenAPI, or cURL commands" },
+          ].map((item) => (
+            <div class="flex items-start gap-3">
+              <span class="mt-0.5 font-semibold" style="color: var(--color-accent)">{item.icon}</span>
+              <span class="text-sm leading-relaxed" style="color: var(--color-text-secondary)">{item.text}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  </div>
+</section>

@@ -1,0 +1,58 @@
+---
+import SectionHeader from "./shared/SectionHeader.astro";
+import CollabMockup from "./mockups/CollabMockup.astro";
+---
+
+<section class="px-6 py-24">
+  <div class="mx-auto max-w-6xl">
+    <div class="grid grid-cols-1 items-center gap-16 lg:grid-cols-2">
+      <!-- Left: mockup -->
+      <div>
+        <CollabMockup />
+      </div>
+
+      <!-- Right: text -->
+      <div>
+        <SectionHeader
+          title="Team sync without a server"
+          subtitle="Share a pairing code, connect instantly. No accounts, no cloud, no internet required."
+          align="left"
+          label="Local-First Collaboration"
+        />
+
+        <div class="flex flex-col gap-4 mb-8">
+          {[
+            {
+              icon: "🔑",
+              title: "Code-based pairing",
+              desc: "Every session gets a unique code. Share it with a teammate and connect in seconds.",
+            },
+            {
+              icon: "🔒",
+              title: "PAKE secure pairing",
+              desc: "Password-authenticated key exchange — encrypted from first contact, no certificates needed.",
+            },
+            {
+              icon: "🔀",
+              title: "CRDT-based sync",
+              desc: "LWW registers with Lamport timestamps. Changes always converge, no merge conflicts.",
+            },
+            {
+              icon: "☁️",
+              title: "BYOB remote sync",
+              desc: "Use Dropbox, Google Drive, or a GitHub repo as the sync backend for distributed teams.",
+            },
+          ].map((item) => (
+            <div class="flex items-start gap-3 rounded-lg border p-4" style="border-color: var(--color-border); background: var(--color-bg-secondary)">
+              <span class="text-xl mt-0.5">{item.icon}</span>
+              <div>
+                <div class="mb-1 font-semibold text-sm" style="color: var(--color-text-primary)">{item.title}</div>
+                <div class="text-sm leading-relaxed" style="color: var(--color-text-secondary)">{item.desc}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  </div>
+</section>

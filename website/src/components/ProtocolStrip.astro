@@ -1,0 +1,18 @@
+---
+import Badge from "./shared/Badge.astro";
+
+const methods = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD"] as const;
+const protocols = ["WebSocket", "gRPC", "GraphQL", "tRPC", "Socket.IO"] as const;
+---
+
+<div class="border-y py-6 overflow-hidden" style="border-color: var(--color-border); background: var(--color-bg-secondary)">
+  <div class="mx-auto max-w-6xl px-6">
+    <div class="flex flex-wrap items-center justify-center gap-3">
+      <span class="text-xs uppercase tracking-widest mr-2" style="color: var(--color-text-muted)">Methods</span>
+      {methods.map((m) => <Badge label={m} type="method" />)}
+      <span class="mx-2 h-4 w-px" style="background: var(--color-border)"></span>
+      <span class="text-xs uppercase tracking-widest mr-2" style="color: var(--color-text-muted)">Protocols</span>
+      {protocols.map((p) => <Badge label={p} type="protocol" />)}
+    </div>
+  </div>
+</div>

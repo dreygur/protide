@@ -1,0 +1,77 @@
+---
+import SectionHeader from "./shared/SectionHeader.astro";
+---
+
+<section class="border-y px-6 py-24" style="border-color: var(--color-border); background: var(--color-bg-secondary)">
+  <div class="mx-auto max-w-6xl">
+    <SectionHeader
+      title="Built for the AI era"
+      subtitle="Let your AI assistant drive requests. Get editor intelligence for .http files."
+    />
+
+    <div class="grid grid-cols-1 gap-8 lg:grid-cols-2">
+      <!-- MCP card -->
+      <div class="rounded-xl border p-8" style="border-color: var(--color-border); background: var(--color-bg-primary)">
+        <div class="mb-4 flex items-center gap-3">
+          <div class="flex h-10 w-10 items-center justify-center rounded-lg text-xl"
+            style="background: color-mix(in srgb, var(--color-proto-grpc) 15%, transparent)">
+            🤖
+          </div>
+          <div>
+            <div class="font-semibold" style="color: var(--color-text-primary)">protide-mcp</div>
+            <div class="text-xs" style="color: var(--color-text-muted)">MCP Server · JSON-RPC 2.0 over stdio</div>
+          </div>
+        </div>
+        <p class="text-sm leading-relaxed mb-6" style="color: var(--color-text-secondary)">
+          Expose your entire collection as tools for Claude, Cursor, and any MCP-compatible AI assistant.
+          Ask your AI to send requests, read responses, and chain calls.
+        </p>
+
+        <!-- Terminal snippet -->
+        <div class="rounded-lg border p-4 font-mono text-xs" style="border-color: var(--color-border); background: var(--color-bg-secondary)">
+          <div class="mb-2 flex items-center gap-1.5">
+            <span class="h-2 w-2 rounded-full" style="background: var(--color-accent)"></span>
+            <span style="color: var(--color-text-muted)">Claude tool call</span>
+          </div>
+          <div class="flex flex-col gap-1 leading-5">
+            <div><span style="color: var(--color-text-muted)">&gt;</span> <span style="color: var(--color-proto-graphql)">use_tool</span><span style="color: var(--color-text-secondary)">(</span><span style="color: var(--color-method-put)">"send_request"</span><span style="color: var(--color-text-secondary)">, {"{"}</span></div>
+            <div><span style="color: var(--color-text-secondary)">    </span><span style="color: var(--color-method-post)">collection</span><span style="color: var(--color-text-secondary)">: </span><span style="color: var(--color-method-put)">"my-api"</span><span style="color: var(--color-text-secondary)">,</span></div>
+            <div><span style="color: var(--color-text-secondary)">    </span><span style="color: var(--color-method-post)">request</span><span style="color: var(--color-text-secondary)">: </span><span style="color: var(--color-method-put)">"users/list"</span><span style="color: var(--color-text-secondary)">,</span></div>
+            <div><span style="color: var(--color-text-secondary)">    </span><span style="color: var(--color-method-post)">env</span><span style="color: var(--color-text-secondary)">: </span><span style="color: var(--color-method-put)">"staging"</span></div>
+            <div><span style="color: var(--color-text-secondary)">{"}"});</span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- LSP card -->
+      <div class="rounded-xl border p-8" style="border-color: var(--color-border); background: var(--color-bg-primary)">
+        <div class="mb-4 flex items-center gap-3">
+          <div class="flex h-10 w-10 items-center justify-center rounded-lg text-xl"
+            style="background: color-mix(in srgb, var(--color-method-post) 15%, transparent)">
+            ✏️
+          </div>
+          <div>
+            <div class="font-semibold" style="color: var(--color-text-primary)">protide-lsp</div>
+            <div class="text-xs" style="color: var(--color-text-muted)">Language Server · tower-lsp</div>
+          </div>
+        </div>
+        <p class="text-sm leading-relaxed mb-6" style="color: var(--color-text-secondary)">
+          Full Language Server Protocol support for .http files. Hover docs, completions for methods and headers, semantic tokens, and diagnostics in any LSP-capable editor.
+        </p>
+
+        <div class="flex flex-col gap-3">
+          {[
+            { editor: "VS Code", desc: "Extension available", color: "var(--color-method-post)" },
+            { editor: "Zed", desc: "Built-in extension + tree-sitter grammar", color: "var(--color-proto-graphql)" },
+            { editor: "Neovim", desc: "Via nvim-lspconfig", color: "var(--color-proto-ws)" },
+          ].map((e) => (
+            <div class="flex items-center justify-between rounded-lg border px-4 py-2.5" style="border-color: var(--color-border)">
+              <span class="text-sm font-medium" style={`color: ${e.color}`}>{e.editor}</span>
+              <span class="text-xs" style="color: var(--color-text-muted)">{e.desc}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  </div>
+</section>

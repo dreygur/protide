@@ -1,0 +1,35 @@
+---
+const base = import.meta.env.BASE_URL;
+const year = new Date().getFullYear();
+---
+
+<footer class="border-t px-6 py-12" style="border-color: var(--color-border)">
+  <div class="mx-auto max-w-6xl">
+    <div class="flex flex-col items-center gap-6 text-center sm:flex-row sm:justify-between sm:text-left">
+      <div class="flex items-center gap-3">
+        <img src={`${base}logo.png`} alt="Protide" class="h-6 w-6 opacity-60" />
+        <span class="text-sm" style="color: var(--color-text-secondary)">
+          Protide &copy; {year} &nbsp;·&nbsp; MIT License
+        </span>
+      </div>
+
+      <div class="flex items-center gap-6 text-sm" style="color: var(--color-text-secondary)">
+        {[
+          { label: "GitHub", href: "https://github.com/dreygur/protide" },
+          { label: "Releases", href: "https://github.com/dreygur/protide/releases" },
+          { label: "Issues", href: "https://github.com/dreygur/protide/issues" },
+          { label: "README", href: "https://github.com/dreygur/protide/blob/main/README.md" },
+        ].map((link) => (
+          <a
+            href={link.href}
+            target="_blank"
+            rel="noopener noreferrer"
+            class="transition-colors hover:text-[var(--color-accent)] no-underline"
+          >
+            {link.label}
+          </a>
+        ))}
+      </div>
+    </div>
+  </div>
+</footer>
