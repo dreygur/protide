@@ -2,7 +2,6 @@
 
 use log::{error, info, warn};
 
-use crate::components::modal::ModalState;
 use crate::main_window::MainWindow;
 use gpui::{
     Context, Entity, FocusHandle, Pixels, Point, Subscription, WeakEntity, prelude::*,

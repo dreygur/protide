@@ -12,6 +12,21 @@ pub struct KeyValuePair {
     pub enabled: bool,
 }
 
+/// Identifies which request-panel editor a deferred content update targets.
+/// Used to apply `InputState::set_value` (which needs `&mut Window`) during render.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum PendingEditor {
+    Body,
+    PreScript,
+    PostScript,
+    Tests,
+    GraphqlQuery,
+    GraphqlVariables,
+    GrpcMessage,
+    TrpcParams,
+    SioPayload,
+}
+
 /// Form field type (text or file)
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub enum FormFieldType {
@@ -33,14 +48,10 @@ pub struct FormField {
 /// Target for text editing
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum EditTarget {
-    #[allow(dead_code)] // Used in match arms for completeness
-    Url,
     ParamKey(usize),
     ParamValue(usize),
     HeaderKey(usize),
     HeaderValue(usize),
-    #[allow(dead_code)]
-    Body,
     BearerToken,
     BasicUsername,
     BasicPassword,

@@ -294,7 +294,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                             .border_1()
                             .border_color(theme.colors.border)
                             .overflow_hidden()
-                            .child(self.sio_payload_editor.clone())
+                            .child(gpui_component::input::Input::new(&self.sio_payload_editor))
                     )
                     .child(
                         div()

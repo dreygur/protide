@@ -54,15 +54,6 @@ use crate::components::icons::{
     ICON_CLOSE, ICON_COPY, ICON_FOLDER, ICON_MAXIMIZE, ICON_MD, ICON_MENU, ICON_MINIMIZE,
     ICON_REFRESH, ICON_SETTINGS, ICON_SM, ICON_WINDOW_CLOSE, icon,
 };
-use crate::components::modal::{ModalKind, ModalState, render_modal_shell};
-
-/// Pending action for confirm modals
-#[derive(Clone, Debug, Default)]
-pub(super) enum ModalPending {
-    #[default]
-    None,
-    ExplorerDelete(PathBuf),
-}
 
 /// Main window containing the application layout
 pub struct MainWindow {
@@ -90,8 +81,8 @@ pub struct MainWindow {
     pub(super) drag_response: Option<(f32, f32)>,
     pub(super) drag_mock_server: Option<(f32, f32)>,
     pub(super) drag_codegen: Option<(f32, f32)>,
-    pub(super) modal: Option<ModalState>,
-    pub(super) modal_pending: ModalPending,
+    pub(super) pending_alert: Option<(String, String, bool)>,
+    pub(super) pending_delete: Option<PathBuf>,
     pub(super) show_help: bool,
     pub(super) show_about: bool,
     pub(super) focus: FocusHandle,
@@ -115,7 +106,7 @@ impl MainWindow {
     pub fn build(window: &mut Window, cx: &mut Context<Self>, sync_engine: Option<SyncEngine>) -> Self {
         let main_window_weak: WeakEntity<MainWindow> = cx.entity().downgrade();
         let explorer = cx.new(|cx| ExplorerPanel::new(cx, main_window_weak.clone()));
-        let runner_panel = cx.new(|cx| RunnerPanel::new(cx, main_window_weak.clone()));
+        let runner_panel = cx.new(RunnerPanel::new);
         let response_panel = cx.new(|cx| ResponsePanel::new(window, cx));
         let response_panel_clone = response_panel.clone();
         let request_panel = cx.new(|cx| RequestPanel::new(window, cx, response_panel_clone));
@@ -206,8 +197,8 @@ impl MainWindow {
             drag_response: None,
             drag_mock_server: None,
             drag_codegen: None,
-            modal: None,
-            modal_pending: ModalPending::None,
+            pending_alert: None,
+            pending_delete: None,
             show_help: false,
             show_about: false,
             focus: cx.focus_handle(),
@@ -292,52 +283,30 @@ impl MainWindow {
         cx.notify();
     }
 
-    pub fn show_modal(&mut self, state: ModalState, cx: &mut Context<Self>) {
-        self.modal = Some(state);
-        self.modal_pending = ModalPending::None;
+    pub fn show_modal(&mut self, title: impl Into<String>, message: impl Into<String>, cx: &mut Context<Self>) {
+        self.pending_alert = Some((title.into(), message.into(), false));
         cx.notify();
     }
 
     pub fn show_confirm_delete(
         &mut self,
-        state: ModalState,
+        title: impl Into<String>,
+        message: impl Into<String>,
         path: PathBuf,
         cx: &mut Context<Self>,
     ) {
-        self.modal = Some(state);
-        self.modal_pending = ModalPending::ExplorerDelete(path);
-        cx.notify();
-    }
-
-    pub(super) fn dismiss_modal(&mut self, cx: &mut Context<Self>) {
-        self.modal = None;
-        self.modal_pending = ModalPending::None;
+        self.pending_alert = Some((title.into(), message.into(), true));
+        self.pending_delete = Some(path);
         cx.notify();
     }
 
     pub(super) fn dismiss_overlay(&mut self, cx: &mut Context<Self>) {
-        if self.modal.is_some() {
-            self.modal = None;
-            self.modal_pending = ModalPending::None;
-        } else if self.show_help {
+        if self.show_help {
             self.show_help = false;
         } else if self.show_about {
             self.show_about = false;
         } else if self.presence.show_pairing {
             self.presence.show_pairing = false;
-        }
-        cx.notify();
-    }
-
-    pub(super) fn confirm_modal_action(&mut self, cx: &mut Context<Self>) {
-        let pending = std::mem::replace(&mut self.modal_pending, ModalPending::None);
-        self.modal = None;
-        match pending {
-            ModalPending::ExplorerDelete(path) => {
-                self.explorer
-                    .update(cx, |panel, cx| panel.execute_delete(path, cx));
-            }
-            ModalPending::None => {}
         }
         cx.notify();
     }

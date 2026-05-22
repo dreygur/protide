@@ -1,11 +1,10 @@
-use gpui::{ClipboardItem, Context};
+use gpui::{ClipboardItem, Context, Window};
 use super::*;
 use super::super::request_utils::base64_encode;
-use crate::components::code_editor::Language;
 
 impl<E: WebSocketExecutor> RequestPanel<E> {
     /// Generate code for current request using selected language
-    pub fn generate_code(&mut self, language: CodegenLanguage, cx: &mut Context<Self>) {
+    pub fn generate_code(&mut self, language: CodegenLanguage, window: &mut Window, cx: &mut Context<Self>) {
         let mut headers: Vec<(String, String)> = self
             .headers
             .iter()
@@ -28,7 +27,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             _ => {}
         }
 
-        let body = self.body_editor.read(cx).content().to_string();
+        let body = self.body_editor.read(cx).value().to_string();
         let body = if body.trim().is_empty() { None } else { Some(body) };
 
         let request = protide_core::codegen::CodegenRequest {
@@ -42,15 +41,15 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
         self.codegen_language = language;
         self.codegen_content = Some(code.clone());
         let editor_lang = match language {
-            CodegenLanguage::Curl       => Language::Shell,
-            CodegenLanguage::Python     => Language::Python,
-            CodegenLanguage::JavaScript => Language::JavaScript,
-            CodegenLanguage::Go         => Language::Go,
-            CodegenLanguage::Rust       => Language::Rust,
+            CodegenLanguage::Curl       => "sh",
+            CodegenLanguage::Python     => "python",
+            CodegenLanguage::JavaScript => "javascript",
+            CodegenLanguage::Go         => "go",
+            CodegenLanguage::Rust       => "rust",
         };
-        self.codegen_editor.update(cx, |editor, cx| {
-            editor.set_content(&code, cx);
-            editor.set_language(editor_lang, cx);
+        self.codegen_editor.update(cx, |s, cx| {
+            s.set_value(&code, window, cx);
+            s.set_highlighter(editor_lang, cx);
         });
         cx.notify();
     }

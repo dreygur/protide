@@ -76,8 +76,8 @@ impl ResponsePanel {
                             .text_color(theme.colors.bg_primary)
                             .cursor_pointer()
                             .hover(|s| s.bg(theme.colors.accent.opacity(0.85)))
-                            .on_click(cx.listener(move |this, _, _, cx| {
-                                this.run_extraction(cx);
+                            .on_click(cx.listener(move |this, _, window, cx| {
+                                this.run_extraction(window, cx);
                             }))
                             .child("Extract")
                     )
@@ -116,7 +116,7 @@ impl ResponsePanel {
                                         this.jsonpath_input.update(cx, |input, cx| {
                                             input.set_value(pattern.clone(), window, cx);
                                         });
-                                        this.run_extraction(cx);
+                                        this.run_extraction(window, cx);
                                     }))
                                     .child(label)
                             })
@@ -194,7 +194,7 @@ impl ResponsePanel {
                                             .id("extract-value")
                                             .flex_1()
                                             .overflow_hidden()
-                                            .child(self.extraction_editor.clone())
+                                            .child(Input::new(&self.extraction_editor).disabled(true))
                                     )
                                     .into_any_element()
                             }

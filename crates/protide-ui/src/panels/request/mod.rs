@@ -54,7 +54,7 @@ use gpui::{
     KeyDownEvent, MouseButton, MouseMoveEvent, ParentElement, Render,
     ScrollHandle, Styled, Subscription, Window,
 };
-use crate::components::code_editor::CodeEditor;
+use gpui_component::input::InputState;
 use protide_core::execution::{ExecutionBody, ExecutionMode, ExecutionRequest, FormPart, FormPartValue};
 use protide_core::execution::ws::{
     TungsteniteExecutor, WebSocketExecutor, WsCommand, WsConnectionParams, WsDirection, WsEvent,
@@ -67,7 +67,7 @@ use super::console::{ConsoleEntry, ConsoleEntrySource, ConsolePanel, LogLevel};
 use super::explorer::ExplorerPanel;
 use super::request_types::{
     ApiKeyLocation, AuthType, BodyType, EditTarget, FormField, FormFieldType,
-    GrpcMethodInfo, GrpcStreamingType, HttpMethod, KeyValuePair, KvList, RequestMode,
+    GrpcMethodInfo, GrpcStreamingType, HttpMethod, KeyValuePair, KvList, PendingEditor, RequestMode,
     SioConnectionState, WsConnectionState,
 };
 use base64::Engine;
@@ -95,11 +95,6 @@ pub enum GraphqlSchemaState {
 
 fn char_to_byte_offset(text: &str, char_idx: usize) -> usize {
     text.char_indices().nth(char_idx).map(|(b, _)| b).unwrap_or(text.len())
-}
-
-#[allow(dead_code)]
-fn byte_to_char_offset(text: &str, byte_offset: usize) -> usize {
-    text[..byte_offset.min(text.len())].chars().count()
 }
 
 /// Request editor panel.
@@ -145,33 +140,33 @@ pub struct RequestPanel<E: WebSocketExecutor = TungsteniteExecutor> {
     pub(super) edit_focus: FocusHandle,
     pub(super) body_focus: FocusHandle,
     pub(super) explorer_panel: Option<Entity<ExplorerPanel>>,
-    pub(super) body_editor: Entity<CodeEditor>,
+    pub(super) body_editor: Entity<InputState>,
     pub(super) pre_script: String,
     pub(super) post_script: String,
     pub(super) tests: String,
-    pub(super) pre_script_editor: Entity<CodeEditor>,
-    pub(super) post_script_editor: Entity<CodeEditor>,
-    pub(super) tests_editor: Entity<CodeEditor>,
+    pub(super) pre_script_editor: Entity<InputState>,
+    pub(super) post_script_editor: Entity<InputState>,
+    pub(super) tests_editor: Entity<InputState>,
     pub(super) variable_extractions: Vec<VariableExtraction>,
     pub codegen_content: Option<String>,
     pub codegen_language: CodegenLanguage,
-    pub codegen_editor: Entity<CodeEditor>,
+    pub codegen_editor: Entity<InputState>,
     pub import_modal_open: bool,
     pub(super) import_text: String,
     pub(super) import_error: Option<String>,
-    pub(super) import_editor: Entity<CodeEditor>,
+    pub(super) import_editor: Entity<InputState>,
     pub(super) request_mode: RequestMode,
-    pub(super) graphql_query_editor: Entity<CodeEditor>,
-    pub(super) graphql_variables_editor: Entity<CodeEditor>,
+    pub(super) graphql_query_editor: Entity<InputState>,
+    pub(super) graphql_variables_editor: Entity<InputState>,
     pub(super) graphql_operation_name: String,
     pub(super) ws_state: WsConnectionState,
     pub(super) ws_messages: WsRingBuffer,
-    pub(super) ws_message_editor: Entity<CodeEditor>,
+    pub(super) ws_message_editor: Entity<InputState>,
     ws_send_tx: Option<std::sync::mpsc::Sender<WsCommand>>,
     pub(super) ws_compose_h: f32,
     pub(super) ws_compose_drag: Option<(f32, f32)>,
     pub(super) ws_scroll: ScrollHandle,
-    pub(super) grpc_message_editor: Entity<CodeEditor>,
+    pub(super) grpc_message_editor: Entity<InputState>,
     pub(super) grpc_metadata: Vec<KeyValuePair>,
     pub(super) grpc_proto_path: Option<std::path::PathBuf>,
     pub(super) grpc_proto_content: String,
@@ -180,14 +175,14 @@ pub struct RequestPanel<E: WebSocketExecutor = TungsteniteExecutor> {
     pub(super) grpc_methods: Vec<GrpcMethodInfo>,
     pub(super) grpc_method: Option<GrpcMethodInfo>,
     pub(super) trpc_procedure: String,
-    pub(super) trpc_params_editor: Entity<CodeEditor>,
+    pub(super) trpc_params_editor: Entity<InputState>,
     pub(super) sio_state: SioConnectionState,
     pub(super) sio_messages: SioRingBuffer,
     pub(super) sio_namespace: String,
     pub(super) sio_event_name: String,
     pub(super) sio_want_ack: bool,
     pub(super) sio_next_ack_id: u32,
-    pub(super) sio_payload_editor: Entity<CodeEditor>,
+    pub(super) sio_payload_editor: Entity<InputState>,
     sio_send_tx: Option<std::sync::mpsc::Sender<SioCommand>>,
     pub(super) sio_room_name: String,
     pub(super) sio_active_rooms: Vec<String>,
@@ -216,12 +211,16 @@ pub struct RequestPanel<E: WebSocketExecutor = TungsteniteExecutor> {
     pub(super) kv_row_drag_over: Option<usize>,
     pub(super) form_row_drag: Option<(usize, f32)>,
     pub(super) form_row_drag_over: Option<usize>,
+    /// Editor content updates deferred until render() (set_value needs &mut Window).
+    /// Each entry is (target editor, new content); applied and cleared on next render.
+    pub(super) editor_pending: Vec<(PendingEditor, String)>,
     _executor: PhantomData<E>,
 }
 
 impl<E: WebSocketExecutor> Render for RequestPanel<E> {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.skip_blur = false;
+        self.apply_pending_editors(window, cx);
         div()
             .id("request-panel")
             .size_full().flex().flex_col().relative()

@@ -1,7 +1,5 @@
 //! Environment model for variable substitution
 
-#![allow(dead_code)]
-
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;

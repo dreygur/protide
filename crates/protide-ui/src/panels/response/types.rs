@@ -12,12 +12,10 @@ pub struct ResponseData {
 }
 
 impl ResponseData {
-    #[allow(dead_code)]
     pub fn is_success(&self) -> bool {
         (200..300).contains(&self.status)
     }
 
-    #[allow(dead_code)]
     pub fn is_error(&self) -> bool {
         self.status >= 400
     }
@@ -87,11 +85,9 @@ pub(crate) struct HdrSel {
 
 /// Copy feedback type
 #[derive(Clone, Copy, PartialEq, Eq)]
-#[allow(dead_code)]
 pub(crate) enum CopyFeedback {
     Body,
     Headers,
-    Cookies,
     HdrVal,
 }
 

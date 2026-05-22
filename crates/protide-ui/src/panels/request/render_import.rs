@@ -113,8 +113,8 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                                             .items_center()
                                             .gap(px(5.0))
                                             .hover(|s| s.bg(theme.colors.bg_tertiary))
-                                            .on_click(cx.listener(|this, _, _, cx| {
-                                                this.browse_import_file(cx);
+                                            .on_click(cx.listener(|this, _, window, cx| {
+                                                this.browse_import_file(window, cx);
                                             }))
                                             .child(icon(ICON_FOLDER, ICON_MD, theme.colors.text_secondary))
                                             .child("Browse...")
@@ -128,7 +128,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                                     .border_1()
                                     .border_color(theme.colors.border)
                                     .overflow_hidden()
-                                    .child(self.import_editor.clone())
+                                    .child(gpui_component::input::Input::new(&self.import_editor))
                             )
                             .when(import_error.is_some(), |el| {
                                 el.child(
@@ -166,8 +166,8 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                                     .border_1()
                                     .border_color(theme.colors.border)
                                     .hover(|s| s.bg(theme.colors.bg_tertiary))
-                                    .on_click(cx.listener(|this, _, _, cx| {
-                                        this.set_import_text(String::new(), cx);
+                                    .on_click(cx.listener(|this, _, window, cx| {
+                                        this.set_import_text(String::new(), window, cx);
                                     }))
                                     .child("Clear")
                             )

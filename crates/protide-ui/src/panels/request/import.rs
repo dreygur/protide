@@ -1,12 +1,12 @@
-use gpui::Context;
+use gpui::{Context, Window};
 use super::*;
 
 impl<E: WebSocketExecutor> RequestPanel<E> {
-    pub fn open_import_modal(&mut self, cx: &mut Context<Self>) {
+    pub fn open_import_modal(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.import_modal_open = true;
         self.import_text.clear();
         self.import_error = None;
-        self.import_editor.update(cx, |ed, cx| ed.set_content("", cx));
+        self.import_editor.update(cx, |s, cx| s.set_value("", window, cx));
         cx.notify();
     }
 
@@ -17,14 +17,14 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
         cx.notify();
     }
 
-    pub(super) fn set_import_text(&mut self, text: String, cx: &mut Context<Self>) {
-        self.import_editor.update(cx, |ed, cx| ed.set_content(&text, cx));
+    pub(super) fn set_import_text(&mut self, text: String, window: &mut Window, cx: &mut Context<Self>) {
+        self.import_editor.update(cx, |s, cx| s.set_value(&text, window, cx));
         self.import_text = text;
         self.import_error = None;
         cx.notify();
     }
 
-    pub(super) fn browse_import_file(&mut self, cx: &mut Context<Self>) {
+    pub(super) fn browse_import_file(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let start_dir = last_paths::last_dir("import_collection").or_else(dirs::home_dir);
         let mut dialog = rfd::FileDialog::new()
             .set_title("Import Collection")
@@ -42,7 +42,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
         if let Some(path) = dialog.pick_file() {
             last_paths::save_last_dir("import_collection", &path);
             match std::fs::read_to_string(&path) {
-                Ok(content) => { self.set_import_text(content, cx); }
+                Ok(content) => { self.set_import_text(content, window, cx); }
                 Err(e) => { self.import_error = Some(format!("Failed to read file: {}", e)); }
             }
         }
@@ -50,7 +50,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
     }
 
     pub(super) fn execute_import(&mut self, cx: &mut Context<Self>) {
-        let editor_content = self.import_editor.read(cx).content().to_string();
+        let editor_content = self.import_editor.read(cx).value().to_string();
         if !editor_content.is_empty() {
             self.import_text = editor_content;
         }
@@ -85,9 +85,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
 
                     if let Some(body) = request.body {
                         self.body = body.clone();
-                        self.body_editor.update(cx, |editor, cx| {
-                            editor.set_content(&body, cx);
-                        });
+                        self.queue_editor(PendingEditor::Body, body);
                         let is_json = self.headers.iter().any(|h| {
                             h.key.eq_ignore_ascii_case("content-type") && h.value.contains("json")
                         });

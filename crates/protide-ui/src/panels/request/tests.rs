@@ -235,7 +235,7 @@ assert_ne!(ApiKeyLocation::Header, ApiKeyLocation::QueryParam);
 
 #[test]
 fn test_edit_target_equality() {
-assert_eq!(EditTarget::Body, EditTarget::Body);
+assert_eq!(EditTarget::BearerToken, EditTarget::BearerToken);
 assert_eq!(EditTarget::HeaderKey(0), EditTarget::HeaderKey(0));
 assert_ne!(EditTarget::HeaderKey(0), EditTarget::HeaderKey(1));
 assert_ne!(EditTarget::HeaderKey(0), EditTarget::HeaderValue(0));

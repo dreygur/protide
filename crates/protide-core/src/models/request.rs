@@ -1,7 +1,5 @@
 //! Request and response models
 
-#![allow(dead_code)]
-
 use http_parser::{KeyValue, Protocol, Request as ParsedRequest};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;

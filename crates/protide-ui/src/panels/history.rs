@@ -1,7 +1,5 @@
 //! Request history storage and management
 
-#![allow(dead_code)]
-
 use std::time::{Duration, Instant};
 
 /// Maximum number of history entries to keep
@@ -107,12 +105,6 @@ impl RequestHistory {
     /// Get entry by id
     pub fn get(&self, id: u64) -> Option<&HistoryEntry> {
         self.entries.iter().find(|e| e.id == id)
-    }
-
-    /// Clear all history
-    #[allow(dead_code)]
-    pub fn clear(&mut self) {
-        self.entries.clear();
     }
 }
 
@@ -232,17 +224,6 @@ mod tests {
         let entry = history.get(id).unwrap();
         assert_eq!(entry.status, Some(200));
         assert_eq!(entry.response_time, Some(Duration::from_millis(150)));
-    }
-
-    #[test]
-    fn test_request_history_clear() {
-        let mut history = RequestHistory::new();
-        history.add("GET".to_string(), "https://example.com/1".to_string(), vec![], None);
-        history.add("POST".to_string(), "https://example.com/2".to_string(), vec![], None);
-
-        assert_eq!(history.entries().len(), 2);
-        history.clear();
-        assert!(history.entries().is_empty());
     }
 
     #[test]

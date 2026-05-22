@@ -31,7 +31,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                 .flex_1()
                 .w_full()
                 .overflow_hidden()
-                .child(self.body_editor.clone())
+                .child(gpui_component::input::Input::new(&self.body_editor))
                 .into_any_element()
         };
 

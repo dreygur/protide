@@ -64,11 +64,11 @@ impl ResponsePanel {
                 .into_any_element();
         }
 
-        let line_count = self.body_viewer.read(cx).content().lines().count();
+        let line_count = self.body_viewer.read(cx).value().lines().count();
         let search_active = self.search_active;
         let search_query = self.search_input.read(cx).value().to_string();
         let match_count = if search_active && !search_query.is_empty() {
-            let body = self.body_viewer.read(cx).content().to_string();
+            let body = self.body_viewer.read(cx).value().to_string();
             let q = search_query.to_lowercase();
             body.to_lowercase().matches(q.as_str()).count()
         } else {
@@ -156,7 +156,7 @@ impl ResponsePanel {
                             .bg(theme.colors.bg_primary)
                             .hover(|s| s.bg(theme.colors.bg_tertiary).border_color(theme.colors.text_muted))
                             .on_click(cx.listener(move |this, _, _, cx| {
-                                let content = this.body_viewer.read(cx).content().to_string();
+                                let content = this.body_viewer.read(cx).value().to_string();
                                 cx.write_to_clipboard(gpui::ClipboardItem::new_string(content));
                                 this.show_copy_feedback(CopyFeedback::Body, cx);
                             }))
@@ -221,7 +221,7 @@ impl ResponsePanel {
                         )
                 )
             })
-            // Body content: JSON tree (uniform_list) if parseable, else CodeEditor
+            // Body content: JSON tree (uniform_list) if parseable, else raw editor
             .child(
                 if self.json_value.is_some() {
                     self.render_json_tree(cx)
@@ -230,7 +230,7 @@ impl ResponsePanel {
                         .flex_1()
                         .w_full()
                         .overflow_hidden()
-                        .child(self.body_viewer.clone())
+                        .child(Input::new(&self.body_viewer).disabled(true))
                         .into_any_element()
                 }
             )

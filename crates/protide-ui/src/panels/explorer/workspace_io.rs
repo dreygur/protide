@@ -57,20 +57,17 @@ impl ExplorerPanel {
                         }
                         info!("Imported {} request(s)", created);
                         let mut msg = format!("Imported {} request(s).", created);
-                        let modal_state = if !result.warnings.is_empty() {
+                        if !result.warnings.is_empty() {
                             msg.push_str(&format!("\n\n{} warning(s):\n{}", result.warnings.len(), result.warnings.join("\n")));
-                            ModalState::warning("Import Complete", msg)
-                        } else {
-                            ModalState::info("Import Complete", msg)
-                        };
+                        }
                         if let Some(win) = self.main_window.upgrade() {
-                            win.update(cx, |win, cx| win.show_modal(modal_state, cx));
+                            win.update(cx, |win, cx| win.show_modal("Import Complete", &msg, cx));
                         }
                     }
                     Err(e) => {
                         error!("Import failed: {}", e);
                         if let Some(win) = self.main_window.upgrade() {
-                            win.update(cx, |win, cx| win.show_modal(ModalState::error("Import Failed", e), cx));
+                            win.update(cx, |win, cx| win.show_modal("Import Failed", e, cx));
                         }
                     }
                 }
@@ -99,18 +96,18 @@ impl ExplorerPanel {
         self.context_menu = None;
         cx.notify();
         if let Some(save_path) = dialog.save_file() {
-            let modal_state = match protide_core::export::export_openapi(&path) {
+            let (title, msg) = match protide_core::export::export_openapi(&path) {
                 Ok(content) => match std::fs::write(&save_path, &content) {
                     Ok(_) => {
                         info!("Exported OpenAPI to: {}", save_path.display());
-                        ModalState::info("Export Complete", format!("OpenAPI spec saved to {}", save_path.display()))
+                        ("Export Complete", format!("OpenAPI spec saved to {}", save_path.display()))
                     }
-                    Err(e) => ModalState::error("Export Failed", format!("Failed to write file: {}", e)),
+                    Err(e) => ("Export Failed", format!("Failed to write file: {}", e)),
                 },
-                Err(e) => ModalState::error("Export Failed", e),
+                Err(e) => ("Export Failed", e),
             };
             if let Some(win) = self.main_window.upgrade() {
-                win.update(cx, |win, cx| win.show_modal(modal_state, cx));
+                win.update(cx, |win, cx| win.show_modal(title, msg, cx));
             }
         }
     }
@@ -125,18 +122,18 @@ impl ExplorerPanel {
         if let Some(save_path) = dialog.save_file() {
             let is_html = save_path.extension().and_then(|e| e.to_str()) == Some("html");
             let format = if is_html { protide_core::export::ExportFormat::Html } else { protide_core::export::ExportFormat::Markdown };
-            let modal_state = match protide_core::export::export_collection(workspace, format) {
+            let (title, msg) = match protide_core::export::export_collection(workspace, format) {
                 Ok(content) => match std::fs::write(&save_path, &content) {
                     Ok(_) => {
                         info!("Exported docs to: {}", save_path.display());
-                        ModalState::info("Export Complete", format!("Documentation saved to {}", save_path.display()))
+                        ("Export Complete", format!("Documentation saved to {}", save_path.display()))
                     }
-                    Err(e) => ModalState::error("Export Failed", format!("Failed to write file: {}", e)),
+                    Err(e) => ("Export Failed", format!("Failed to write file: {}", e)),
                 },
-                Err(e) => ModalState::error("Export Failed", e),
+                Err(e) => ("Export Failed", e),
             };
             if let Some(win) = self.main_window.upgrade() {
-                win.update(cx, |win, cx| win.show_modal(modal_state, cx));
+                win.update(cx, |win, cx| win.show_modal(title, msg, cx));
             }
         }
     }

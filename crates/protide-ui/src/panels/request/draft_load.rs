@@ -80,12 +80,11 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                 if let Some(body) = &req.body {
                     if let Ok(json) = serde_json::from_str::<serde_json::Value>(body) {
                         if let Some(query) = json.get("query").and_then(|q| q.as_str()) {
-                            let q = query.to_string();
-                            self.graphql_query_editor.update(cx, |ed, cx| ed.set_content(&q, cx));
+                            self.queue_editor(PendingEditor::GraphqlQuery, query.to_string());
                         }
                         if let Some(vars) = json.get("variables").filter(|v| !v.is_null()) {
                             let v = serde_json::to_string_pretty(vars).unwrap_or_default();
-                            self.graphql_variables_editor.update(cx, |ed, cx| ed.set_content(&v, cx));
+                            self.queue_editor(PendingEditor::GraphqlVariables, v);
                         }
                         if let Some(op) = json.get("operationName").and_then(|o| o.as_str()) {
                             self.graphql_operation_name = op.to_string();
@@ -108,8 +107,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                 let len = self.url.chars().count();
                 self.url_selection = len..len;
                 if let Some(body) = &req.body {
-                    let b = body.clone();
-                    self.grpc_message_editor.update(cx, |ed, cx| ed.set_content(&b, cx));
+                    self.queue_editor(PendingEditor::GrpcMessage, body.clone());
                 }
             }
             Protocol::Trpc => {
@@ -124,8 +122,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                 let len = self.url.chars().count();
                 self.url_selection = len..len;
                 if let Some(body) = &req.body {
-                    let b = body.clone();
-                    self.trpc_params_editor.update(cx, |ed, cx| ed.set_content(&b, cx));
+                    self.queue_editor(PendingEditor::TrpcParams, body.clone());
                 }
             }
             Protocol::SocketIO => {
@@ -138,9 +135,9 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
         let pre = req.scripts.pre_script.as_deref().unwrap_or("");
         let post = req.scripts.post_script.as_deref().unwrap_or("");
         let tests = req.scripts.tests.as_deref().unwrap_or("");
-        self.pre_script_editor.update(cx, |ed, cx| ed.set_content(pre, cx));
-        self.post_script_editor.update(cx, |ed, cx| ed.set_content(post, cx));
-        self.tests_editor.update(cx, |ed, cx| ed.set_content(tests, cx));
+        self.queue_editor(PendingEditor::PreScript, pre.to_string());
+        self.queue_editor(PendingEditor::PostScript, post.to_string());
+        self.queue_editor(PendingEditor::Tests, tests.to_string());
         self.pre_script = pre.to_string();
         self.post_script = post.to_string();
         self.tests = tests.to_string();

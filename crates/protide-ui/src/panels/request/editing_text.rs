@@ -5,14 +5,12 @@ use crate::components::{find_word_start, find_word_end};
 impl<E: WebSocketExecutor> RequestPanel<E> {
     pub(super) fn get_edit_text(&self, target: EditTarget) -> &str {
         match target {
-            EditTarget::Url => &self.url,
             EditTarget::HeaderKey(i) => self.headers.get(i).map(|h| h.key.as_str()).unwrap_or(""),
             EditTarget::HeaderValue(i) => self.headers.get(i).map(|h| h.value.as_str()).unwrap_or(""),
             EditTarget::ParamKey(i) => self.params.get(i).map(|p| p.key.as_str()).unwrap_or(""),
             EditTarget::ParamValue(i) => self.params.get(i).map(|p| p.value.as_str()).unwrap_or(""),
             EditTarget::FormKey(i) => self.form_data.get(i).map(|f| f.key.as_str()).unwrap_or(""),
             EditTarget::FormValue(i) => self.form_data.get(i).map(|f| f.value.as_str()).unwrap_or(""),
-            EditTarget::Body => &self.body,
             EditTarget::BearerToken => &self.bearer_token,
             EditTarget::BasicUsername => &self.basic_username,
             EditTarget::BasicPassword => &self.basic_password,
@@ -29,14 +27,12 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
 
     pub(super) fn get_edit_text_mut(&mut self, target: EditTarget) -> Option<&mut String> {
         match target {
-            EditTarget::Url => Some(&mut self.url),
             EditTarget::HeaderKey(i) => self.headers.get_mut(i).map(|h| &mut h.key),
             EditTarget::HeaderValue(i) => self.headers.get_mut(i).map(|h| &mut h.value),
             EditTarget::ParamKey(i) => self.params.get_mut(i).map(|p| &mut p.key),
             EditTarget::ParamValue(i) => self.params.get_mut(i).map(|p| &mut p.value),
             EditTarget::FormKey(i) => self.form_data.get_mut(i).map(|f| &mut f.key),
             EditTarget::FormValue(i) => self.form_data.get_mut(i).map(|f| &mut f.value),
-            EditTarget::Body => Some(&mut self.body),
             EditTarget::BearerToken => Some(&mut self.bearer_token),
             EditTarget::BasicUsername => Some(&mut self.basic_username),
             EditTarget::BasicPassword => Some(&mut self.basic_password),
@@ -56,14 +52,10 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
         self.active_edit = Some(target);
         self.edit_selection = text_len..text_len;
         self.edit_is_selecting = false;
-        if matches!(target, EditTarget::Body) {
-            self.body_focus.focus(window, cx);
-        } else {
-            self.edit_focus.focus(window, cx);
-            self._edit_blur_sub = Some(cx.on_blur(&self.edit_focus, window, |this, _, cx| {
-                this.stop_editing(cx);
-            }));
-        }
+        self.edit_focus.focus(window, cx);
+        self._edit_blur_sub = Some(cx.on_blur(&self.edit_focus, window, |this, _, cx| {
+            this.stop_editing(cx);
+        }));
         cx.notify();
     }
 
@@ -216,7 +208,6 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
     pub(super) fn sync_after_edit(&mut self, target: EditTarget, cx: &mut Context<Self>) {
         match target {
             EditTarget::ParamKey(_) | EditTarget::ParamValue(_) => self.sync_url_from_params(cx),
-            EditTarget::Url => self.sync_params_from_url(cx),
             _ => {}
         }
     }

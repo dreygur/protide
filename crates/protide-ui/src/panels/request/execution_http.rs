@@ -9,13 +9,13 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
         self.loading = true;
         cx.notify();
 
-        let body_content = self.body_editor.read(cx).content().to_string();
+        let body_content = self.body_editor.read(cx).value().to_string();
         let is_graphql_mode = self.request_mode == RequestMode::GraphQL;
-        let graphql_query = if is_graphql_mode { self.graphql_query_editor.read(cx).content().to_string() } else { String::new() };
-        let graphql_variables = if is_graphql_mode { self.graphql_variables_editor.read(cx).content().to_string() } else { String::new() };
-        let pre_script = self.pre_script_editor.read(cx).content().to_string();
-        let post_script = self.post_script_editor.read(cx).content().to_string();
-        let tests_script = self.tests_editor.read(cx).content().to_string();
+        let graphql_query = if is_graphql_mode { self.graphql_query_editor.read(cx).value().to_string() } else { String::new() };
+        let graphql_variables = if is_graphql_mode { self.graphql_variables_editor.read(cx).value().to_string() } else { String::new() };
+        let pre_script = self.pre_script_editor.read(cx).value().to_string();
+        let post_script = self.post_script_editor.read(cx).value().to_string();
+        let tests_script = self.tests_editor.read(cx).value().to_string();
 
         self.response_panel.update(cx, |panel, cx| panel.set_loading(cx));
 

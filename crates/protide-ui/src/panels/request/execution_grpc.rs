@@ -102,7 +102,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
         self.loading = true;
         cx.notify();
 
-        let message = self.grpc_message_editor.read(cx).content().to_string();
+        let message = self.grpc_message_editor.read(cx).value().to_string();
         let url = self.url.clone();
         let method = method.clone();
         let streaming_type = method.streaming_type;

@@ -7,7 +7,6 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
         let key = event.keystroke.key.as_str();
         let ctrl = event.keystroke.modifiers.control;
         let shift = event.keystroke.modifiers.shift;
-        let is_body = matches!(target, EditTarget::Body);
 
         if ctrl {
             match key {
@@ -28,8 +27,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                 "v" => {
                     if let Some(item) = cx.read_from_clipboard() {
                         if let Some(text) = item.text() {
-                            let ins = if is_body { text.to_string() } else { text.replace('\n', "") };
-                            self.edit_insert_text(&ins, cx);
+                            self.edit_insert_text(&text.replace('\n', ""), cx);
                         }
                     }
                     return;
@@ -71,18 +69,6 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                 if shift { self.edit_selection.end = n; cx.notify(); }
                 else { self.edit_move_to(n, cx); }
             }
-            "up" => {
-                if is_body {
-                    let p = self.body_cursor_up();
-                    if shift { self.edit_selection.end = p; cx.notify(); } else { self.edit_move_to(p, cx); }
-                }
-            }
-            "down" => {
-                if is_body {
-                    let p = self.body_cursor_down();
-                    if shift { self.edit_selection.end = p; cx.notify(); } else { self.edit_move_to(p, cx); }
-                }
-            }
             "backspace" => {
                 if self.edit_has_selection() {
                     self.edit_delete_selection(cx);
@@ -118,14 +104,8 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                 }
             }
             "escape" => { self.stop_editing(cx); }
-            "enter" => {
-                if is_body { self.edit_insert_text("\n", cx); }
-                else { self.move_to_next_field(cx); }
-            }
-            "tab" => {
-                if is_body { self.edit_insert_text("  ", cx); }
-                else { self.move_to_next_field(cx); }
-            }
+            "enter" => { self.move_to_next_field(cx); }
+            "tab" => { self.move_to_next_field(cx); }
             _ => {
                 if let Some(ch) = &event.keystroke.key_char {
                     self.edit_insert_text(ch, cx);
@@ -159,33 +139,5 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
         } else {
             self.stop_editing(cx);
         }
-    }
-
-    pub(super) fn body_cursor_up(&self) -> usize {
-        let text = &self.body;
-        let cursor_char = self.edit_cursor();
-        if text.is_empty() || cursor_char == 0 { return 0; }
-        let cursor_byte = char_to_byte_offset(text, cursor_char);
-        let line_start_byte = text[..cursor_byte].rfind('\n').map(|i| i + 1).unwrap_or(0);
-        if line_start_byte == 0 { return 0; }
-        let col = text[line_start_byte..cursor_byte].chars().count();
-        let prev_end_byte = line_start_byte - 1;
-        let prev_start_byte = text[..prev_end_byte].rfind('\n').map(|i| i + 1).unwrap_or(0);
-        let prev_line_len = text[prev_start_byte..prev_end_byte].chars().count();
-        text[..prev_start_byte].chars().count() + col.min(prev_line_len)
-    }
-
-    pub(super) fn body_cursor_down(&self) -> usize {
-        let text = &self.body;
-        let cursor_char = self.edit_cursor();
-        if text.is_empty() { return 0; }
-        let cursor_byte = char_to_byte_offset(text, cursor_char);
-        let line_start_byte = text[..cursor_byte].rfind('\n').map(|i| i + 1).unwrap_or(0);
-        let col = text[line_start_byte..cursor_byte].chars().count();
-        let Some(nl) = text[cursor_byte..].find('\n') else { return text.chars().count(); };
-        let next_start_byte = cursor_byte + nl + 1;
-        let next_end_byte = text[next_start_byte..].find('\n').map(|i| next_start_byte + i).unwrap_or(text.len());
-        let next_line_len = text[next_start_byte..next_end_byte].chars().count();
-        text[..next_start_byte].chars().count() + col.min(next_line_len)
     }
 }

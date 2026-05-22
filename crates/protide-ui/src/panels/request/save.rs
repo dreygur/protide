@@ -105,7 +105,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             }
         }
 
-        let body_content = self.body_editor.read(cx).content().to_string();
+        let body_content = self.body_editor.read(cx).value().to_string();
         if !body_content.is_empty() {
             lines.push(String::new());
             lines.push(body_content);

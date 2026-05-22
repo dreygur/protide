@@ -131,7 +131,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                             .border_1()
                             .border_color(theme.colors.border)
                             .overflow_hidden()
-                            .child(self.grpc_message_editor.clone())
+                            .child(gpui_component::input::Input::new(&self.grpc_message_editor))
                     )
             )
             .when(self.grpc_proto_path.is_none(), |el| {

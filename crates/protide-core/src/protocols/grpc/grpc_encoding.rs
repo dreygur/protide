@@ -29,34 +29,6 @@ pub(super) fn grpc_decode_message(data: &[u8]) -> Result<Vec<u8>, String> {
     Ok(data[5..5 + msg_len].to_vec())
 }
 
-/// Streaming response chunk
-#[allow(dead_code)]
-#[derive(Debug, Clone)]
-pub struct StreamingChunk {
-    pub data: String,
-    pub is_final: bool,
-    pub is_error: bool,
-}
-
-#[allow(dead_code)]
-impl StreamingChunk {
-    pub(super) fn error(msg: String) -> Self {
-        Self {
-            data: msg,
-            is_final: true,
-            is_error: true,
-        }
-    }
-
-    pub(super) fn data(data: String, is_final: bool) -> Self {
-        Self {
-            data,
-            is_final,
-            is_error: false,
-        }
-    }
-}
-
 /// Resolve a `MethodDescriptor` from `pool` given `"[pkg.]Service/Method"`.
 pub(super) fn resolve_method(
     pool: &DescriptorPool,

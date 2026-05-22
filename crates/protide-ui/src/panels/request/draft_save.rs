@@ -23,7 +23,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                 .filter(|h| !h.key.is_empty())
                 .map(|h| HeaderEntry { key: h.key.clone(), value: h.value.clone(), enabled: h.enabled })
                 .collect(),
-            body: self.body_editor.read(cx).content().to_string(),
+            body: self.body_editor.read(cx).value().to_string(),
             body_type: match self.body_type {
                 BodyType::Json   => "json",
                 BodyType::Xml    => "xml",
@@ -46,18 +46,18 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                 Header     => "header",
                 QueryParam => "query",
             }.to_string(),
-            graphql_query:          self.graphql_query_editor.read(cx).content().to_string(),
-            graphql_variables:      self.graphql_variables_editor.read(cx).content().to_string(),
+            graphql_query:          self.graphql_query_editor.read(cx).value().to_string(),
+            graphql_variables:      self.graphql_variables_editor.read(cx).value().to_string(),
             graphql_operation_name: self.graphql_operation_name.clone(),
-            grpc_message:    self.grpc_message_editor.read(cx).content().to_string(),
+            grpc_message:    self.grpc_message_editor.read(cx).value().to_string(),
             grpc_proto_path: self.grpc_proto_path.clone(),
             grpc_service:    self.grpc_service.clone(),
             grpc_method_name: self.grpc_method.as_ref().map(|m| m.full_name.clone()),
             trpc_procedure:  self.trpc_procedure.clone(),
-            trpc_params:     self.trpc_params_editor.read(cx).content().to_string(),
+            trpc_params:     self.trpc_params_editor.read(cx).value().to_string(),
             sio_namespace:   self.sio_namespace.clone(),
             sio_event_name:  self.sio_event_name.clone(),
-            sio_payload:     self.sio_payload_editor.read(cx).content().to_string(),
+            sio_payload:     self.sio_payload_editor.read(cx).value().to_string(),
         }
     }
 
@@ -100,8 +100,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             _        => BodyType::Json,
         };
         if !draft.body.is_empty() {
-            let b = draft.body.clone();
-            self.body_editor.update(cx, |ed, cx| ed.set_content(&b, cx));
+            self.queue_editor(PendingEditor::Body, draft.body.clone());
         }
 
         // Auth
@@ -123,19 +122,16 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
 
         // GraphQL
         if !draft.graphql_query.is_empty() {
-            let q = draft.graphql_query.clone();
-            self.graphql_query_editor.update(cx, |ed, cx| ed.set_content(&q, cx));
+            self.queue_editor(PendingEditor::GraphqlQuery, draft.graphql_query.clone());
         }
         if !draft.graphql_variables.is_empty() {
-            let v = draft.graphql_variables.clone();
-            self.graphql_variables_editor.update(cx, |ed, cx| ed.set_content(&v, cx));
+            self.queue_editor(PendingEditor::GraphqlVariables, draft.graphql_variables.clone());
         }
         self.graphql_operation_name = draft.graphql_operation_name.clone();
 
         // gRPC
         if !draft.grpc_message.is_empty() {
-            let m = draft.grpc_message.clone();
-            self.grpc_message_editor.update(cx, |ed, cx| ed.set_content(&m, cx));
+            self.queue_editor(PendingEditor::GrpcMessage, draft.grpc_message.clone());
         }
         if let Some(ref proto_path) = draft.grpc_proto_path {
             self.load_grpc_proto_from_path(proto_path.clone(), cx);
@@ -155,16 +151,14 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
         // tRPC
         self.trpc_procedure = draft.trpc_procedure.clone();
         if !draft.trpc_params.is_empty() {
-            let p = draft.trpc_params.clone();
-            self.trpc_params_editor.update(cx, |ed, cx| ed.set_content(&p, cx));
+            self.queue_editor(PendingEditor::TrpcParams, draft.trpc_params.clone());
         }
 
         // Socket.IO
         self.sio_namespace  = draft.sio_namespace.clone();
         self.sio_event_name = draft.sio_event_name.clone();
         if !draft.sio_payload.is_empty() {
-            let p = draft.sio_payload.clone();
-            self.sio_payload_editor.update(cx, |ed, cx| ed.set_content(&p, cx));
+            self.queue_editor(PendingEditor::SioPayload, draft.sio_payload.clone());
         }
 
         self.sync_params_from_url(cx);

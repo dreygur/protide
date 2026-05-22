@@ -31,7 +31,6 @@ use log::{debug, warn};
 use protide_core::chaining;
 use protide_core::scripting::results::TestResult;
 use crate::theme;
-use crate::components::code_editor::{CodeEditor, Language};
 use crate::components::selectable_text::{
     selectable_text_element, selection_changed, render_selectable_json_value, SelectionRange,
 };
@@ -70,8 +69,10 @@ pub struct ResponsePanel {
     pub(super) error: Option<String>,
     /// Copy feedback state (shows "Copied!" briefly)
     pub(super) copy_feedback: Option<CopyFeedback>,
-    /// CodeEditor for viewing response body
-    pub(super) body_viewer: Entity<CodeEditor>,
+    /// Editor for viewing response body
+    pub(super) body_viewer: Entity<InputState>,
+    /// Pending (body_text, language) to apply to body_viewer on next render (needs &mut Window)
+    pub(super) body_pending: Option<(String, String)>,
     /// Parsed JSON value for tree rendering (Some when body is valid JSON)
     pub(super) json_value: Option<serde_json::Value>,
     /// Set of collapsed JSON paths (using "/" as separator, root = "")
@@ -93,7 +94,7 @@ pub struct ResponsePanel {
     /// Result of JSONPath extraction
     pub(super) extraction_result: Option<Result<String, String>>,
     /// Read-only editor for displaying extracted value with syntax highlighting
-    pub(super) extraction_editor: Entity<CodeEditor>,
+    pub(super) extraction_editor: Entity<InputState>,
     /// Column widths for resizable tables
     pub(super) resp_header_col1_w: f32,   // response headers: NAME column
     pub(super) cookie_col1_w: f32,        // cookies: NAME column
@@ -127,9 +128,7 @@ pub struct ResponsePanel {
 impl ResponsePanel {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let body_viewer = cx.new(|cx| {
-            CodeEditor::new(cx)
-                .with_read_only(true)
-                .with_line_numbers(true)
+            InputState::new(window, cx).multi_line(true).line_number(true)
         });
         let jsonpath_input = cx.new(|cx| {
             InputState::new(window, cx)
@@ -138,9 +137,7 @@ impl ResponsePanel {
             InputState::new(window, cx).placeholder("Search…")
         });
         let extraction_editor = cx.new(|cx| {
-            CodeEditor::new(cx)
-                .with_read_only(true)
-                .with_line_numbers(false)
+            InputState::new(window, cx).multi_line(true)
         });
         Self {
             active_tab: 0,
@@ -149,6 +146,7 @@ impl ResponsePanel {
             error: None,
             copy_feedback: None,
             body_viewer,
+            body_pending: None,
             json_value: None,
             json_tree_collapsed: std::collections::HashSet::new(),
             json_rows: Vec::new(),
@@ -240,15 +238,15 @@ impl ResponsePanel {
                 // Try to pretty-print JSON
                 if let Ok(json) = serde_json::from_str::<serde_json::Value>(&response.body) {
                     let formatted = serde_json::to_string_pretty(&json).unwrap_or_else(|_| response.body.clone());
-                    (formatted, Language::Json)
+                    (formatted, "json".to_string())
                 } else {
                     warn!("JSON parse failed for '{}' response ({} bytes)", ct, response.body.len());
-                    (response.body.clone(), Language::Json)
+                    (response.body.clone(), "json".to_string())
                 }
             } else if ct.contains("text/html") {
-                (response.body.clone(), Language::Html)
+                (response.body.clone(), "html".to_string())
             } else if ct.contains("application/xml") || ct.contains("text/xml") || ct.contains("+xml") {
-                (response.body.clone(), Language::Xml)
+                (response.body.clone(), "xml".to_string())
             } else {
                 // Detect from content
                 self.detect_language_from_content(&response.body)
@@ -258,11 +256,8 @@ impl ResponsePanel {
             self.detect_language_from_content(&response.body)
         };
 
-        // Update body viewer with content and language
-        self.body_viewer.update(cx, |editor, cx| {
-            editor.set_content(&body_text, cx);
-            editor.set_language(language, cx);
-        });
+        // Defer body viewer update until render() (which has &mut Window)
+        self.body_pending = Some((body_text, language));
 
         // Store parsed JSON for tree rendering
         self.json_value = serde_json::from_str::<serde_json::Value>(&response.body).ok();
@@ -278,23 +273,23 @@ impl ResponsePanel {
         cx.notify();
     }
 
-    fn detect_language_from_content(&self, body: &str) -> (String, Language) {
+    fn detect_language_from_content(&self, body: &str) -> (String, String) {
         let trimmed = body.trim();
         if trimmed.starts_with('{') || trimmed.starts_with('[') {
             if let Ok(json) = serde_json::from_str::<serde_json::Value>(body) {
                 let formatted = serde_json::to_string_pretty(&json).unwrap_or_else(|_| body.to_string());
-                (formatted, Language::Json)
+                (formatted, "json".to_string())
             } else {
-                (body.to_string(), Language::Plain)
+                (body.to_string(), String::new())
             }
         } else if trimmed.starts_with('<') {
             if trimmed.contains("<!DOCTYPE html") || trimmed.contains("<html") {
-                (body.to_string(), Language::Html)
+                (body.to_string(), "html".to_string())
             } else {
-                (body.to_string(), Language::Xml)
+                (body.to_string(), "xml".to_string())
             }
         } else {
-            (body.to_string(), Language::Plain)
+            (body.to_string(), String::new())
         }
     }
 

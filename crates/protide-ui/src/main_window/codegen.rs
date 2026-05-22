@@ -5,7 +5,7 @@ impl MainWindow {
     pub(super) fn render_codegen_panel(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = theme::current(cx);
         let panel = self.request_panel.read(cx);
-        let editor = panel.codegen_editor.clone();
+        let editor = gpui_component::input::Input::new(&panel.codegen_editor).disabled(true);
         let current_lang = panel.codegen_language;
         let width = self.codegen_panel_width;
 
@@ -60,9 +60,9 @@ impl MainWindow {
                                             .text_color(theme.colors.text_primary)
                                     })
                                 })
-                                .on_click(cx.listener(move |this, _, _, cx| {
+                                .on_click(cx.listener(move |this, _, window, cx| {
                                     this.request_panel
-                                        .update(cx, |panel, cx| panel.generate_code(lang, cx));
+                                        .update(cx, |panel, cx| panel.generate_code(lang, window, cx));
                                 }))
                                 .child(label)
                         }),

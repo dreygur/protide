@@ -1,9 +1,8 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
-use gpui::{Context, WeakEntity};
+use gpui::Context;
 use protide_core::collection_runner::{RunConfig, RunProgress};
-use crate::main_window::MainWindow;
 
 pub mod render;
 
@@ -27,12 +26,10 @@ pub struct RunnerPanel {
     pub(super) current: usize,
     pub(super) total: usize,
     pub(super) stop_flag: Arc<AtomicBool>,
-    #[allow(dead_code)]
-    pub(super) main_window: WeakEntity<MainWindow>,
 }
 
 impl RunnerPanel {
-    pub fn new(cx: &mut Context<Self>, main_window: WeakEntity<MainWindow>) -> Self {
+    pub fn new(cx: &mut Context<Self>) -> Self {
         let _ = cx;
         Self {
             rows: Vec::new(),
@@ -40,7 +37,6 @@ impl RunnerPanel {
             current: 0,
             total: 0,
             stop_flag: Arc::new(AtomicBool::new(false)),
-            main_window,
         }
     }
 

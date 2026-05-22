@@ -140,7 +140,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
 
     pub(super) fn emit_socketio_event(&mut self, cx: &mut Context<Self>) {
         if self.sio_state != SioConnectionState::Connected { return; }
-        let payload = self.sio_payload_editor.read(cx).content().to_string();
+        let payload = self.sio_payload_editor.read(cx).value().to_string();
         let ack_id = if self.sio_want_ack {
             let id = self.sio_next_ack_id;
             self.sio_next_ack_id = self.sio_next_ack_id.wrapping_add(1);

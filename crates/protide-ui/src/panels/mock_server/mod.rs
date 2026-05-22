@@ -3,17 +3,14 @@
 mod render;
 mod render_form;
 
-use gpui::{Context, Entity, FocusHandle, WeakEntity, Window, prelude::*};
+use gpui::{Context, Entity, WeakEntity, Window, prelude::*};
 use protide_core::mock_server::{HttpMethod, MockResponse, MockRoute, MockServer};
 use crate::theme;
-use crate::components::modal::ModalState;
 use gpui_component::input::InputState;
 use crate::main_window::MainWindow;
 
 pub struct MockServerPanel {
     pub(super) server: MockServer,
-    #[allow(dead_code)]
-    pub(super) focus: FocusHandle,
     pub(super) new_route_method: HttpMethod,
     pub(super) status_input: Entity<InputState>,
     pub(super) proxy_path_input: Entity<InputState>,
@@ -30,7 +27,6 @@ impl MockServerPanel {
         let record_target_input = cx.new(|cx| InputState::new(window, cx).placeholder("https://api.example.com"));
         Self {
             server: MockServer::new(8080),
-            focus: cx.focus_handle(),
             new_route_method: HttpMethod::Get,
             status_input,
             proxy_path_input,
@@ -65,12 +61,9 @@ impl MockServerPanel {
         let target = if raw_target.trim().is_empty() { "https://api.example.com".to_string() } else { raw_target.trim().to_string() };
         let route = MockRoute::proxy(self.new_route_method, &path, &target);
         self.server.add_route(route);
-        let modal = ModalState::info(
-            "Proxy Route Added",
-            format!("Proxy route added: {} {} → {}", self.new_route_method.as_str(), path, target),
-        );
+        let msg = format!("Proxy route added: {} {} → {}", self.new_route_method.as_str(), path, target);
         if let Some(win) = self.main_window.upgrade() {
-            win.update(cx, |win, cx| win.show_modal(modal, cx));
+            win.update(cx, |win, cx| win.show_modal("Proxy Route Added", msg, cx));
         }
         cx.notify();
     }
@@ -107,12 +100,9 @@ impl MockServerPanel {
             self.server.add_route(route);
         }
         if count > 0 {
-            let modal = ModalState::info(
-                "Routes Imported",
-                format!("Imported {} recorded route{}.", count, if count == 1 { "" } else { "s" }),
-            );
+            let msg = format!("Imported {} recorded route{}.", count, if count == 1 { "" } else { "s" });
             if let Some(win) = self.main_window.upgrade() {
-                win.update(cx, |win, cx| win.show_modal(modal, cx));
+                win.update(cx, |win, cx| win.show_modal("Routes Imported", msg, cx));
             }
         }
         cx.notify();

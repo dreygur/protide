@@ -276,8 +276,8 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                     // Code generation button
                     .child(
                         toolbar_btn("code-button", cx)
-                            .on_click(cx.listener(|this, _, _, cx| {
-                                this.generate_code(this.codegen_language, cx);
+                            .on_click(cx.listener(|this, _, window, cx| {
+                                this.generate_code(this.codegen_language, window, cx);
                             }))
                             .child(icon(ICON_CODE, ICON_MD, theme.colors.text_secondary))
                             .child("Code")
@@ -285,8 +285,8 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                     // Import button
                     .child(
                         toolbar_btn("import-button", cx)
-                            .on_click(cx.listener(|this, _, _, cx| {
-                                this.open_import_modal(cx);
+                            .on_click(cx.listener(|this, _, window, cx| {
+                                this.open_import_modal(window, cx);
                             }))
                             .child(icon(ICON_ARROW_DOWN, ICON_SM, theme.colors.text_secondary))
                             .child("Import")

@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 use gpui::{div, font, prelude::*, px, Hsla, StyledText, TextRun};
 
 /// Check if character is a word character (alphanumeric or underscore)
@@ -315,19 +313,4 @@ pub fn render_text_view_multiline(
                 )
         }))
         .into_any_element()
-}
-
-/// Calculate character index from x position
-pub fn index_for_x(x: f32, text_len: usize, char_width: f32) -> usize {
-    if x <= 0.0 {
-        0
-    } else {
-        let approx_char = (x / char_width) as usize;
-        approx_char.min(text_len)
-    }
-}
-
-/// Handle click count for selection cycling: 1=cursor, 2=word, 3=all, 4+=cursor
-pub fn effective_click_count(click_count: usize) -> usize {
-    if click_count >= 4 { 1 } else { click_count }
 }

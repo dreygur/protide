@@ -1,7 +1,13 @@
 use super::*;
 
 impl Render for ResponsePanel {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        if let Some((text, lang)) = self.body_pending.take() {
+            self.body_viewer.update(cx, |s, cx| {
+                s.set_value(&text, window, cx);
+                s.set_highlighter(&lang, cx);
+            });
+        }
         let theme = theme::current(cx);
         let is_col_dragging = self.resp_col_drag.is_some();
         let has_ctx_menu = self.json_context_menu.is_some();

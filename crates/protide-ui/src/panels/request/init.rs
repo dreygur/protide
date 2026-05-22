@@ -1,5 +1,4 @@
 use super::*;
-use crate::components::code_editor::{CodeEditor, Language};
 use gpui_component::input::InputState;
 
 impl<E: WebSocketExecutor> RequestPanel<E> {
@@ -8,70 +7,40 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
         let url_len = url.len();
         let initial_body = "{\n  \"name\": \"Protide\",\n  \"version\": \"0.1.0\"\n}";
         let body_editor = cx.new(|cx| {
-            CodeEditor::new(cx)
-                .with_content(initial_body)
-                .with_language(Language::Json)
-                .with_line_numbers(true)
+            InputState::new(window, cx).multi_line(true).code_editor("json").line_number(true).default_value(initial_body)
         });
         let pre_script_editor = cx.new(|cx| {
-            CodeEditor::new(cx)
-                .with_language(Language::JavaScript)
-                .with_line_numbers(true)
+            InputState::new(window, cx).multi_line(true).code_editor("javascript").line_number(true)
         });
         let post_script_editor = cx.new(|cx| {
-            CodeEditor::new(cx)
-                .with_language(Language::JavaScript)
-                .with_line_numbers(true)
+            InputState::new(window, cx).multi_line(true).code_editor("javascript").line_number(true)
         });
         let tests_editor = cx.new(|cx| {
-            CodeEditor::new(cx)
-                .with_language(Language::JavaScript)
-                .with_line_numbers(true)
+            InputState::new(window, cx).multi_line(true).code_editor("javascript").line_number(true)
         });
         let graphql_query_editor = cx.new(|cx| {
-            CodeEditor::new(cx)
-                .with_content("query {\n  \n}")
-                .with_language(Language::GraphQL)
-                .with_line_numbers(true)
+            InputState::new(window, cx).multi_line(true).code_editor("graphql").line_number(true).default_value("query {\n  \n}")
         });
         let graphql_variables_editor = cx.new(|cx| {
-            CodeEditor::new(cx)
-                .with_content("{}")
-                .with_language(Language::Json)
-                .with_line_numbers(true)
+            InputState::new(window, cx).multi_line(true).code_editor("json").line_number(true).default_value("{}")
         });
         let ws_message_editor = cx.new(|cx| {
-            CodeEditor::new(cx)
-                .with_content("{\"type\": \"hello\"}")
-                .with_language(Language::Json)
-                .with_line_numbers(true)
+            InputState::new(window, cx).multi_line(true).code_editor("json").line_number(true).default_value("{\"type\": \"hello\"}")
         });
         let grpc_message_editor = cx.new(|cx| {
-            CodeEditor::new(cx)
-                .with_content("{}")
-                .with_language(Language::Json)
-                .with_line_numbers(true)
+            InputState::new(window, cx).multi_line(true).code_editor("json").line_number(true).default_value("{}")
         });
         let trpc_params_editor = cx.new(|cx| {
-            CodeEditor::new(cx)
-                .with_content("{}")
-                .with_language(Language::Json)
-                .with_line_numbers(true)
+            InputState::new(window, cx).multi_line(true).code_editor("json").line_number(true).default_value("{}")
         });
         let sio_payload_editor = cx.new(|cx| {
-            CodeEditor::new(cx)
-                .with_content("{}")
-                .with_language(Language::Json)
+            InputState::new(window, cx).multi_line(true).code_editor("json").default_value("{}")
         });
         let codegen_editor = cx.new(|cx| {
-            CodeEditor::new(cx)
-                .with_read_only(true)
-                .with_line_numbers(true)
+            InputState::new(window, cx).multi_line(true).line_number(true)
         });
         let import_editor = cx.new(|cx| {
-            CodeEditor::new(cx)
-                .with_language(Language::Plain)
-                .with_line_numbers(false)
+            InputState::new(window, cx).multi_line(true)
         });
         Self {
             active_tab: 0,
@@ -199,6 +168,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             kv_row_drag_over: None,
             form_row_drag: None,
             form_row_drag_over: None,
+            editor_pending: Vec::new(),
             _executor: PhantomData,
         }
     }

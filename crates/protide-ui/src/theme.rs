@@ -9,8 +9,6 @@
 //! - Opacity levels
 //! - Focus indicators
 
-#![allow(dead_code)]
-
 use gpui::{App, Pixels, rgb, Hsla};
 
 /// Color palette for the application
@@ -212,7 +210,6 @@ impl Colors {
 
 /// Current theme colors (will follow system preference)
 #[derive(Clone)]
-#[allow(dead_code)]
 pub struct Theme {
     pub colors: Colors,
     pub is_dark: bool,

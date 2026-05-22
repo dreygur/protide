@@ -23,7 +23,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             .filter(|h| h.enabled && !h.key.is_empty())
             .map(|h| (substitute(&h.key), substitute(&h.value)))
             .collect();
-        let on_message_script = self.pre_script_editor.read(cx).content().to_string();
+        let on_message_script = self.pre_script_editor.read(cx).value().to_string();
         let env_vars: std::collections::HashMap<String, String> = env_state.as_ref()
             .and_then(|e| e.active())
             .map(|env| env.variables.iter().map(|(k, v)| (k.clone(), v.clone())).collect())
@@ -142,10 +142,10 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
 
     pub(super) fn send_websocket_message(&mut self, cx: &mut Context<Self>) {
         if self.ws_state != WsConnectionState::Connected { return; }
-        let message = self.ws_message_editor.read(cx).content();
+        let message = self.ws_message_editor.read(cx).value().to_string();
         if message.trim().is_empty() { return; }
         if let Some(tx) = &self.ws_send_tx {
-            let _ = tx.send(WsCommand::Send(message.to_string()));
+            let _ = tx.send(WsCommand::Send(message));
             cx.notify();
         }
     }

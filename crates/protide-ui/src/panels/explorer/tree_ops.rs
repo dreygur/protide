@@ -15,7 +15,7 @@ impl ExplorerPanel {
         };
         if let Some(win) = self.main_window.upgrade() {
             win.update(cx, |win, cx| {
-                win.show_confirm_delete(ModalState::confirm("Confirm Delete", message), path, cx);
+                win.show_confirm_delete("Confirm Delete", message, path, cx);
             });
         }
         self.context_menu = None;

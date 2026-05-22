@@ -1,7 +1,7 @@
 use super::*;
 
 impl ResponsePanel {
-    pub(super) fn run_extraction(&mut self, cx: &mut Context<Self>) {
+    pub(super) fn run_extraction(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let Some(response) = &self.response else {
             return;
         };
@@ -18,18 +18,17 @@ impl ResponsePanel {
             warn!("JSONPath '{}' extraction failed: {}", jsonpath, e);
         }
         if let Ok(ref value) = result {
-            let (content, lang) = if value.trim().starts_with('{') || value.trim().starts_with('[') {
-                let pretty = serde_json::from_str::<serde_json::Value>(value)
+            let content = if value.trim().starts_with('{') || value.trim().starts_with('[') {
+                serde_json::from_str::<serde_json::Value>(value)
                     .ok()
                     .and_then(|v| serde_json::to_string_pretty(&v).ok())
-                    .unwrap_or_else(|| value.clone());
-                (pretty, Language::Json)
+                    .unwrap_or_else(|| value.clone())
             } else {
-                (value.clone(), Language::Json)
+                value.clone()
             };
-            self.extraction_editor.update(cx, |editor, cx| {
-                editor.set_content(&content, cx);
-                editor.set_language(lang, cx);
+            self.extraction_editor.update(cx, |s, cx| {
+                s.set_value(&content, window, cx);
+                s.set_highlighter("json", cx);
             });
         }
         self.extraction_result = Some(result);

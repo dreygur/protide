@@ -62,7 +62,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                     .border_1()
                     .border_color(theme.colors.border)
                     .overflow_hidden()
-                    .child(self.graphql_query_editor.clone())
+                    .child(gpui_component::input::Input::new(&self.graphql_query_editor))
             )
             .into_any_element()
     }
@@ -116,7 +116,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                     .border_1()
                     .border_color(theme.colors.border)
                     .overflow_hidden()
-                    .child(self.graphql_variables_editor.clone())
+                    .child(gpui_component::input::Input::new(&self.graphql_variables_editor))
             )
             .into_any_element()
     }

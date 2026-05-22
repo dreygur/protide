@@ -82,7 +82,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                         .h(px(script_pre_h))
                         .w_full()
                         .overflow_hidden()
-                        .child(self.pre_script_editor.clone()),
+                        .child(gpui_component::input::Input::new(&self.pre_script_editor)),
                 )
                 .child(
                     div()
@@ -152,7 +152,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                         .h(px(script_post_h))
                         .w_full()
                         .overflow_hidden()
-                        .child(self.post_script_editor.clone()),
+                        .child(gpui_component::input::Input::new(&self.post_script_editor)),
                 )
                 .child(
                     div()
@@ -222,7 +222,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                         .flex_1()
                         .w_full()
                         .overflow_hidden()
-                        .child(self.tests_editor.clone()),
+                        .child(gpui_component::input::Input::new(&self.tests_editor)),
                 )
             })
             // Pre-script drag overlay

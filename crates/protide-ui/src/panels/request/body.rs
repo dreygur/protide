@@ -1,13 +1,35 @@
-use gpui::Context;
+use gpui::{Context, Window};
 use super::*;
-use crate::components::code_editor::Language;
 
 impl<E: WebSocketExecutor> RequestPanel<E> {
-    /// Set body content in the CodeEditor
-    pub fn set_body_content(&mut self, content: &str, cx: &mut Context<Self>) {
-        self.body_editor.update(cx, |editor, cx| {
-            editor.set_content(content, cx);
-        });
+    /// Queue a deferred editor content update, applied on the next render.
+    pub(super) fn queue_editor(&mut self, target: PendingEditor, content: String) {
+        self.editor_pending.retain(|(t, _)| *t != target);
+        self.editor_pending.push((target, content));
+    }
+
+    /// Apply all deferred editor content updates (called from render, which has Window).
+    pub(super) fn apply_pending_editors(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.editor_pending.is_empty() { return; }
+        for (target, content) in std::mem::take(&mut self.editor_pending) {
+            let editor = match target {
+                PendingEditor::Body => &self.body_editor,
+                PendingEditor::PreScript => &self.pre_script_editor,
+                PendingEditor::PostScript => &self.post_script_editor,
+                PendingEditor::Tests => &self.tests_editor,
+                PendingEditor::GraphqlQuery => &self.graphql_query_editor,
+                PendingEditor::GraphqlVariables => &self.graphql_variables_editor,
+                PendingEditor::GrpcMessage => &self.grpc_message_editor,
+                PendingEditor::TrpcParams => &self.trpc_params_editor,
+                PendingEditor::SioPayload => &self.sio_payload_editor,
+            };
+            editor.update(cx, |s, cx| s.set_value(&content, window, cx));
+        }
+    }
+
+    /// Set body content in the editor
+    pub fn set_body_content(&mut self, content: &str, _cx: &mut Context<Self>) {
+        self.queue_editor(PendingEditor::Body, content.to_string());
         self.body = content.to_string();
     }
 
@@ -19,13 +41,13 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
 
     pub(super) fn set_body_type(&mut self, body_type: BodyType, cx: &mut Context<Self>) {
         self.body_type = body_type;
-        // Update CodeEditor language
+        // Update editor highlighter language
         let lang = match body_type {
-            BodyType::Json => Language::Json,
-            BodyType::Xml  => Language::Xml,
-            _              => Language::Plain,
+            BodyType::Json => "json",
+            BodyType::Xml  => "xml",
+            _              => "",
         };
-        self.body_editor.update(cx, |ed, cx| ed.set_language(lang, cx));
+        self.body_editor.update(cx, |s, cx| s.set_highlighter(lang, cx));
         // Update Content-Type header
         let content_type = match body_type {
             BodyType::Json   => "application/json",

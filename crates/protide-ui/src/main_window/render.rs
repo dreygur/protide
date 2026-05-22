@@ -1,8 +1,35 @@
-use gpui::{App, Context, FontWeight, IntoElement, MouseButton, ParentElement, Render, Styled, Window, deferred, div, px, prelude::*};
+use gpui::{App, Context, IntoElement, MouseButton, ParentElement, Render, Styled, Window, deferred, div, px, prelude::*};
+use gpui_component::WindowExt;
 use super::*;
 
 impl Render for MainWindow {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        if let Some((title, msg, is_confirm)) = self.pending_alert.take() {
+            if is_confirm {
+                if let Some(path) = self.pending_delete.take() {
+                    let self_weak = cx.entity().downgrade();
+                    window.open_alert_dialog(cx, move |alert, _, _| {
+                        let sw = self_weak.clone();
+                        let p = path.clone();
+                        alert
+                            .confirm()
+                            .title(title.clone())
+                            .description(msg.clone())
+                            .on_ok(move |_, _, cx| {
+                                sw.update(cx, |win, cx| {
+                                    win.explorer.update(cx, |panel, cx| panel.execute_delete(p.clone(), cx));
+                                })
+                                .ok();
+                                true
+                            })
+                    });
+                }
+            } else {
+                window.open_alert_dialog(cx, move |alert, _, _| {
+                    alert.title(title.clone()).description(msg.clone())
+                });
+            }
+        }
         let theme = theme::current(cx);
         let show_response = self.request_panel.read(cx).has_response_panel();
         let show_codegen = self.request_panel.read(cx).codegen_content.is_some();
@@ -202,36 +229,6 @@ impl Render for MainWindow {
                     .when(is_dragging, |el| el.child(self.render_drag_overlay(is_col_drag, cx))),
             )
             .child(self.render_status_bar(cx))
-            .when_some(self.modal.clone(), |el, modal| {
-                let theme = theme::current(cx);
-                let is_confirm = modal.kind == ModalKind::Confirm;
-                let buttons = if is_confirm {
-                    div().flex().justify_end().gap(px(8.0)).mt(px(4.0))
-                        .child(div().id("modal-cancel").px(px(20.0)).py(px(8.0))
-                            .bg(theme.colors.bg_tertiary).border_1().border_color(theme.colors.border)
-                            .text_color(theme.colors.text_secondary).text_size(px(12.0))
-                            .cursor_pointer().hover(|s| s.bg(theme.colors.bg_elevated))
-                            .on_click(cx.listener(|this, _, _, cx| this.dismiss_modal(cx)))
-                            .child("Cancel"))
-                        .child(div().id("modal-confirm").px(px(20.0)).py(px(8.0))
-                            .bg(theme.colors.error).text_color(theme.colors.bg_primary)
-                            .text_size(px(12.0)).font_weight(FontWeight::SEMIBOLD)
-                            .cursor_pointer().hover(|s| s.opacity(0.85))
-                            .on_click(cx.listener(|this, _, _, cx| this.confirm_modal_action(cx)))
-                            .child("Delete"))
-                        .into_any_element()
-                } else {
-                    div().flex().justify_end().mt(px(4.0))
-                        .child(div().id("modal-ok").px(px(24.0)).py(px(8.0))
-                            .bg(theme.colors.accent).text_color(theme.colors.bg_primary)
-                            .text_size(px(12.0)).font_weight(FontWeight::SEMIBOLD)
-                            .cursor_pointer().hover(|s| s.bg(theme.colors.accent_hover))
-                            .on_click(cx.listener(|this, _, _, cx| this.dismiss_modal(cx)))
-                            .child("OK"))
-                        .into_any_element()
-                };
-                el.child(render_modal_shell(&modal, &theme, buttons))
-            })
             .when(self.presence.show_pairing, |el| {
                 let flyout = self.render_pairing_flyout_panel(cx);
                 let toolbar_h = theme.sizes.toolbar;

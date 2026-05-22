@@ -1,9 +1,7 @@
 //! Shared UI components
 
 pub mod action_row;
-pub mod code_editor;
 pub mod icons;
-pub mod modal;
 pub mod selectable_text;
 pub mod text_view;
 mod ui_helpers;
