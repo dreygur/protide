@@ -14,9 +14,14 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
         self.graphql_schema = GraphqlSchemaState::Loading;
         cx.notify();
 
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || { let _ = tx.send(run_graphql_introspection(&url)); });
+
         cx.spawn(async move |this, cx| {
             let result = cx.background_executor()
-                .spawn(async move { run_graphql_introspection(&url) })
+                .spawn(async move {
+                    rx.recv().unwrap_or_else(|_| GraphqlSchemaState::Error("thread join error".into()))
+                })
                 .await;
             let _ = cx.update(|cx| {
                 let _ = this.update(cx, |panel, cx| {

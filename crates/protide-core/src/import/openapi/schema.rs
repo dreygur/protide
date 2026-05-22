@@ -15,7 +15,7 @@ pub(super) fn resolve_ref<'a>(root: &'a Value, reference: &str) -> Option<&'a Va
 pub(super) fn get_schema_example(content: &Value, root: &Value) -> Option<String> {
     if let Some(example) = content.get("example") {
         return Some(if example.is_string() {
-            example.as_str().unwrap().to_string()
+            example.as_str().unwrap_or_default().to_string()
         } else {
             serde_json::to_string_pretty(example).ok()?
         });
@@ -30,7 +30,7 @@ pub(super) fn get_schema_example(content: &Value, root: &Value) -> Option<String
 
         if let Some(example) = resolved.get("example") {
             return Some(if example.is_string() {
-                example.as_str().unwrap().to_string()
+                example.as_str().unwrap_or_default().to_string()
             } else {
                 serde_json::to_string_pretty(example).ok()?
             });

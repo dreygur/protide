@@ -1,4 +1,6 @@
 use gpui::{Context, FontWeight, IntoElement, ParentElement, Styled, div, px, prelude::*};
+use gpui_component::input::Input;
+use gpui_component::Sizable;
 use protide_core::mock_server::HttpMethod;
 use super::*;
 
@@ -53,7 +55,7 @@ impl MockServerPanel {
                     .items_center()
                     .gap_2()
                     .child(div().text_xs().text_color(theme.colors.text_secondary).child("Status:"))
-                    .child(div().w(px(80.0)).child(self.status_input.clone()))
+                    .child(div().w(px(80.0)).child(Input::new(&self.status_input).with_size(gpui_component::Size::Small)))
             )
             .child(
                 div()
@@ -68,7 +70,7 @@ impl MockServerPanel {
                             .text_color(theme.colors.text_muted)
                             .child("PROXY PATH")
                     )
-                    .child(self.proxy_path_input.clone())
+                    .child(Input::new(&self.proxy_path_input))
                     .child(
                         div()
                             .text_size(px(10.0))
@@ -76,7 +78,7 @@ impl MockServerPanel {
                             .text_color(theme.colors.text_muted)
                             .child("TARGET URL")
                     )
-                    .child(self.proxy_target_input.clone())
+                    .child(Input::new(&self.proxy_target_input))
             )
             .child(
                 div()
@@ -119,7 +121,7 @@ impl MockServerPanel {
                                     .on_click(cx.listener(|this, _, _, cx| this.toggle_record_mode(cx)))
                             )
                     )
-                    .child(self.record_target_input.clone())
+                    .child(Input::new(&self.record_target_input))
                     .when(is_recording, |el| {
                         el.child(
                             div()

@@ -39,7 +39,7 @@ use crate::components::icons::{
     icon, ICON_SM, ICON_MD, ICON_CLOSE, ICON_CHECK, ICON_CIRCLE_CHECK,
     ICON_ARROW_DOWN, ICON_COPY, ICON_GLOBE, ICON_CHEVRON_DOWN, ICON_CHEVRON_RIGHT,
 };
-use crate::components::TextInput;
+use gpui_component::input::{Input, InputState};
 
 pub mod types;
 pub mod json;
@@ -89,7 +89,7 @@ pub struct ResponsePanel {
     /// Test results from script execution
     pub(super) test_results: Vec<TestResult>,
     /// JSONPath expression input for extraction
-    pub(super) jsonpath_input: Entity<TextInput>,
+    pub(super) jsonpath_input: Entity<InputState>,
     /// Result of JSONPath extraction
     pub(super) extraction_result: Option<Result<String, String>>,
     /// Read-only editor for displaying extracted value with syntax highlighting
@@ -121,21 +121,21 @@ pub struct ResponsePanel {
     /// Whether the search bar is visible
     pub(super) search_active: bool,
     /// Text input for body search
-    pub(super) search_input: Entity<TextInput>,
+    pub(super) search_input: Entity<InputState>,
 }
 
 impl ResponsePanel {
-    pub fn new(cx: &mut Context<Self>) -> Self {
+    pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let body_viewer = cx.new(|cx| {
             CodeEditor::new(cx)
                 .with_read_only(true)
                 .with_line_numbers(true)
         });
         let jsonpath_input = cx.new(|cx| {
-            TextInput::new(cx, "$.data.id")
+            InputState::new(window, cx)
         });
         let search_input = cx.new(|cx| {
-            TextInput::new(cx, "resp-search").placeholder("Search…")
+            InputState::new(window, cx).placeholder("Search…")
         });
         let extraction_editor = cx.new(|cx| {
             CodeEditor::new(cx)

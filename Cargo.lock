@@ -6286,6 +6286,7 @@ name = "protide"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "dirs",
  "env_logger",
  "gpui",
  "gpui-component",

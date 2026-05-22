@@ -21,3 +21,4 @@ gpui-component-assets = { workspace = true }
 
 anyhow = { workspace = true }
 image = { workspace = true }
+dirs = { workspace = true }

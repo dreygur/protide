@@ -43,7 +43,7 @@ pub struct CrdtEntry {
     pub data_type: DataType,
     /// Serialized data payload (JSON)
     pub data: String,
-    /// Lamport timestamp (milliseconds since epoch)
+    /// wall-clock timestamp (ms since epoch); local writes monotonically increment via max(), cross-machine clock skew is a known LWW limitation
     pub timestamp: u64,
     /// Node that authored this version
     pub node_id: String,
@@ -62,18 +62,6 @@ impl CrdtEntry {
             timestamp: timestamp_now(),
             node_id: node_id.0.clone(),
             deleted: false,
-            version: 1,
-        }
-    }
-
-    pub fn tombstone(id: Uuid, node_id: &NodeId) -> Self {
-        Self {
-            id,
-            data_type: DataType::Request,
-            data: String::new(),
-            timestamp: timestamp_now(),
-            node_id: node_id.0.clone(),
-            deleted: true,
             version: 1,
         }
     }
@@ -152,6 +140,8 @@ pub struct SyncConfig {
     pub live_probe_port: u16,
     /// PAKE pairing code for secure P2P
     pub pairing_code: Option<String>,
+    /// Where to persist this node's identity UUID across restarts
+    pub node_id_path: Option<PathBuf>,
 }
 
 impl Default for SyncConfig {
@@ -163,8 +153,25 @@ impl Default for SyncConfig {
             live_probe_enabled: false,
             live_probe_port: 42069,
             pairing_code: None,
+            node_id_path: None,
         }
     }
+}
+
+/// Load the persisted NodeId from `path`, or create and save a new one.
+pub fn load_or_create_node_id(path: &std::path::Path) -> NodeId {
+    if let Ok(s) = std::fs::read_to_string(path) {
+        let s = s.trim().to_string();
+        if !s.is_empty() {
+            return NodeId(s);
+        }
+    }
+    let id = NodeId::new();
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let _ = std::fs::write(path, &id.0);
+    id
 }
 
 pub(crate) fn timestamp_now() -> u64 {

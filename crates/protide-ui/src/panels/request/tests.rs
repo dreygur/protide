@@ -1,6 +1,7 @@
 
 use super::*;
-use crate::components::{is_word_char, find_word_start, find_word_end};
+use crate::components::{find_word_start, find_word_end};
+use crate::components::text_view::is_word_char;
 use crate::panels::request_utils::{url_encode, url_decode, base64_encode};
 
 // ===== Unit Tests for HTTP Methods =====

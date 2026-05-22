@@ -70,7 +70,7 @@ fn flush_body(lines: &[&str], body_lines: &[usize], is_json: bool, edits: &mut V
     }
     // If pretty has more lines than original, append them after last body line
     if pretty_lines.len() > body_lines.len() {
-        let last = *body_lines.last().unwrap() as u32;
+        let last = body_lines.last().copied().unwrap_or(0) as u32;
         let extra: String = pretty_lines[body_lines.len()..].join("\n");
         edits.push(TextEdit {
             range: Range {

@@ -35,7 +35,7 @@ impl ResponsePanel {
                 .into_any_element();
         }
 
-        let jsonpath_value = self.jsonpath_input.read(cx).get_text().to_string();
+        let jsonpath_value = self.jsonpath_input.read(cx).value().to_string();
 
         div()
             .size_full()
@@ -61,7 +61,7 @@ impl ResponsePanel {
                         div()
                             .flex_1()
                             .h(px(32.0))
-                            .child(self.jsonpath_input.clone())
+                            .child(Input::new(&self.jsonpath_input))
                     )
                     // Extract button
                     .child(
@@ -112,9 +112,9 @@ impl ResponsePanel {
                                     .text_color(theme.colors.text_secondary)
                                     .cursor_pointer()
                                     .hover(|s| s.bg(theme.colors.bg_elevated))
-                                    .on_click(cx.listener(move |this, _, _, cx| {
+                                    .on_click(cx.listener(move |this, _, window, cx| {
                                         this.jsonpath_input.update(cx, |input, cx| {
-                                            input.set_text(&pattern, cx);
+                                            input.set_value(pattern.clone(), window, cx);
                                         });
                                         this.run_extraction(cx);
                                     }))

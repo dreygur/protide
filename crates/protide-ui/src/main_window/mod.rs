@@ -46,7 +46,7 @@ pub fn register_keybindings(cx: &mut gpui::App) {
 }
 
 use super::panels::presence::{ConnectionStatus, PeerSource, PresenceManager};
-use super::components::{TextInput, TextInputStyle};
+use gpui_component::input::{Input, InputState};
 use super::panels::{ConsoleEntry, ConsolePanel, DocsPanel, ExplorerPanel, MockServerPanel, RequestPanel, ResponsePanel, RunnerPanel};
 use crate::theme;
 use protide_core::sync::{SyncEngine, SyncEvent};
@@ -104,7 +104,7 @@ pub struct MainWindow {
     /// Sync engine for peer discovery and CRDT sync
     pub(super) sync_engine: Option<SyncEngine>,
     /// Text input for the "Join Peer" pairing code field
-    pub(super) join_input: Entity<TextInput>,
+    pub(super) join_input: Entity<InputState>,
     /// When the current PAKE handshake was initiated (for 10-second timeout)
     pub(super) handshake_started: Option<std::time::Instant>,
     /// Last time cx.notify() was called from the P2P sync poller
@@ -112,14 +112,14 @@ pub struct MainWindow {
 }
 
 impl MainWindow {
-    pub fn build(_window: &mut Window, cx: &mut Context<Self>, sync_engine: Option<SyncEngine>) -> Self {
+    pub fn build(window: &mut Window, cx: &mut Context<Self>, sync_engine: Option<SyncEngine>) -> Self {
         let main_window_weak: WeakEntity<MainWindow> = cx.entity().downgrade();
         let explorer = cx.new(|cx| ExplorerPanel::new(cx, main_window_weak.clone()));
         let runner_panel = cx.new(|cx| RunnerPanel::new(cx, main_window_weak.clone()));
-        let response_panel = cx.new(ResponsePanel::new);
+        let response_panel = cx.new(|cx| ResponsePanel::new(window, cx));
         let response_panel_clone = response_panel.clone();
-        let request_panel = cx.new(|cx| RequestPanel::new(cx, response_panel_clone));
-        let mock_server_panel = cx.new(|cx| MockServerPanel::new(cx, main_window_weak));
+        let request_panel = cx.new(|cx| RequestPanel::new(window, cx, response_panel_clone));
+        let mock_server_panel = cx.new(|cx| MockServerPanel::new(window, cx, main_window_weak));
         let console_panel = cx.new(ConsolePanel::new);
         let docs_panel = cx.new(|_| DocsPanel::new());
 
@@ -158,9 +158,7 @@ impl MainWindow {
         });
 
         let join_input = cx.new(|cx| {
-            TextInput::new(cx, "join-code-input")
-                .placeholder("enter pairing code…")
-                .style(TextInputStyle::compact())
+            InputState::new(window, cx).placeholder("enter pairing code…")
         });
 
         let mut presence = PresenceManager::new();

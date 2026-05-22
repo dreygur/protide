@@ -1,4 +1,5 @@
 use gpui::{Context, FontWeight, IntoElement, MouseButton, ParentElement, Styled, div, hsla, px, prelude::*};
+use gpui_component::Sizable;
 use super::*;
 
 impl MainWindow {
@@ -84,7 +85,7 @@ impl MainWindow {
             paste_btn_base
                 .cursor_pointer()
                 .hover(|s| s.bg(theme.colors.bg_elevated))
-                .on_click(cx.listener(|this, _, _, cx| this.paste_and_join(cx)))
+                .on_click(cx.listener(|this, _, window, cx| this.paste_and_join(window, cx)))
                 .into_any_element()
         } else {
             paste_btn_base.into_any_element()
@@ -94,7 +95,7 @@ impl MainWindow {
             .flex()
             .flex_col()
             .gap(px(6.0))
-            .child(self.join_input.clone())
+            .child(Input::new(&self.join_input).with_size(gpui_component::Size::Small))
             .child(div().flex().gap(px(6.0)).child(paste_btn).child(connect_btn))
             .when_some(error_msg, |el, msg| {
                 let error_color = theme.colors.error;

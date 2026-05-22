@@ -48,7 +48,7 @@ pub(super) fn create_router(
             .unwrap_or_default();
 
         let matched = {
-            let routes_guard = state.routes.read().unwrap();
+            let routes_guard = state.routes.read().unwrap_or_else(|e| e.into_inner());
             routes_guard.iter().find(|r| r.matches(&method, &path)).cloned()
         };
 
@@ -84,7 +84,7 @@ pub(super) fn create_router(
                 let mut builder = axum::http::Response::builder().status(status);
                 builder = builder.header("Content-Type", "application/json");
                 return builder.body(Body::from(body_str)).unwrap_or_else(|_| {
-                    axum::http::Response::builder().status(502).body(Body::from("Record proxy error")).unwrap()
+                    axum::http::Response::builder().status(502).body(Body::from("Record proxy error")).expect("infallible response builder")
                 });
             }
         }
@@ -111,7 +111,7 @@ pub(super) fn create_router(
                 builder = builder.header(key, value);
             }
             return builder.body(Body::from(response.body.clone()))
-                .unwrap_or_else(|_| axum::http::Response::builder().status(500).body(Body::from("invalid mock route headers")).unwrap())
+                .unwrap_or_else(|_| axum::http::Response::builder().status(500).body(Body::from("invalid mock route headers")).expect("infallible response builder"))
                 .into_response();
         }
 
@@ -162,12 +162,12 @@ pub(super) async fn proxy_request(
                     axum::http::Response::builder()
                         .status(502)
                         .body(Body::from("Proxy response build error"))
-                        .unwrap()
+                        .expect("infallible response builder")
                 })
         }
         Err(e) => axum::http::Response::builder()
             .status(StatusCode::BAD_GATEWAY)
             .body(Body::from(format!("Proxy error: {}", e)))
-            .unwrap(),
+            .expect("infallible response builder"),
     }
 }

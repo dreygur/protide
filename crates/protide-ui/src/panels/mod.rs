@@ -7,12 +7,14 @@
 //! - `RequestHistory` - Request history tracking
 //! - `MockServerPanel` - Mock server configuration
 
+#[path = "console/mod.rs"]
 mod console;
 mod docs;
 mod explorer;
 mod history;
 mod mock_server;
 pub mod presence;
+mod presence_render;
 mod request;
 mod request_types;
 mod request_utils;

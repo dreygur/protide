@@ -125,7 +125,13 @@ impl MockServer {
                     }
                 };
 
-                let actual_addr = listener.local_addr().unwrap();
+                let actual_addr = match listener.local_addr() {
+                    Ok(addr) => addr,
+                    Err(e) => {
+                        let _ = addr_tx.send(Err(format!("Failed to get local address: {}", e)));
+                        return;
+                    }
+                };
                 let _ = addr_tx.send(Ok(actual_addr));
 
                 axum::serve(listener, app)

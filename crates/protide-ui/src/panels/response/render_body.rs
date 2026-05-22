@@ -66,7 +66,7 @@ impl ResponsePanel {
 
         let line_count = self.body_viewer.read(cx).content().lines().count();
         let search_active = self.search_active;
-        let search_query = self.search_input.read(cx).get_text().to_string();
+        let search_query = self.search_input.read(cx).value().to_string();
         let match_count = if search_active && !search_query.is_empty() {
             let body = self.body_viewer.read(cx).content().to_string();
             let q = search_query.to_lowercase();
@@ -185,7 +185,7 @@ impl ResponsePanel {
                                 .border_1()
                                 .border_color(theme.colors.border)
                                 .bg(theme.colors.bg_secondary)
-                                .child(self.search_input.clone())
+                                .child(Input::new(&self.search_input))
                         )
                         .child(
                             div()

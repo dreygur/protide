@@ -86,6 +86,7 @@ fn main() -> Result<()> {
                 p2p_enabled: true,
                 live_probe_enabled: true,
                 pairing_code: Some(pairing_code),
+                node_id_path: dirs::config_dir().map(|d| d.join("protide").join("node_id")),
                 ..Default::default()
             });
             let _ = engine.init();

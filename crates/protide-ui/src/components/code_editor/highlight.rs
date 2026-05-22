@@ -247,16 +247,16 @@ impl Highlighter for GraphQLHighlighter {
                     let mut s = c.to_string();
                     // Handle triple quotes
                     if chars.peek() == Some(&'"') {
-                        s.push(chars.next().unwrap());
+                        s.push(chars.next().unwrap_or('\0'));
                         if chars.peek() == Some(&'"') {
-                            s.push(chars.next().unwrap());
+                            s.push(chars.next().unwrap_or('\0'));
                             // Read until closing """
                             while let Some(ch) = chars.next() {
                                 s.push(ch);
                                 if ch == '"' && chars.peek() == Some(&'"') {
-                                    s.push(chars.next().unwrap());
+                                    s.push(chars.next().unwrap_or('\0'));
                                     if chars.peek() == Some(&'"') {
-                                        s.push(chars.next().unwrap());
+                                        s.push(chars.next().unwrap_or('\0'));
                                         break;
                                     }
                                 }

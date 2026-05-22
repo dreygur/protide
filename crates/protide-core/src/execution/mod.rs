@@ -1,5 +1,6 @@
 mod http;
 pub mod sio;
+mod sio_codec;
 pub mod ws;
 
 use std::collections::HashMap;

@@ -210,7 +210,7 @@ pub struct RequestPanel<E: WebSocketExecutor = TungsteniteExecutor> {
     pub(super) csv_path: Option<std::path::PathBuf>,
     pub(super) data_results: Vec<crate::panels::request_types::DataRunRow>,
     pub(super) data_running: bool,
-    pub(super) timeout_input: Entity<crate::components::TextInput>,
+    pub(super) timeout_input: Entity<gpui_component::input::InputState>,
     pub(super) verify_ssl: bool,
     pub(super) kv_row_drag: Option<(KvList, usize, f32)>,
     pub(super) kv_row_drag_over: Option<usize>,

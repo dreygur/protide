@@ -1,8 +1,9 @@
 use super::*;
 use crate::components::code_editor::{CodeEditor, Language};
+use gpui_component::input::InputState;
 
 impl<E: WebSocketExecutor> RequestPanel<E> {
-    pub fn new(cx: &mut Context<Self>, response_panel: Entity<ResponsePanel>) -> Self {
+    pub fn new(window: &mut Window, cx: &mut Context<Self>, response_panel: Entity<ResponsePanel>) -> Self {
         let url = "https://httpbin.org/post".to_string();
         let url_len = url.len();
         let initial_body = "{\n  \"name\": \"Protide\",\n  \"version\": \"0.1.0\"\n}";
@@ -191,9 +192,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             data_results: Vec::new(),
             data_running: false,
             timeout_input: cx.new(|cx| {
-                crate::components::TextInput::new(cx, "req-timeout")
-                    .text("30")
-                    .placeholder("30")
+                InputState::new(window, cx).default_value("30").placeholder("30")
             }),
             verify_ssl: true,
             kv_row_drag: None,

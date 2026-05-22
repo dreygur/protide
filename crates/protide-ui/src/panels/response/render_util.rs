@@ -6,7 +6,7 @@ impl ResponsePanel {
             return;
         };
 
-        let jsonpath = self.jsonpath_input.read(cx).get_text().to_string();
+        let jsonpath = self.jsonpath_input.read(cx).value().to_string();
         if jsonpath.is_empty() {
             self.extraction_result = Some(Err("Enter a JSONPath expression".to_string()));
             cx.notify();

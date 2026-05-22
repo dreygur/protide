@@ -3,10 +3,11 @@
 mod render;
 mod render_form;
 
-use gpui::{Context, Entity, FocusHandle, WeakEntity, prelude::*};
+use gpui::{Context, Entity, FocusHandle, WeakEntity, Window, prelude::*};
 use protide_core::mock_server::{HttpMethod, MockResponse, MockRoute, MockServer};
 use crate::theme;
-use crate::components::{modal::ModalState, TextInput, TextInputStyle};
+use crate::components::modal::ModalState;
+use gpui_component::input::InputState;
 use crate::main_window::MainWindow;
 
 pub struct MockServerPanel {
@@ -14,19 +15,19 @@ pub struct MockServerPanel {
     #[allow(dead_code)]
     pub(super) focus: FocusHandle,
     pub(super) new_route_method: HttpMethod,
-    pub(super) status_input: Entity<TextInput>,
-    pub(super) proxy_path_input: Entity<TextInput>,
-    pub(super) proxy_target_input: Entity<TextInput>,
-    pub(super) record_target_input: Entity<TextInput>,
+    pub(super) status_input: Entity<InputState>,
+    pub(super) proxy_path_input: Entity<InputState>,
+    pub(super) proxy_target_input: Entity<InputState>,
+    pub(super) record_target_input: Entity<InputState>,
     pub(super) main_window: WeakEntity<MainWindow>,
 }
 
 impl MockServerPanel {
-    pub fn new(cx: &mut Context<Self>, main_window: WeakEntity<MainWindow>) -> Self {
-        let status_input = cx.new(|cx| TextInput::new(cx, "mock-status").text("200").style(TextInputStyle::compact()).placeholder("200"));
-        let proxy_path_input = cx.new(|cx| TextInput::new(cx, "proxy-path").placeholder("/api/*"));
-        let proxy_target_input = cx.new(|cx| TextInput::new(cx, "proxy-target").placeholder("https://api.example.com"));
-        let record_target_input = cx.new(|cx| TextInput::new(cx, "record-target").placeholder("https://api.example.com"));
+    pub fn new(window: &mut Window, cx: &mut Context<Self>, main_window: WeakEntity<MainWindow>) -> Self {
+        let status_input = cx.new(|cx| InputState::new(window, cx).default_value("200").placeholder("200"));
+        let proxy_path_input = cx.new(|cx| InputState::new(window, cx).placeholder("/api/*"));
+        let proxy_target_input = cx.new(|cx| InputState::new(window, cx).placeholder("https://api.example.com"));
+        let record_target_input = cx.new(|cx| InputState::new(window, cx).placeholder("https://api.example.com"));
         Self {
             server: MockServer::new(8080),
             focus: cx.focus_handle(),
@@ -49,7 +50,7 @@ impl MockServerPanel {
     }
 
     pub(super) fn add_route(&mut self, cx: &mut Context<Self>) {
-        let status = self.status_input.read(cx).get_text().trim().parse::<u16>().unwrap_or(200);
+        let status = self.status_input.read(cx).value().to_string().trim().parse::<u16>().unwrap_or(200);
         let response = MockResponse::new(status, r#"{"message":"mock response"}"#)
             .with_header("Content-Type", "application/json");
         let route = MockRoute::new(self.new_route_method, "/api/mock", response);
@@ -58,8 +59,8 @@ impl MockServerPanel {
     }
 
     pub(super) fn add_proxy_route(&mut self, cx: &mut Context<Self>) {
-        let raw_path = self.proxy_path_input.read(cx).get_text().to_string();
-        let raw_target = self.proxy_target_input.read(cx).get_text().to_string();
+        let raw_path = self.proxy_path_input.read(cx).value().to_string();
+        let raw_target = self.proxy_target_input.read(cx).value().to_string();
         let path = if raw_path.trim().is_empty() { "/api/*".to_string() } else { raw_path.trim().to_string() };
         let target = if raw_target.trim().is_empty() { "https://api.example.com".to_string() } else { raw_target.trim().to_string() };
         let route = MockRoute::proxy(self.new_route_method, &path, &target);
@@ -89,7 +90,7 @@ impl MockServerPanel {
         if recording {
             self.server.set_record_mode(false, None);
         } else {
-            let target = self.record_target_input.read(cx).get_text().trim().to_string();
+            let target = self.record_target_input.read(cx).value().to_string().trim().to_string();
             let target = if target.is_empty() { None } else { Some(target) };
             self.server.set_record_mode(true, target);
             if !self.server.is_running() {

@@ -1,9 +1,9 @@
-use gpui::Context;
+use gpui::{Context, Window};
 use super::*;
 
 impl MainWindow {
     pub(super) fn connect_peer(&mut self, cx: &mut Context<Self>) {
-        let code = self.join_input.read(cx).get_text().trim().to_string();
+        let code = self.join_input.read(cx).value().to_string().trim().to_string();
         if code.is_empty() {
             return;
         }
@@ -29,11 +29,11 @@ impl MainWindow {
         }
     }
 
-    pub(super) fn paste_and_join(&mut self, cx: &mut Context<Self>) {
+    pub(super) fn paste_and_join(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if let Some(item) = cx.read_from_clipboard() {
             let text = item.text().unwrap_or_default().to_string();
-            self.join_input.update(cx, |input, input_cx| {
-                input.set_text(text, input_cx);
+            self.join_input.update(cx, |input, cx| {
+                input.set_value(text.clone(), window, cx);
             });
             self.connect_peer(cx);
         }

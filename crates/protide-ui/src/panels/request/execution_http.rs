@@ -165,7 +165,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
         let log_url = final_url.clone();
         log::info!("[{}] → {} {}", log_protocol, log_method, log_url);
 
-        let timeout_secs: u64 = self.timeout_input.read(cx).get_text().trim().parse().unwrap_or(30);
+        let timeout_secs: u64 = self.timeout_input.read(cx).value().to_string().trim().parse().unwrap_or(30);
         let verify_ssl = self.verify_ssl;
         let req = ExecutionRequest {
             method: method.as_str().to_string(),
