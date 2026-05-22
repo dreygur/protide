@@ -128,7 +128,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                                     .border_1()
                                     .border_color(theme.colors.border)
                                     .overflow_hidden()
-                                    .child(gpui_component::input::Input::new(&self.import_editor))
+                                    .child(gpui_component::input::Input::new(&self.import_editor).appearance(false))
                             )
                             .when(import_error.is_some(), |el| {
                                 el.child(

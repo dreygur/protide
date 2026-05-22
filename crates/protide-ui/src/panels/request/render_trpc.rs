@@ -109,7 +109,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                     .border_1()
                     .border_color(theme.colors.border)
                     .overflow_hidden()
-                    .child(gpui_component::input::Input::new(&self.trpc_params_editor))
+                    .child(gpui_component::input::Input::new(&self.trpc_params_editor).appearance(false))
             )
             .into_any_element()
     }

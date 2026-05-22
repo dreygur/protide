@@ -26,7 +26,17 @@ fn main() -> Result<()> {
         .with_assets(Assets)
         .run(|cx| {
             gpui_component::init(cx);
-            gpui_component::Theme::global_mut(cx).window_border = gpui::transparent_black();
+            gpui_component::Theme::change(gpui_component::ThemeMode::Dark, None, cx);
+            {
+                let t = gpui_component::Theme::global_mut(cx);
+                t.radius = gpui::px(2.0);
+                t.radius_lg = gpui::px(4.0);
+                t.window_border = gpui::transparent_black();
+                t.colors.ring = gpui::rgb(0x4ade80).into();
+                t.colors.foreground = gpui::rgb(0xe4e4ed).into();
+                t.colors.muted_foreground = gpui::rgb(0x7f7f92).into();
+                t.mono_font_family = "JetBrains Mono".into();
+            }
 
             cx.text_system()
                 .add_fonts(vec![

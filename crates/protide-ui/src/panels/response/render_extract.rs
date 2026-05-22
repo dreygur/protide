@@ -194,7 +194,7 @@ impl ResponsePanel {
                                             .id("extract-value")
                                             .flex_1()
                                             .overflow_hidden()
-                                            .child(Input::new(&self.extraction_editor).disabled(true))
+                                            .child(Input::new(&self.extraction_editor).disabled(true).appearance(false))
                                     )
                                     .into_any_element()
                             }

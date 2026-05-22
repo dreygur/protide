@@ -35,8 +35,9 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                             .h(px(30.0))
                             .border_1()
                             .border_color(theme.colors.border)
-                            .bg(theme.colors.bg_secondary)
-                            .child(gpui_component::input::Input::new(&self.timeout_input)),
+                            .rounded(px(2.0))
+                            .overflow_hidden()
+                            .child(gpui_component::input::Input::new(&self.timeout_input).bordered(false)),
                     )
                     .child(
                         div()

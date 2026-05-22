@@ -5,7 +5,7 @@ impl MainWindow {
     pub(super) fn render_codegen_panel(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = theme::current(cx);
         let panel = self.request_panel.read(cx);
-        let editor = gpui_component::input::Input::new(&panel.codegen_editor).disabled(true);
+        let editor = gpui_component::input::Input::new(&panel.codegen_editor).disabled(true).appearance(false);
         let current_lang = panel.codegen_language;
         let width = self.codegen_panel_width;
 

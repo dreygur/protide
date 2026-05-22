@@ -235,7 +235,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                             .border_1()
                             .border_color(theme.colors.border)
                             .overflow_hidden()
-                            .child(gpui_component::input::Input::new(&self.ws_message_editor))
+                            .child(gpui_component::input::Input::new(&self.ws_message_editor).appearance(false))
                     )
                     .child(
                         div()

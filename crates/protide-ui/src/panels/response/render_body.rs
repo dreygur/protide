@@ -184,8 +184,9 @@ impl ResponsePanel {
                                 .h(px(28.0))
                                 .border_1()
                                 .border_color(theme.colors.border)
-                                .bg(theme.colors.bg_secondary)
-                                .child(Input::new(&self.search_input))
+                                .rounded(px(2.0))
+                                .overflow_hidden()
+                                .child(Input::new(&self.search_input).bordered(false))
                         )
                         .child(
                             div()
@@ -230,7 +231,7 @@ impl ResponsePanel {
                         .flex_1()
                         .w_full()
                         .overflow_hidden()
-                        .child(Input::new(&self.body_viewer).disabled(true))
+                        .child(Input::new(&self.body_viewer).disabled(true).appearance(false))
                         .into_any_element()
                 }
             )
