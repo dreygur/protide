@@ -177,13 +177,18 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                         Ok(Err(e)) => {
                             panel.trpc_pg_status = Some(500);
                             panel.trpc_pg_error = Some(e.clone());
-                            let body = serde_json::json!({ "error": e }).to_string();
+                            let val = serde_json::json!({ "error": e });
+                            let body = serde_json::to_string_pretty(&val)
+                                .unwrap_or_else(|_| e.clone());
                             panel.queue_editor(PendingEditor::TrpcPgResult, body);
                         }
                         Err(_) => {
-                            panel.trpc_pg_error = Some("Request timed out (30s)".to_string());
-                            panel.queue_editor(PendingEditor::TrpcPgResult,
-                                r#"{ "error": "Request timed out (30s)" }"#.to_string());
+                            let msg = "Request timed out (30s)";
+                            panel.trpc_pg_error = Some(msg.to_string());
+                            let val = serde_json::json!({ "error": msg });
+                            let body = serde_json::to_string_pretty(&val)
+                                .unwrap_or_else(|_| msg.to_string());
+                            panel.queue_editor(PendingEditor::TrpcPgResult, body);
                         }
                     }
                     cx.notify();
