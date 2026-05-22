@@ -23,6 +23,11 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
         let script_pre_h = self.script_pre_h;
         let script_post_h = self.script_post_h;
 
+        let open_count = script_pre_open as usize
+            + script_post_open as usize
+            + script_tests_open as usize;
+        let single_open = open_count == 1;
+
         div()
             .id("scripts-tab")
             .w_full()
@@ -77,28 +82,39 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                     )
             )
             .when(script_pre_open, |el| {
-                el.child(
+                let editor_div = if single_open {
+                    div()
+                        .flex_1()
+                        .w_full()
+                        .overflow_hidden()
+                        .child(gpui_component::input::Input::new(&self.pre_script_editor).appearance(false).h_full())
+                } else {
                     div()
                         .h(px(script_pre_h))
                         .w_full()
                         .overflow_hidden()
-                        .child(gpui_component::input::Input::new(&self.pre_script_editor).appearance(false)),
-                )
-                .child(
-                    div()
-                        .id("drag-script-pre")
-                        .w_full()
-                        .h(px(4.0))
-                        .cursor_row_resize()
-                        .hover(|s| s.bg(theme.colors.accent.opacity(0.25)))
-                        .on_mouse_down(
-                            gpui::MouseButton::Left,
-                            cx.listener(move |this, event: &MouseDownEvent, _, _| {
-                                this.drag_script_pre =
-                                    Some((f32::from(event.position.y), this.script_pre_h));
-                            }),
-                        ),
-                )
+                        .child(gpui_component::input::Input::new(&self.pre_script_editor).appearance(false).h_full())
+                };
+                let el = el.child(editor_div);
+                if !single_open {
+                    el.child(
+                        div()
+                            .id("drag-script-pre")
+                            .w_full()
+                            .h(px(4.0))
+                            .cursor_row_resize()
+                            .hover(|s| s.bg(theme.colors.accent.opacity(0.25)))
+                            .on_mouse_down(
+                                gpui::MouseButton::Left,
+                                cx.listener(move |this, event: &MouseDownEvent, _, _| {
+                                    this.drag_script_pre =
+                                        Some((f32::from(event.position.y), this.script_pre_h));
+                                }),
+                            ),
+                    )
+                } else {
+                    el
+                }
             })
             // Post-response Script section
             .child(
@@ -147,28 +163,39 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                     )
             )
             .when(script_post_open, |el| {
-                el.child(
+                let editor_div = if single_open {
                     div()
-                        .h(px(script_post_h))
+                        .flex_1()
                         .w_full()
                         .overflow_hidden()
-                        .child(gpui_component::input::Input::new(&self.post_script_editor).appearance(false)),
-                )
-                .child(
+                        .child(gpui_component::input::Input::new(&self.post_script_editor).appearance(false).h_full())
+                } else {
                     div()
-                        .id("drag-script-post")
-                        .w_full()
-                        .h(px(4.0))
-                        .cursor_row_resize()
-                        .hover(|s| s.bg(theme.colors.accent.opacity(0.25)))
-                        .on_mouse_down(
-                            gpui::MouseButton::Left,
-                            cx.listener(move |this, event: &MouseDownEvent, _, _| {
-                                this.drag_script_post =
-                                    Some((f32::from(event.position.y), this.script_post_h));
-                            }),
-                        ),
-                )
+                        .h(px(script_post_h))
+                .w_full()
+                        .overflow_hidden()
+                        .child(gpui_component::input::Input::new(&self.post_script_editor).appearance(false).h_full())
+                };
+                let el = el.child(editor_div);
+                if !single_open {
+                    el.child(
+                        div()
+                            .id("drag-script-post")
+                            .w_full()
+                            .h(px(4.0))
+                            .cursor_row_resize()
+                            .hover(|s| s.bg(theme.colors.accent.opacity(0.25)))
+                            .on_mouse_down(
+                                gpui::MouseButton::Left,
+                                cx.listener(move |this, event: &MouseDownEvent, _, _| {
+                                    this.drag_script_post =
+                                        Some((f32::from(event.position.y), this.script_post_h));
+                                }),
+                            ),
+                    )
+                } else {
+                    el
+                }
             })
             // Tests section
             .child(
@@ -222,10 +249,10 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                         .flex_1()
                         .w_full()
                         .overflow_hidden()
-                        .child(gpui_component::input::Input::new(&self.tests_editor).appearance(false)),
+                        .child(gpui_component::input::Input::new(&self.tests_editor).appearance(false).h_full()),
                 )
             })
-            // Pre-script drag overlay
+            // Pre-script drag overlay (only when multi-open and dragging)
             .when(self.drag_script_pre.is_some(), |el| {
                 el.child(gpui::deferred(
                     div()
@@ -250,7 +277,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                         ),
                 ).with_priority(2))
             })
-            // Post-script drag overlay
+            // Post-script drag overlay (only when multi-open and dragging)
             .when(self.drag_script_post.is_some(), |el| {
                 el.child(gpui::deferred(
                     div()

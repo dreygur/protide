@@ -231,7 +231,7 @@ impl ResponsePanel {
                         .flex_1()
                         .w_full()
                         .overflow_hidden()
-                        .child(Input::new(&self.body_viewer).disabled(true).appearance(false))
+                        .child(Input::new(&self.body_viewer).disabled(true).appearance(false).h_full())
                         .into_any_element()
                 }
             )
