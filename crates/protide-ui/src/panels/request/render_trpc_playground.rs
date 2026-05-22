@@ -5,7 +5,7 @@ use gpui::{
     MouseMoveEvent, ParentElement, Styled,
 };
 use crate::theme;
-use crate::components::icons::{icon, ICON_SM, ICON_SEARCH};
+use crate::components::icons::{icon, ICON_SM, ICON_SEARCH, ICON_REFRESH};
 use gpui_component::input::Input;
 use protide_core::execution::ws::WebSocketExecutor;
 use super::RequestPanel;
@@ -14,6 +14,13 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
     pub(super) fn render_trpc_playground_tab(&mut self, cx: &mut Context<Self>) -> gpui::AnyElement {
         let theme = theme::current(cx);
         let sidebar_w = self.trpc_pg_sidebar_w;
+        let is_dragging = self.trpc_pg_sidebar_drag.is_some();
+
+        let sidebar_header = self.render_pg_sidebar_header(cx);
+        let proc_list = self.render_pg_proc_list(cx);
+        let add_row = self.render_pg_add_row(cx);
+        let middle = self.render_pg_middle(cx);
+        let right = self.render_pg_right(cx);
 
         div()
             .id("trpc-playground")
@@ -30,9 +37,9 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                     .bg(theme.colors.bg_secondary)
                     .border_r_1()
                     .border_color(theme.colors.border)
-                    .child(self.render_pg_sidebar_header(cx))
-                    .child(self.render_pg_proc_list(cx))
-                    .child(self.render_pg_add_row(cx))
+                    .child(sidebar_header)
+                    .child(proc_list)
+                    .child(add_row)
             )
             // Drag handle between sidebar and middle
             .child(
@@ -49,13 +56,13 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                     }))
             )
             // Middle: params editor + run bar
-            .child(self.render_pg_middle(cx))
+            .child(middle)
             // Column divider
             .child(div().w(px(1.0)).h_full().flex_none().bg(theme.colors.border))
             // Right: response viewer
-            .child(self.render_pg_right(cx))
+            .child(right)
             // Sidebar resize overlay (shown while dragging)
-            .when(self.trpc_pg_sidebar_drag.is_some(), |el| {
+            .when(is_dragging, |el| {
                 el.child(deferred(
                     div()
                         .id("trpc-pg-sidebar-drag-overlay")
@@ -79,7 +86,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             .into_any_element()
     }
 
-    pub(super) fn render_pg_sidebar_header(&self, cx: &Context<Self>) -> impl IntoElement {
+    pub(super) fn render_pg_sidebar_header(&mut self, cx: &mut Context<Self>) -> gpui::AnyElement {
         let theme = theme::current(cx);
         let search = self.trpc_pg_search_input.read(cx).value().to_string();
         let q = search.to_lowercase();
@@ -90,6 +97,8 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                 .filter(|p| p.name.to_lowercase().contains(&q))
                 .count()
         };
+        let loading = self.trpc_pg_schema_loading;
+        let schema_error = self.trpc_pg_schema_error.clone();
 
         div()
             .flex_none()
@@ -122,6 +131,36 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                             .text_color(theme.colors.accent)
                             .child(count.to_string())
                     )
+                    .child(div().flex_1())
+                    // Fetch Schema button
+                    .child(
+                        div()
+                            .id("trpc-fetch-schema")
+                            .px(px(7.0))
+                            .py(px(3.0))
+                            .flex()
+                            .items_center()
+                            .gap(px(4.0))
+                            .rounded(px(3.0))
+                            .cursor_pointer()
+                            .bg(theme.colors.accent.opacity(if loading { 0.05 } else { 0.0 }))
+                            .hover(|s| s.bg(theme.colors.accent.opacity(0.12)))
+                            .child(icon(ICON_REFRESH, ICON_SM,
+                                if loading { theme.colors.text_muted } else { theme.colors.accent }
+                            ))
+                            .child(
+                                div()
+                                    .text_size(px(10.0))
+                                    .font_weight(gpui::FontWeight::MEDIUM)
+                                    .text_color(if loading { theme.colors.text_muted } else { theme.colors.accent })
+                                    .child(if loading { "Fetching..." } else { "Fetch Schema" })
+                            )
+                            .when(!loading, |el| {
+                                el.on_click(cx.listener(|this, _, _, cx| {
+                                    this.fetch_trpc_schema(cx);
+                                }))
+                            })
+                    )
             )
             // Search row
             .child(
@@ -143,5 +182,20 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                             .child(Input::new(&self.trpc_pg_search_input).bordered(false))
                     )
             )
+            // Error banner
+            .when_some(schema_error, |el, err| {
+                el.child(
+                    div()
+                        .px(px(10.0))
+                        .py(px(6.0))
+                        .text_size(px(10.0))
+                        .text_color(gpui::rgb(0xf87171))
+                        .bg(gpui::rgba(0xf8717114))
+                        .border_b_1()
+                        .border_color(gpui::rgba(0xf8717140))
+                        .child(err)
+                )
+            })
+            .into_any_element()
     }
 }

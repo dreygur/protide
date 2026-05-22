@@ -102,6 +102,114 @@ pub fn execute_trpc(
     Ok((formatted, elapsed, status))
 }
 
+/// A procedure discovered by tRPC schema introspection.
+#[derive(Debug, Clone)]
+pub struct TrpcSchemaProc {
+    pub name: String,
+    pub is_mutation: bool,
+}
+
+/// Fetch raw schema JSON from a tRPC base URL.
+/// Tries the base URL, then `{base_url}/schema`.
+pub fn fetch_trpc_schema_raw(base_url: &str) -> Result<String, String> {
+    let base = base_url.trim_end_matches('/');
+    let client = reqwest::blocking::Client::builder()
+        .timeout(Duration::from_secs(10))
+        .build()
+        .map_err(|e| format!("HTTP client: {}", e))?;
+
+    for url in &[base.to_string(), format!("{}/schema", base)] {
+        let resp = client.get(url.as_str())
+            .header("Accept", "application/json")
+            .send();
+        if let Ok(r) = resp {
+            if r.status().is_success() {
+                return r.text().map_err(|e| format!("Read error: {}", e));
+            }
+        }
+    }
+    Err("No schema endpoint responded. Paste schema JSON via the add row, or add procedures manually.".to_string())
+}
+
+/// Parse a tRPC schema JSON payload into a flat list of procedures.
+///
+/// Recognises four formats (tried in order):
+///
+/// 1. tRPC Panel — `{"procedures": {"users.login": {"procedureType": "mutation"}}}`
+/// 2. Nested router — `{"users": {"login": {"type": "mutation"}}}`
+/// 3. Flat string values — `{"users.login": "mutation"}`
+/// 4. Array — `[{"path": "users.login", "type": "mutation"}]`
+pub fn parse_trpc_schema(json: &str) -> Result<Vec<TrpcSchemaProc>, String> {
+    let val: serde_json::Value = serde_json::from_str(json)
+        .map_err(|e| format!("Invalid JSON: {}", e))?;
+
+    // Format 1: {"procedures": {"path": {"procedureType": "query|mutation"}}}
+    if let Some(procs_obj) = val.get("procedures").and_then(|v| v.as_object()) {
+        let procs: Vec<TrpcSchemaProc> = procs_obj.iter().map(|(key, def)| {
+            let kind = def.get("procedureType")
+                .or_else(|| def.get("type"))
+                .and_then(|t| t.as_str())
+                .unwrap_or("query");
+            TrpcSchemaProc { name: key.clone(), is_mutation: kind == "mutation" }
+        }).collect();
+        if !procs.is_empty() { return Ok(procs); }
+    }
+
+    // Format 2: nested router object {"router": {"proc": {"type": "query|mutation"}}}
+    if let Some(obj) = val.as_object() {
+        let mut procs = Vec::new();
+        for (router, router_val) in obj {
+            if router.starts_with('_') { continue; }
+            if let Some(router_obj) = router_val.as_object() {
+                // Only treat as nested router if values are objects (not strings/nulls)
+                let has_object_vals = router_obj.values()
+                    .any(|v| v.is_object() && !v.get("procedureType").is_some());
+                if !has_object_vals { continue; }
+                for (proc_name, proc_val) in router_obj {
+                    if proc_name.starts_with('_') { continue; }
+                    let kind = proc_val.get("type")
+                        .or_else(|| proc_val.get("procedureType"))
+                        .and_then(|t| t.as_str())
+                        .unwrap_or("query");
+                    procs.push(TrpcSchemaProc {
+                        name: format!("{}.{}", router, proc_name),
+                        is_mutation: kind == "mutation",
+                    });
+                }
+            }
+        }
+        if !procs.is_empty() { return Ok(procs); }
+    }
+
+    // Format 3: flat string map {"users.login": "mutation"}
+    if let Some(obj) = val.as_object() {
+        let procs: Vec<TrpcSchemaProc> = obj.iter().filter_map(|(key, v)| {
+            v.as_str().map(|kind| TrpcSchemaProc {
+                name: key.clone(),
+                is_mutation: kind == "mutation",
+            })
+        }).collect();
+        if !procs.is_empty() { return Ok(procs); }
+    }
+
+    // Format 4: array [{"path": "users.login", "type": "mutation"}]
+    if let Some(arr) = val.as_array() {
+        let procs: Vec<TrpcSchemaProc> = arr.iter().filter_map(|item| {
+            let name = item.get("path")
+                .or_else(|| item.get("name"))
+                .and_then(|v| v.as_str())?;
+            let kind = item.get("type")
+                .or_else(|| item.get("procedureType"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("query");
+            Some(TrpcSchemaProc { name: name.to_string(), is_mutation: kind == "mutation" })
+        }).collect();
+        if !procs.is_empty() { return Ok(procs); }
+    }
+
+    Err("No recognised procedure format in schema JSON. Expected 'procedures' key, nested router object, flat string map, or array.".to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -164,5 +272,44 @@ mod tests {
             .cloned()
             .unwrap();
         assert_eq!(result["token"], "abc123");
+    }
+
+    #[test]
+    fn test_parse_schema_format1_procedures_key() {
+        let json = r#"{"procedures":{"users.login":{"procedureType":"mutation"},"users.getAll":{"procedureType":"query"}}}"#;
+        let procs = parse_trpc_schema(json).unwrap();
+        assert_eq!(procs.len(), 2);
+        let login = procs.iter().find(|p| p.name == "users.login").unwrap();
+        assert!(login.is_mutation);
+        let get_all = procs.iter().find(|p| p.name == "users.getAll").unwrap();
+        assert!(!get_all.is_mutation);
+    }
+
+    #[test]
+    fn test_parse_schema_format3_flat_strings() {
+        let json = r#"{"users.login":"mutation","users.getAll":"query","posts.create":"mutation"}"#;
+        let procs = parse_trpc_schema(json).unwrap();
+        assert_eq!(procs.len(), 3);
+        assert!(procs.iter().any(|p| p.name == "users.login" && p.is_mutation));
+        assert!(procs.iter().any(|p| p.name == "posts.create" && p.is_mutation));
+        assert!(procs.iter().any(|p| p.name == "users.getAll" && !p.is_mutation));
+    }
+
+    #[test]
+    fn test_parse_schema_format4_array() {
+        let json = r#"[{"path":"users.login","type":"mutation"},{"path":"billing.getInvoices","type":"query"}]"#;
+        let procs = parse_trpc_schema(json).unwrap();
+        assert_eq!(procs.len(), 2);
+        assert!(procs.iter().any(|p| p.name == "billing.getInvoices" && !p.is_mutation));
+    }
+
+    #[test]
+    fn test_parse_schema_invalid_json() {
+        assert!(parse_trpc_schema("not json").is_err());
+    }
+
+    #[test]
+    fn test_parse_schema_unrecognised_format() {
+        assert!(parse_trpc_schema(r#"{"foo": 42}"#).is_err());
     }
 }

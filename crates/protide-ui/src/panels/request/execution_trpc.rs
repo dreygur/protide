@@ -196,4 +196,43 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             });
         }).detach();
     }
+
+    pub(super) fn fetch_trpc_schema(&mut self, cx: &mut Context<Self>) {
+        self.trpc_pg_schema_loading = true;
+        self.trpc_pg_schema_error = None;
+        cx.notify();
+
+        let url = self.url.clone();
+        let env_state = self.explorer_panel.as_ref().map(|p| p.read(cx).env_state().clone());
+        let url = if let Some(ref env) = env_state { env.substitute(&url) } else { url };
+
+        cx.spawn(async move |this: gpui::WeakEntity<Self>, cx: &mut gpui::AsyncApp| {
+            let (tx, rx) = std::sync::mpsc::channel();
+            std::thread::spawn(move || {
+                let raw = protide_core::protocols::trpc::fetch_trpc_schema_raw(&url);
+                let result = raw.and_then(|json| protide_core::protocols::trpc::parse_trpc_schema(&json));
+                let _ = tx.send(result);
+            });
+
+            let result = rx.recv_timeout(std::time::Duration::from_secs(15));
+            let _ = cx.update(|cx| {
+                let _ = this.update(cx, |panel, cx| {
+                    panel.trpc_pg_schema_loading = false;
+                    match result {
+                        Ok(Ok(procs)) => {
+                            use super::super::request_types::{TrpcPlaygroundProc, TrpcProcKind};
+                            panel.trpc_pg_procedures = procs.into_iter().map(|p| TrpcPlaygroundProc {
+                                kind: if p.is_mutation { TrpcProcKind::Mutation } else { TrpcProcKind::Query },
+                                name: p.name,
+                            }).collect();
+                            panel.trpc_pg_schema_error = None;
+                        }
+                        Ok(Err(e)) => { panel.trpc_pg_schema_error = Some(e); }
+                        Err(_) => { panel.trpc_pg_schema_error = Some("Schema fetch timed out (15s)".to_string()); }
+                    }
+                    cx.notify();
+                });
+            });
+        }).detach();
+    }
 }

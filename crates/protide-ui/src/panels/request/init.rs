@@ -1,5 +1,4 @@
 use super::*;
-use super::super::request_types::{TrpcPlaygroundProc, TrpcProcKind};
 use gpui_component::input::InputState;
 
 impl<E: WebSocketExecutor> RequestPanel<E> {
@@ -141,13 +140,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             grpc_method: None,
             trpc_procedure: String::new(),
             trpc_params_editor,
-            trpc_pg_procedures: vec![
-                TrpcPlaygroundProc { kind: TrpcProcKind::Query,    name: "users.getAll".to_string() },
-                TrpcPlaygroundProc { kind: TrpcProcKind::Query,    name: "users.getById".to_string() },
-                TrpcPlaygroundProc { kind: TrpcProcKind::Mutation, name: "users.create".to_string() },
-                TrpcPlaygroundProc { kind: TrpcProcKind::Mutation, name: "users.login".to_string() },
-                TrpcPlaygroundProc { kind: TrpcProcKind::Query,    name: "users.getSession".to_string() },
-            ],
+            trpc_pg_procedures: vec![],
             trpc_pg_selected: None,
             trpc_pg_loading: false,
             trpc_pg_response: None,
@@ -160,6 +153,8 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             trpc_pg_add_kind: TrpcProcKind::Query,
             trpc_pg_sidebar_w: 220.0,
             trpc_pg_sidebar_drag: None,
+            trpc_pg_schema_loading: false,
+            trpc_pg_schema_error: None,
             sio_state: SioConnectionState::Disconnected,
             sio_messages: SioRingBuffer::default(),
             sio_namespace: "/".to_string(),

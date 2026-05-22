@@ -11,7 +11,7 @@ use protide_core::execution::ws::WebSocketExecutor;
 use super::RequestPanel;
 
 impl<E: WebSocketExecutor> RequestPanel<E> {
-    pub(super) fn render_pg_proc_list(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
+    pub(super) fn render_pg_proc_list(&mut self, cx: &mut Context<Self>) -> gpui::AnyElement {
         let theme = theme::current(cx);
         let search = self.trpc_pg_search_input.read(cx).value().to_string();
         let q = search.to_lowercase();
@@ -158,9 +158,10 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                             )
                     }))
             }))
+            .into_any_element()
     }
 
-    pub(super) fn render_pg_add_row(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
+    pub(super) fn render_pg_add_row(&mut self, cx: &mut Context<Self>) -> gpui::AnyElement {
         let theme = theme::current(cx);
         let add_kind = self.trpc_pg_add_kind;
 
@@ -259,5 +260,6 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                     }))
                     .child(icon(ICON_PLUS, ICON_SM, theme.colors.accent))
             )
+            .into_any_element()
     }
 }

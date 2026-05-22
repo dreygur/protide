@@ -11,7 +11,7 @@ use protide_core::execution::ws::WebSocketExecutor;
 use super::RequestPanel;
 
 impl<E: WebSocketExecutor> RequestPanel<E> {
-    pub(super) fn render_pg_middle(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
+    pub(super) fn render_pg_middle(&mut self, cx: &mut Context<Self>) -> gpui::AnyElement {
         let theme = theme::current(cx);
 
         div()
@@ -85,6 +85,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             )
             // Run bar
             .child(self.render_pg_run_bar(cx))
+            .into_any_element()
     }
 
     fn render_pg_run_bar(&self, cx: &Context<Self>) -> impl IntoElement {
@@ -149,7 +150,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             )
     }
 
-    pub(super) fn render_pg_right(&self, cx: &Context<Self>) -> impl IntoElement {
+    pub(super) fn render_pg_right(&self, cx: &Context<Self>) -> gpui::AnyElement {
         let theme = theme::current(cx);
         let status = self.trpc_pg_status;
         let elapsed = self.trpc_pg_elapsed;
@@ -243,5 +244,6 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                     .overflow_hidden()
                     .child(Input::new(&self.trpc_pg_result_viewer).disabled(true).appearance(false).h_full())
             )
+            .into_any_element()
     }
 }

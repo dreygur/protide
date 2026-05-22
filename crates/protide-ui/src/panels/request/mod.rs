@@ -189,6 +189,8 @@ pub struct RequestPanel<E: WebSocketExecutor = TungsteniteExecutor> {
     pub(super) trpc_pg_add_kind: TrpcProcKind,
     pub(super) trpc_pg_sidebar_w: f32,
     pub(super) trpc_pg_sidebar_drag: Option<(f32, f32)>,
+    pub(super) trpc_pg_schema_loading: bool,
+    pub(super) trpc_pg_schema_error: Option<String>,
     pub(super) sio_state: SioConnectionState,
     pub(super) sio_messages: SioRingBuffer,
     pub(super) sio_namespace: String,
