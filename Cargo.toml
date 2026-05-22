@@ -25,7 +25,7 @@ protide-ui = { path = "crates/protide-ui" }
 # UI Framework - same git spec as gpui-component so Cargo unifies to one commit
 gpui = { git = "https://github.com/zed-industries/zed", features = ["wayland"] }
 gpui_platform = { git = "https://github.com/zed-industries/zed", package = "gpui_platform", features = ["wayland", "x11"] }
-gpui-component = { git = "https://github.com/longbridge/gpui-component" }
+gpui-component = { git = "https://github.com/longbridge/gpui-component", features = ["tree-sitter-javascript", "tree-sitter-graphql"] }
 gpui-component-assets = { git = "https://github.com/longbridge/gpui-component", package = "gpui-component-assets" }
 
 # Serialization
