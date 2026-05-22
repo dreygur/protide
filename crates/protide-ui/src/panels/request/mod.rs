@@ -1,6 +1,9 @@
 //! Request editor panel – URL input, method selector, headers/params/body, auth.
 
 mod render;
+mod render_trpc_playground;
+mod render_trpc_pg_sidebar;
+mod render_trpc_pg_io;
 mod render_url_bar;
 mod render_dropdowns;
 mod render_tab_router;
@@ -18,7 +21,6 @@ mod render_websocket;
 mod render_grpc;
 mod render_grpc_proto;
 mod render_import;
-mod render_trpc;
 mod render_socketio;
 mod render_socketio_helpers;
 mod render_data;
@@ -50,9 +52,7 @@ mod tests;
 use std::ops::Range;
 use std::marker::PhantomData;
 use gpui::{
-    deferred, div, prelude::*, px, Context, Entity, FocusHandle, IntoElement,
-    KeyDownEvent, MouseButton, MouseMoveEvent, ParentElement, Render,
-    ScrollHandle, Styled, Subscription, Window,
+    prelude::*, Context, Entity, FocusHandle, ScrollHandle, Subscription, Window,
 };
 use gpui_component::input::InputState;
 use protide_core::execution::{ExecutionBody, ExecutionMode, ExecutionRequest, FormPart, FormPartValue};
@@ -68,7 +68,7 @@ use super::explorer::ExplorerPanel;
 use super::request_types::{
     ApiKeyLocation, AuthType, BodyType, EditTarget, FormField, FormFieldType,
     GrpcMethodInfo, GrpcStreamingType, HttpMethod, KeyValuePair, KvList, PendingEditor, RequestMode,
-    SioConnectionState, WsConnectionState,
+    SioConnectionState, TrpcPlaygroundProc, TrpcProcKind, WsConnectionState,
 };
 use base64::Engine;
 use super::response::{ResponseData, ResponsePanel};
@@ -176,6 +176,19 @@ pub struct RequestPanel<E: WebSocketExecutor = TungsteniteExecutor> {
     pub(super) grpc_method: Option<GrpcMethodInfo>,
     pub(super) trpc_procedure: String,
     pub(super) trpc_params_editor: Entity<InputState>,
+    pub(super) trpc_pg_procedures: Vec<TrpcPlaygroundProc>,
+    pub(super) trpc_pg_selected: Option<usize>,
+    pub(super) trpc_pg_loading: bool,
+    pub(super) trpc_pg_response: Option<String>,
+    pub(super) trpc_pg_error: Option<String>,
+    pub(super) trpc_pg_status: Option<u16>,
+    pub(super) trpc_pg_elapsed: Option<std::time::Duration>,
+    pub(super) trpc_pg_search_input: Entity<InputState>,
+    pub(super) trpc_pg_result_viewer: Entity<InputState>,
+    pub(super) trpc_pg_add_input: Entity<InputState>,
+    pub(super) trpc_pg_add_kind: TrpcProcKind,
+    pub(super) trpc_pg_sidebar_w: f32,
+    pub(super) trpc_pg_sidebar_drag: Option<(f32, f32)>,
     pub(super) sio_state: SioConnectionState,
     pub(super) sio_messages: SioRingBuffer,
     pub(super) sio_namespace: String,
@@ -215,110 +228,4 @@ pub struct RequestPanel<E: WebSocketExecutor = TungsteniteExecutor> {
     /// Each entry is (target editor, new content); applied and cleared on next render.
     pub(super) editor_pending: Vec<(PendingEditor, String)>,
     _executor: PhantomData<E>,
-}
-
-impl<E: WebSocketExecutor> Render for RequestPanel<E> {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        self.skip_blur = false;
-        self.apply_pending_editors(window, cx);
-        div()
-            .id("request-panel")
-            .size_full().flex().flex_col().relative()
-            .track_focus(&self.body_focus)
-            .capture_key_down(cx.listener(|this, event: &KeyDownEvent, _, cx| {
-                if event.keystroke.modifiers.control && event.keystroke.key == "s" {
-                    this.save_request(cx); return;
-                }
-                if event.keystroke.key == "escape" {
-                    if this.mode_dropdown_open { this.mode_dropdown_open = false; cx.notify(); return; }
-                    if this.method_dropdown_open { this.method_dropdown_open = false; cx.notify(); return; }
-                }
-                if this.active_edit.is_some() { this.handle_edit_key(event, cx); }
-            }))
-            .on_mouse_down(gpui::MouseButton::Left, cx.listener(|this, _, _, cx| {
-                if !this.skip_blur && this.active_edit.is_some() { this.active_edit = None; cx.notify(); }
-                if this.method_dropdown_open { this.method_dropdown_open = false; cx.notify(); }
-                if this.mode_dropdown_open { this.mode_dropdown_open = false; cx.notify(); }
-            }))
-            .child(self.render_url_bar(window, cx))
-            .child(self.render_tabs(cx))
-            .child(div().id("tab-content").flex_1().w_full().p(px(12.0)).overflow_scroll()
-                .child(self.render_tab_content(cx)))
-            .when(self.method_dropdown_open, |el|
-                el.child(deferred(self.render_method_dropdown_overlay(window, cx)).with_priority(1)))
-            .when(self.mode_dropdown_open, |el|
-                el.child(deferred(self.render_mode_dropdown_overlay(cx)).with_priority(1)))
-            .when(self.kv_col_drag.is_some(), |el| el.child(deferred(
-                div().id("kv-col-resize-overlay")
-                    .absolute().top_0().left_0().w_full().h_full()
-                    .cursor_col_resize()
-                    .on_mouse_move(cx.listener(|this, event: &MouseMoveEvent, _, cx| {
-                        if let Some((start_x, start_w)) = this.kv_col_drag {
-                            let new_w = (start_w + f32::from(event.position.x) - start_x).max(60.0).min(500.0);
-                            if (this.kv_col_key_w - new_w).abs() > 0.5 { this.kv_col_key_w = new_w; cx.notify(); }
-                        }
-                    }))
-                    .on_mouse_up(MouseButton::Left, cx.listener(|this, _, _, cx| {
-                        this.kv_col_drag = None; cx.notify();
-                    }))
-            ).with_priority(1)))
-            .when(self.kv_row_drag.is_some(), |el| el.child(deferred(
-                div().id("kv-row-drag-overlay")
-                    .absolute().top_0().left_0().w_full().h_full()
-                    .cursor_grab()
-                    .on_mouse_move(cx.listener(|this, event: &MouseMoveEvent, _, cx| {
-                        if let Some((list, src, start_y)) = this.kv_row_drag {
-                            let len = match list {
-                                KvList::Params => this.params.len(),
-                                KvList::Headers => this.headers.len(),
-                                KvList::GrpcMeta => this.grpc_metadata.len(),
-                            };
-                            if len > 1 {
-                                let delta = f32::from(event.position.y) - start_y;
-                                let idx = (src as i32 + (delta / 36.0).round() as i32)
-                                    .clamp(0, len as i32 - 1) as usize;
-                                if this.kv_row_drag_over != Some(idx) {
-                                    this.kv_row_drag_over = Some(idx);
-                                    cx.notify();
-                                }
-                            }
-                        }
-                    }))
-                    .on_mouse_up(MouseButton::Left, cx.listener(|this, _, _, cx| {
-                        let drag = this.kv_row_drag.take();
-                        let over = this.kv_row_drag_over.take();
-                        if let (Some((list, src, _)), Some(dst)) = (drag, over) {
-                            if src != dst { this.reorder_kv(list, src, dst, cx); }
-                        }
-                        cx.notify();
-                    }))
-            ).with_priority(2)))
-            .when(self.form_row_drag.is_some(), |el| el.child(deferred(
-                div().id("form-row-drag-overlay")
-                    .absolute().top_0().left_0().w_full().h_full()
-                    .cursor_grab()
-                    .on_mouse_move(cx.listener(|this, event: &MouseMoveEvent, _, cx| {
-                        if let Some((src, start_y)) = this.form_row_drag {
-                            let len = this.form_data.len();
-                            if len > 1 {
-                                let delta = f32::from(event.position.y) - start_y;
-                                let idx = (src as i32 + (delta / 36.0).round() as i32)
-                                    .clamp(0, len as i32 - 1) as usize;
-                                if this.form_row_drag_over != Some(idx) {
-                                    this.form_row_drag_over = Some(idx);
-                                    cx.notify();
-                                }
-                            }
-                        }
-                    }))
-                    .on_mouse_up(MouseButton::Left, cx.listener(|this, _, _, cx| {
-                        let drag = this.form_row_drag.take();
-                        let over = this.form_row_drag_over.take();
-                        if let (Some((src, _)), Some(dst)) = (drag, over) {
-                            if src != dst { this.reorder_form_field(src, dst, cx); }
-                        }
-                        cx.notify();
-                    }))
-            ).with_priority(2)))
-    }
 }

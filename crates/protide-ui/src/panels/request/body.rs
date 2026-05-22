@@ -22,6 +22,8 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                 PendingEditor::GrpcMessage => &self.grpc_message_editor,
                 PendingEditor::TrpcParams => &self.trpc_params_editor,
                 PendingEditor::SioPayload => &self.sio_payload_editor,
+                PendingEditor::TrpcPgResult => &self.trpc_pg_result_viewer,
+                PendingEditor::TrpcPgAddInput => &self.trpc_pg_add_input,
             };
             editor.update(cx, |s, cx| s.set_value(&content, window, cx));
         }

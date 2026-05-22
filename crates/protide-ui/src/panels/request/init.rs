@@ -1,4 +1,5 @@
 use super::*;
+use super::super::request_types::{TrpcPlaygroundProc, TrpcProcKind};
 use gpui_component::input::InputState;
 
 impl<E: WebSocketExecutor> RequestPanel<E> {
@@ -32,6 +33,15 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
         });
         let trpc_params_editor = cx.new(|cx| {
             InputState::new(window, cx).multi_line(true).code_editor("json").line_number(true).default_value("{}")
+        });
+        let trpc_pg_search_input = cx.new(|cx| {
+            InputState::new(window, cx).placeholder("Search procedures...")
+        });
+        let trpc_pg_result_viewer = cx.new(|cx| {
+            InputState::new(window, cx).multi_line(true).line_number(true)
+        });
+        let trpc_pg_add_input = cx.new(|cx| {
+            InputState::new(window, cx).placeholder("router.procedureName")
         });
         let sio_payload_editor = cx.new(|cx| {
             InputState::new(window, cx).multi_line(true).code_editor("json").default_value("{}")
@@ -131,6 +141,25 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             grpc_method: None,
             trpc_procedure: String::new(),
             trpc_params_editor,
+            trpc_pg_procedures: vec![
+                TrpcPlaygroundProc { kind: TrpcProcKind::Query, name: "user.getAll".to_string() },
+                TrpcPlaygroundProc { kind: TrpcProcKind::Query, name: "user.getById".to_string() },
+                TrpcPlaygroundProc { kind: TrpcProcKind::Mutation, name: "user.create".to_string() },
+                TrpcPlaygroundProc { kind: TrpcProcKind::Mutation, name: "auth.login".to_string() },
+                TrpcPlaygroundProc { kind: TrpcProcKind::Query, name: "auth.getSession".to_string() },
+            ],
+            trpc_pg_selected: None,
+            trpc_pg_loading: false,
+            trpc_pg_response: None,
+            trpc_pg_error: None,
+            trpc_pg_status: None,
+            trpc_pg_elapsed: None,
+            trpc_pg_search_input,
+            trpc_pg_result_viewer,
+            trpc_pg_add_input,
+            trpc_pg_add_kind: TrpcProcKind::Query,
+            trpc_pg_sidebar_w: 220.0,
+            trpc_pg_sidebar_drag: None,
             sio_state: SioConnectionState::Disconnected,
             sio_messages: SioRingBuffer::default(),
             sio_namespace: "/".to_string(),

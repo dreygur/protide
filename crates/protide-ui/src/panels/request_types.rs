@@ -25,6 +25,8 @@ pub enum PendingEditor {
     GrpcMessage,
     TrpcParams,
     SioPayload,
+    TrpcPgResult,
+    TrpcPgAddInput,
 }
 
 /// Form field type (text or file)
@@ -61,7 +63,6 @@ pub enum EditTarget {
     FormValue(usize),
     GrpcMetaKey(usize),
     GrpcMetaValue(usize),
-    TrpcProcedure,
     SioNamespace,
     SioEventName,
     SioRoomName,
@@ -218,5 +219,43 @@ pub enum KvList {
     Params,
     Headers,
     GrpcMeta,
+}
+
+/// tRPC procedure kind (query = GET, mutation = POST)
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TrpcProcKind {
+    Query,
+    Mutation,
+}
+
+impl TrpcProcKind {
+    pub fn prefix(self) -> &'static str {
+        match self { TrpcProcKind::Query => "query", TrpcProcKind::Mutation => "mutation" }
+    }
+}
+
+/// A procedure entry in the tRPC playground
+#[derive(Clone, Debug)]
+pub struct TrpcPlaygroundProc {
+    pub kind: TrpcProcKind,
+    pub name: String,
+}
+
+impl TrpcPlaygroundProc {
+    pub fn router(&self) -> &str {
+        match self.name.rfind('.') {
+            Some(dot) => &self.name[..dot],
+            None => "",
+        }
+    }
+    pub fn leaf(&self) -> &str {
+        match self.name.rfind('.') {
+            Some(dot) => &self.name[dot + 1..],
+            None => &self.name,
+        }
+    }
+    pub fn full_procedure(&self) -> String {
+        format!("{}.{}", self.kind.prefix(), self.name)
+    }
 }
 
