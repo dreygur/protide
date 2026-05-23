@@ -6,6 +6,7 @@ mod help;
 mod overlays;
 mod render;
 mod render_sidebar;
+mod render_response_strip;
 mod statusbar;
 mod sync;
 mod titlebar;
@@ -51,7 +52,7 @@ use super::panels::{ConsoleEntry, ConsolePanel, DocsPanel, ExplorerPanel, MockSe
 use crate::theme;
 use protide_core::sync::{SyncEngine, SyncEvent};
 use crate::components::icons::{
-    ICON_CHEVRON_DOWN, ICON_CHEVRON_UP, ICON_CLOSE, ICON_COPY, ICON_FOLDER, ICON_MAXIMIZE,
+    ICON_CHEVRON_DOWN, ICON_CHEVRON_RIGHT, ICON_CHEVRON_UP, ICON_CLOSE, ICON_COPY, ICON_FOLDER, ICON_MAXIMIZE,
     ICON_MD, ICON_MENU, ICON_MINIMIZE, ICON_REFRESH, ICON_SETTINGS, ICON_SM, ICON_WINDOW_CLOSE, icon,
 };
 

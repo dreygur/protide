@@ -222,6 +222,7 @@ pub struct RequestPanel<E: WebSocketExecutor = TungsteniteExecutor> {
     pub(super) data_running: bool,
     pub(super) timeout_input: Entity<gpui_component::input::InputState>,
     pub(super) verify_ssl: bool,
+    pub(super) impersonate_browser: bool,
     pub(super) kv_row_drag: Option<(KvList, usize, f32)>,
     pub(super) kv_row_drag_over: Option<usize>,
     pub(super) form_row_drag: Option<(usize, f32)>,

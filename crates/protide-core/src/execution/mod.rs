@@ -71,6 +71,8 @@ pub struct ExecutionRequest {
     pub variable_extractions: Vec<VariableExtraction>,
     pub timeout_secs: u64,
     pub verify_ssl: bool,
+    /// Send request with Chrome-profile TLS fingerprint (JA3/JA4) and HTTP/2 SETTINGS.
+    pub impersonate_browser: bool,
 }
 
 /// Full result of executing a request
@@ -143,7 +145,7 @@ pub fn execute(req: ExecutionRequest) -> Result<ExecutionResult, String> {
     }
 
     // 2. Execute HTTP
-    let raw = run_http(&url, &req.method, &headers, &body, &req.mode, req.timeout_secs, req.verify_ssl)?;
+    let raw = run_http(&url, &req.method, &headers, &body, &req.mode, req.timeout_secs, req.verify_ssl, req.impersonate_browser)?;
 
     // 3. Post-script + tests
     let mut test_results: Vec<TestResult> = Vec::new();

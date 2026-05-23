@@ -1,5 +1,14 @@
 use super::*;
 
+/// Which sub-view is active inside the Body tab
+#[derive(Clone, Copy, PartialEq, Eq, Default)]
+pub(crate) enum BodyViewMode {
+    #[default]
+    Pretty,
+    Raw,
+    Preview,
+}
+
 /// Response data from an HTTP request
 #[derive(Clone, Default)]
 pub struct ResponseData {
@@ -91,7 +100,7 @@ pub(crate) enum CopyFeedback {
     HdrVal,
 }
 
-pub(super) fn format_size(bytes: usize) -> String {
+pub fn format_size(bytes: usize) -> String {
     if bytes < 1024 {
         format!("{} B", bytes)
     } else if bytes < 1024 * 1024 {

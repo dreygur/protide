@@ -191,6 +191,7 @@ async fn call_tool(id: Value, params: &Value) -> Response {
         variable_extractions: vec![],
         timeout_secs: 30,
         verify_ssl: true,
+        impersonate_browser: false,
     };
 
     let result = tokio::task::spawn_blocking(move || protide_core::execution::execute(req))

@@ -3,7 +3,7 @@
 use gpui::{
     div, prelude::*, px, Context, IntoElement, ParentElement, SharedString, Styled,
 };
-use gpui_component::input::Input;
+use gpui_component::{input::Input, Sizable};
 use crate::theme;
 use crate::components::icons::{icon, ICON_SM, ICON_CHEVRON_DOWN, ICON_PLUS};
 use super::super::request_types::{TrpcProcKind, TrpcPlaygroundProc, PendingEditor};
@@ -235,7 +235,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                     .border_1()
                     .border_color(theme.colors.border)
                     .overflow_hidden()
-                    .child(Input::new(&self.trpc_pg_add_input).bordered(false))
+                    .child(Input::new(&self.trpc_pg_add_input).bordered(false).with_size(gpui_component::Size::XSmall))
             )
             // Add button
             .child(

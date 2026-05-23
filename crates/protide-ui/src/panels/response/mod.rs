@@ -48,6 +48,7 @@ pub mod render;
 pub mod render_content;
 pub mod render_header;
 pub mod render_body;
+pub mod render_html_preview;
 pub mod render_headers;
 pub mod render_cookies;
 pub mod render_tests;
@@ -55,6 +56,7 @@ pub mod render_extract;
 pub mod render_util;
 
 pub use types::*;
+pub use types::format_size;
 pub use json::{PrimVal, RowKind, JsonCtxMenu, JsonRow};
 
 /// Response viewer panel
@@ -73,6 +75,14 @@ pub struct ResponsePanel {
     pub(super) body_viewer: Entity<InputState>,
     /// Pending (body_text, language) to apply to body_viewer on next render (needs &mut Window)
     pub(super) body_pending: Option<(String, String)>,
+    /// Which sub-view is active in the Body tab: Pretty / Raw / Preview
+    pub(super) body_view_mode: BodyViewMode,
+    /// Unmodified response body, used by the Raw view and Preview renderer
+    pub(super) raw_body: String,
+    /// Pretty-printed body text (same language as body_viewer was last set to)
+    pub(super) formatted_body: String,
+    /// Language id of the formatted body ("json", "xml", "html", "")
+    pub(super) formatted_lang: String,
     /// Parsed JSON value for tree rendering (Some when body is valid JSON)
     pub(super) json_value: Option<serde_json::Value>,
     /// Set of collapsed JSON paths (using "/" as separator, root = "")
@@ -140,6 +150,10 @@ impl ResponsePanel {
             copy_feedback: None,
             body_viewer,
             body_pending: None,
+            body_view_mode: BodyViewMode::Pretty,
+            raw_body: String::new(),
+            formatted_body: String::new(),
+            formatted_lang: String::new(),
             json_value: None,
             json_tree_collapsed: std::collections::HashSet::new(),
             json_rows: Vec::new(),
@@ -219,14 +233,12 @@ impl ResponsePanel {
 
     pub fn set_response(&mut self, response: ResponseData, cx: &mut Context<Self>) {
         debug!("Response: {} {} ({} bytes, {:?})", response.status, response.status_text, response.body.len(), response.time);
-        // Detect language from Content-Type header
         let content_type = response.headers.iter()
             .find(|(k, _)| k.eq_ignore_ascii_case("content-type"))
             .map(|(_, v)| v.to_lowercase());
 
         let (body_text, language) = if let Some(ct) = &content_type {
             if ct.contains("application/json") || ct.contains("+json") {
-                // Try to pretty-print JSON
                 if let Ok(json) = serde_json::from_str::<serde_json::Value>(&response.body) {
                     let formatted = serde_json::to_string_pretty(&json).unwrap_or_else(|_| response.body.clone());
                     (formatted, "json".to_string())
@@ -239,18 +251,25 @@ impl ResponsePanel {
             } else if ct.contains("application/xml") || ct.contains("text/xml") || ct.contains("+xml") {
                 (types::pretty_xml(&response.body), "xml".to_string())
             } else {
-                // Detect from content
                 self.detect_language_from_content(&response.body)
             }
         } else {
-            // No Content-Type - detect from content
             self.detect_language_from_content(&response.body)
         };
 
-        // Defer body viewer update until render() (which has &mut Window)
+        // Auto-switch to Preview when the response is HTML
+        self.body_view_mode = if language == "html" {
+            BodyViewMode::Preview
+        } else {
+            BodyViewMode::Pretty
+        };
+
+        self.raw_body = response.body.clone();
+        self.formatted_body = body_text.clone();
+        self.formatted_lang = language.clone();
+
         self.body_pending = Some((body_text, language));
 
-        // Store parsed JSON for tree rendering
         self.json_value = serde_json::from_str::<serde_json::Value>(&response.body).ok();
         self.json_tree_collapsed.clear();
         self.expanded_strings.clear();
@@ -291,6 +310,11 @@ impl ResponsePanel {
 
     pub fn is_loading(&self) -> bool {
         self.loading
+    }
+
+    /// Returns the current error message, if the last request failed.
+    pub fn last_error(&self) -> Option<&str> {
+        self.error.as_deref()
     }
 
     pub fn set_error(&mut self, error: String, cx: &mut Context<Self>) {

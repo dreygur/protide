@@ -162,6 +162,7 @@ fn build_execution_request(req: &Request, env: &HashMap<String, String>) -> Exec
         variable_extractions: req.meta.variable_extractions.clone(),
         timeout_secs: 30,
         verify_ssl: true,
+        impersonate_browser: false,
     }
 }
 

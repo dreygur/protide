@@ -70,15 +70,49 @@ impl ResponsePanel {
 
         // Tests tab can be shown even without a response (but will be empty)
         if self.active_tab == 3 {
-            return self.render_tests_tab(cx);
+            return div()
+                .id("tests-scroll")
+                .flex_1()
+                .w_full()
+                .overflow_scroll()
+                .track_scroll(&self.content_scroll_handle)
+                .child(self.render_tests_tab(cx))
+                .vertical_scrollbar(&self.content_scroll_handle)
+                .into_any_element();
         }
 
         if let Some(response) = &self.response {
             match self.active_tab {
+                // Body tab handles its own scroll internally (editor + JSON tree)
                 0 => self.render_body_tab(response, cx),
-                1 => self.render_headers_tab(response, cx),
-                2 => self.render_cookies_tab(response, cx),
-                4 => self.render_extract_tab(response, cx),
+                // All other tabs are scrollable lists
+                1 => div()
+                    .id("headers-scroll")
+                    .flex_1()
+                    .w_full()
+                    .overflow_scroll()
+                    .track_scroll(&self.content_scroll_handle)
+                    .child(self.render_headers_tab(response, cx))
+                    .vertical_scrollbar(&self.content_scroll_handle)
+                    .into_any_element(),
+                2 => div()
+                    .id("cookies-scroll")
+                    .flex_1()
+                    .w_full()
+                    .overflow_scroll()
+                    .track_scroll(&self.content_scroll_handle)
+                    .child(self.render_cookies_tab(response, cx))
+                    .vertical_scrollbar(&self.content_scroll_handle)
+                    .into_any_element(),
+                4 => div()
+                    .id("extract-scroll")
+                    .flex_1()
+                    .w_full()
+                    .overflow_scroll()
+                    .track_scroll(&self.content_scroll_handle)
+                    .child(self.render_extract_tab(response, cx))
+                    .vertical_scrollbar(&self.content_scroll_handle)
+                    .into_any_element(),
                 _ => div().into_any_element(),
             }
         } else {

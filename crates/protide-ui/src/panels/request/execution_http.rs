@@ -167,6 +167,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
 
         let timeout_secs: u64 = self.timeout_input.read(cx).value().to_string().trim().parse().unwrap_or(30);
         let verify_ssl = self.verify_ssl;
+        let impersonate_browser = self.impersonate_browser;
         let req = ExecutionRequest {
             method: method.as_str().to_string(),
             url: final_url.clone(),
@@ -180,6 +181,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             variable_extractions,
             timeout_secs,
             verify_ssl,
+            impersonate_browser,
         };
 
         cx.spawn(async move |this: gpui::WeakEntity<Self>, cx: &mut gpui::AsyncApp| {

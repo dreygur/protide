@@ -40,7 +40,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             InputState::new(window, cx).multi_line(true).code_editor("json").line_number(true)
         });
         let trpc_pg_add_input = cx.new(|cx| {
-            InputState::new(window, cx).placeholder("router.procedureName")
+            InputState::new(window, cx).placeholder("router.name")
         });
         let sio_payload_editor = cx.new(|cx| {
             InputState::new(window, cx).multi_line(true).code_editor("json").default_value("{}")
@@ -188,6 +188,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                 InputState::new(window, cx).default_value("30").placeholder("30")
             }),
             verify_ssl: true,
+            impersonate_browser: false,
             kv_row_drag: None,
             kv_row_drag_over: None,
             form_row_drag: None,

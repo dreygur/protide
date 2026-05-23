@@ -28,4 +28,5 @@ pub use history::RequestHistory;
 pub use mock_server::MockServerPanel;
 pub use request::RequestPanel;
 pub use response::ResponsePanel;
+pub use response::format_size;
 pub use runner::RunnerPanel;

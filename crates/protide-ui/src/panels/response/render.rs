@@ -51,7 +51,6 @@ impl Render for ResponsePanel {
                 .left_0()
                 .size_full(),
             )
-            .child(self.render_header(cx))
             .child(self.render_tabs(cx))
             .child(
                 div()
@@ -59,9 +58,8 @@ impl Render for ResponsePanel {
                     .flex_1()
                     .w_full()
                     .p(px(12.0))
-                    .overflow_scroll()
+                    .overflow_hidden()
                     .relative()
-                    .track_scroll(&self.content_scroll_handle)
                     // Right-click to show copy context menu
                     .when(has_response, |el| {
                         el.on_mouse_down(
@@ -73,8 +71,7 @@ impl Render for ResponsePanel {
                             }),
                         )
                     })
-                    .child(self.render_content(cx))
-                    .vertical_scrollbar(&self.content_scroll_handle),
+                    .child(self.render_content(cx)),
             )
             // Body-level right-click context menu (copy / clear)
             .when_some(context_menu_pos, |el, pos| {

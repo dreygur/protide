@@ -9,6 +9,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
     pub(super) fn render_settings_tab(&mut self, cx: &mut Context<Self>) -> gpui::AnyElement {
         let theme = theme::current(cx);
         let verify_ssl = self.verify_ssl;
+        let impersonate = self.impersonate_browser;
 
         div()
             .w_full()
@@ -91,6 +92,69 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                             .text_size(px(11.0))
                             .text_color(theme.colors.text_muted)
                             .child(if verify_ssl { "enabled" } else { "disabled - unsafe" }),
+                    ),
+            )
+            // Browser impersonation row
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap(px(12.0))
+                    .child(
+                        div()
+                            .w(px(160.0))
+                            .flex()
+                            .flex_col()
+                            .gap(px(2.0))
+                            .child(
+                                div()
+                                    .text_size(px(13.0))
+                                    .text_color(theme.colors.text_secondary)
+                                    .child("Browser Profile"),
+                            )
+                            .child(
+                                div()
+                                    .text_size(px(10.0))
+                                    .text_color(theme.colors.text_muted.opacity(0.7))
+                                    .child("Chrome 131 headers + sec-fetch-*"),
+                            ),
+                    )
+                    .child(
+                        div()
+                            .id("impersonate-toggle")
+                            .w(px(48.0))
+                            .h(px(24.0))
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .gap(px(4.0))
+                            .border_1()
+                            .border_color(if impersonate { theme.colors.accent } else { theme.colors.border })
+                            .bg(if impersonate {
+                                theme.colors.accent.opacity(0.12)
+                            } else {
+                                theme.colors.bg_secondary
+                            })
+                            .cursor_pointer()
+                            .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, _, cx| {
+                                this.impersonate_browser = !this.impersonate_browser;
+                                cx.notify();
+                            }))
+                            .child(icon(
+                                if impersonate { ICON_CHECK } else { ICON_CLOSE },
+                                ICON_MD,
+                                if impersonate { theme.colors.accent } else { theme.colors.text_muted },
+                            )),
+                    )
+                    .child(
+                        div()
+                            .text_size(px(11.0))
+                            .text_color(theme.colors.text_muted)
+                            .child(if impersonate {
+                                "enabled — UA + sec-ch-ua + sec-fetch"
+                            } else {
+                                "disabled"
+                            }),
                     ),
             )
             .into_any_element()
