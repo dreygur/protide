@@ -51,8 +51,8 @@ use super::panels::{ConsoleEntry, ConsolePanel, DocsPanel, ExplorerPanel, MockSe
 use crate::theme;
 use protide_core::sync::{SyncEngine, SyncEvent};
 use crate::components::icons::{
-    ICON_CLOSE, ICON_COPY, ICON_FOLDER, ICON_MAXIMIZE, ICON_MD, ICON_MENU, ICON_MINIMIZE,
-    ICON_REFRESH, ICON_SETTINGS, ICON_SM, ICON_WINDOW_CLOSE, icon,
+    ICON_CHEVRON_DOWN, ICON_CHEVRON_UP, ICON_CLOSE, ICON_COPY, ICON_FOLDER, ICON_MAXIMIZE,
+    ICON_MD, ICON_MENU, ICON_MINIMIZE, ICON_REFRESH, ICON_SETTINGS, ICON_SM, ICON_WINDOW_CLOSE, icon,
 };
 
 /// Main window containing the application layout
@@ -73,6 +73,7 @@ pub struct MainWindow {
     pub(super) docs_width: f32,
     pub(super) drag_docs: Option<(f32, f32)>,
     pub(super) sidebar_collapsed: bool,
+    pub(super) response_collapsed: bool,
     pub(super) sidebar_width: f32,
     pub(super) request_height: f32,
     pub(super) mock_server_width: f32,
@@ -189,6 +190,7 @@ impl MainWindow {
             docs_width: crate::prefs::get_f32("main.docs_width", 420.0),
             drag_docs: None,
             sidebar_collapsed: false,
+            response_collapsed: false,
             sidebar_width: crate::prefs::get_f32("main.sidebar_width", 250.0),
             request_height: crate::prefs::get_f32("main.request_height", 320.0),
             mock_server_width: crate::prefs::get_f32("main.mock_server_width", 320.0),

@@ -119,22 +119,15 @@ pub struct ResponsePanel {
     pub(super) json_sel: Option<SelectionRange>,
     /// Whether a JSON tree selection drag is in progress
     pub(super) json_selecting: bool,
-    /// Whether the search bar is visible
-    pub(super) search_active: bool,
-    /// Text input for body search
-    pub(super) search_input: Entity<InputState>,
 }
 
 impl ResponsePanel {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let body_viewer = cx.new(|cx| {
-            InputState::new(window, cx).multi_line(true).line_number(true)
+            InputState::new(window, cx).multi_line(true).line_number(true).searchable(true)
         });
         let jsonpath_input = cx.new(|cx| {
             InputState::new(window, cx)
-        });
-        let search_input = cx.new(|cx| {
-            InputState::new(window, cx).placeholder("Search…")
         });
         let extraction_editor = cx.new(|cx| {
             InputState::new(window, cx).multi_line(true)
@@ -171,8 +164,6 @@ impl ResponsePanel {
             json_tree_bounds: None,
             json_sel: None,
             json_selecting: false,
-            search_active: false,
-            search_input,
         }
     }
 
@@ -246,7 +237,7 @@ impl ResponsePanel {
             } else if ct.contains("text/html") {
                 (response.body.clone(), "html".to_string())
             } else if ct.contains("application/xml") || ct.contains("text/xml") || ct.contains("+xml") {
-                (response.body.clone(), "xml".to_string())
+                (types::pretty_xml(&response.body), "xml".to_string())
             } else {
                 // Detect from content
                 self.detect_language_from_content(&response.body)
@@ -286,7 +277,7 @@ impl ResponsePanel {
             if trimmed.contains("<!DOCTYPE html") || trimmed.contains("<html") {
                 (body.to_string(), "html".to_string())
             } else {
-                (body.to_string(), "xml".to_string())
+                (types::pretty_xml(body), "xml".to_string())
             }
         } else {
             (body.to_string(), String::new())
@@ -313,6 +304,7 @@ impl ResponsePanel {
         cx.notify();
     }
 }
+
 
 #[cfg(test)]
 mod tests {

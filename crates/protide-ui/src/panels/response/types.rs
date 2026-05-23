@@ -186,3 +186,44 @@ pub(super) fn status_description(status: u16) -> Option<&'static str> {
         _ => None,
     }
 }
+
+pub(super) fn pretty_xml(src: &str) -> String {
+    let mut out = String::with_capacity(src.len() + src.len() / 4);
+    let mut depth = 0usize;
+    let mut i = 0;
+    let b = src.as_bytes();
+    while i < b.len() {
+        if b[i] != b'<' {
+            let s = i;
+            while i < b.len() && b[i] != b'<' { i += 1; }
+            let t = src[s..i].trim();
+            if !t.is_empty() { if !out.is_empty() { out.push('\n'); } for _ in 0..depth { out.push_str("  "); } out.push_str(t); }
+            continue;
+        }
+        let s = i; i += 1;
+        if i + 2 < b.len() && b[i] == b'!' && b[i+1] == b'-' && b[i+2] == b'-' {
+            if let Some(r) = src[i..].find("-->") { i += r + 3; } else { i = b.len(); }
+        } else if i + 8 <= b.len() && &src[i..i+8] == "![CDATA[" {
+            if let Some(r) = src[i..].find("]]>") { i += r + 3; } else { i = b.len(); }
+        } else {
+            let closing = i < b.len() && b[i] == b'/';
+            while i < b.len() { match b[i] {
+                b'"' => { i += 1; while i < b.len() && b[i] != b'"' { i += 1; } if i < b.len() { i += 1; } }
+                b'\'' => { i += 1; while i < b.len() && b[i] != b'\'' { i += 1; } if i < b.len() { i += 1; } }
+                b'>' => { i += 1; break; }
+                _ => { i += 1; }
+            }}
+            let tag = &src[s..i];
+            let self_closing = tag.trim_end_matches('>').trim_end().ends_with('/')
+                || tag.starts_with("<?") || (tag.starts_with("<!") && !tag.starts_with("<!--"));
+            if closing { depth = depth.saturating_sub(1); }
+            if !out.is_empty() { out.push('\n'); }
+            for _ in 0..depth { out.push_str("  "); } out.push_str(tag);
+            if !closing && !self_closing { depth += 1; }
+            continue;
+        }
+        if !out.is_empty() { out.push('\n'); }
+        for _ in 0..depth { out.push_str("  "); } out.push_str(&src[s..i]);
+    }
+    out
+}

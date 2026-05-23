@@ -98,31 +98,71 @@ impl Render for MainWindow {
                                     .child(self.request_panel.clone()),
                             )
                             .when(show_response, |el| {
+                                let collapsed = self.response_collapsed;
                                 el.child(
                                     div()
                                         .id("response-resize-handle")
                                         .w_full()
-                                        .h(px(4.0))
+                                        .h(px(28.0))
                                         .flex_shrink_0()
+                                        .flex()
+                                        .items_center()
+                                        .justify_center()
                                         .border_t_1()
                                         .border_color(theme.colors.border)
-                                        .cursor_row_resize()
-                                        .hover(|s| s.bg(theme.colors.accent.opacity(0.25)))
+                                        .bg(theme.colors.bg_secondary)
+                                        .when(!collapsed, |el| el.cursor_row_resize())
+                                        .when(!collapsed, |el| el.hover(|s| s.bg(theme.colors.accent.opacity(0.06))))
                                         .on_mouse_down(
                                             MouseButton::Left,
                                             cx.listener(|this, event: &gpui::MouseDownEvent, _, _| {
-                                                this.drag_response = Some((f32::from(event.position.y), this.request_height));
+                                                if !this.response_collapsed {
+                                                    this.drag_response = Some((f32::from(event.position.y), this.request_height));
+                                                }
                                             }),
-                                        ),
+                                        )
+                                        .child(
+                                            div()
+                                                .id("response-collapse-btn")
+                                                .h(px(18.0))
+                                                .px(px(8.0))
+                                                .flex()
+                                                .items_center()
+                                                .gap(px(5.0))
+                                                .rounded(px(3.0))
+                                                .cursor_pointer()
+                                                .hover(|s| s.bg(theme.colors.hover_overlay))
+                                                .on_mouse_down(
+                                                    MouseButton::Left,
+                                                    cx.listener(|this, _, _, cx| {
+                                                        cx.stop_propagation();
+                                                        this.response_collapsed = !this.response_collapsed;
+                                                        cx.notify();
+                                                    })
+                                                )
+                                                .child(icon(
+                                                    if collapsed { ICON_CHEVRON_UP } else { ICON_CHEVRON_DOWN },
+                                                    ICON_SM, theme.colors.text_muted,
+                                                ))
+                                                .child(
+                                                    div()
+                                                        .text_size(px(10.0))
+                                                        .font_weight(gpui::FontWeight::MEDIUM)
+                                                        .text_color(theme.colors.text_muted)
+                                                        .child("Response")
+                                                )
+                                        )
                                 )
-                                .child(
-                                    div()
-                                        .flex_1()
-                                        .min_h(px(100.0))
-                                        .w_full()
-                                        .overflow_hidden()
-                                        .child(self.response_panel.clone()),
-                                )
+                                .when(!collapsed, |el| {
+                                    el.child(
+                                        div()
+                                            .flex_1()
+                                            .min_h(px(100.0))
+                                            .w_full()
+                                            .overflow_hidden()
+                                            .child(self.response_panel.clone()),
+                                    )
+                                })
                             })
                             .when(self.show_console, |el| {
                                 el.child(

@@ -37,7 +37,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             InputState::new(window, cx).placeholder("Search procedures...")
         });
         let trpc_pg_result_viewer = cx.new(|cx| {
-            InputState::new(window, cx).multi_line(true).line_number(true)
+            InputState::new(window, cx).multi_line(true).code_editor("json").line_number(true)
         });
         let trpc_pg_add_input = cx.new(|cx| {
             InputState::new(window, cx).placeholder("router.procedureName")
