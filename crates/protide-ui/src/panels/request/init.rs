@@ -42,6 +42,15 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
         let trpc_pg_add_input = cx.new(|cx| {
             InputState::new(window, cx).placeholder("router.name")
         });
+        let trpc_pg_import_url_input = cx.new(|cx| {
+            InputState::new(window, cx).placeholder("https://api.example.com/trpc")
+        });
+        let trpc_pg_edit_input = cx.new(|cx| {
+            InputState::new(window, cx).placeholder("router.name")
+        });
+        let trpc_pg_group_edit_input = cx.new(|cx| {
+            InputState::new(window, cx).placeholder("router")
+        });
         let sio_payload_editor = cx.new(|cx| {
             InputState::new(window, cx).multi_line(true).code_editor("json").default_value("{}")
         });
@@ -155,6 +164,13 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             trpc_pg_sidebar_drag: None,
             trpc_pg_schema_loading: false,
             trpc_pg_schema_error: None,
+            trpc_pg_import_url_input,
+            trpc_pg_show_import_url: false,
+            trpc_pg_editing: None,
+            trpc_pg_edit_input,
+            trpc_pg_edit_kind: TrpcProcKind::Query,
+            trpc_pg_editing_group: None,
+            trpc_pg_group_edit_input,
             sio_state: SioConnectionState::Disconnected,
             sio_messages: SioRingBuffer::default(),
             sio_namespace: "/".to_string(),

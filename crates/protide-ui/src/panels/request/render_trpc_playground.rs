@@ -5,7 +5,7 @@ use gpui::{
     MouseMoveEvent, ParentElement, Styled,
 };
 use crate::theme;
-use crate::components::icons::{icon, ICON_SM, ICON_SEARCH, ICON_REFRESH};
+use crate::components::icons::{icon, ICON_SM, ICON_FILE, ICON_GLOBE, ICON_SEARCH, ICON_REFRESH};
 use gpui_component::input::Input;
 use protide_core::execution::ws::WebSocketExecutor;
 use super::RequestPanel;
@@ -99,6 +99,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
         };
         let loading = self.trpc_pg_schema_loading;
         let schema_error = self.trpc_pg_schema_error.clone();
+        let show_import_url = self.trpc_pg_show_import_url;
 
         div()
             .flex_none()
@@ -110,10 +111,10 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             .child(
                 div()
                     .h(px(36.0))
-                    .px(px(12.0))
+                    .px(px(8.0))
                     .flex()
                     .items_center()
-                    .gap(px(6.0))
+                    .gap(px(4.0))
                     .child(
                         div()
                             .text_size(px(11.0))
@@ -123,8 +124,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                     )
                     .child(
                         div()
-                            .px(px(5.0))
-                            .py(px(1.0))
+                            .px(px(5.0)).py(px(1.0))
                             .bg(theme.colors.accent.opacity(0.12))
                             .text_size(px(10.0))
                             .font_weight(gpui::FontWeight::MEDIUM)
@@ -136,11 +136,8 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                     .child(
                         div()
                             .id("trpc-fetch-schema")
-                            .px(px(7.0))
-                            .py(px(3.0))
-                            .flex()
-                            .items_center()
-                            .gap(px(4.0))
+                            .px(px(6.0)).py(px(3.0))
+                            .flex().items_center().gap(px(4.0))
                             .rounded(px(3.0))
                             .cursor_pointer()
                             .bg(theme.colors.accent.opacity(if loading { 0.05 } else { 0.0 }))
@@ -153,7 +150,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                                     .text_size(px(10.0))
                                     .font_weight(gpui::FontWeight::MEDIUM)
                                     .text_color(if loading { theme.colors.text_muted } else { theme.colors.accent })
-                                    .child(if loading { "Fetching..." } else { "Fetch Schema" })
+                                    .child(if loading { "Fetching..." } else { "Fetch" })
                             )
                             .when(!loading, |el| {
                                 el.on_click(cx.listener(|this, _, _, cx| {
@@ -161,23 +158,90 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                                 }))
                             })
                     )
+                    // Import from file button
+                    .child(
+                        div()
+                            .id("trpc-import-file")
+                            .px(px(5.0)).py(px(3.0))
+                            .flex().items_center()
+                            .rounded(px(3.0))
+                            .cursor_pointer()
+                            .hover(|s| s.bg(theme.colors.hover_overlay))
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.import_trpc_from_file(cx);
+                            }))
+                            .child(icon(ICON_FILE, ICON_SM, theme.colors.text_secondary))
+                    )
+                    // Import from URL button (toggles URL row)
+                    .child(
+                        div()
+                            .id("trpc-import-url-toggle")
+                            .px(px(5.0)).py(px(3.0))
+                            .flex().items_center()
+                            .rounded(px(3.0))
+                            .cursor_pointer()
+                            .when(show_import_url, |el| el.bg(theme.colors.accent.opacity(0.1)))
+                            .hover(|s| s.bg(theme.colors.hover_overlay))
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.trpc_pg_show_import_url = !this.trpc_pg_show_import_url;
+                                cx.notify();
+                            }))
+                            .child(icon(ICON_GLOBE, ICON_SM,
+                                if show_import_url { theme.colors.accent } else { theme.colors.text_secondary }
+                            ))
+                    )
             )
+            // URL import row
+            .when(show_import_url, |el| {
+                el.child(
+                    div()
+                        .h(px(30.0))
+                        .px(px(6.0))
+                        .flex().items_center().gap(px(4.0))
+                        .border_b_1()
+                        .border_color(theme.colors.accent.opacity(0.3))
+                        .bg(theme.colors.bg_tertiary)
+                        .child(
+                            div()
+                                .flex_1().h_full()
+                                .overflow_hidden()
+                                .child(Input::new(&self.trpc_pg_import_url_input).bordered(false))
+                        )
+                        .child(
+                            div()
+                                .id("trpc-import-url-btn")
+                                .px(px(8.0)).h(px(22.0))
+                                .flex().items_center()
+                                .bg(theme.colors.accent.opacity(if loading { 0.04 } else { 0.08 }))
+                                .border_1()
+                                .border_color(theme.colors.accent.opacity(0.3))
+                                .text_size(px(10.0))
+                                .font_weight(gpui::FontWeight::MEDIUM)
+                                .text_color(if loading { theme.colors.text_muted } else { theme.colors.accent })
+                                .cursor_pointer()
+                                .hover(|s| s.bg(theme.colors.accent.opacity(0.16)))
+                                .when(!loading, |el| {
+                                    el.on_click(cx.listener(|this, _, _, cx| {
+                                        this.import_trpc_from_url(cx);
+                                    }))
+                                })
+                                .child(if loading { "Importing…" } else { "Import" })
+                        )
+                )
+            })
             // Search row
             .child(
                 div()
                     .h(px(30.0))
                     .px(px(8.0))
-                    .flex()
-                    .items_center()
-                    .gap(px(6.0))
+                    .flex().items_center().gap(px(6.0))
                     .border_b_1()
                     .border_color(theme.colors.border)
                     .bg(theme.colors.bg_primary)
                     .child(icon(ICON_SEARCH, ICON_SM, theme.colors.text_muted))
                     .child(
                         div()
-                            .flex_1()
-                            .h_full()
+                            .flex_1().h_full()
                             .overflow_hidden()
                             .child(Input::new(&self.trpc_pg_search_input).bordered(false))
                     )
@@ -186,8 +250,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             .when_some(schema_error, |el, err| {
                 el.child(
                     div()
-                        .px(px(10.0))
-                        .py(px(6.0))
+                        .px(px(10.0)).py(px(6.0))
                         .text_size(px(10.0))
                         .text_color(gpui::rgb(0xf87171))
                         .bg(gpui::rgba(0xf8717114))

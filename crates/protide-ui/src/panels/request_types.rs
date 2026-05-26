@@ -27,6 +27,9 @@ pub enum PendingEditor {
     SioPayload,
     TrpcPgResult,
     TrpcPgAddInput,
+    TrpcPgEditInput,
+    TrpcPgGroupEditInput,
+    TrpcPgImportUrlInput,
 }
 
 /// Form field type (text or file)

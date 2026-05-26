@@ -1,6 +1,6 @@
 use gpui::Context;
 use super::*;
-use super::super::request_types::PendingEditor;
+use super::super::request_types::{PendingEditor, TrpcPlaygroundProc, TrpcProcKind};
 use super::super::request_utils::status_text;
 
 impl<E: WebSocketExecutor> RequestPanel<E> {
@@ -136,6 +136,69 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
         }).detach();
     }
 
+    pub(super) fn import_trpc_from_file(&mut self, cx: &mut Context<Self>) {
+        let mut dialog = rfd::FileDialog::new()
+            .set_title("Import tRPC Schema")
+            .add_filter("JSON", &["json"]);
+        if let Some(dir) = last_paths::last_dir("trpc_schema") {
+            dialog = dialog.set_directory(dir);
+        }
+        let Some(path) = dialog.pick_file() else { return };
+        last_paths::save_last_dir("trpc_schema", &path);
+        match std::fs::read_to_string(&path)
+            .map_err(|e| e.to_string())
+            .and_then(|s| protide_core::protocols::trpc::parse_trpc_schema(&s))
+        {
+            Ok(procs) => {
+                for p in procs {
+                    self.trpc_pg_procedures.push(TrpcPlaygroundProc {
+                        kind: if p.is_mutation { TrpcProcKind::Mutation } else { TrpcProcKind::Query },
+                        name: p.name,
+                    });
+                }
+                self.trpc_pg_schema_error = None;
+            }
+            Err(e) => { self.trpc_pg_schema_error = Some(e); }
+        }
+        cx.notify();
+    }
+
+    pub(super) fn import_trpc_from_url(&mut self, cx: &mut Context<Self>) {
+        let url = self.trpc_pg_import_url_input.read(cx).value().trim().to_string();
+        if url.is_empty() { return; }
+        self.trpc_pg_schema_loading = true;
+        self.trpc_pg_schema_error = None;
+        cx.notify();
+
+        cx.spawn(async move |this: gpui::WeakEntity<Self>, cx: &mut gpui::AsyncApp| {
+            let result = std::thread::spawn(move || {
+                let raw = protide_core::protocols::trpc::fetch_trpc_schema_raw(&url)?;
+                protide_core::protocols::trpc::parse_trpc_schema(&raw)
+            }).join().unwrap_or_else(|_| Err("URL import thread panicked".to_string()));
+
+            let _ = cx.update(|cx| {
+                let _ = this.update(cx, |panel, cx| {
+                    panel.trpc_pg_schema_loading = false;
+                    match result {
+                        Ok(procs) => {
+                            for p in procs {
+                                panel.trpc_pg_procedures.push(TrpcPlaygroundProc {
+                                    kind: if p.is_mutation { TrpcProcKind::Mutation } else { TrpcProcKind::Query },
+                                    name: p.name,
+                                });
+                            }
+                            panel.trpc_pg_show_import_url = false;
+                            panel.trpc_pg_schema_error = None;
+                            panel.queue_editor(PendingEditor::TrpcPgImportUrlInput, String::new());
+                        }
+                        Err(e) => { panel.trpc_pg_schema_error = Some(e); }
+                    }
+                    cx.notify();
+                });
+            });
+        }).detach();
+    }
+
     pub(super) fn fetch_trpc_schema(&mut self, cx: &mut Context<Self>) {
         self.trpc_pg_schema_loading = true;
         self.trpc_pg_schema_error = None;
@@ -156,7 +219,6 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                     panel.trpc_pg_schema_loading = false;
                     match result {
                         Ok(procs) => {
-                            use super::super::request_types::{TrpcPlaygroundProc, TrpcProcKind};
                             panel.trpc_pg_procedures = procs.into_iter().map(|p| TrpcPlaygroundProc {
                                 kind: if p.is_mutation { TrpcProcKind::Mutation } else { TrpcProcKind::Query },
                                 name: p.name,

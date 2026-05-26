@@ -24,6 +24,9 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                 PendingEditor::SioPayload => &self.sio_payload_editor,
                 PendingEditor::TrpcPgResult => &self.trpc_pg_result_viewer,
                 PendingEditor::TrpcPgAddInput => &self.trpc_pg_add_input,
+                PendingEditor::TrpcPgEditInput => &self.trpc_pg_edit_input,
+                PendingEditor::TrpcPgGroupEditInput => &self.trpc_pg_group_edit_input,
+                PendingEditor::TrpcPgImportUrlInput => &self.trpc_pg_import_url_input,
             };
             editor.update(cx, |s, cx| s.set_value(&content, window, cx));
         }
