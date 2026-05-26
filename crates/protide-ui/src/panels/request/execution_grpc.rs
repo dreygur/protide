@@ -135,13 +135,11 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
         cx: &mut Context<Self>,
     ) {
         cx.spawn(async move |this: gpui::WeakEntity<Self>, cx: &mut gpui::AsyncApp| {
-            let (tx, rx) = std::sync::mpsc::channel::<Result<(String, std::time::Duration), String>>();
-            std::thread::spawn(move || {
-                let result = protide_core::protocols::grpc::execute_unary_blocking(&url, &method.full_name, &message, metadata, &proto_path);
-                let _ = tx.send(result);
-            });
-            match rx.recv_timeout(std::time::Duration::from_secs(60)) {
-                Ok(Ok((body, elapsed))) => {
+            let result = std::thread::spawn(move || {
+                protide_core::protocols::grpc::execute_unary_blocking(&url, &method.full_name, &message, metadata, &proto_path)
+            }).join().unwrap_or_else(|_| Err("gRPC thread panicked".to_string()));
+            match result {
+                Ok((body, elapsed)) => {
                     let body_size = body.len();
                     let _ = cx.update(|cx| {
                         response_panel.update(cx, |panel, cx| {
@@ -153,19 +151,12 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                         });
                     });
                 }
-                Ok(Err(e)) => {
+                Err(e) => {
+                    // covers both gRPC errors and thread panics; gRPC library deadline handles timeouts
                     log::error!("gRPC error: {}", e);
                     let _ = cx.update(|cx| {
                         response_panel.update(cx, |panel, cx| {
                             panel.set_response(ResponseData { status: 0, status_text: "Error".to_string(), headers: vec![], body: format!("gRPC Error: {}", e), time: std::time::Duration::ZERO, size: 0 }, cx);
-                        });
-                    });
-                }
-                Err(_) => {
-                    log::error!("gRPC unary request timed out");
-                    let _ = cx.update(|cx| {
-                        response_panel.update(cx, |panel, cx| {
-                            panel.set_error("gRPC request timed out (60s)".to_string(), cx);
                         });
                     });
                 }

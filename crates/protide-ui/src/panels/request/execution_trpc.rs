@@ -27,46 +27,18 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             .map(|h| (substitute(&h.key), substitute(&h.value)))
             .collect();
 
-        match self.auth_type {
-            AuthType::Bearer => {
-                if !self.bearer_token.is_empty() {
-                    let token = substitute(&self.bearer_token);
-                    headers.push(("Authorization".to_string(), format!("Bearer {}", token)));
-                }
-            }
-            AuthType::Basic => {
-                if !self.basic_username.is_empty() {
-                    let username = substitute(&self.basic_username);
-                    let password = substitute(&self.basic_password);
-                    let credentials = base64::engine::general_purpose::STANDARD
-                        .encode(format!("{}:{}", username, password));
-                    headers.push(("Authorization".to_string(), format!("Basic {}", credentials)));
-                }
-            }
-            AuthType::ApiKey => {
-                if !self.api_key_name.is_empty() {
-                    let key_name = substitute(&self.api_key_name);
-                    let key_value = substitute(&self.api_key_value);
-                    if self.api_key_location == ApiKeyLocation::Header {
-                        headers.push((key_name, key_value));
-                    }
-                }
-            }
-            AuthType::None => {}
-        }
+        headers.extend(self.build_auth_headers(&substitute));
 
         let response_panel = self.response_panel.clone();
         log::info!("tRPC {} {}", url, procedure);
 
         cx.spawn(async move |this: gpui::WeakEntity<Self>, cx: &mut gpui::AsyncApp| {
-            let (tx, rx) = std::sync::mpsc::channel();
-            std::thread::spawn(move || {
-                let result = protide_core::protocols::trpc::execute_trpc(&url, &procedure, &params, headers);
-                let _ = tx.send(result);
-            });
+            let result = std::thread::spawn(move || {
+                protide_core::protocols::trpc::execute_trpc(&url, &procedure, &params, headers)
+            }).join().unwrap_or_else(|_| Err("tRPC thread panicked".to_string()));
 
-            match rx.recv_timeout(std::time::Duration::from_secs(30)) {
-                Ok(Ok((body, elapsed, status_code))) => {
+            match result {
+                Ok((body, elapsed, status_code)) => {
                     let body_size = body.len();
                     let _ = cx.update(|cx| {
                         response_panel.update(cx, |panel, cx| {
@@ -81,27 +53,20 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                         });
                     });
                 }
-                Ok(Err(e)) => {
+                Err(e) => {
                     log::error!("tRPC error: {}", e);
                     let _ = cx.update(|cx| {
                         response_panel.update(cx, |panel, cx| {
                             let error_body = serde_json::json!({ "error": e }).to_string();
+                            let error_size = error_body.len();
                             panel.set_response(ResponseData {
                                 status: 500,
                                 status_text: "tRPC Error".to_string(),
                                 headers: vec![("content-type".to_string(), "application/json".to_string())],
-                                body: error_body.clone(),
-                                time: std::time::Duration::from_secs(0),
-                                size: error_body.len(),
+                                body: error_body,
+                                time: std::time::Duration::ZERO,
+                                size: error_size,
                             }, cx);
-                        });
-                    });
-                }
-                Err(_) => {
-                    log::error!("tRPC request timed out");
-                    let _ = cx.update(|cx| {
-                        response_panel.update(cx, |panel, cx| {
-                            panel.set_error("tRPC request timed out (30s)".to_string(), cx);
                         });
                     });
                 }
@@ -137,57 +102,31 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             .map(|h| (substitute(&h.key), substitute(&h.value)))
             .collect();
 
-        match self.auth_type {
-            AuthType::Bearer if !self.bearer_token.is_empty() => {
-                let token = substitute(&self.bearer_token);
-                headers.push(("Authorization".to_string(), format!("Bearer {}", token)));
-            }
-            AuthType::Basic if !self.basic_username.is_empty() => {
-                let username = substitute(&self.basic_username);
-                let password = substitute(&self.basic_password);
-                let cred = base64::engine::general_purpose::STANDARD
-                    .encode(format!("{}:{}", username, password));
-                headers.push(("Authorization".to_string(), format!("Basic {}", cred)));
-            }
-            AuthType::ApiKey if !self.api_key_name.is_empty() && self.api_key_location == ApiKeyLocation::Header => {
-                headers.push((substitute(&self.api_key_name), substitute(&self.api_key_value)));
-            }
-            _ => {}
-        }
+        headers.extend(self.build_auth_headers(&substitute));
 
         log::info!("tRPC playground: {} {}", url, procedure);
 
         cx.spawn(async move |this: gpui::WeakEntity<Self>, cx: &mut gpui::AsyncApp| {
-            let (tx, rx) = std::sync::mpsc::channel();
-            std::thread::spawn(move || {
-                let _ = tx.send(protide_core::protocols::trpc::execute_trpc(&url, &procedure, &params, headers));
-            });
+            let result = std::thread::spawn(move || {
+                protide_core::protocols::trpc::execute_trpc(&url, &procedure, &params, headers)
+            }).join().unwrap_or_else(|_| Err("tRPC thread panicked".to_string()));
 
-            let result = rx.recv_timeout(std::time::Duration::from_secs(30));
             let _ = cx.update(|cx| {
                 let _ = this.update(cx, |panel, cx| {
                     panel.trpc_pg_loading = false;
                     match result {
-                        Ok(Ok((body, elapsed, status))) => {
+                        Ok((body, elapsed, status)) => {
                             panel.trpc_pg_status = Some(status);
                             panel.trpc_pg_elapsed = Some(elapsed);
                             panel.trpc_pg_response = Some(body.clone());
                             panel.queue_editor(PendingEditor::TrpcPgResult, body);
                         }
-                        Ok(Err(e)) => {
+                        Err(e) => {
                             panel.trpc_pg_status = Some(500);
                             panel.trpc_pg_error = Some(e.clone());
                             let val = serde_json::json!({ "error": e });
                             let body = serde_json::to_string_pretty(&val)
                                 .unwrap_or_else(|_| e.clone());
-                            panel.queue_editor(PendingEditor::TrpcPgResult, body);
-                        }
-                        Err(_) => {
-                            let msg = "Request timed out (30s)";
-                            panel.trpc_pg_error = Some(msg.to_string());
-                            let val = serde_json::json!({ "error": msg });
-                            let body = serde_json::to_string_pretty(&val)
-                                .unwrap_or_else(|_| msg.to_string());
                             panel.queue_editor(PendingEditor::TrpcPgResult, body);
                         }
                     }
@@ -207,19 +146,16 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
         let url = if let Some(ref env) = env_state { env.substitute(&url) } else { url };
 
         cx.spawn(async move |this: gpui::WeakEntity<Self>, cx: &mut gpui::AsyncApp| {
-            let (tx, rx) = std::sync::mpsc::channel();
-            std::thread::spawn(move || {
+            let result = std::thread::spawn(move || {
                 let raw = protide_core::protocols::trpc::fetch_trpc_schema_raw(&url);
-                let result = raw.and_then(|json| protide_core::protocols::trpc::parse_trpc_schema(&json));
-                let _ = tx.send(result);
-            });
+                raw.and_then(|json| protide_core::protocols::trpc::parse_trpc_schema(&json))
+            }).join().unwrap_or_else(|_| Err("tRPC thread panicked".to_string()));
 
-            let result = rx.recv_timeout(std::time::Duration::from_secs(15));
             let _ = cx.update(|cx| {
                 let _ = this.update(cx, |panel, cx| {
                     panel.trpc_pg_schema_loading = false;
                     match result {
-                        Ok(Ok(procs)) => {
+                        Ok(procs) => {
                             use super::super::request_types::{TrpcPlaygroundProc, TrpcProcKind};
                             panel.trpc_pg_procedures = procs.into_iter().map(|p| TrpcPlaygroundProc {
                                 kind: if p.is_mutation { TrpcProcKind::Mutation } else { TrpcProcKind::Query },
@@ -227,8 +163,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                             }).collect();
                             panel.trpc_pg_schema_error = None;
                         }
-                        Ok(Err(e)) => { panel.trpc_pg_schema_error = Some(e); }
-                        Err(_) => { panel.trpc_pg_schema_error = Some("Schema fetch timed out (15s)".to_string()); }
+                        Err(e) => { panel.trpc_pg_schema_error = Some(e); }
                     }
                     cx.notify();
                 });

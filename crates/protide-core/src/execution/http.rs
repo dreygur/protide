@@ -97,7 +97,7 @@ pub fn run_http(
     }
 
     let req_method = reqwest::Method::from_bytes(method.as_bytes())
-        .unwrap_or(reqwest::Method::GET);
+        .map_err(|e| format!("Invalid HTTP method '{}': {}", method, e))?;
 
     let client = reqwest::blocking::Client::builder()
         .timeout(Duration::from_secs(timeout_secs))
@@ -151,7 +151,7 @@ pub fn run_http(
     Ok(RawResponse { status, status_text, headers: resp_headers, body: body_str, time: elapsed, size })
 }
 
-fn status_text(status: u16) -> &'static str {
+pub(crate) fn status_text(status: u16) -> &'static str {
     match status {
         100 => "Continue",
         101 => "Switching Protocols",

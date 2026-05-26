@@ -67,13 +67,20 @@ pub fn execute_trpc(
         .map_err(|e| format!("Failed to read response: {}", e))?;
 
     let response_json: serde_json::Value = serde_json::from_str(&body)
-        .map_err(|e| format!("Invalid JSON: {} — body: {}", e, &body[..body.len().min(300)]))?;
+        .map_err(|e| {
+            // char-boundary-safe preview — byte slice would panic on multi-byte UTF-8
+            let preview_end = body.char_indices().nth(300).map(|(i, _)| i).unwrap_or(body.len());
+            format!("Invalid JSON: {} — body: {}", e, &body[..preview_end])
+        })?;
 
     // Unwrap batch array (server may respond as [{...}] even for non-batch requests)
-    let resp = if let Some(arr) = response_json.as_array() {
-        arr.first().cloned().unwrap_or_default()
+    let resp = if response_json.is_array() {
+        response_json.as_array()
+            .and_then(|a| a.first())
+            .cloned()
+            .unwrap_or_default()
     } else {
-        response_json.clone()
+        response_json
     };
 
     // Error: tRPC v10 wraps under error.json; fall back to error itself for v9/plain
@@ -163,7 +170,7 @@ pub fn parse_trpc_schema(json: &str) -> Result<Vec<TrpcSchemaProc>, String> {
             if let Some(router_obj) = router_val.as_object() {
                 // Only treat as nested router if values are objects (not strings/nulls)
                 let has_object_vals = router_obj.values()
-                    .any(|v| v.is_object() && !v.get("procedureType").is_some());
+                    .any(|v| v.is_object() && v.get("procedureType").is_none());
                 if !has_object_vals { continue; }
                 for (proc_name, proc_val) in router_obj {
                     if proc_name.starts_with('_') { continue; }

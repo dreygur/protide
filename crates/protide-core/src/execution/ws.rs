@@ -131,7 +131,15 @@ impl WebSocketExecutor for TungsteniteExecutor {
         let (event_tx, event_rx) = mpsc::channel::<WsEvent>();
 
         std::thread::spawn(move || {
-            let rt = tokio::runtime::Runtime::new().expect("ws tokio runtime");
+            let rt = match tokio::runtime::Runtime::new() {
+                Ok(rt) => rt,
+                Err(e) => {
+                    let _ = event_tx.send(WsEvent::Error(
+                        format!("Failed to start WebSocket runtime: {}", e),
+                    ));
+                    return;
+                }
+            };
             rt.block_on(run_connection(params, cmd_rx, event_tx));
         });
 
@@ -312,5 +320,40 @@ mod tests {
         rb2.clear();
         assert_eq!(rb.len(), 1);
         assert_eq!(rb2.len(), 0);
+    }
+
+    #[test]
+    fn test_ws_ring_buffer_evicts_oldest() {
+        let mut buf = WsRingBuffer::new(3);
+        for i in 0u8..5 {
+            buf.push(WsMessage {
+                direction: WsDirection::Sent,
+                content: i.to_string(),
+                timestamp: chrono::Local::now(),
+            });
+        }
+        assert_eq!(buf.len(), 3);
+        let contents: Vec<_> = buf.iter().map(|m| m.content.clone()).collect();
+        assert_eq!(contents, vec!["2", "3", "4"]);
+    }
+
+    #[test]
+    fn test_ws_ring_buffer_cap_not_exceeded() {
+        let mut buf = WsRingBuffer::new(5);
+        for i in 0..10u8 {
+            buf.push(WsMessage {
+                direction: WsDirection::Received,
+                content: i.to_string(),
+                timestamp: chrono::Local::now(),
+            });
+        }
+        assert_eq!(buf.len(), 5);
+    }
+
+    #[test]
+    fn test_ws_ring_buffer_empty() {
+        let buf = WsRingBuffer::new(10);
+        assert!(buf.is_empty());
+        assert_eq!(buf.len(), 0);
     }
 }

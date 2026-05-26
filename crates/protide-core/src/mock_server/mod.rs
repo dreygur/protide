@@ -108,10 +108,16 @@ impl MockServer {
         let (addr_tx, addr_rx) = std::sync::mpsc::channel();
 
         std::thread::spawn(move || {
-            let rt = tokio::runtime::Builder::new_current_thread()
+            let rt = match tokio::runtime::Builder::new_current_thread()
                 .enable_all()
                 .build()
-                .expect("Failed to create tokio runtime");
+            {
+                Ok(rt) => rt,
+                Err(e) => {
+                    let _ = addr_tx.send(Err(format!("Failed to create tokio runtime: {}", e)));
+                    return;
+                }
+            };
 
             rt.block_on(async move {
                 let app = server::create_router(routes, record_mode, record_target, recorded_routes);

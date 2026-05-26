@@ -1,5 +1,6 @@
 //! Request and response models
 
+use crate::execution::http::status_text;
 use http_parser::{KeyValue, Protocol, Request as ParsedRequest};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
@@ -159,34 +160,3 @@ impl Response {
     }
 }
 
-/// Get status text for a status code
-fn status_text(status: u16) -> &'static str {
-    match status {
-        100 => "Continue",
-        101 => "Switching Protocols",
-        200 => "OK",
-        201 => "Created",
-        202 => "Accepted",
-        204 => "No Content",
-        301 => "Moved Permanently",
-        302 => "Found",
-        304 => "Not Modified",
-        307 => "Temporary Redirect",
-        308 => "Permanent Redirect",
-        400 => "Bad Request",
-        401 => "Unauthorized",
-        403 => "Forbidden",
-        404 => "Not Found",
-        405 => "Method Not Allowed",
-        408 => "Request Timeout",
-        409 => "Conflict",
-        422 => "Unprocessable Entity",
-        429 => "Too Many Requests",
-        500 => "Internal Server Error",
-        501 => "Not Implemented",
-        502 => "Bad Gateway",
-        503 => "Service Unavailable",
-        504 => "Gateway Timeout",
-        _ => "Unknown",
-    }
-}

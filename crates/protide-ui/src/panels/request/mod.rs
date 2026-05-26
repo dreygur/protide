@@ -40,6 +40,7 @@ mod save;
 mod codegen;
 mod import;
 mod graphql;
+mod execution_auth;
 mod execution_http;
 mod execution_ws;
 mod execution_sio;
@@ -70,7 +71,6 @@ use super::request_types::{
     GrpcMethodInfo, GrpcStreamingType, HttpMethod, KeyValuePair, KvList, PendingEditor, RequestMode,
     SioConnectionState, TrpcPlaygroundProc, TrpcProcKind, WsConnectionState,
 };
-use base64::Engine;
 use super::response::{ResponseData, ResponsePanel};
 use protide_core::codegen::Language as CodegenLanguage;
 use http_parser::VariableExtraction;

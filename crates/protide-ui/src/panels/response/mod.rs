@@ -134,7 +134,7 @@ pub struct ResponsePanel {
 impl ResponsePanel {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let body_viewer = cx.new(|cx| {
-            InputState::new(window, cx).multi_line(true).line_number(true).searchable(true)
+            InputState::new(window, cx).code_editor("")
         });
         let jsonpath_input = cx.new(|cx| {
             InputState::new(window, cx)
@@ -329,6 +329,9 @@ impl ResponsePanel {
     }
 }
 
+
+#[cfg(test)]
+mod tests_gpui;
 
 #[cfg(test)]
 mod tests {

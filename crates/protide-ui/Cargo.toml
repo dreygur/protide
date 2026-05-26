@@ -33,3 +33,6 @@ async-channel = { workspace = true }
 
 rfd = "0.17"
 reqwest = { workspace = true }
+
+[dev-dependencies]
+gpui = { git = "https://github.com/zed-industries/zed", features = ["wayland", "test-support"] }

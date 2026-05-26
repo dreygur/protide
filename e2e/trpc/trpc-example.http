@@ -1,6 +1,55 @@
-### https://dev.carenect.co/api/trpc
+### tRPC — Query: get all users
+# @name trpc-users-list
+# @protocol trpc
 
-# @proto e2e/grpc/employee.proto
-POST https://dev.carenect.co/api/trpc
+GET http://localhost:3000/trpc/users.list
 
-{"purpose": "pre-script demo"}
+{}
+
+### tRPC — Query: get user by ID
+# @name trpc-users-get
+# @protocol trpc
+
+GET http://localhost:3000/trpc/users.getById
+
+{"id": 1}
+
+### tRPC — Mutation: create user
+# @name trpc-users-create
+# @protocol trpc
+
+POST http://localhost:3000/trpc/users.create
+
+{"name": "Alice", "email": "alice@example.com"}
+
+### tRPC — Mutation: update user
+# @name trpc-users-update
+# @protocol trpc
+
+POST http://localhost:3000/trpc/users.update
+
+{"id": 1, "name": "Alice Updated"}
+
+### tRPC — Mutation: delete user
+# @name trpc-users-delete
+# @protocol trpc
+
+POST http://localhost:3000/trpc/users.delete
+
+{"id": 1}
+
+### tRPC — Query: get posts
+# @name trpc-posts-list
+# @protocol trpc
+
+GET http://localhost:3000/trpc/posts.list
+
+{}
+
+### tRPC — Mutation: create post
+# @name trpc-posts-create
+# @protocol trpc
+
+POST http://localhost:3000/trpc/posts.create
+
+{"title": "Hello tRPC", "body": "Testing protide e2e"}

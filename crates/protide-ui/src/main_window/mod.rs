@@ -167,10 +167,9 @@ impl MainWindow {
                 cx.background_executor()
                     .timer(std::time::Duration::from_millis(1000))
                     .await;
-                let weak = poll_weak.clone();
-                weak.update(cx, |this, cx| {
-                    this.poll_sync_events(cx);
-                }).ok();
+                if poll_weak.update(cx, |this, cx| this.poll_sync_events(cx)).is_err() {
+                    break;
+                }
             }
         }).detach();
 
@@ -312,5 +311,31 @@ impl MainWindow {
             self.presence.show_pairing = false;
         }
         cx.notify();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use gpui::{AppContext as _, TestAppContext};
+
+    /// Counter entity used as a lightweight stand-in — does not need Render.
+    struct Counter(u32);
+
+    /// Validates the C1 invariant: `WeakEntity::update` returns `Err` after all
+    /// strong refs drop. The MainWindow poll loop uses this as its exit condition:
+    ///   `if poll_weak.update(cx, ...).is_err() { break; }`
+    #[gpui::test]
+    fn test_weak_entity_errors_after_drop(cx: &mut TestAppContext) {
+        let entity = cx.new(|_cx| Counter(0));
+        let weak = entity.downgrade();
+
+        // Update succeeds while the entity is alive.
+        assert!(weak.update(cx, |c, _| c.0 += 1).is_ok());
+
+        // Drop the only strong reference.
+        drop(entity);
+
+        // Weak update must now return Err — the C1 loop-break relies on this.
+        assert!(weak.update(cx, |c, _| c.0).is_err());
     }
 }

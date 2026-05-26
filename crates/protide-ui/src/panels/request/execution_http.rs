@@ -1,6 +1,6 @@
 use gpui::Context;
 use super::*;
-use super::super::request_utils::{base64_encode, url_encode};
+use super::super::request_utils::url_encode;
 use super::graphql::dns_troubleshoot_hint;
 
 impl<E: WebSocketExecutor> RequestPanel<E> {
@@ -36,35 +36,11 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             .collect();
 
         let auth_type = self.auth_type;
-        let bearer_token = substitute(&self.bearer_token);
-        let basic_username = substitute(&self.basic_username);
-        let basic_password = substitute(&self.basic_password);
         let api_key_name = substitute(&self.api_key_name);
         let api_key_value = substitute(&self.api_key_value);
         let api_key_location = self.api_key_location;
 
-        match auth_type {
-            AuthType::None => {}
-            AuthType::Bearer => {
-                if !bearer_token.is_empty() {
-                    headers.push(("Authorization".to_string(), format!("Bearer {}", bearer_token)));
-                }
-            }
-            AuthType::Basic => {
-                if !basic_username.is_empty() || !basic_password.is_empty() {
-                    let credentials = format!("{}:{}", basic_username, basic_password);
-                    let encoded = base64_encode(credentials.as_bytes());
-                    headers.push(("Authorization".to_string(), format!("Basic {}", encoded)));
-                }
-            }
-            AuthType::ApiKey => {
-                if !api_key_name.is_empty() && !api_key_value.is_empty() {
-                    if api_key_location == ApiKeyLocation::Header {
-                        headers.push((api_key_name.clone(), api_key_value.clone()));
-                    }
-                }
-            }
-        }
+        headers.extend(self.build_auth_headers(&substitute));
 
         let binary_file_path = self.binary_file_path.clone();
         let has_files = self.body_type == BodyType::Form
@@ -270,7 +246,3 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
         }).detach();
     }
 }
-
-// suppress unused import
-#[allow(unused_imports)]
-use super::super::request_utils::status_text as _status_text_unused;

@@ -43,9 +43,13 @@ pub(super) fn create_router(
             })
             .collect();
 
-        let body_bytes = axum::body::to_bytes(req.into_body(), 16 * 1024 * 1024)
-            .await
-            .unwrap_or_default();
+        let body_bytes = match axum::body::to_bytes(req.into_body(), 16 * 1024 * 1024).await {
+            Ok(b) => b,
+            Err(e) => {
+                log::warn!("Mock server: failed to read request body (body may exceed 16 MB limit): {}", e);
+                axum::body::Bytes::new()
+            }
+        };
 
         let matched = {
             let routes_guard = state.routes.read().unwrap_or_else(|e| e.into_inner());

@@ -29,13 +29,6 @@ impl Render for ResponsePanel {
                     cx.notify();
                 }
             }))
-            // Dismiss body context menu on left-click anywhere
-            .when(context_menu_pos.is_some(), |el| {
-                el.on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| {
-                    this.context_menu_pos = None;
-                    cx.notify();
-                }))
-            })
             // Capture panel origin for JSON context-menu local-coord conversion
             .child(
                 canvas(

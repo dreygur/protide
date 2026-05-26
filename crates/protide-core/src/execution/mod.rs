@@ -1,4 +1,4 @@
-mod http;
+pub(crate) mod http;
 pub mod sio;
 mod sio_codec;
 pub mod ws;

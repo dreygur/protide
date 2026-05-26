@@ -76,11 +76,13 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
         }
 
         let new_len = self.url.len();
-        if self.url_selection.start > new_len {
-            self.url_selection.start = new_len;
+        // url_selection stores char offsets, so clamp against char count, not byte length
+        let char_count = self.url.chars().count();
+        if self.url_selection.start > char_count {
+            self.url_selection.start = char_count;
         }
-        if self.url_selection.end > new_len {
-            self.url_selection.end = new_len;
+        if self.url_selection.end > char_count {
+            self.url_selection.end = char_count;
         }
 
         self.syncing_params = false;
