@@ -127,16 +127,16 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
     pub(super) fn save_edit_state(&mut self) {
         if let Some(target) = self.active_edit {
             let text = self.get_edit_text(target).to_string();
-            self.edit_undo_stack.push((target, text, self.edit_selection.clone()));
-            if self.edit_undo_stack.len() > 100 { self.edit_undo_stack.remove(0); }
+            self.edit_undo_stack.push_back((target, text, self.edit_selection.clone()));
+            if self.edit_undo_stack.len() > 100 { self.edit_undo_stack.pop_front(); }
             self.edit_redo_stack.clear();
         }
     }
 
     pub(super) fn edit_undo(&mut self, cx: &mut Context<Self>) {
-        if let Some((target, text, selection)) = self.edit_undo_stack.pop() {
+        if let Some((target, text, selection)) = self.edit_undo_stack.pop_back() {
             let current_text = self.get_edit_text(target).to_string();
-            self.edit_redo_stack.push((target, current_text, self.edit_selection.clone()));
+            self.edit_redo_stack.push_back((target, current_text, self.edit_selection.clone()));
             if let Some(field) = self.get_edit_text_mut(target) { *field = text; }
             self.edit_selection = selection;
             self.sync_after_edit(target, cx);
@@ -145,9 +145,9 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
     }
 
     pub(super) fn edit_redo(&mut self, cx: &mut Context<Self>) {
-        if let Some((target, text, selection)) = self.edit_redo_stack.pop() {
+        if let Some((target, text, selection)) = self.edit_redo_stack.pop_back() {
             let current_text = self.get_edit_text(target).to_string();
-            self.edit_undo_stack.push((target, current_text, self.edit_selection.clone()));
+            self.edit_undo_stack.push_back((target, current_text, self.edit_selection.clone()));
             if let Some(field) = self.get_edit_text_mut(target) { *field = text; }
             self.edit_selection = selection;
             self.sync_after_edit(target, cx);

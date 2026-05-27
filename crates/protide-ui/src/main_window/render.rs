@@ -31,7 +31,7 @@ impl Render for MainWindow {
             }
         }
         let theme = theme::current(cx);
-        let show_response = self.request_panel.read(cx).has_response_panel();
+        let show_response = self.request_panel.read(cx).shows_response_panel();
         let show_codegen = self.request_panel.read(cx).codegen_content.is_some();
         let import_modal: Option<gpui::AnyElement> = if self.request_panel.read(cx).import_modal_open {
             Some(self.request_panel.update(cx, |p, cx| p.render_import_modal(cx)))

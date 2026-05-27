@@ -428,6 +428,38 @@ mod tests {
         assert!(data.is_error());
     }
 
+    // truncate_error tests
+    #[test]
+    fn test_truncate_error_multibyte() {
+        // 41 kanji × 3 bytes each = 123 bytes, 41 chars — exceeds 40-char threshold
+        // Old byte-slicing at index 37 would land mid-character and panic
+        let kanji = "日".repeat(41);
+        let result = types::truncate_error(&kanji); // must not panic
+        assert!(result.ends_with("..."));
+        // Verify result is valid UTF-8 (no split multi-byte sequences)
+        assert!(std::str::from_utf8(result.as_bytes()).is_ok());
+    }
+
+    #[test]
+    fn test_truncate_error_short_stays_intact() {
+        let short = "connection refused";
+        assert_eq!(types::truncate_error(short), "connection refused");
+    }
+
+    #[test]
+    fn test_truncate_error_exactly_40_chars() {
+        let s = "a".repeat(40);
+        assert_eq!(types::truncate_error(&s), s); // not truncated
+    }
+
+    #[test]
+    fn test_truncate_error_41_chars() {
+        let s = "a".repeat(41);
+        let result = types::truncate_error(&s);
+        assert!(result.ends_with("..."));
+        assert!(result.len() < 41 + 3); // shorter than original
+    }
+
     // format_size tests
     #[test]
     fn test_format_size_bytes() {

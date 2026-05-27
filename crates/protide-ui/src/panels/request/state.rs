@@ -14,7 +14,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
         cx.notify();
     }
 
-    pub fn has_response_panel(&self) -> bool {
+    pub fn shows_response_panel(&self) -> bool {
         !matches!(self.request_mode, RequestMode::WebSocket | RequestMode::SocketIo)
     }
 

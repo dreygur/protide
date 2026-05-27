@@ -34,9 +34,11 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
     }
 
     pub(super) fn selected_text(&self) -> String {
-        let byte_start = char_to_byte_offset(&self.url, self.url_selection.start);
-        let byte_end = char_to_byte_offset(&self.url, self.url_selection.end);
-        self.url[byte_start..byte_end].to_string()
+        let lo = self.url_selection.start.min(self.url_selection.end);
+        let hi = self.url_selection.start.max(self.url_selection.end);
+        let byte_lo = char_to_byte_offset(&self.url, lo);
+        let byte_hi = char_to_byte_offset(&self.url, hi);
+        self.url[byte_lo..byte_hi].to_string()
     }
 
     pub(super) fn delete_selection(&mut self, cx: &mut Context<Self>) {
@@ -60,16 +62,16 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
     }
 
     pub(super) fn save_url_state(&mut self) {
-        self.url_undo_stack.push((self.url.clone(), self.url_selection.clone()));
+        self.url_undo_stack.push_back((self.url.clone(), self.url_selection.clone()));
         if self.url_undo_stack.len() > 100 {
-            self.url_undo_stack.remove(0);
+            self.url_undo_stack.pop_front();
         }
         self.url_redo_stack.clear();
     }
 
     pub(super) fn url_undo(&mut self, cx: &mut Context<Self>) {
-        if let Some((text, selection)) = self.url_undo_stack.pop() {
-            self.url_redo_stack.push((self.url.clone(), self.url_selection.clone()));
+        if let Some((text, selection)) = self.url_undo_stack.pop_back() {
+            self.url_redo_stack.push_back((self.url.clone(), self.url_selection.clone()));
             self.url = text;
             self.url_selection = selection;
             self.sync_params_from_url(cx);
@@ -78,8 +80,8 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
     }
 
     pub(super) fn url_redo(&mut self, cx: &mut Context<Self>) {
-        if let Some((text, selection)) = self.url_redo_stack.pop() {
-            self.url_undo_stack.push((self.url.clone(), self.url_selection.clone()));
+        if let Some((text, selection)) = self.url_redo_stack.pop_back() {
+            self.url_undo_stack.push_back((self.url.clone(), self.url_selection.clone()));
             self.url = text;
             self.url_selection = selection;
             self.sync_params_from_url(cx);

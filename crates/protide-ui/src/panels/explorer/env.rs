@@ -154,19 +154,19 @@ impl ExplorerPanel {
         if let Some(target) = self.active_edit {
             let text = self.get_edit_text(target);
             self.edit_undo_stack
-                .push((target, text, self.edit_selection.clone()));
+                .push_back((target, text, self.edit_selection.clone()));
             if self.edit_undo_stack.len() > 100 {
-                self.edit_undo_stack.remove(0);
+                self.edit_undo_stack.pop_front();
             }
             self.edit_redo_stack.clear();
         }
     }
 
     pub(super) fn edit_undo(&mut self, cx: &mut Context<Self>) {
-        if let Some((target, text, selection)) = self.edit_undo_stack.pop() {
+        if let Some((target, text, selection)) = self.edit_undo_stack.pop_back() {
             let current_text = self.get_edit_text(target);
             self.edit_redo_stack
-                .push((target, current_text, self.edit_selection.clone()));
+                .push_back((target, current_text, self.edit_selection.clone()));
             self.set_edit_text(target, text);
             self.edit_selection = selection;
             cx.notify();
@@ -174,10 +174,10 @@ impl ExplorerPanel {
     }
 
     pub(super) fn edit_redo(&mut self, cx: &mut Context<Self>) {
-        if let Some((target, text, selection)) = self.edit_redo_stack.pop() {
+        if let Some((target, text, selection)) = self.edit_redo_stack.pop_back() {
             let current_text = self.get_edit_text(target);
             self.edit_undo_stack
-                .push((target, current_text, self.edit_selection.clone()));
+                .push_back((target, current_text, self.edit_selection.clone()));
             self.set_edit_text(target, text);
             self.edit_selection = selection;
             cx.notify();

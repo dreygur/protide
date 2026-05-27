@@ -170,7 +170,7 @@ pub fn parse_trpc_schema(json: &str) -> Result<Vec<TrpcSchemaProc>, String> {
             if let Some(router_obj) = router_val.as_object() {
                 // Only treat as nested router if values are objects (not strings/nulls)
                 let has_object_vals = router_obj.values()
-                    .any(|v| v.is_object() && v.get("procedureType").is_none());
+                    .any(|v| v.is_object());
                 if !has_object_vals { continue; }
                 for (proc_name, proc_val) in router_obj {
                     if proc_name.starts_with('_') { continue; }
@@ -318,5 +318,18 @@ mod tests {
     #[test]
     fn test_parse_schema_unrecognised_format() {
         assert!(parse_trpc_schema(r#"{"foo": 42}"#).is_err());
+    }
+
+    #[test]
+    fn test_parse_schema_format2_nested_router_with_procedure_type() {
+        // Nested router where leaf objects use "procedureType" key (valid Format-2,
+        // previously rejected by the overly strict guard that excluded such objects)
+        let json = r#"{"users":{"login":{"procedureType":"mutation"},"getAll":{"procedureType":"query"}}}"#;
+        let procs = parse_trpc_schema(json).unwrap();
+        assert_eq!(procs.len(), 2);
+        let login = procs.iter().find(|p| p.name == "users.login").unwrap();
+        assert!(login.is_mutation);
+        let get_all = procs.iter().find(|p| p.name == "users.getAll").unwrap();
+        assert!(!get_all.is_mutation);
     }
 }

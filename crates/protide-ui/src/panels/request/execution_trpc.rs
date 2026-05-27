@@ -9,6 +9,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
 
         self.loading = true;
         cx.notify();
+        self.response_panel.update(cx, |panel, cx| panel.set_loading(cx));
 
         let url = self.url.clone();
         let procedure = self.trpc_procedure.clone();

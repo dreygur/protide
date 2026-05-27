@@ -2,7 +2,9 @@ use gpui::{Context, Window};
 use super::*;
 
 impl<E: WebSocketExecutor> RequestPanel<E> {
-    /// Queue a deferred editor content update, applied on the next render.
+    /// Queue a deferred editor content update to be applied on the next render.
+    /// Last-write-wins per target: queuing the same target twice before a render
+    /// silently discards the first value. Callers must call `cx.notify()` to schedule the render.
     pub(super) fn queue_editor(&mut self, target: PendingEditor, content: String) {
         self.editor_pending.retain(|(t, _)| *t != target);
         self.editor_pending.push((target, content));

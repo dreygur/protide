@@ -1,7 +1,7 @@
 //! tRPC Playground — procedure list and add-procedure row rendering
 
 use gpui::{
-    div, prelude::*, px, Context, IntoElement, ParentElement, SharedString, Styled,
+    div, prelude::*, px, Context, IntoElement, ParentElement, Styled,
 };
 use gpui_component::{input::Input, Sizable};
 use crate::theme;
@@ -61,7 +61,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                             .child(Input::new(&self.trpc_pg_group_edit_input)
                                 .bordered(false).with_size(gpui_component::Size::XSmall)))
                         .child(div()
-                            .id(SharedString::from(format!("trpc-grp-ok-{}", router)))
+                            .id(format!("trpc-grp-ok-{}", router))
                             .w(px(20.0)).h_full().flex().items_center().justify_center()
                             .cursor_pointer()
                             .on_mouse_down(gpui::MouseButton::Left, cx.listener(move |this, _, _, cx| {
@@ -80,7 +80,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                             }))
                             .child(icon(ICON_CHECK, ICON_SM, theme.colors.status_success)))
                         .child(div()
-                            .id(SharedString::from(format!("trpc-grp-x-{}", router)))
+                            .id(format!("trpc-grp-x-{}", router))
                             .w(px(20.0)).h_full().flex().items_center().justify_center()
                             .cursor_pointer()
                             .text_size(px(12.0)).text_color(theme.colors.text_muted)
@@ -92,7 +92,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                         .into_any_element()
                 } else {
                     div()
-                        .id(SharedString::from(format!("trpc-grp-hdr-{}", router)))
+                        .id(format!("trpc-grp-hdr-{}", router))
                         .h(px(22.0)).px(px(10.0)).flex().items_center().gap(px(5.0))
                         .bg(theme.colors.bg_primary).border_b_1().border_color(theme.colors.border)
                         .cursor_pointer().hover(|s| s.bg(theme.colors.hover_overlay))
@@ -124,14 +124,14 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
 
                         if is_editing_row {
                             div()
-                                .id(SharedString::from(format!("trpc-pg-row-{}", idx)))
+                                .id(format!("trpc-pg-row-{}", idx))
                                 .h(px(30.0)).pl(px(8.0)).pr(px(8.0))
                                 .flex().items_center().gap(px(4.0))
                                 .border_b_1().border_color(theme.colors.border.opacity(0.5))
                                 .bg(theme.colors.accent.opacity(0.04))
                                 // Q toggle
                                 .child(div()
-                                    .id(SharedString::from(format!("trpc-pg-ek-q-{}", idx)))
+                                    .id(format!("trpc-pg-ek-q-{}", idx))
                                     .w(px(16.0)).h(px(16.0)).flex_none().flex().items_center().justify_center()
                                     .bg(if edit_kind == TrpcProcKind::Query { theme.colors.method_get.opacity(0.12) } else { theme.colors.bg_secondary })
                                     .text_size(px(9.0)).font_weight(gpui::FontWeight::EXTRA_BOLD)
@@ -141,7 +141,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                                     .child("Q"))
                                 // M toggle
                                 .child(div()
-                                    .id(SharedString::from(format!("trpc-pg-ek-m-{}", idx)))
+                                    .id(format!("trpc-pg-ek-m-{}", idx))
                                     .w(px(16.0)).h(px(16.0)).flex_none().flex().items_center().justify_center()
                                     .bg(if edit_kind == TrpcProcKind::Mutation { theme.colors.method_post.opacity(0.12) } else { theme.colors.bg_secondary })
                                     .text_size(px(9.0)).font_weight(gpui::FontWeight::EXTRA_BOLD)
@@ -155,13 +155,15 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                                         .bordered(false).with_size(gpui_component::Size::XSmall)))
                                 // Confirm
                                 .child(div()
-                                    .id(SharedString::from(format!("trpc-pg-ok-{}", idx)))
+                                    .id(format!("trpc-pg-ok-{}", idx))
                                     .size(px(16.0)).flex().items_center().justify_center().cursor_pointer()
                                     .on_mouse_down(gpui::MouseButton::Left, cx.listener(move |this, _, _, cx| {
                                         let n = this.trpc_pg_edit_input.read(cx).value().trim().to_string();
                                         if !n.is_empty() {
-                                            this.trpc_pg_procedures[idx].name = n;
-                                            this.trpc_pg_procedures[idx].kind = this.trpc_pg_edit_kind;
+                                            if let Some(proc) = this.trpc_pg_procedures.get_mut(idx) {
+                                                proc.name = n;
+                                                proc.kind = this.trpc_pg_edit_kind;
+                                            }
                                         }
                                         this.trpc_pg_editing = None;
                                         cx.notify();
@@ -169,7 +171,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                                     .child(icon(ICON_CHECK, ICON_SM, theme.colors.status_success)))
                                 // Cancel
                                 .child(div()
-                                    .id(SharedString::from(format!("trpc-pg-cl-{}", idx)))
+                                    .id(format!("trpc-pg-cl-{}", idx))
                                     .size(px(14.0)).flex().items_center().justify_center()
                                     .text_size(px(12.0)).text_color(theme.colors.text_muted).cursor_pointer()
                                     .hover(|s| s.text_color(theme.colors.status_client_error))
@@ -179,18 +181,19 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                                     .child("×"))
                                 .into_any_element()
                         } else {
-                            let leaf = self.trpc_pg_procedures[idx].leaf().to_string();
+                            let leaf = self.trpc_pg_procedures.get(idx).map(|p| p.leaf().to_string()).unwrap_or_default();
                             div()
-                                .id(SharedString::from(format!("trpc-pg-row-{}", idx)))
+                                .id(format!("trpc-pg-row-{}", idx))
                                 .h(px(30.0)).pl(px(22.0)).pr(px(8.0))
                                 .flex().items_center().gap(px(6.0))
                                 .cursor_pointer().border_b_1().border_color(theme.colors.border.opacity(0.5))
                                 .when(is_sel, |el| el.bg(theme.colors.accent.opacity(0.08)).border_l_2().border_color(theme.colors.accent))
                                 .when(!is_sel, |el| el.hover(|s| s.bg(theme.colors.hover_overlay)))
                                 .on_click(cx.listener(move |this, _, _, cx| {
-                                    this.trpc_pg_selected = Some(idx);
-                                    let full = this.trpc_pg_procedures[idx].full_procedure();
-                                    this.trpc_procedure = full;
+                                    if let Some(proc) = this.trpc_pg_procedures.get(idx) {
+                                        this.trpc_pg_selected = Some(idx);
+                                        this.trpc_procedure = proc.full_procedure();
+                                    }
                                     cx.notify();
                                 }))
                                 // Kind badge
@@ -206,23 +209,25 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                                     .child(leaf))
                                 // Edit button
                                 .child(div()
-                                    .id(SharedString::from(format!("trpc-pg-ed-{}", idx)))
+                                    .id(format!("trpc-pg-ed-{}", idx))
                                     .size(px(14.0)).flex().items_center().justify_center()
                                     .text_color(theme.colors.text_muted.opacity(0.0))
                                     .hover(|s| s.text_color(theme.colors.accent))
                                     .on_mouse_down(gpui::MouseButton::Left, cx.listener(move |this, _, _, cx| {
                                         cx.stop_propagation();
-                                        let n = this.trpc_pg_procedures[idx].name.clone();
-                                        let k = this.trpc_pg_procedures[idx].kind;
-                                        this.trpc_pg_editing = Some(idx);
-                                        this.trpc_pg_edit_kind = k;
-                                        this.queue_editor(PendingEditor::TrpcPgEditInput, n);
-                                        cx.notify();
+                                        if let Some(proc) = this.trpc_pg_procedures.get(idx) {
+                                            let n = proc.name.clone();
+                                            let k = proc.kind;
+                                            this.trpc_pg_editing = Some(idx);
+                                            this.trpc_pg_edit_kind = k;
+                                            this.queue_editor(PendingEditor::TrpcPgEditInput, n);
+                                            cx.notify();
+                                        }
                                     }))
                                     .child(icon(ICON_EDIT, ICON_SM, theme.colors.text_muted)))
                                 // Delete button
                                 .child(div()
-                                    .id(SharedString::from(format!("trpc-pg-del-{}", idx)))
+                                    .id(format!("trpc-pg-del-{}", idx))
                                     .size(px(14.0)).flex().items_center().justify_center()
                                     .text_size(px(12.0)).text_color(theme.colors.text_muted.opacity(0.0))
                                     .hover(|s| s.text_color(theme.colors.status_client_error))
