@@ -135,7 +135,7 @@ pub fn fetch_trpc_schema_raw(base_url: &str) -> Result<String, String> {
             }
         }
     }
-    Err("No schema endpoint responded. Paste schema JSON via the add row, or add procedures manually.".to_string())
+    Err("No schema endpoint responded. Add procedures manually: select Q or M, type the procedure name (e.g. users.getAll), and press +.".to_string())
 }
 
 /// Parse a tRPC schema JSON payload into a flat list of procedures.
