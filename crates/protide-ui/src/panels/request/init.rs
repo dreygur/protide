@@ -1,4 +1,5 @@
 use super::*;
+use super::panel_state::{GrpcPanel, WsPanel, SioPanel, TrpcPanel, GraphqlPanel, ScriptPanel};
 use gpui_component::input::InputState;
 
 impl<E: WebSocketExecutor> RequestPanel<E> {
@@ -9,57 +10,121 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
         let body_editor = cx.new(|cx| {
             InputState::new(window, cx).multi_line(true).code_editor("json").line_number(true).default_value(initial_body)
         });
-        let pre_script_editor = cx.new(|cx| {
-            InputState::new(window, cx).multi_line(true).code_editor("javascript").line_number(true)
-        });
-        let post_script_editor = cx.new(|cx| {
-            InputState::new(window, cx).multi_line(true).code_editor("javascript").line_number(true)
-        });
-        let tests_editor = cx.new(|cx| {
-            InputState::new(window, cx).multi_line(true).code_editor("javascript").line_number(true)
-        });
-        let graphql_query_editor = cx.new(|cx| {
-            InputState::new(window, cx).multi_line(true).code_editor("graphql").line_number(true).default_value("query {\n  \n}")
-        });
-        let graphql_variables_editor = cx.new(|cx| {
-            InputState::new(window, cx).multi_line(true).code_editor("json").line_number(true).default_value("{}")
-        });
-        let ws_message_editor = cx.new(|cx| {
-            InputState::new(window, cx).multi_line(true).code_editor("json").line_number(true).default_value("{\"type\": \"hello\"}")
-        });
-        let grpc_message_editor = cx.new(|cx| {
-            InputState::new(window, cx).multi_line(true).code_editor("json").line_number(true).default_value("{}")
-        });
-        let trpc_params_editor = cx.new(|cx| {
-            InputState::new(window, cx).multi_line(true).code_editor("json").line_number(true).default_value("{}")
-        });
-        let trpc_pg_search_input = cx.new(|cx| {
-            InputState::new(window, cx).placeholder("Search procedures...")
-        });
-        let trpc_pg_result_viewer = cx.new(|cx| {
-            InputState::new(window, cx).multi_line(true).code_editor("json").line_number(true)
-        });
-        let trpc_pg_add_input = cx.new(|cx| {
-            InputState::new(window, cx).placeholder("router.name")
-        });
-        let trpc_pg_import_url_input = cx.new(|cx| {
-            InputState::new(window, cx).placeholder("https://api.example.com/trpc")
-        });
-        let trpc_pg_edit_input = cx.new(|cx| {
-            InputState::new(window, cx).placeholder("router.name")
-        });
-        let trpc_pg_group_edit_input = cx.new(|cx| {
-            InputState::new(window, cx).placeholder("router")
-        });
-        let sio_payload_editor = cx.new(|cx| {
-            InputState::new(window, cx).multi_line(true).code_editor("json").default_value("{}")
-        });
         let codegen_editor = cx.new(|cx| {
             InputState::new(window, cx).multi_line(true).line_number(true)
         });
         let import_editor = cx.new(|cx| {
             InputState::new(window, cx).multi_line(true)
         });
+        let grpc = GrpcPanel {
+            message_editor: cx.new(|cx| {
+                InputState::new(window, cx).multi_line(true).code_editor("json").line_number(true).default_value("{}")
+            }),
+            metadata: vec![KeyValuePair::default()],
+            proto_path: None,
+            proto_content: String::new(),
+            services: Vec::new(),
+            service: None,
+            methods: Vec::new(),
+            method: None,
+        };
+        let ws = WsPanel {
+            state: WsConnectionState::Disconnected,
+            messages: WsRingBuffer::default(),
+            message_editor: cx.new(|cx| {
+                InputState::new(window, cx).multi_line(true).code_editor("json").line_number(true).default_value("{\"type\": \"hello\"}")
+            }),
+            send_tx: None,
+            compose_h: 120.0,
+            compose_drag: None,
+            scroll: gpui::ScrollHandle::new(),
+        };
+        let sio = SioPanel {
+            state: SioConnectionState::Disconnected,
+            messages: SioRingBuffer::default(),
+            namespace: "/".to_string(),
+            event_name: "message".to_string(),
+            want_ack: false,
+            next_ack_id: 1,
+            payload_editor: cx.new(|cx| {
+                InputState::new(window, cx).multi_line(true).code_editor("json").default_value("{}")
+            }),
+            send_tx: None,
+            room_name: String::new(),
+            active_rooms: Vec::new(),
+        };
+        let trpc = TrpcPanel {
+            procedure: String::new(),
+            params_editor: cx.new(|cx| {
+                InputState::new(window, cx).multi_line(true).code_editor("json").line_number(true).default_value("{}")
+            }),
+            pg_procedures: vec![],
+            pg_selected: None,
+            pg_loading: false,
+            pg_response: None,
+            pg_error: None,
+            pg_status: None,
+            pg_elapsed: None,
+            pg_search_input: cx.new(|cx| {
+                InputState::new(window, cx).placeholder("Search procedures...")
+            }),
+            pg_result_viewer: cx.new(|cx| {
+                InputState::new(window, cx).multi_line(true).code_editor("json").line_number(true)
+            }),
+            pg_add_input: cx.new(|cx| {
+                InputState::new(window, cx).placeholder("router.name")
+            }),
+            pg_add_kind: TrpcProcKind::Query,
+            pg_sidebar_w: 220.0,
+            pg_sidebar_drag: None,
+            pg_schema_loading: false,
+            pg_schema_error: None,
+            pg_import_url_input: cx.new(|cx| {
+                InputState::new(window, cx).placeholder("https://api.example.com/trpc")
+            }),
+            pg_show_import_url: false,
+            pg_editing: None,
+            pg_edit_input: cx.new(|cx| {
+                InputState::new(window, cx).placeholder("router.name")
+            }),
+            pg_edit_kind: TrpcProcKind::Query,
+            pg_editing_group: None,
+            pg_group_edit_input: cx.new(|cx| {
+                InputState::new(window, cx).placeholder("router")
+            }),
+        };
+        let graphql = GraphqlPanel {
+            query_editor: cx.new(|cx| {
+                InputState::new(window, cx).multi_line(true).code_editor("graphql").line_number(true).default_value("query {\n  \n}")
+            }),
+            variables_editor: cx.new(|cx| {
+                InputState::new(window, cx).multi_line(true).code_editor("json").line_number(true).default_value("{}")
+            }),
+            operation_name: String::new(),
+            schema: GraphqlSchemaState::Idle,
+            schema_search: String::new(),
+        };
+        let scripts = ScriptPanel {
+            pre: String::new(),
+            post: String::new(),
+            tests: String::new(),
+            pre_editor: cx.new(|cx| {
+                InputState::new(window, cx).multi_line(true).code_editor("javascript").line_number(true)
+            }),
+            post_editor: cx.new(|cx| {
+                InputState::new(window, cx).multi_line(true).code_editor("javascript").line_number(true)
+            }),
+            tests_editor: cx.new(|cx| {
+                InputState::new(window, cx).multi_line(true).code_editor("javascript").line_number(true)
+            }),
+            pre_open: true,
+            post_open: true,
+            tests_open: true,
+            pre_h: crate::prefs::get_f32("request.script_pre_h", 160.0),
+            post_h: crate::prefs::get_f32("request.script_post_h", 160.0),
+            drag_pre: None,
+            drag_post: None,
+        };
         Self {
             active_tab: 0,
             method: HttpMethod::Post,
@@ -114,12 +179,6 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             body_focus: cx.focus_handle(),
             explorer_panel: None,
             body_editor,
-            pre_script: String::new(),
-            post_script: String::new(),
-            tests: String::new(),
-            pre_script_editor,
-            post_script_editor,
-            tests_editor,
             variable_extractions: Vec::new(),
             codegen_content: None,
             codegen_language: CodegenLanguage::Curl,
@@ -129,73 +188,18 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             import_error: None,
             import_editor,
             request_mode: RequestMode::Http,
-            graphql_query_editor,
-            graphql_variables_editor,
-            graphql_operation_name: String::new(),
-            ws_state: WsConnectionState::Disconnected,
-            ws_messages: WsRingBuffer::default(),
-            ws_message_editor,
-            ws_send_tx: None,
-            ws_compose_h: 120.0,
-            ws_compose_drag: None,
-            ws_scroll: gpui::ScrollHandle::new(),
-            grpc_message_editor,
-            grpc_metadata: vec![KeyValuePair::default()],
-            grpc_proto_path: None,
-            grpc_proto_content: String::new(),
-            grpc_services: Vec::new(),
-            grpc_service: None,
-            grpc_methods: Vec::new(),
-            grpc_method: None,
-            trpc_procedure: String::new(),
-            trpc_params_editor,
-            trpc_pg_procedures: vec![],
-            trpc_pg_selected: None,
-            trpc_pg_loading: false,
-            trpc_pg_response: None,
-            trpc_pg_error: None,
-            trpc_pg_status: None,
-            trpc_pg_elapsed: None,
-            trpc_pg_search_input,
-            trpc_pg_result_viewer,
-            trpc_pg_add_input,
-            trpc_pg_add_kind: TrpcProcKind::Query,
-            trpc_pg_sidebar_w: 220.0,
-            trpc_pg_sidebar_drag: None,
-            trpc_pg_schema_loading: false,
-            trpc_pg_schema_error: None,
-            trpc_pg_import_url_input,
-            trpc_pg_show_import_url: false,
-            trpc_pg_editing: None,
-            trpc_pg_edit_input,
-            trpc_pg_edit_kind: TrpcProcKind::Query,
-            trpc_pg_editing_group: None,
-            trpc_pg_group_edit_input,
-            sio_state: SioConnectionState::Disconnected,
-            sio_messages: SioRingBuffer::default(),
-            sio_namespace: "/".to_string(),
-            sio_event_name: "message".to_string(),
-            sio_want_ack: false,
-            sio_next_ack_id: 1,
-            sio_payload_editor,
-            sio_send_tx: None,
-            sio_room_name: String::new(),
-            sio_active_rooms: Vec::new(),
+            grpc,
+            ws,
+            sio,
+            trpc,
+            graphql,
+            scripts,
             kv_col_key_w: 150.0,
             kv_col_drag: None,
-            script_pre_open: true,
-            script_post_open: true,
-            script_tests_open: true,
-            script_pre_h: crate::prefs::get_f32("request.script_pre_h", 160.0),
-            script_post_h: crate::prefs::get_f32("request.script_post_h", 160.0),
-            drag_script_pre: None,
-            drag_script_post: None,
             current_file: None,
             save_feedback: false,
             custom_method_input: String::new(),
             custom_method_focus: cx.focus_handle(),
-            graphql_schema: GraphqlSchemaState::Idle,
-            graphql_schema_search: String::new(),
             console_panel: None,
             csv_path: None,
             data_results: Vec::new(),

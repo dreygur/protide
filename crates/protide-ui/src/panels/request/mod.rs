@@ -46,6 +46,7 @@ mod execution_ws;
 mod execution_sio;
 mod execution_grpc;
 mod execution_trpc;
+mod panel_state;
 
 #[cfg(test)]
 mod tests;
@@ -68,30 +69,15 @@ use super::console::{ConsoleEntry, ConsoleEntrySource, ConsolePanel, LogLevel};
 use super::explorer::ExplorerPanel;
 use super::request_types::{
     ApiKeyLocation, AuthType, BodyType, EditTarget, FormField, FormFieldType,
-    GrpcMethodInfo, GrpcStreamingType, HttpMethod, KeyValuePair, KvList, PendingEditor, RequestMode,
+    GqlSchemaType, GraphqlSchemaState, GrpcMethodInfo, GrpcStreamingType,
+    HttpMethod, KeyValuePair, KvList, PendingEditor, RequestMode,
     SioConnectionState, TrpcPlaygroundProc, TrpcProcKind, WsConnectionState,
 };
+use panel_state::{GrpcPanel, WsPanel, SioPanel, TrpcPanel, GraphqlPanel, ScriptPanel};
 use super::response::{ResponseData, ResponsePanel};
 use protide_core::codegen::Language as CodegenLanguage;
 use http_parser::VariableExtraction;
 use crate::last_paths;
-
-/// Summary of a single type from a GraphQL schema introspection response.
-#[derive(Clone, Debug)]
-pub struct GqlSchemaType {
-    pub name: String,
-    pub kind: String,
-}
-
-/// State of the GraphQL schema for the current endpoint.
-#[derive(Clone, Debug, Default)]
-pub enum GraphqlSchemaState {
-    #[default]
-    Idle,
-    Loading,
-    Loaded(Vec<GqlSchemaType>),
-    Error(String),
-}
 
 fn char_to_byte_offset(text: &str, char_idx: usize) -> usize {
     text.char_indices().nth(char_idx).map(|(b, _)| b).unwrap_or(text.len())
@@ -141,12 +127,6 @@ pub struct RequestPanel<E: WebSocketExecutor = TungsteniteExecutor> {
     pub(super) body_focus: FocusHandle,
     pub(super) explorer_panel: Option<Entity<ExplorerPanel>>,
     pub(super) body_editor: Entity<InputState>,
-    pub(super) pre_script: String,
-    pub(super) post_script: String,
-    pub(super) tests: String,
-    pub(super) pre_script_editor: Entity<InputState>,
-    pub(super) post_script_editor: Entity<InputState>,
-    pub(super) tests_editor: Entity<InputState>,
     pub(super) variable_extractions: Vec<VariableExtraction>,
     pub codegen_content: Option<String>,
     pub codegen_language: CodegenLanguage,
@@ -156,73 +136,18 @@ pub struct RequestPanel<E: WebSocketExecutor = TungsteniteExecutor> {
     pub(super) import_error: Option<String>,
     pub(super) import_editor: Entity<InputState>,
     pub(super) request_mode: RequestMode,
-    pub(super) graphql_query_editor: Entity<InputState>,
-    pub(super) graphql_variables_editor: Entity<InputState>,
-    pub(super) graphql_operation_name: String,
-    pub(super) ws_state: WsConnectionState,
-    pub(super) ws_messages: WsRingBuffer,
-    pub(super) ws_message_editor: Entity<InputState>,
-    ws_send_tx: Option<std::sync::mpsc::Sender<WsCommand>>,
-    pub(super) ws_compose_h: f32,
-    pub(super) ws_compose_drag: Option<(f32, f32)>,
-    pub(super) ws_scroll: ScrollHandle,
-    pub(super) grpc_message_editor: Entity<InputState>,
-    pub(super) grpc_metadata: Vec<KeyValuePair>,
-    pub(super) grpc_proto_path: Option<std::path::PathBuf>,
-    pub(super) grpc_proto_content: String,
-    pub(super) grpc_services: Vec<String>,
-    pub(super) grpc_service: Option<String>,
-    pub(super) grpc_methods: Vec<GrpcMethodInfo>,
-    pub(super) grpc_method: Option<GrpcMethodInfo>,
-    pub(super) trpc_procedure: String,
-    pub(super) trpc_params_editor: Entity<InputState>,
-    pub(super) trpc_pg_procedures: Vec<TrpcPlaygroundProc>,
-    pub(super) trpc_pg_selected: Option<usize>,
-    pub(super) trpc_pg_loading: bool,
-    pub(super) trpc_pg_response: Option<String>,
-    pub(super) trpc_pg_error: Option<String>,
-    pub(super) trpc_pg_status: Option<u16>,
-    pub(super) trpc_pg_elapsed: Option<std::time::Duration>,
-    pub(super) trpc_pg_search_input: Entity<InputState>,
-    pub(super) trpc_pg_result_viewer: Entity<InputState>,
-    pub(super) trpc_pg_add_input: Entity<InputState>,
-    pub(super) trpc_pg_add_kind: TrpcProcKind,
-    pub(super) trpc_pg_sidebar_w: f32,
-    pub(super) trpc_pg_sidebar_drag: Option<(f32, f32)>,
-    pub(super) trpc_pg_schema_loading: bool,
-    pub(super) trpc_pg_schema_error: Option<String>,
-    pub(super) trpc_pg_import_url_input: Entity<InputState>,
-    pub(super) trpc_pg_show_import_url: bool,
-    pub(super) trpc_pg_editing: Option<usize>,
-    pub(super) trpc_pg_edit_input: Entity<InputState>,
-    pub(super) trpc_pg_edit_kind: TrpcProcKind,
-    pub(super) trpc_pg_editing_group: Option<String>,
-    pub(super) trpc_pg_group_edit_input: Entity<InputState>,
-    pub(super) sio_state: SioConnectionState,
-    pub(super) sio_messages: SioRingBuffer,
-    pub(super) sio_namespace: String,
-    pub(super) sio_event_name: String,
-    pub(super) sio_want_ack: bool,
-    pub(super) sio_next_ack_id: u32,
-    pub(super) sio_payload_editor: Entity<InputState>,
-    sio_send_tx: Option<std::sync::mpsc::Sender<SioCommand>>,
-    pub(super) sio_room_name: String,
-    pub(super) sio_active_rooms: Vec<String>,
+    pub(super) grpc: GrpcPanel,
+    pub(super) ws: WsPanel,
+    pub(super) sio: SioPanel,
+    pub(super) trpc: TrpcPanel,
+    pub(super) graphql: GraphqlPanel,
+    pub(super) scripts: ScriptPanel,
     pub(super) kv_col_key_w: f32,
     pub(super) kv_col_drag: Option<(f32, f32)>,
-    pub(super) script_pre_open: bool,
-    pub(super) script_post_open: bool,
-    pub(super) script_tests_open: bool,
-    pub(super) script_pre_h: f32,
-    pub(super) script_post_h: f32,
-    pub(super) drag_script_pre: Option<(f32, f32)>,
-    pub(super) drag_script_post: Option<(f32, f32)>,
     pub(super) current_file: Option<std::path::PathBuf>,
     pub(super) save_feedback: bool,
     pub(super) custom_method_input: String,
     pub(super) custom_method_focus: FocusHandle,
-    pub(super) graphql_schema: GraphqlSchemaState,
-    pub(super) graphql_schema_search: String,
     pub(super) console_panel: Option<Entity<ConsolePanel>>,
     pub(super) csv_path: Option<std::path::PathBuf>,
     pub(super) data_results: Vec<crate::panels::request_types::DataRunRow>,

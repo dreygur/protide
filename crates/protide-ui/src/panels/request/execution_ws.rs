@@ -5,12 +5,12 @@ use super::graphql::dns_troubleshoot_hint;
 impl<E: WebSocketExecutor> RequestPanel<E> {
     /// Connect to WebSocket server
     pub(super) fn connect_websocket(&mut self, cx: &mut Context<Self>) {
-        if !matches!(self.ws_state, WsConnectionState::Disconnected | WsConnectionState::Error) {
+        if !matches!(self.ws.state, WsConnectionState::Disconnected | WsConnectionState::Error) {
             return;
         }
 
-        self.ws_state = WsConnectionState::Connecting;
-        self.ws_messages.clear();
+        self.ws.state = WsConnectionState::Connecting;
+        self.ws.messages.clear();
         cx.notify();
 
         let env_state = self.explorer_panel.as_ref().map(|p| p.read(cx).env_state().clone());
@@ -23,7 +23,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             .filter(|h| h.enabled && !h.key.is_empty())
             .map(|h| (substitute(&h.key), substitute(&h.value)))
             .collect();
-        let on_message_script = self.pre_script_editor.read(cx).value().to_string();
+        let on_message_script = self.scripts.pre_editor.read(cx).value().to_string();
         let env_vars: std::collections::HashMap<String, String> = env_state.as_ref()
             .and_then(|e| e.active())
             .map(|env| env.variables.iter().map(|(k, v)| (k.clone(), v.clone())).collect())
@@ -38,7 +38,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
         }.to_string();
 
         let handle = E::connect(WsConnectionParams { url, headers, on_message_script, env_vars });
-        self.ws_send_tx = Some(handle.cmd_tx);
+        self.ws.send_tx = Some(handle.cmd_tx);
 
         let event_rx = handle.event_rx;
         let (fwd_tx, fwd_rx) = async_channel::unbounded::<WsEvent>();
@@ -54,7 +54,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                         log::info!("WS connected: {}", ws_log_url);
                         let _ = cx.update(|cx| {
                             let _ = this.update(cx, |this, cx| {
-                                this.ws_state = WsConnectionState::Connected;
+                                this.ws.state = WsConnectionState::Connected;
                                 cx.notify();
                             });
                         });
@@ -67,8 +67,8 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                                         ep.update(cx, |p, cx| p.set_env_variable(k, v, cx));
                                     }
                                 }
-                                this.ws_messages.push(msg);
-                                this.ws_scroll.scroll_to_bottom();
+                                this.ws.messages.push(msg);
+                                this.ws.scroll.scroll_to_bottom();
                                 cx.notify();
                             });
                         });
@@ -77,8 +77,8 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                         log::info!("WS disconnected: {}", ws_log_url);
                         let _ = cx.update(|cx| {
                             let _ = this.update(cx, |this, cx| {
-                                this.ws_state = WsConnectionState::Disconnected;
-                                this.ws_send_tx = None;
+                                this.ws.state = WsConnectionState::Disconnected;
+                                this.ws.send_tx = None;
                                 cx.notify();
                             });
                         });
@@ -105,14 +105,14 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                                 console.update(cx, |panel, cx| panel.log(entry, cx));
                             }
                             let _ = this.update(cx, |this, cx| {
-                                this.ws_state = WsConnectionState::Error;
-                                this.ws_send_tx = None;
-                                this.ws_messages.push(WsMessage {
+                                this.ws.state = WsConnectionState::Error;
+                                this.ws.send_tx = None;
+                                this.ws.messages.push(WsMessage {
                                     direction: WsDirection::Received,
                                     content: format!("Connection failed: {}", e),
                                     timestamp: chrono::Local::now(),
                                 });
-                                this.ws_scroll.scroll_to_bottom();
+                                this.ws.scroll.scroll_to_bottom();
                                 cx.notify();
                             });
                         });
@@ -122,9 +122,9 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             }
             let _ = cx.update(|cx| {
                 let _ = this.update(cx, |this, cx| {
-                    if !matches!(this.ws_state, WsConnectionState::Disconnected | WsConnectionState::Error) {
-                        this.ws_state = WsConnectionState::Disconnected;
-                        this.ws_send_tx = None;
+                    if !matches!(this.ws.state, WsConnectionState::Disconnected | WsConnectionState::Error) {
+                        this.ws.state = WsConnectionState::Disconnected;
+                        this.ws.send_tx = None;
                         cx.notify();
                     }
                 });
@@ -133,18 +133,18 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
     }
 
     pub(super) fn disconnect_websocket(&mut self, cx: &mut Context<Self>) {
-        if let Some(tx) = self.ws_send_tx.take() {
+        if let Some(tx) = self.ws.send_tx.take() {
             let _ = tx.send(WsCommand::Disconnect);
         }
-        self.ws_state = WsConnectionState::Disconnected;
+        self.ws.state = WsConnectionState::Disconnected;
         cx.notify();
     }
 
     pub(super) fn send_websocket_message(&mut self, cx: &mut Context<Self>) {
-        if self.ws_state != WsConnectionState::Connected { return; }
-        let message = self.ws_message_editor.read(cx).value().to_string();
+        if self.ws.state != WsConnectionState::Connected { return; }
+        let message = self.ws.message_editor.read(cx).value().to_string();
         if message.trim().is_empty() { return; }
-        if let Some(tx) = &self.ws_send_tx {
+        if let Some(tx) = &self.ws.send_tx {
             let _ = tx.send(WsCommand::Send(message));
             cx.notify();
         }

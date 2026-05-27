@@ -191,13 +191,13 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                     .child({
                         let is_loading = self.loading;
                         let ws_connecting = self.request_mode == RequestMode::WebSocket
-                            && matches!(self.ws_state, WsConnectionState::Connecting);
+                            && matches!(self.ws.state, WsConnectionState::Connecting);
                         let sio_connecting = self.request_mode == RequestMode::SocketIo
-                            && matches!(self.sio_state, SioConnectionState::Connecting);
+                            && matches!(self.sio.state, SioConnectionState::Connecting);
                         let is_blocked = is_loading || ws_connecting || sio_connecting;
 
                         let (send_label, btn_bg) = match self.request_mode {
-                            RequestMode::WebSocket => match self.ws_state {
+                            RequestMode::WebSocket => match self.ws.state {
                                 WsConnectionState::Connected =>
                                     ("Disconnect", theme.colors.method_delete),
                                 WsConnectionState::Connecting =>
@@ -205,7 +205,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                                 _ =>
                                     ("Connect", theme.colors.accent),
                             },
-                            RequestMode::SocketIo => match self.sio_state {
+                            RequestMode::SocketIo => match self.sio.state {
                                 SioConnectionState::Connected =>
                                     ("Disconnect", theme.colors.method_delete),
                                 SioConnectionState::Connecting =>
@@ -235,20 +235,20 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                                 match this.request_mode {
                                     RequestMode::Http | RequestMode::GraphQL => this.send_request(cx),
                                     RequestMode::WebSocket => {
-                                        if matches!(this.ws_state, WsConnectionState::Connecting) {
+                                        if matches!(this.ws.state, WsConnectionState::Connecting) {
                                             return;
                                         }
-                                        if matches!(this.ws_state, WsConnectionState::Connected) {
+                                        if matches!(this.ws.state, WsConnectionState::Connected) {
                                             this.disconnect_websocket(cx);
                                         } else {
                                             this.connect_websocket(cx);
                                         }
                                     }
                                     RequestMode::SocketIo => {
-                                        if matches!(this.sio_state, SioConnectionState::Connecting) {
+                                        if matches!(this.sio.state, SioConnectionState::Connecting) {
                                             return;
                                         }
-                                        if matches!(this.sio_state, SioConnectionState::Connected) {
+                                        if matches!(this.sio.state, SioConnectionState::Connected) {
                                             this.disconnect_socketio(cx);
                                         } else {
                                             this.connect_socketio(cx);

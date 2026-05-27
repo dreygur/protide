@@ -13,8 +13,8 @@ use super::RequestPanel;
 impl<E: WebSocketExecutor> RequestPanel<E> {
     pub(super) fn render_trpc_playground_tab(&mut self, cx: &mut Context<Self>) -> gpui::AnyElement {
         let theme = theme::current(cx);
-        let sidebar_w = self.trpc_pg_sidebar_w;
-        let is_dragging = self.trpc_pg_sidebar_drag.is_some();
+        let sidebar_w = self.trpc.pg_sidebar_w;
+        let is_dragging = self.trpc.pg_sidebar_drag.is_some();
 
         let sidebar_header = self.render_pg_sidebar_header(cx);
         let proc_list = self.render_pg_proc_list(cx);
@@ -52,7 +52,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                     .bg(theme.colors.border.opacity(0.0))
                     .hover(|s| s.bg(theme.colors.accent.opacity(0.3)))
                     .on_mouse_down(gpui::MouseButton::Left, cx.listener(move |this, event: &MouseDownEvent, _, _| {
-                        this.trpc_pg_sidebar_drag = Some((f32::from(event.position.x), sidebar_w));
+                        this.trpc.pg_sidebar_drag = Some((f32::from(event.position.x), sidebar_w));
                     }))
             )
             // Middle: params editor + run bar
@@ -70,15 +70,15 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                         .inset_0()
                         .cursor_col_resize()
                         .on_mouse_move(cx.listener(|this, event: &MouseMoveEvent, _, cx| {
-                            if let Some((start_x, start_w)) = this.trpc_pg_sidebar_drag {
+                            if let Some((start_x, start_w)) = this.trpc.pg_sidebar_drag {
                                 let new_w = (start_w + f32::from(event.position.x) - start_x)
                                     .max(160.0).min(400.0);
-                                this.trpc_pg_sidebar_w = new_w;
+                                this.trpc.pg_sidebar_w = new_w;
                                 cx.notify();
                             }
                         }))
                         .on_mouse_up(gpui::MouseButton::Left, cx.listener(|this, _, _, cx| {
-                            this.trpc_pg_sidebar_drag = None;
+                            this.trpc.pg_sidebar_drag = None;
                             cx.notify();
                         })),
                 ).with_priority(5))
@@ -88,18 +88,18 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
 
     pub(super) fn render_pg_sidebar_header(&mut self, cx: &mut Context<Self>) -> gpui::AnyElement {
         let theme = theme::current(cx);
-        let search = self.trpc_pg_search_input.read(cx).value().to_string();
+        let search = self.trpc.pg_search_input.read(cx).value().to_string();
         let q = search.to_lowercase();
         let count = if q.is_empty() {
-            self.trpc_pg_procedures.len()
+            self.trpc.pg_procedures.len()
         } else {
-            self.trpc_pg_procedures.iter()
+            self.trpc.pg_procedures.iter()
                 .filter(|p| p.name.to_lowercase().contains(&q))
                 .count()
         };
-        let loading = self.trpc_pg_schema_loading;
-        let schema_error = self.trpc_pg_schema_error.clone();
-        let show_import_url = self.trpc_pg_show_import_url;
+        let loading = self.trpc.pg_schema_loading;
+        let schema_error = self.trpc.pg_schema_error.clone();
+        let show_import_url = self.trpc.pg_show_import_url;
 
         div()
             .flex_none()
@@ -183,7 +183,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                             .when(show_import_url, |el| el.bg(theme.colors.accent.opacity(0.1)))
                             .hover(|s| s.bg(theme.colors.hover_overlay))
                             .on_click(cx.listener(|this, _, _, cx| {
-                                this.trpc_pg_show_import_url = !this.trpc_pg_show_import_url;
+                                this.trpc.pg_show_import_url = !this.trpc.pg_show_import_url;
                                 cx.notify();
                             }))
                             .child(icon(ICON_GLOBE, ICON_SM,
@@ -205,7 +205,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                             div()
                                 .flex_1().h_full()
                                 .overflow_hidden()
-                                .child(Input::new(&self.trpc_pg_import_url_input).bordered(false))
+                                .child(Input::new(&self.trpc.pg_import_url_input).bordered(false))
                         )
                         .child(
                             div()
@@ -243,7 +243,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                         div()
                             .flex_1().h_full()
                             .overflow_hidden()
-                            .child(Input::new(&self.trpc_pg_search_input).bordered(false))
+                            .child(Input::new(&self.trpc.pg_search_input).bordered(false))
                     )
             )
             // Error banner

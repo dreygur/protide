@@ -204,9 +204,9 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
 
     pub(super) fn build_http_request_model(&self, cx: &gpui::App) -> http_parser::Request {
         let body_content = self.body_editor.read(cx).value().to_string();
-        let pre = self.pre_script_editor.read(cx).value().to_string();
-        let post = self.post_script_editor.read(cx).value().to_string();
-        let tests = self.tests_editor.read(cx).value().to_string();
+        let pre = self.scripts.pre_editor.read(cx).value().to_string();
+        let post = self.scripts.post_editor.read(cx).value().to_string();
+        let tests = self.scripts.tests_editor.read(cx).value().to_string();
 
         let headers: Vec<http_parser::KeyValue> = self.headers.iter()
             .filter(|h| !h.key.is_empty())

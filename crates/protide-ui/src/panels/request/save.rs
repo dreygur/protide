@@ -70,7 +70,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
         lines.push(format!("### {}", name));
         lines.push(String::new());
 
-        if let Some(ref proto_path) = self.grpc_proto_path {
+        if let Some(ref proto_path) = self.grpc.proto_path {
             lines.push(format!("# @proto {}", proto_path.display()));
         }
 

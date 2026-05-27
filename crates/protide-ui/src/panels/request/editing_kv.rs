@@ -32,20 +32,20 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
     }
 
     pub(super) fn toggle_grpc_meta(&mut self, index: usize, cx: &mut Context<Self>) {
-        if let Some(meta) = self.grpc_metadata.get_mut(index) {
+        if let Some(meta) = self.grpc.metadata.get_mut(index) {
             meta.enabled = !meta.enabled;
             cx.notify();
         }
     }
 
     pub(super) fn add_grpc_meta(&mut self, cx: &mut Context<Self>) {
-        self.grpc_metadata.push(KeyValuePair::default());
+        self.grpc.metadata.push(KeyValuePair::default());
         cx.notify();
     }
 
     pub(super) fn remove_grpc_meta(&mut self, index: usize, cx: &mut Context<Self>) {
-        if index < self.grpc_metadata.len() && self.grpc_metadata.len() > 1 {
-            self.grpc_metadata.remove(index);
+        if index < self.grpc.metadata.len() && self.grpc.metadata.len() > 1 {
+            self.grpc.metadata.remove(index);
             if let Some(target) = self.active_edit {
                 match target {
                     EditTarget::GrpcMetaKey(i) | EditTarget::GrpcMetaValue(i) if i == index => {
@@ -163,7 +163,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
         let vec = match list {
             KvList::Params => &mut self.params,
             KvList::Headers => &mut self.headers,
-            KvList::GrpcMeta => &mut self.grpc_metadata,
+            KvList::GrpcMeta => &mut self.grpc.metadata,
         };
         if from < vec.len() && to < vec.len() {
             let item = vec.remove(from);

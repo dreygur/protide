@@ -14,19 +14,19 @@ use super::render_socketio_helpers::{render_sio_status_bar, render_sio_event_ite
 impl<E: WebSocketExecutor> RequestPanel<E> {
     pub(super) fn render_socketio_events_tab(&mut self, cx: &mut Context<Self>) -> gpui::AnyElement {
         let theme = theme::current(cx);
-        let sio_state = self.sio_state;
+        let sio_state = self.sio.state;
         let is_connected = sio_state == SioConnectionState::Connected;
         let is_connecting = sio_state == SioConnectionState::Connecting;
-        let messages = self.sio_messages.clone();
+        let messages = self.sio.messages.clone();
 
         let ns_editing = self.active_edit == Some(EditTarget::SioNamespace);
         let name_editing = self.active_edit == Some(EditTarget::SioEventName);
         let room_editing = self.active_edit == Some(EditTarget::SioRoomName);
-        let ns = self.sio_namespace.clone();
-        let event_name = self.sio_event_name.clone();
-        let room_name = self.sio_room_name.clone();
-        let active_rooms = self.sio_active_rooms.clone();
-        let want_ack = self.sio_want_ack;
+        let ns = self.sio.namespace.clone();
+        let event_name = self.sio.event_name.clone();
+        let room_name = self.sio.room_name.clone();
+        let active_rooms = self.sio.active_rooms.clone();
+        let want_ack = self.sio.want_ack;
         let edit_sel = self.edit_selection.clone();
 
         div()
@@ -248,7 +248,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                             .gap(px(6.0))
                             .cursor_pointer()
                             .on_click(cx.listener(|this, _, _, cx| {
-                                this.sio_want_ack = !this.sio_want_ack;
+                                this.sio.want_ack = !this.sio.want_ack;
                                 cx.notify();
                             }))
                             .child(
@@ -294,7 +294,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                             .border_1()
                             .border_color(theme.colors.border)
                             .overflow_hidden()
-                            .child(gpui_component::input::Input::new(&self.sio_payload_editor).appearance(false).h_full())
+                            .child(gpui_component::input::Input::new(&self.sio.payload_editor).appearance(false).h_full())
                     )
                     .child(
                         div()

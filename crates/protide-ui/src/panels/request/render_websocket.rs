@@ -18,11 +18,11 @@ use super::RequestPanel;
 impl<E: WebSocketExecutor> RequestPanel<E> {
     pub(super) fn render_websocket_messages_tab(&mut self, cx: &mut Context<Self>) -> gpui::AnyElement {
         let theme = theme::current(cx);
-        let ws_state = self.ws_state;
+        let ws_state = self.ws.state;
         let is_connected = ws_state == WsConnectionState::Connected;
-        let messages = self.ws_messages.clone();
-        let compose_h = self.ws_compose_h;
-        let is_dragging = self.ws_compose_drag.is_some();
+        let messages = self.ws.messages.clone();
+        let compose_h = self.ws.compose_h;
+        let is_dragging = self.ws.compose_drag.is_some();
 
         let (badge_label, badge_fg, badge_bg) = match ws_state {
             WsConnectionState::Connected =>
@@ -37,7 +37,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
 
         let send_bg = if is_connected { theme.colors.accent } else { theme.colors.text_muted.opacity(0.15) };
         let send_fg = if is_connected { theme.colors.bg_primary } else { theme.colors.text_muted };
-        let ws_scroll = self.ws_scroll.clone();
+        let ws_scroll = self.ws.scroll.clone();
 
         div()
             .id("websocket-messages-tab")
@@ -46,14 +46,14 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             .flex()
             .flex_col()
             .on_mouse_move(cx.listener(|this, event: &MouseMoveEvent, _, cx| {
-                if let Some((start_y, start_h)) = this.ws_compose_drag {
+                if let Some((start_y, start_h)) = this.ws.compose_drag {
                     let delta = f32::from(event.position.y) - start_y;
-                    this.ws_compose_h = (start_h - delta).clamp(60.0, 500.0);
+                    this.ws.compose_h = (start_h - delta).clamp(60.0, 500.0);
                     cx.notify();
                 }
             }))
             .on_mouse_up(gpui::MouseButton::Left, cx.listener(|this, _, _, cx| {
-                if this.ws_compose_drag.take().is_some() {
+                if this.ws.compose_drag.take().is_some() {
                     cx.notify();
                 }
             }))
@@ -201,9 +201,9 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                     .on_mouse_down(
                         gpui::MouseButton::Left,
                         cx.listener(|this, event: &MouseDownEvent, _, cx| {
-                            this.ws_compose_drag = Some((
+                            this.ws.compose_drag = Some((
                                 f32::from(event.position.y),
-                                this.ws_compose_h,
+                                this.ws.compose_h,
                             ));
                             cx.notify();
                         }),
@@ -235,7 +235,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                             .border_1()
                             .border_color(theme.colors.border)
                             .overflow_hidden()
-                            .child(gpui_component::input::Input::new(&self.ws_message_editor).appearance(false).h_full())
+                            .child(gpui_component::input::Input::new(&self.ws.message_editor).appearance(false).h_full())
                     )
                     .child(
                         div()

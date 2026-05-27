@@ -15,10 +15,10 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             last_paths::save_last_dir("proto_file", &path);
             match std::fs::read_to_string(&path) {
                 Ok(content) => {
-                    self.grpc_proto_path = Some(path);
-                    self.grpc_proto_content = content.clone();
+                    self.grpc.proto_path = Some(path);
+                    self.grpc.proto_content = content.clone();
                     self.parse_proto_services(&content);
-                    log::info!("Proto loaded: {} ({} services)", self.grpc_proto_path.as_ref().unwrap().display(), self.grpc_services.len());
+                    log::info!("Proto loaded: {} ({} services)", self.grpc.proto_path.as_ref().unwrap().display(), self.grpc.services.len());
                     cx.notify();
                 }
                 Err(e) => { log::error!("Failed to read proto file: {}", e); }
@@ -29,10 +29,10 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
     pub fn load_grpc_proto_from_path(&mut self, path: std::path::PathBuf, cx: &mut Context<Self>) {
         match std::fs::read_to_string(&path) {
             Ok(content) => {
-                self.grpc_proto_path = Some(path);
-                self.grpc_proto_content = content.clone();
+                self.grpc.proto_path = Some(path);
+                self.grpc.proto_content = content.clone();
                 self.parse_proto_services(&content);
-                log::info!("Proto loaded: {} ({} services)", self.grpc_proto_path.as_ref().unwrap().display(), self.grpc_services.len());
+                log::info!("Proto loaded: {} ({} services)", self.grpc.proto_path.as_ref().unwrap().display(), self.grpc.services.len());
                 cx.notify();
             }
             Err(e) => { log::error!("Failed to read proto file: {}", e); }
@@ -40,16 +40,16 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
     }
 
     pub(super) fn parse_proto_services(&mut self, content: &str) {
-        self.grpc_services.clear();
-        self.grpc_methods.clear();
-        self.grpc_service = None;
-        self.grpc_method = None;
+        self.grpc.services.clear();
+        self.grpc.methods.clear();
+        self.grpc.service = None;
+        self.grpc.method = None;
 
-        if let Some(ref path) = self.grpc_proto_path.clone() {
+        if let Some(ref path) = self.grpc.proto_path.clone() {
             if let Ok(pool) = protide_core::protocols::grpc::parse_proto_file(path) {
                 for svc in pool.services() {
                     let svc_name = svc.full_name().to_string();
-                    self.grpc_services.push(svc_name.clone());
+                    self.grpc.services.push(svc_name.clone());
                     for method in svc.methods() {
                         let streaming_type = match (method.is_client_streaming(), method.is_server_streaming()) {
                             (false, false) => GrpcStreamingType::Unary,
@@ -57,14 +57,14 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                             (true, false) => GrpcStreamingType::ClientStreaming,
                             (true, true) => GrpcStreamingType::BidiStreaming,
                         };
-                        self.grpc_methods.push(GrpcMethodInfo {
+                        self.grpc.methods.push(GrpcMethodInfo {
                             full_name: format!("{}/{}", svc_name, method.name()),
                             streaming_type,
                         });
                     }
                 }
-                if let Some(s) = self.grpc_services.first() { self.grpc_service = Some(s.clone()); }
-                if let Some(m) = self.grpc_methods.first() { self.grpc_method = Some(m.clone()); }
+                if let Some(s) = self.grpc.services.first() { self.grpc.service = Some(s.clone()); }
+                if let Some(m) = self.grpc.methods.first() { self.grpc.method = Some(m.clone()); }
                 return;
             }
         }
@@ -77,13 +77,13 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             if trimmed.starts_with("service ") {
                 if let Some(name) = trimmed.strip_prefix("service ").and_then(|s| s.split_whitespace().next()) {
                     current_service = name.to_string();
-                    self.grpc_services.push(current_service.clone());
+                    self.grpc.services.push(current_service.clone());
                     in_service = true;
                 }
             }
             if in_service && trimmed.starts_with("rpc ") {
                 if let Some(name) = trimmed.strip_prefix("rpc ").and_then(|s| s.split('(').next()).map(|s| s.trim()) {
-                    self.grpc_methods.push(GrpcMethodInfo {
+                    self.grpc.methods.push(GrpcMethodInfo {
                         full_name: format!("{}/{}", current_service, name),
                         streaming_type: GrpcStreamingType::Unary,
                     });
@@ -91,18 +91,18 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             }
             if in_service && trimmed == "}" { in_service = false; }
         }
-        if let Some(s) = self.grpc_services.first() { self.grpc_service = Some(s.clone()); }
-        if let Some(m) = self.grpc_methods.first() { self.grpc_method = Some(m.clone()); }
+        if let Some(s) = self.grpc.services.first() { self.grpc.service = Some(s.clone()); }
+        if let Some(m) = self.grpc.methods.first() { self.grpc.method = Some(m.clone()); }
     }
 
     pub(super) fn send_grpc_request(&mut self, cx: &mut Context<Self>) {
-        let Some(method) = &self.grpc_method else { return; };
-        let Some(proto_path) = self.grpc_proto_path.clone() else { return; };
+        let Some(method) = &self.grpc.method else { return; };
+        let Some(proto_path) = self.grpc.proto_path.clone() else { return; };
 
         self.loading = true;
         cx.notify();
 
-        let message = self.grpc_message_editor.read(cx).value().to_string();
+        let message = self.grpc.message_editor.read(cx).value().to_string();
         let url = self.url.clone();
         let method = method.clone();
         let streaming_type = method.streaming_type;
@@ -112,7 +112,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             if let Some(ref env) = env_state { env.substitute(s) } else { s.to_string() }
         };
         let url = substitute(&url);
-        let metadata: Vec<(String, String)> = self.grpc_metadata.iter()
+        let metadata: Vec<(String, String)> = self.grpc.metadata.iter()
             .filter(|m| m.enabled && !m.key.is_empty())
             .map(|m| (substitute(&m.key), substitute(&m.value)))
             .collect();

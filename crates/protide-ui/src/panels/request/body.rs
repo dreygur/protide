@@ -16,19 +16,19 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
         for (target, content) in std::mem::take(&mut self.editor_pending) {
             let editor = match target {
                 PendingEditor::Body => &self.body_editor,
-                PendingEditor::PreScript => &self.pre_script_editor,
-                PendingEditor::PostScript => &self.post_script_editor,
-                PendingEditor::Tests => &self.tests_editor,
-                PendingEditor::GraphqlQuery => &self.graphql_query_editor,
-                PendingEditor::GraphqlVariables => &self.graphql_variables_editor,
-                PendingEditor::GrpcMessage => &self.grpc_message_editor,
-                PendingEditor::TrpcParams => &self.trpc_params_editor,
-                PendingEditor::SioPayload => &self.sio_payload_editor,
-                PendingEditor::TrpcPgResult => &self.trpc_pg_result_viewer,
-                PendingEditor::TrpcPgAddInput => &self.trpc_pg_add_input,
-                PendingEditor::TrpcPgEditInput => &self.trpc_pg_edit_input,
-                PendingEditor::TrpcPgGroupEditInput => &self.trpc_pg_group_edit_input,
-                PendingEditor::TrpcPgImportUrlInput => &self.trpc_pg_import_url_input,
+                PendingEditor::PreScript => &self.scripts.pre_editor,
+                PendingEditor::PostScript => &self.scripts.post_editor,
+                PendingEditor::Tests => &self.scripts.tests_editor,
+                PendingEditor::GraphqlQuery => &self.graphql.query_editor,
+                PendingEditor::GraphqlVariables => &self.graphql.variables_editor,
+                PendingEditor::GrpcMessage => &self.grpc.message_editor,
+                PendingEditor::TrpcParams => &self.trpc.params_editor,
+                PendingEditor::SioPayload => &self.sio.payload_editor,
+                PendingEditor::TrpcPgResult => &self.trpc.pg_result_viewer,
+                PendingEditor::TrpcPgAddInput => &self.trpc.pg_add_input,
+                PendingEditor::TrpcPgEditInput => &self.trpc.pg_edit_input,
+                PendingEditor::TrpcPgGroupEditInput => &self.trpc.pg_group_edit_input,
+                PendingEditor::TrpcPgImportUrlInput => &self.trpc.pg_import_url_input,
             };
             editor.update(cx, |s, cx| s.set_value(&content, window, cx));
         }

@@ -22,7 +22,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             .min_w(px(200.0))
             // Header with selected procedure badge
             .child({
-                let selected = self.trpc_pg_selected.and_then(|i| self.trpc_pg_procedures.get(i));
+                let selected = self.trpc.pg_selected.and_then(|i| self.trpc.pg_procedures.get(i));
                 let theme2 = theme.clone();
                 let badge = selected.map(|p| {
                     let (col, lbl) = match p.kind {
@@ -81,7 +81,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                     .flex_1()
                     .w_full()
                     .overflow_hidden()
-                    .child(Input::new(&self.trpc_params_editor).appearance(false).h_full())
+                    .child(Input::new(&self.trpc.params_editor).appearance(false).h_full())
             )
             // Run bar
             .child(self.render_pg_run_bar(cx))
@@ -90,8 +90,8 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
 
     fn render_pg_run_bar(&self, cx: &Context<Self>) -> impl IntoElement {
         let theme = theme::current(cx);
-        let loading = self.trpc_pg_loading;
-        let has_sel = self.trpc_pg_selected.is_some();
+        let loading = self.trpc.pg_loading;
+        let has_sel = self.trpc.pg_selected.is_some();
         let active = has_sel && !loading;
 
         div()
@@ -125,7 +125,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                           .border_color(theme.colors.border)
                     })
                     .on_click(cx.listener(|this, _, _, cx| {
-                        if this.trpc_pg_selected.is_some() && !this.trpc_pg_loading {
+                        if this.trpc.pg_selected.is_some() && !this.trpc.pg_loading {
                             this.run_trpc_playground(cx);
                         }
                     }))
@@ -152,10 +152,10 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
 
     pub(super) fn render_pg_right(&self, cx: &Context<Self>) -> gpui::AnyElement {
         let theme = theme::current(cx);
-        let status = self.trpc_pg_status;
-        let elapsed = self.trpc_pg_elapsed;
-        let is_error = self.trpc_pg_error.is_some();
-        let has_result = self.trpc_pg_response.is_some() || is_error;
+        let status = self.trpc.pg_status;
+        let elapsed = self.trpc.pg_elapsed;
+        let is_error = self.trpc.pg_error.is_some();
+        let has_result = self.trpc.pg_response.is_some() || is_error;
 
         let status_color = match status {
             Some(s) if s < 300 => theme.colors.status_success,
@@ -228,7 +228,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                                 .cursor_pointer()
                                 .hover(|s| s.bg(theme.colors.bg_elevated))
                                 .on_click(cx.listener(|this, _, _, cx| {
-                                    let content = this.trpc_pg_result_viewer.read(cx).value().to_string();
+                                    let content = this.trpc.pg_result_viewer.read(cx).value().to_string();
                                     cx.write_to_clipboard(gpui::ClipboardItem::new_string(content));
                                 }))
                                 .child(icon(ICON_COPY, ICON_MD, theme.colors.text_muted))
@@ -242,7 +242,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                     .flex_1()
                     .w_full()
                     .overflow_hidden()
-                    .child(Input::new(&self.trpc_pg_result_viewer).disabled(true).appearance(false).h_full())
+                    .child(Input::new(&self.trpc.pg_result_viewer).disabled(true).appearance(false).h_full())
             )
             .into_any_element()
     }

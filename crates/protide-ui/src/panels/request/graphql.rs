@@ -11,7 +11,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
         };
         if url.is_empty() { return; }
 
-        self.graphql_schema = GraphqlSchemaState::Loading;
+        self.graphql.schema = GraphqlSchemaState::Loading;
         cx.notify();
 
         let (tx, rx) = std::sync::mpsc::channel();
@@ -25,7 +25,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                 .await;
             let _ = cx.update(|cx| {
                 let _ = this.update(cx, |panel, cx| {
-                    panel.graphql_schema = result;
+                    panel.graphql.schema = result;
                     cx.notify();
                 });
             });
@@ -46,7 +46,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                     .await;
                 let _ = cx.update(|cx| {
                     let _ = this.update(cx, |panel, cx| {
-                        panel.graphql_schema = result;
+                        panel.graphql.schema = result;
                         cx.notify();
                     });
                 });

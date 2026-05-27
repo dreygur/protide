@@ -66,7 +66,7 @@ impl<E: WebSocketExecutor> Render for RequestPanel<E> {
                             let len = match list {
                                 KvList::Params => this.params.len(),
                                 KvList::Headers => this.headers.len(),
-                                KvList::GrpcMeta => this.grpc_metadata.len(),
+                                KvList::GrpcMeta => this.grpc.metadata.len(),
                             };
                             if len > 1 {
                                 let delta = f32::from(event.position.y) - start_y;

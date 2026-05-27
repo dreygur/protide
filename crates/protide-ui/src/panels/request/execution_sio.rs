@@ -3,9 +3,9 @@ use super::*;
 
 impl<E: WebSocketExecutor> RequestPanel<E> {
     pub(super) fn connect_socketio(&mut self, cx: &mut Context<Self>) {
-        if self.sio_state != SioConnectionState::Disconnected { return; }
-        self.sio_state = SioConnectionState::Connecting;
-        self.sio_messages.clear();
+        if self.sio.state != SioConnectionState::Disconnected { return; }
+        self.sio.state = SioConnectionState::Connecting;
+        self.sio.messages.clear();
         cx.notify();
 
         let env_state = self.explorer_panel.as_ref().map(|p| p.read(cx).env_state().clone());
@@ -22,10 +22,10 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
         log::info!("SIO connecting: {}", sio_url);
         let handle = TungsteniteSocketIoExecutor::connect(SioConnectionParams {
             url: sio_url,
-            namespace: self.sio_namespace.clone(),
+            namespace: self.sio.namespace.clone(),
             headers,
         });
-        self.sio_send_tx = Some(handle.cmd_tx);
+        self.sio.send_tx = Some(handle.cmd_tx);
 
         let event_rx = handle.event_rx;
         let (fwd_tx, fwd_rx) = async_channel::unbounded::<SioUiEvent>();
@@ -40,7 +40,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                     SioUiEvent::Connected { .. } => {
                         let _ = cx.update(|cx| {
                             let _ = this.update(cx, |this, cx| {
-                                this.sio_state = SioConnectionState::Connected;
+                                this.sio.state = SioConnectionState::Connected;
                                 cx.notify();
                             });
                         });
@@ -48,7 +48,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                     SioUiEvent::Event(event) => {
                         let _ = cx.update(|cx| {
                             let _ = this.update(cx, |this, cx| {
-                                this.sio_messages.push(event);
+                                this.sio.messages.push(event);
                                 cx.notify();
                             });
                         });
@@ -56,8 +56,8 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                     SioUiEvent::Disconnected => {
                         let _ = cx.update(|cx| {
                             let _ = this.update(cx, |this, cx| {
-                                this.sio_state = SioConnectionState::Disconnected;
-                                this.sio_send_tx = None;
+                                this.sio.state = SioConnectionState::Disconnected;
+                                this.sio.send_tx = None;
                                 cx.notify();
                             });
                         });
@@ -67,9 +67,9 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                         log::error!("SIO error: {}", e);
                         let _ = cx.update(|cx| {
                             let _ = this.update(cx, |this, cx| {
-                                this.sio_state = SioConnectionState::Disconnected;
-                                this.sio_send_tx = None;
-                                this.sio_messages.push(protide_core::execution::sio::SioEvent {
+                                this.sio.state = SioConnectionState::Disconnected;
+                                this.sio.send_tx = None;
+                                this.sio.messages.push(protide_core::execution::sio::SioEvent {
                                     direction: protide_core::execution::sio::SioDirection::Received,
                                     namespace: "/".into(),
                                     event_name: "error".into(),
@@ -87,9 +87,9 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             }
             let _ = cx.update(|cx| {
                 let _ = this.update(cx, |this, cx| {
-                    if this.sio_state != SioConnectionState::Disconnected {
-                        this.sio_state = SioConnectionState::Disconnected;
-                        this.sio_send_tx = None;
+                    if this.sio.state != SioConnectionState::Disconnected {
+                        this.sio.state = SioConnectionState::Disconnected;
+                        this.sio.send_tx = None;
                         cx.notify();
                     }
                 });
@@ -98,60 +98,60 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
     }
 
     pub(super) fn disconnect_socketio(&mut self, cx: &mut Context<Self>) {
-        if let Some(tx) = self.sio_send_tx.take() {
+        if let Some(tx) = self.sio.send_tx.take() {
             let _ = tx.send(SioCommand::Disconnect);
         }
-        self.sio_state = SioConnectionState::Disconnected;
-        self.sio_active_rooms.clear();
+        self.sio.state = SioConnectionState::Disconnected;
+        self.sio.active_rooms.clear();
         cx.notify();
     }
 
     pub(super) fn join_socketio_room(&mut self, cx: &mut Context<Self>) {
-        if self.sio_state != SioConnectionState::Connected { return; }
-        let room = self.sio_room_name.trim().to_string();
+        if self.sio.state != SioConnectionState::Connected { return; }
+        let room = self.sio.room_name.trim().to_string();
         if room.is_empty() { return; }
-        if let Some(tx) = &self.sio_send_tx {
+        if let Some(tx) = &self.sio.send_tx {
             let _ = tx.send(SioCommand::Emit {
-                namespace: self.sio_namespace.clone(),
+                namespace: self.sio.namespace.clone(),
                 event_name: "join".to_string(),
                 payload: format!("\"{}\"", room),
                 ack_id: None,
             });
-            if !self.sio_active_rooms.contains(&room) {
-                self.sio_active_rooms.push(room);
+            if !self.sio.active_rooms.contains(&room) {
+                self.sio.active_rooms.push(room);
             }
             cx.notify();
         }
     }
 
     pub(super) fn leave_socketio_room(&mut self, room: String, cx: &mut Context<Self>) {
-        if self.sio_state != SioConnectionState::Connected { return; }
-        if let Some(tx) = &self.sio_send_tx {
+        if self.sio.state != SioConnectionState::Connected { return; }
+        if let Some(tx) = &self.sio.send_tx {
             let _ = tx.send(SioCommand::Emit {
-                namespace: self.sio_namespace.clone(),
+                namespace: self.sio.namespace.clone(),
                 event_name: "leave".to_string(),
                 payload: format!("\"{}\"", room),
                 ack_id: None,
             });
-            self.sio_active_rooms.retain(|r| r != &room);
+            self.sio.active_rooms.retain(|r| r != &room);
             cx.notify();
         }
     }
 
     pub(super) fn emit_socketio_event(&mut self, cx: &mut Context<Self>) {
-        if self.sio_state != SioConnectionState::Connected { return; }
-        let payload = self.sio_payload_editor.read(cx).value().to_string();
-        let ack_id = if self.sio_want_ack {
-            let id = self.sio_next_ack_id;
-            self.sio_next_ack_id = self.sio_next_ack_id.wrapping_add(1);
+        if self.sio.state != SioConnectionState::Connected { return; }
+        let payload = self.sio.payload_editor.read(cx).value().to_string();
+        let ack_id = if self.sio.want_ack {
+            let id = self.sio.next_ack_id;
+            self.sio.next_ack_id = self.sio.next_ack_id.wrapping_add(1);
             Some(id)
         } else {
             None
         };
-        if let Some(tx) = &self.sio_send_tx {
+        if let Some(tx) = &self.sio.send_tx {
             let _ = tx.send(SioCommand::Emit {
-                namespace: self.sio_namespace.clone(),
-                event_name: self.sio_event_name.clone(),
+                namespace: self.sio.namespace.clone(),
+                event_name: self.sio.event_name.clone(),
                 payload,
                 ack_id,
             });

@@ -5,15 +5,15 @@ use super::super::request_utils::status_text;
 
 impl<E: WebSocketExecutor> RequestPanel<E> {
     pub(super) fn send_trpc_request(&mut self, cx: &mut Context<Self>) {
-        if self.trpc_procedure.trim().is_empty() { return; }
+        if self.trpc.procedure.trim().is_empty() { return; }
 
         self.loading = true;
         cx.notify();
         self.response_panel.update(cx, |panel, cx| panel.set_loading(cx));
 
         let url = self.url.clone();
-        let procedure = self.trpc_procedure.clone();
-        let params = self.trpc_params_editor.read(cx).value().to_string();
+        let procedure = self.trpc.procedure.clone();
+        let params = self.trpc.params_editor.read(cx).value().to_string();
 
         let env_state = self.explorer_panel.as_ref().map(|p| p.read(cx).env_state().clone());
         let substitute = |s: &str| -> String {
@@ -77,19 +77,19 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
     }
 
     pub(super) fn run_trpc_playground(&mut self, cx: &mut Context<Self>) {
-        let idx = match self.trpc_pg_selected { Some(i) => i, None => return };
-        let proc = match self.trpc_pg_procedures.get(idx) { Some(p) => p.clone(), None => return };
+        let idx = match self.trpc.pg_selected { Some(i) => i, None => return };
+        let proc = match self.trpc.pg_procedures.get(idx) { Some(p) => p.clone(), None => return };
 
-        self.trpc_pg_loading = true;
-        self.trpc_pg_response = None;
-        self.trpc_pg_error = None;
-        self.trpc_pg_status = None;
-        self.trpc_pg_elapsed = None;
+        self.trpc.pg_loading = true;
+        self.trpc.pg_response = None;
+        self.trpc.pg_error = None;
+        self.trpc.pg_status = None;
+        self.trpc.pg_elapsed = None;
         cx.notify();
 
         let url = self.url.clone();
         let procedure = proc.full_procedure();
-        let params = self.trpc_params_editor.read(cx).value().to_string();
+        let params = self.trpc.params_editor.read(cx).value().to_string();
 
         let env_state = self.explorer_panel.as_ref().map(|p| p.read(cx).env_state().clone());
         let substitute = move |s: &str| -> String {
@@ -114,17 +114,17 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
 
             let _ = cx.update(|cx| {
                 let _ = this.update(cx, |panel, cx| {
-                    panel.trpc_pg_loading = false;
+                    panel.trpc.pg_loading = false;
                     match result {
                         Ok((body, elapsed, status)) => {
-                            panel.trpc_pg_status = Some(status);
-                            panel.trpc_pg_elapsed = Some(elapsed);
-                            panel.trpc_pg_response = Some(body.clone());
+                            panel.trpc.pg_status = Some(status);
+                            panel.trpc.pg_elapsed = Some(elapsed);
+                            panel.trpc.pg_response = Some(body.clone());
                             panel.queue_editor(PendingEditor::TrpcPgResult, body);
                         }
                         Err(e) => {
-                            panel.trpc_pg_status = Some(500);
-                            panel.trpc_pg_error = Some(e.clone());
+                            panel.trpc.pg_status = Some(500);
+                            panel.trpc.pg_error = Some(e.clone());
                             let val = serde_json::json!({ "error": e });
                             let body = serde_json::to_string_pretty(&val)
                                 .unwrap_or_else(|_| e.clone());
@@ -152,23 +152,23 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
         {
             Ok(procs) => {
                 for p in procs {
-                    self.trpc_pg_procedures.push(TrpcPlaygroundProc {
+                    self.trpc.pg_procedures.push(TrpcPlaygroundProc {
                         kind: if p.is_mutation { TrpcProcKind::Mutation } else { TrpcProcKind::Query },
                         name: p.name,
                     });
                 }
-                self.trpc_pg_schema_error = None;
+                self.trpc.pg_schema_error = None;
             }
-            Err(e) => { self.trpc_pg_schema_error = Some(e); }
+            Err(e) => { self.trpc.pg_schema_error = Some(e); }
         }
         cx.notify();
     }
 
     pub(super) fn import_trpc_from_url(&mut self, cx: &mut Context<Self>) {
-        let url = self.trpc_pg_import_url_input.read(cx).value().trim().to_string();
+        let url = self.trpc.pg_import_url_input.read(cx).value().trim().to_string();
         if url.is_empty() { return; }
-        self.trpc_pg_schema_loading = true;
-        self.trpc_pg_schema_error = None;
+        self.trpc.pg_schema_loading = true;
+        self.trpc.pg_schema_error = None;
         cx.notify();
 
         cx.spawn(async move |this: gpui::WeakEntity<Self>, cx: &mut gpui::AsyncApp| {
@@ -179,20 +179,20 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
 
             let _ = cx.update(|cx| {
                 let _ = this.update(cx, |panel, cx| {
-                    panel.trpc_pg_schema_loading = false;
+                    panel.trpc.pg_schema_loading = false;
                     match result {
                         Ok(procs) => {
                             for p in procs {
-                                panel.trpc_pg_procedures.push(TrpcPlaygroundProc {
+                                panel.trpc.pg_procedures.push(TrpcPlaygroundProc {
                                     kind: if p.is_mutation { TrpcProcKind::Mutation } else { TrpcProcKind::Query },
                                     name: p.name,
                                 });
                             }
-                            panel.trpc_pg_show_import_url = false;
-                            panel.trpc_pg_schema_error = None;
+                            panel.trpc.pg_show_import_url = false;
+                            panel.trpc.pg_schema_error = None;
                             panel.queue_editor(PendingEditor::TrpcPgImportUrlInput, String::new());
                         }
-                        Err(e) => { panel.trpc_pg_schema_error = Some(e); }
+                        Err(e) => { panel.trpc.pg_schema_error = Some(e); }
                     }
                     cx.notify();
                 });
@@ -201,8 +201,8 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
     }
 
     pub(super) fn fetch_trpc_schema(&mut self, cx: &mut Context<Self>) {
-        self.trpc_pg_schema_loading = true;
-        self.trpc_pg_schema_error = None;
+        self.trpc.pg_schema_loading = true;
+        self.trpc.pg_schema_error = None;
         cx.notify();
 
         let url = self.url.clone();
@@ -217,16 +217,16 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
 
             let _ = cx.update(|cx| {
                 let _ = this.update(cx, |panel, cx| {
-                    panel.trpc_pg_schema_loading = false;
+                    panel.trpc.pg_schema_loading = false;
                     match result {
                         Ok(procs) => {
-                            panel.trpc_pg_procedures = procs.into_iter().map(|p| TrpcPlaygroundProc {
+                            panel.trpc.pg_procedures = procs.into_iter().map(|p| TrpcPlaygroundProc {
                                 kind: if p.is_mutation { TrpcProcKind::Mutation } else { TrpcProcKind::Query },
                                 name: p.name,
                             }).collect();
-                            panel.trpc_pg_schema_error = None;
+                            panel.trpc.pg_schema_error = None;
                         }
-                        Err(e) => { panel.trpc_pg_schema_error = Some(e); }
+                        Err(e) => { panel.trpc.pg_schema_error = Some(e); }
                     }
                     cx.notify();
                 });

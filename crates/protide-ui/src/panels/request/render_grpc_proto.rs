@@ -13,8 +13,8 @@ use super::RequestPanel;
 impl<E: WebSocketExecutor> RequestPanel<E> {
     pub(super) fn render_grpc_proto_tab(&mut self, cx: &mut Context<Self>) -> gpui::AnyElement {
         let theme = theme::current(cx);
-        let has_proto = self.grpc_proto_path.is_some();
-        let proto_path = self.grpc_proto_path.clone()
+        let has_proto = self.grpc.proto_path.is_some();
+        let proto_path = self.grpc.proto_path.clone()
             .map(|p| p.display().to_string())
             .unwrap_or_default();
 
@@ -68,12 +68,12 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                                 .text_color(theme.colors.text_muted)
                                 .hover(|s| s.bg(theme.colors.method_delete.opacity(0.1)).text_color(theme.colors.method_delete))
                                 .on_click(cx.listener(|this, _, _, cx| {
-                                    this.grpc_proto_path = None;
-                                    this.grpc_proto_content.clear();
-                                    this.grpc_services.clear();
-                                    this.grpc_service = None;
-                                    this.grpc_methods.clear();
-                                    this.grpc_method = None;
+                                    this.grpc.proto_path = None;
+                                    this.grpc.proto_content.clear();
+                                    this.grpc.services.clear();
+                                    this.grpc.service = None;
+                                    this.grpc.methods.clear();
+                                    this.grpc.method = None;
                                     cx.notify();
                                 }))
                                 .child("Clear")
@@ -109,7 +109,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                                         .text_size(px(11.0))
                                         .text_color(theme.colors.text_primary)
                                         .font_family("monospace")
-                                        .child(self.grpc_proto_content.clone())
+                                        .child(self.grpc.proto_content.clone())
                                 )
                             })
                             .when(!has_proto, |el| {

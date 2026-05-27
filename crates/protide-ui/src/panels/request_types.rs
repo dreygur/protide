@@ -262,3 +262,20 @@ impl TrpcPlaygroundProc {
     }
 }
 
+/// Summary of a single type from a GraphQL schema introspection response.
+#[derive(Clone, Debug)]
+pub struct GqlSchemaType {
+    pub name: String,
+    pub kind: String,
+}
+
+/// State of the GraphQL schema for the current endpoint.
+#[derive(Clone, Debug, Default)]
+pub enum GraphqlSchemaState {
+    #[default]
+    Idle,
+    Loading,
+    Loaded(Vec<GqlSchemaType>),
+    Error(String),
+}
+

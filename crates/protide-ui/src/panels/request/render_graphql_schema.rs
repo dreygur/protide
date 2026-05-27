@@ -18,8 +18,8 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
     pub(super) fn render_graphql_schema_tab(&mut self, cx: &mut Context<Self>) -> gpui::AnyElement {
         use crate::components::icons::{ICON_REFRESH, ICON_SEARCH, ICON_LOADER};
         let theme = theme::current(cx);
-        let schema = self.graphql_schema.clone();
-        let search = self.graphql_schema_search.clone();
+        let schema = self.graphql.schema.clone();
+        let search = self.graphql.schema_search.clone();
 
         let toolbar = div()
             .flex()

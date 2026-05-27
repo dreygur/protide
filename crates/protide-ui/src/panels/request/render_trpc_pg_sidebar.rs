@@ -13,24 +13,24 @@ use super::RequestPanel;
 impl<E: WebSocketExecutor> RequestPanel<E> {
     pub(super) fn render_pg_proc_list(&mut self, cx: &mut Context<Self>) -> gpui::AnyElement {
         let theme = theme::current(cx);
-        let search = self.trpc_pg_search_input.read(cx).value().to_string();
+        let search = self.trpc.pg_search_input.read(cx).value().to_string();
         let q = search.to_lowercase();
 
-        let filtered: Vec<usize> = self.trpc_pg_procedures.iter().enumerate()
+        let filtered: Vec<usize> = self.trpc.pg_procedures.iter().enumerate()
             .filter(|(_, p)| q.is_empty() || p.name.to_lowercase().contains(&q))
             .map(|(i, _)| i)
             .collect();
 
         let mut routers: Vec<String> = Vec::new();
         for &idx in &filtered {
-            let r = self.trpc_pg_procedures[idx].router();
+            let r = self.trpc.pg_procedures[idx].router();
             let key = if r.is_empty() { "(root)".to_string() } else { r.to_string() };
             if !routers.contains(&key) { routers.push(key); }
         }
 
-        let selected = self.trpc_pg_selected;
-        let editing = self.trpc_pg_editing;
-        let edit_kind = self.trpc_pg_edit_kind;
+        let selected = self.trpc.pg_selected;
+        let editing = self.trpc.pg_editing;
+        let edit_kind = self.trpc.pg_edit_kind;
 
         div()
             .id("trpc-pg-proc-list")
@@ -42,12 +42,12 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             .children(routers.into_iter().map(|router| {
                 let procs: Vec<usize> = filtered.iter().copied()
                     .filter(|&i| {
-                        let r = self.trpc_pg_procedures[i].router();
+                        let r = self.trpc.pg_procedures[i].router();
                         (if r.is_empty() { "(root)" } else { r }) == router.as_str()
                     })
                     .collect();
 
-                let is_editing_group = self.trpc_pg_editing_group.as_deref() == Some(router.as_str());
+                let is_editing_group = self.trpc.pg_editing_group.as_deref() == Some(router.as_str());
                 let router_click = router.clone();
                 let router_ok = router.clone();
 
@@ -58,16 +58,16 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                         .bg(theme.colors.bg_tertiary).border_b_1()
                         .border_color(theme.colors.accent.opacity(0.5))
                         .child(div().flex_1().h_full().overflow_hidden()
-                            .child(Input::new(&self.trpc_pg_group_edit_input)
+                            .child(Input::new(&self.trpc.pg_group_edit_input)
                                 .bordered(false).with_size(gpui_component::Size::XSmall)))
                         .child(div()
                             .id(format!("trpc-grp-ok-{}", router))
                             .w(px(20.0)).h_full().flex().items_center().justify_center()
                             .cursor_pointer()
                             .on_mouse_down(gpui::MouseButton::Left, cx.listener(move |this, _, _, cx| {
-                                let nr = this.trpc_pg_group_edit_input.read(cx).value().trim().to_string();
+                                let nr = this.trpc.pg_group_edit_input.read(cx).value().trim().to_string();
                                 let old = router_ok.clone();
-                                for proc in &mut this.trpc_pg_procedures {
+                                for proc in &mut this.trpc.pg_procedures {
                                     let or = proc.router().to_string();
                                     let lf = proc.leaf().to_string();
                                     let hit = if old == "(root)" { or.is_empty() } else { or == old };
@@ -75,7 +75,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                                         proc.name = if nr.is_empty() { lf } else { format!("{}.{}", nr, lf) };
                                     }
                                 }
-                                this.trpc_pg_editing_group = None;
+                                this.trpc.pg_editing_group = None;
                                 cx.notify();
                             }))
                             .child(icon(ICON_CHECK, ICON_SM, theme.colors.status_success)))
@@ -86,7 +86,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                             .text_size(px(12.0)).text_color(theme.colors.text_muted)
                             .hover(|s| s.text_color(theme.colors.status_client_error))
                             .on_mouse_down(gpui::MouseButton::Left, cx.listener(|this, _, _, cx| {
-                                this.trpc_pg_editing_group = None; cx.notify();
+                                this.trpc.pg_editing_group = None; cx.notify();
                             }))
                             .child("×"))
                         .into_any_element()
@@ -98,7 +98,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                         .cursor_pointer().hover(|s| s.bg(theme.colors.hover_overlay))
                         .on_click(cx.listener(move |this, _, _, cx| {
                             let d = if router_click == "(root)" { String::new() } else { router_click.clone() };
-                            this.trpc_pg_editing_group = Some(router_click.clone());
+                            this.trpc.pg_editing_group = Some(router_click.clone());
                             this.queue_editor(PendingEditor::TrpcPgGroupEditInput, d);
                             cx.notify();
                         }))
@@ -114,7 +114,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                     .flex_none().flex().flex_col()
                     .child(group_header)
                     .children(procs.into_iter().map(|idx| {
-                        let kind = self.trpc_pg_procedures[idx].kind;
+                        let kind = self.trpc.pg_procedures[idx].kind;
                         let is_sel = selected == Some(idx);
                         let is_editing_row = editing == Some(idx);
                         let kc = match kind {
@@ -137,7 +137,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                                     .text_size(px(9.0)).font_weight(gpui::FontWeight::EXTRA_BOLD)
                                     .text_color(if edit_kind == TrpcProcKind::Query { theme.colors.method_get } else { theme.colors.text_muted })
                                     .cursor_pointer()
-                                    .on_click(cx.listener(|this, _, _, cx| { this.trpc_pg_edit_kind = TrpcProcKind::Query; cx.notify(); }))
+                                    .on_click(cx.listener(|this, _, _, cx| { this.trpc.pg_edit_kind = TrpcProcKind::Query; cx.notify(); }))
                                     .child("Q"))
                                 // M toggle
                                 .child(div()
@@ -147,25 +147,25 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                                     .text_size(px(9.0)).font_weight(gpui::FontWeight::EXTRA_BOLD)
                                     .text_color(if edit_kind == TrpcProcKind::Mutation { theme.colors.method_post } else { theme.colors.text_muted })
                                     .cursor_pointer()
-                                    .on_click(cx.listener(|this, _, _, cx| { this.trpc_pg_edit_kind = TrpcProcKind::Mutation; cx.notify(); }))
+                                    .on_click(cx.listener(|this, _, _, cx| { this.trpc.pg_edit_kind = TrpcProcKind::Mutation; cx.notify(); }))
                                     .child("M"))
                                 // Name input
                                 .child(div().flex_1().h_full().overflow_hidden()
-                                    .child(Input::new(&self.trpc_pg_edit_input)
+                                    .child(Input::new(&self.trpc.pg_edit_input)
                                         .bordered(false).with_size(gpui_component::Size::XSmall)))
                                 // Confirm
                                 .child(div()
                                     .id(format!("trpc-pg-ok-{}", idx))
                                     .size(px(16.0)).flex().items_center().justify_center().cursor_pointer()
                                     .on_mouse_down(gpui::MouseButton::Left, cx.listener(move |this, _, _, cx| {
-                                        let n = this.trpc_pg_edit_input.read(cx).value().trim().to_string();
+                                        let n = this.trpc.pg_edit_input.read(cx).value().trim().to_string();
                                         if !n.is_empty() {
-                                            if let Some(proc) = this.trpc_pg_procedures.get_mut(idx) {
+                                            if let Some(proc) = this.trpc.pg_procedures.get_mut(idx) {
                                                 proc.name = n;
-                                                proc.kind = this.trpc_pg_edit_kind;
+                                                proc.kind = this.trpc.pg_edit_kind;
                                             }
                                         }
-                                        this.trpc_pg_editing = None;
+                                        this.trpc.pg_editing = None;
                                         cx.notify();
                                     }))
                                     .child(icon(ICON_CHECK, ICON_SM, theme.colors.status_success)))
@@ -176,12 +176,12 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                                     .text_size(px(12.0)).text_color(theme.colors.text_muted).cursor_pointer()
                                     .hover(|s| s.text_color(theme.colors.status_client_error))
                                     .on_mouse_down(gpui::MouseButton::Left, cx.listener(|this, _, _, cx| {
-                                        this.trpc_pg_editing = None; cx.notify();
+                                        this.trpc.pg_editing = None; cx.notify();
                                     }))
                                     .child("×"))
                                 .into_any_element()
                         } else {
-                            let leaf = self.trpc_pg_procedures.get(idx).map(|p| p.leaf().to_string()).unwrap_or_default();
+                            let leaf = self.trpc.pg_procedures.get(idx).map(|p| p.leaf().to_string()).unwrap_or_default();
                             div()
                                 .id(format!("trpc-pg-row-{}", idx))
                                 .h(px(30.0)).pl(px(22.0)).pr(px(8.0))
@@ -190,9 +190,9 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                                 .when(is_sel, |el| el.bg(theme.colors.accent.opacity(0.08)).border_l_2().border_color(theme.colors.accent))
                                 .when(!is_sel, |el| el.hover(|s| s.bg(theme.colors.hover_overlay)))
                                 .on_click(cx.listener(move |this, _, _, cx| {
-                                    if let Some(proc) = this.trpc_pg_procedures.get(idx) {
-                                        this.trpc_pg_selected = Some(idx);
-                                        this.trpc_procedure = proc.full_procedure();
+                                    if let Some(proc) = this.trpc.pg_procedures.get(idx) {
+                                        this.trpc.pg_selected = Some(idx);
+                                        this.trpc.procedure = proc.full_procedure();
                                     }
                                     cx.notify();
                                 }))
@@ -215,11 +215,11 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                                     .hover(|s| s.text_color(theme.colors.accent))
                                     .on_mouse_down(gpui::MouseButton::Left, cx.listener(move |this, _, _, cx| {
                                         cx.stop_propagation();
-                                        if let Some(proc) = this.trpc_pg_procedures.get(idx) {
+                                        if let Some(proc) = this.trpc.pg_procedures.get(idx) {
                                             let n = proc.name.clone();
                                             let k = proc.kind;
-                                            this.trpc_pg_editing = Some(idx);
-                                            this.trpc_pg_edit_kind = k;
+                                            this.trpc.pg_editing = Some(idx);
+                                            this.trpc.pg_edit_kind = k;
                                             this.queue_editor(PendingEditor::TrpcPgEditInput, n);
                                             cx.notify();
                                         }
@@ -233,10 +233,10 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                                     .hover(|s| s.text_color(theme.colors.status_client_error))
                                     .on_mouse_down(gpui::MouseButton::Left, cx.listener(move |this, _, _, cx| {
                                         cx.stop_propagation();
-                                        this.trpc_pg_procedures.remove(idx);
-                                        match this.trpc_pg_selected {
-                                            Some(s) if s == idx => this.trpc_pg_selected = None,
-                                            Some(s) if s > idx  => this.trpc_pg_selected = Some(s - 1),
+                                        this.trpc.pg_procedures.remove(idx);
+                                        match this.trpc.pg_selected {
+                                            Some(s) if s == idx => this.trpc.pg_selected = None,
+                                            Some(s) if s > idx  => this.trpc.pg_selected = Some(s - 1),
                                             _ => {}
                                         }
                                         cx.notify();
@@ -251,7 +251,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
 
     pub(super) fn render_pg_add_row(&mut self, cx: &mut Context<Self>) -> gpui::AnyElement {
         let theme = theme::current(cx);
-        let add_kind = self.trpc_pg_add_kind;
+        let add_kind = self.trpc.pg_add_kind;
 
         let chip = |id: &'static str, lbl: &'static str, active: bool, bc, bg, tc| {
             div()
@@ -268,22 +268,22 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             .bg(theme.colors.bg_primary).flex().items_center().gap(px(4.0)).px(px(6.0))
             .child(chip("trpc-pg-kind-q", "Q", add_kind == TrpcProcKind::Query,
                 theme.colors.method_get, theme.colors.method_get.opacity(0.12), theme.colors.method_get)
-                .on_click(cx.listener(|this, _, _, cx| { this.trpc_pg_add_kind = TrpcProcKind::Query; cx.notify(); })))
+                .on_click(cx.listener(|this, _, _, cx| { this.trpc.pg_add_kind = TrpcProcKind::Query; cx.notify(); })))
             .child(chip("trpc-pg-kind-m", "M", add_kind == TrpcProcKind::Mutation,
                 theme.colors.method_post, theme.colors.method_post.opacity(0.12), theme.colors.method_post)
-                .on_click(cx.listener(|this, _, _, cx| { this.trpc_pg_add_kind = TrpcProcKind::Mutation; cx.notify(); })))
+                .on_click(cx.listener(|this, _, _, cx| { this.trpc.pg_add_kind = TrpcProcKind::Mutation; cx.notify(); })))
             .child(div().flex_1().h(px(26.0)).border_1().border_color(theme.colors.border).overflow_hidden()
-                .child(Input::new(&self.trpc_pg_add_input).bordered(false).with_size(gpui_component::Size::XSmall)))
+                .child(Input::new(&self.trpc.pg_add_input).bordered(false).with_size(gpui_component::Size::XSmall)))
             .child(div()
                 .id("trpc-pg-add-btn").h(px(26.0)).px(px(8.0))
                 .flex().items_center().gap(px(4.0))
                 .bg(theme.colors.accent.opacity(0.08)).border_1().border_color(theme.colors.accent.opacity(0.3))
                 .cursor_pointer().hover(|s| s.bg(theme.colors.accent.opacity(0.16)))
                 .on_click(cx.listener(|this, _, _, cx| {
-                    let name = this.trpc_pg_add_input.read(cx).value().trim().to_string();
+                    let name = this.trpc.pg_add_input.read(cx).value().trim().to_string();
                     if !name.is_empty() {
-                        let kind = this.trpc_pg_add_kind;
-                        this.trpc_pg_procedures.push(TrpcPlaygroundProc { kind, name });
+                        let kind = this.trpc.pg_add_kind;
+                        this.trpc.pg_procedures.push(TrpcPlaygroundProc { kind, name });
                         this.queue_editor(PendingEditor::TrpcPgAddInput, String::new());
                         cx.notify();
                     }

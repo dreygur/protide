@@ -14,8 +14,8 @@ use super::RequestPanel;
 impl<E: WebSocketExecutor> RequestPanel<E> {
     pub(super) fn render_grpc_message_tab(&mut self, cx: &mut Context<Self>) -> gpui::AnyElement {
         let theme = theme::current(cx);
-        let has_service = self.grpc_service.is_some();
-        let has_method = self.grpc_method.is_some();
+        let has_service = self.grpc.service.is_some();
+        let has_method = self.grpc.method.is_some();
 
         div()
             .id("grpc-message-tab")
@@ -56,7 +56,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                                     .text_size(px(12.0))
                                     .text_color(if has_service { theme.colors.text_primary } else { theme.colors.text_muted })
                                     .child(
-                                        self.grpc_service.clone()
+                                        self.grpc.service.clone()
                                             .unwrap_or_else(|| "Select service...".to_string())
                                     )
                             )
@@ -87,12 +87,12 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                                     .text_size(px(12.0))
                                     .text_color(if has_method { theme.colors.text_primary } else { theme.colors.text_muted })
                                     .child(
-                                        self.grpc_method
+                                        self.grpc.method
                                             .as_ref()
                                             .map(|m| m.full_name.clone())
                                             .unwrap_or_else(|| "Select method...".to_string())
                                     )
-                                    .when(self.grpc_method.as_ref().map(|m| m.streaming_type != GrpcStreamingType::Unary).unwrap_or(false), |el| {
+                                    .when(self.grpc.method.as_ref().map(|m| m.streaming_type != GrpcStreamingType::Unary).unwrap_or(false), |el| {
                                         el.child(
                                             div()
                                                 .id("grpc-streaming-badge")
@@ -103,7 +103,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                                                 .font_weight(gpui::FontWeight::MEDIUM)
                                                 .text_color(theme.colors.protocol_grpc)
                                                 .child(
-                                                    self.grpc_method.as_ref()
+                                                    self.grpc.method.as_ref()
                                                         .map(|m| m.streaming_type.label())
                                                         .unwrap_or("")
                                                 )
@@ -131,10 +131,10 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                             .border_1()
                             .border_color(theme.colors.border)
                             .overflow_hidden()
-                            .child(gpui_component::input::Input::new(&self.grpc_message_editor).appearance(false).h_full())
+                            .child(gpui_component::input::Input::new(&self.grpc.message_editor).appearance(false).h_full())
                     )
             )
-            .when(self.grpc_proto_path.is_none(), |el| {
+            .when(self.grpc.proto_path.is_none(), |el| {
                 el.child(
                     div()
                         .w_full()
@@ -151,12 +151,12 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
 
     pub(super) fn render_grpc_metadata_tab(&mut self, cx: &mut Context<Self>) -> gpui::AnyElement {
         let theme = theme::current(cx);
-        let meta_len = self.grpc_metadata.len();
+        let meta_len = self.grpc.metadata.len();
         let active_edit = self.active_edit;
         let edit_selection = self.edit_selection.clone();
-        let enabled_count = self.grpc_metadata.iter().filter(|m| m.enabled && !m.key.is_empty()).count();
+        let enabled_count = self.grpc.metadata.iter().filter(|m| m.enabled && !m.key.is_empty()).count();
 
-        let meta_data: Vec<_> = self.grpc_metadata.iter().enumerate().map(|(i, m)| {
+        let meta_data: Vec<_> = self.grpc.metadata.iter().enumerate().map(|(i, m)| {
             (i, m.enabled, m.key.clone(), m.value.clone())
         }).collect();
         let dragging_grpc = self.kv_row_drag.map(|(l, _, _)| l) == Some(KvList::GrpcMeta);

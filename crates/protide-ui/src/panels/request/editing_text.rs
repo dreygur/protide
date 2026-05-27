@@ -16,11 +16,11 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             EditTarget::BasicPassword => &self.basic_password,
             EditTarget::ApiKeyName => &self.api_key_name,
             EditTarget::ApiKeyValue => &self.api_key_value,
-            EditTarget::GrpcMetaKey(i) => self.grpc_metadata.get(i).map(|m| m.key.as_str()).unwrap_or(""),
-            EditTarget::GrpcMetaValue(i) => self.grpc_metadata.get(i).map(|m| m.value.as_str()).unwrap_or(""),
-            EditTarget::SioNamespace => &self.sio_namespace,
-            EditTarget::SioEventName => &self.sio_event_name,
-            EditTarget::SioRoomName => &self.sio_room_name,
+            EditTarget::GrpcMetaKey(i) => self.grpc.metadata.get(i).map(|m| m.key.as_str()).unwrap_or(""),
+            EditTarget::GrpcMetaValue(i) => self.grpc.metadata.get(i).map(|m| m.value.as_str()).unwrap_or(""),
+            EditTarget::SioNamespace => &self.sio.namespace,
+            EditTarget::SioEventName => &self.sio.event_name,
+            EditTarget::SioRoomName => &self.sio.room_name,
         }
     }
 
@@ -37,11 +37,11 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             EditTarget::BasicPassword => Some(&mut self.basic_password),
             EditTarget::ApiKeyName => Some(&mut self.api_key_name),
             EditTarget::ApiKeyValue => Some(&mut self.api_key_value),
-            EditTarget::GrpcMetaKey(i) => self.grpc_metadata.get_mut(i).map(|m| &mut m.key),
-            EditTarget::GrpcMetaValue(i) => self.grpc_metadata.get_mut(i).map(|m| &mut m.value),
-            EditTarget::SioNamespace => Some(&mut self.sio_namespace),
-            EditTarget::SioEventName => Some(&mut self.sio_event_name),
-            EditTarget::SioRoomName => Some(&mut self.sio_room_name),
+            EditTarget::GrpcMetaKey(i) => self.grpc.metadata.get_mut(i).map(|m| &mut m.key),
+            EditTarget::GrpcMetaValue(i) => self.grpc.metadata.get_mut(i).map(|m| &mut m.value),
+            EditTarget::SioNamespace => Some(&mut self.sio.namespace),
+            EditTarget::SioEventName => Some(&mut self.sio.event_name),
+            EditTarget::SioRoomName => Some(&mut self.sio.room_name),
         }
     }
 

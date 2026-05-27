@@ -87,7 +87,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                             self.queue_editor(PendingEditor::GraphqlVariables, v);
                         }
                         if let Some(op) = json.get("operationName").and_then(|o| o.as_str()) {
-                            self.graphql_operation_name = op.to_string();
+                            self.graphql.operation_name = op.to_string();
                         }
                     }
                 }
@@ -115,7 +115,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                 let url = req.url.as_str();
                 if let Some(idx) = url.find("/trpc/") {
                     self.url = url[..idx + 6].to_string();
-                    self.trpc_procedure = url[idx + 6..].to_string();
+                    self.trpc.procedure = url[idx + 6..].to_string();
                 } else {
                     self.url = url.to_string();
                 }
@@ -138,9 +138,9 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
         self.queue_editor(PendingEditor::PreScript, pre.to_string());
         self.queue_editor(PendingEditor::PostScript, post.to_string());
         self.queue_editor(PendingEditor::Tests, tests.to_string());
-        self.pre_script = pre.to_string();
-        self.post_script = post.to_string();
-        self.tests = tests.to_string();
+        self.scripts.pre = pre.to_string();
+        self.scripts.post = post.to_string();
+        self.scripts.tests = tests.to_string();
 
         cx.notify();
     }
