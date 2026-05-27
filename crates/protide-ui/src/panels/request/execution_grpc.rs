@@ -1,5 +1,6 @@
 use gpui::Context;
 use super::*;
+use super::super::request_utils::run_blocking;
 
 impl<E: WebSocketExecutor> RequestPanel<E> {
     pub(super) fn load_proto_file(&mut self, cx: &mut Context<Self>) {
@@ -135,9 +136,10 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
         cx: &mut Context<Self>,
     ) {
         cx.spawn(async move |this: gpui::WeakEntity<Self>, cx: &mut gpui::AsyncApp| {
-            let result = std::thread::spawn(move || {
-                protide_core::protocols::grpc::execute_unary_blocking(&url, &method.full_name, &message, metadata, &proto_path)
-            }).join().unwrap_or_else(|_| Err("gRPC thread panicked".to_string()));
+            let result = run_blocking(
+                move || protide_core::protocols::grpc::execute_unary_blocking(&url, &method.full_name, &message, metadata, &proto_path),
+                "gRPC thread panicked",
+            );
             match result {
                 Ok((body, elapsed)) => {
                     let body_size = body.len();

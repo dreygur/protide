@@ -1,6 +1,6 @@
 use gpui::Context;
 use super::*;
-use super::super::request_utils::url_encode;
+use super::super::request_utils::{run_blocking, url_encode};
 use super::graphql::dns_troubleshoot_hint;
 
 impl<E: WebSocketExecutor> RequestPanel<E> {
@@ -161,9 +161,10 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
         };
 
         cx.spawn(async move |this: gpui::WeakEntity<Self>, cx: &mut gpui::AsyncApp| {
-            let result = std::thread::spawn(move || protide_core::execution::execute(req))
-                .join()
-                .unwrap_or_else(|_| Err("Request thread panicked".to_string()));
+            let result = run_blocking(
+                move || protide_core::execution::execute(req),
+                "Request thread panicked",
+            );
 
             match result {
                 Ok(data) => {

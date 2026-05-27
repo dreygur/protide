@@ -2,6 +2,17 @@
 //!
 //! Contains URL encoding/decoding, base64, and HTTP status helpers.
 
+/// Run a blocking closure in a dedicated thread, mapping panics to `Err`.
+pub fn run_blocking<T>(
+    op: impl FnOnce() -> Result<T, String> + Send + 'static,
+    panic_msg: &'static str,
+) -> Result<T, String>
+where
+    T: Send + 'static,
+{
+    std::thread::spawn(op).join().unwrap_or_else(|_| Err(panic_msg.to_string()))
+}
+
 /// HTTP status code to text description
 pub fn status_text(status: u16) -> &'static str {
     match status {

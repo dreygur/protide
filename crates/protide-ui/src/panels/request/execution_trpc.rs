@@ -1,7 +1,7 @@
 use gpui::Context;
 use super::*;
 use super::super::request_types::{PendingEditor, TrpcPlaygroundProc, TrpcProcKind};
-use super::super::request_utils::status_text;
+use super::super::request_utils::{run_blocking, status_text};
 
 impl<E: WebSocketExecutor> RequestPanel<E> {
     pub(super) fn send_trpc_request(&mut self, cx: &mut Context<Self>) {
@@ -34,9 +34,10 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
         log::info!("tRPC {} {}", url, procedure);
 
         cx.spawn(async move |this: gpui::WeakEntity<Self>, cx: &mut gpui::AsyncApp| {
-            let result = std::thread::spawn(move || {
-                protide_core::protocols::trpc::execute_trpc(&url, &procedure, &params, headers)
-            }).join().unwrap_or_else(|_| Err("tRPC thread panicked".to_string()));
+            let result = run_blocking(
+                move || protide_core::protocols::trpc::execute_trpc(&url, &procedure, &params, headers),
+                "tRPC thread panicked",
+            );
 
             match result {
                 Ok((body, elapsed, status_code)) => {
@@ -108,9 +109,10 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
         log::info!("tRPC playground: {} {}", url, procedure);
 
         cx.spawn(async move |this: gpui::WeakEntity<Self>, cx: &mut gpui::AsyncApp| {
-            let result = std::thread::spawn(move || {
-                protide_core::protocols::trpc::execute_trpc(&url, &procedure, &params, headers)
-            }).join().unwrap_or_else(|_| Err("tRPC thread panicked".to_string()));
+            let result = run_blocking(
+                move || protide_core::protocols::trpc::execute_trpc(&url, &procedure, &params, headers),
+                "tRPC thread panicked",
+            );
 
             let _ = cx.update(|cx| {
                 let _ = this.update(cx, |panel, cx| {
@@ -172,10 +174,10 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
         cx.notify();
 
         cx.spawn(async move |this: gpui::WeakEntity<Self>, cx: &mut gpui::AsyncApp| {
-            let result = std::thread::spawn(move || {
+            let result = run_blocking(move || {
                 let raw = protide_core::protocols::trpc::fetch_trpc_schema_raw(&url)?;
                 protide_core::protocols::trpc::parse_trpc_schema(&raw)
-            }).join().unwrap_or_else(|_| Err("URL import thread panicked".to_string()));
+            }, "URL import thread panicked");
 
             let _ = cx.update(|cx| {
                 let _ = this.update(cx, |panel, cx| {
@@ -210,10 +212,10 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
         let url = if let Some(ref env) = env_state { env.substitute(&url) } else { url };
 
         cx.spawn(async move |this: gpui::WeakEntity<Self>, cx: &mut gpui::AsyncApp| {
-            let result = std::thread::spawn(move || {
-                let raw = protide_core::protocols::trpc::fetch_trpc_schema_raw(&url);
-                raw.and_then(|json| protide_core::protocols::trpc::parse_trpc_schema(&json))
-            }).join().unwrap_or_else(|_| Err("tRPC thread panicked".to_string()));
+            let result = run_blocking(move || {
+                let raw = protide_core::protocols::trpc::fetch_trpc_schema_raw(&url)?;
+                protide_core::protocols::trpc::parse_trpc_schema(&raw)
+            }, "tRPC thread panicked");
 
             let _ = cx.update(|cx| {
                 let _ = this.update(cx, |panel, cx| {
