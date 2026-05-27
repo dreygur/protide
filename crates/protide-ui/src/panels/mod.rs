@@ -15,6 +15,7 @@ mod history;
 mod mock_server;
 pub mod presence;
 mod presence_render;
+mod presence_render_flyout;
 mod request;
 mod request_types;
 mod request_utils;
