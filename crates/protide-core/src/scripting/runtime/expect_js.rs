@@ -7,6 +7,46 @@ use crate::scripting::results::ScriptError;
 /// Set up `expect()` function for test assertions.
 pub(super) fn setup_expect_js(ctx: &Ctx<'_>) -> Result<(), ScriptError> {
     let expect_js = r#"
+// Recursive deep-equality for typical JSON-shaped values (objects, arrays,
+// primitives, null/undefined/NaN). Uses Object.is semantics so NaN equals
+// NaN but not null/undefined, and compares object keys order-independently.
+// A property explicitly set to `undefined` counts as present (and differs
+// from an absent property) so `{a:1,b:undefined}` !== `{a:1}`.
+function __deepEqual(a, b) {
+    if (Object.is(a, b)) return true;
+    if (typeof a !== typeof b) return false;
+    if (a === null || b === null || a === undefined || b === undefined) return false;
+    if (typeof a !== 'object') return false;
+    if (Array.isArray(a) !== Array.isArray(b)) return false;
+    if (Array.isArray(a)) {
+        if (a.length !== b.length) return false;
+        for (let i = 0; i < a.length; i++) {
+            if (!__deepEqual(a[i], b[i])) return false;
+        }
+        return true;
+    }
+    const aKeys = Object.keys(a);
+    const bKeys = Object.keys(b);
+    if (aKeys.length !== bKeys.length) return false;
+    for (const key of aKeys) {
+        if (!Object.hasOwn(b, key)) return false;
+        if (!__deepEqual(a[key], b[key])) return false;
+    }
+    return true;
+}
+
+// Display helper for failure messages: JSON.stringify gives structured
+// content instead of the useless "[object Object]" from String(obj).
+function __display(x) {
+    if (x === undefined) return 'undefined';
+    try {
+        const s = JSON.stringify(x);
+        return s === undefined ? String(x) : s;
+    } catch (e) {
+        return String(x);
+    }
+}
+
 function expect(actual) {
     return {
         _actual: actual,
@@ -22,8 +62,8 @@ function expect(actual) {
             globalThis.__storage.testResults.push({
                 passed: finalPassed,
                 name: prefix + name,
-                expected: String(expected),
-                actual: String(this._actual)
+                expected: __display(expected),
+                actual: __display(this._actual)
             });
             return finalPassed;
         },
@@ -31,7 +71,7 @@ function expect(actual) {
             return this._check(this._actual === expected, "toBe", expected);
         },
         toEqual(expected) {
-            const eq = JSON.stringify(this._actual) === JSON.stringify(expected);
+            const eq = __deepEqual(this._actual, expected);
             return this._check(eq, "toEqual", expected);
         },
         toBeTruthy() {

@@ -112,6 +112,10 @@ fn find_depends_line(content: &str, dep: &str) -> Option<u32> {
 }
 
 fn parse_error_diagnostic(e: &ParseError) -> Diagnostic {
+    // `ParseError::line` is now a correct 1-indexed source line (the lexer
+    // tags each token with its line at emission time), so converting to the
+    // LSP's 0-indexed `Position.line` is a plain subtract-one - no extra
+    // fudge-factor needed like the old lazy-lookahead line tracking required.
     let line = match e {
         ParseError::UnexpectedToken { line, .. } => line.saturating_sub(1) as u32,
         ParseError::InvalidMethod { line, .. } => line.saturating_sub(1) as u32,
@@ -125,6 +129,24 @@ fn parse_error_diagnostic(e: &ParseError) -> Diagnostic {
         message: e.to_string(),
         source: Some("protide-lsp".to_string()),
         ..Default::default()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_error_diagnostic_points_at_correct_zero_indexed_line() {
+        // Line 1: "### Bad Request", line 2: "", line 3: the malformed line
+        // (no HTTP method, no colon, no URL scheme - not a valid token
+        // sequence). The diagnostic's range should point at 0-indexed line 2,
+        // matching the 1-indexed source line 3 where the bad token actually is.
+        let content = "### Bad Request\n\nthis is not a valid request line\n";
+        let diags = compute_diagnostics(content);
+        assert_eq!(diags.len(), 1);
+        assert_eq!(diags[0].range.start.line, 2);
+        assert_eq!(diags[0].severity, Some(DiagnosticSeverity::ERROR));
     }
 }
 

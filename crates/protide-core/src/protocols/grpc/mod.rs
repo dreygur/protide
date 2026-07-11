@@ -5,7 +5,7 @@ mod grpc_streaming;
 
 use grpc_encoding::{grpc_decode_message, grpc_encode_message};
 pub use grpc_streaming::{
-    execute_bidi_streaming, execute_client_streaming, execute_server_streaming,
+    execute_bidi_streaming, execute_client_streaming, execute_server_streaming, StreamingResult,
 };
 
 use prost::Message;

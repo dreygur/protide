@@ -1,6 +1,23 @@
 use std::sync::{Arc, Mutex, RwLock};
 use super::routes::{HttpMethod, MockResponse, MockRoute};
 
+/// Header used to count proxy hops so that a proxy/record-mode target which
+/// points back at this server (directly or transitively) can't recurse forever.
+const PROXY_HOP_HEADER: &str = "x-protide-proxy-hops";
+/// Maximum number of proxy hops before a request is rejected as a likely loop.
+const MAX_PROXY_HOPS: u32 = 5;
+
+/// Build the forwarded URL, correctly re-attaching the `?` separator that
+/// `Uri::query()` strips (it returns the query string without the leading `?`).
+fn build_proxy_url(target: &str, path: &str, query: &str) -> String {
+    let target = target.trim_end_matches('/');
+    if query.is_empty() {
+        format!("{}{}", target, path)
+    } else {
+        format!("{}{}?{}", target, path, query)
+    }
+}
+
 pub(super) struct RouterState {
     pub routes: Arc<RwLock<Vec<MockRoute>>>,
     pub record_mode: Arc<std::sync::atomic::AtomicBool>,
@@ -31,12 +48,19 @@ pub(super) fn create_router(
         let path = req.uri().path().to_string();
         let query = req.uri().query().unwrap_or("").to_string();
 
-        let req_headers: Vec<(String, String)> = req
+        let hop_count: u32 = req
+            .headers()
+            .get(PROXY_HOP_HEADER)
+            .and_then(|v| v.to_str().ok())
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(0);
+
+        let mut req_headers: Vec<(String, String)> = req
             .headers()
             .iter()
             .filter_map(|(k, v)| {
                 let key = k.as_str().to_lowercase();
-                if matches!(key.as_str(), "host" | "connection" | "transfer-encoding") {
+                if matches!(key.as_str(), "host" | "connection" | "transfer-encoding" | PROXY_HOP_HEADER) {
                     return None;
                 }
                 Some((k.to_string(), v.to_str().unwrap_or("").to_string()))
@@ -46,8 +70,12 @@ pub(super) fn create_router(
         let body_bytes = match axum::body::to_bytes(req.into_body(), 16 * 1024 * 1024).await {
             Ok(b) => b,
             Err(e) => {
-                log::warn!("Mock server: failed to read request body (body may exceed 16 MB limit): {}", e);
-                axum::body::Bytes::new()
+                log::warn!("Mock server: rejecting request - failed to read request body (body may exceed 16 MB limit): {}", e);
+                return (
+                    StatusCode::PAYLOAD_TOO_LARGE,
+                    "Request body exceeds the 16 MB limit or could not be read",
+                )
+                    .into_response();
             }
         };
 
@@ -60,11 +88,15 @@ pub(super) fn create_router(
         let live_target = state.record_target.read().ok().and_then(|t| t.clone());
         if recording {
             if let Some(ref target) = live_target {
-                let full_url = if query.is_empty() {
-                    format!("{}{}", target.trim_end_matches('/'), path)
-                } else {
-                    format!("{}{}{}", target.trim_end_matches('/'), path, query)
-                };
+                if hop_count >= MAX_PROXY_HOPS {
+                    return (
+                        StatusCode::LOOP_DETECTED,
+                        "Proxy hop limit exceeded - possible proxy loop",
+                    )
+                        .into_response();
+                }
+                let full_url = build_proxy_url(target, &path, &query);
+                req_headers.push((PROXY_HOP_HEADER.to_string(), (hop_count + 1).to_string()));
                 let resp = proxy_request(&method, &full_url, req_headers, body_bytes.to_vec()).await;
                 let status = resp.status().as_u16();
                 let body_clone = axum::body::to_bytes(resp.into_body(), 16 * 1024 * 1024)
@@ -95,11 +127,15 @@ pub(super) fn create_router(
 
         if let Some(route) = matched {
             if let Some(ref target) = route.proxy_target {
-                let full_url = if query.is_empty() {
-                    format!("{}{}", target.trim_end_matches('/'), path)
-                } else {
-                    format!("{}{}{}", target.trim_end_matches('/'), path, query)
-                };
+                if hop_count >= MAX_PROXY_HOPS {
+                    return (
+                        StatusCode::LOOP_DETECTED,
+                        "Proxy hop limit exceeded - possible proxy loop",
+                    )
+                        .into_response();
+                }
+                let full_url = build_proxy_url(target, &path, &query);
+                req_headers.push((PROXY_HOP_HEADER.to_string(), (hop_count + 1).to_string()));
                 return proxy_request(&method, &full_url, req_headers, body_bytes.to_vec())
                     .await
                     .into_response();

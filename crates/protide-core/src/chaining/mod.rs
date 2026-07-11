@@ -4,7 +4,7 @@
 //! and setting them as environment variables for subsequent requests.
 
 use http_parser::VariableExtraction;
-use jsonpath_rust::JsonPath;
+use jsonpath_rust::{JsonPath, JsonPathValue};
 use serde_json::Value;
 
 /// Result of extracting a variable from a response
@@ -72,8 +72,19 @@ fn extract_single(json: &Value, extraction: &VariableExtraction) -> ExtractionRe
     // Execute JSONPath query - find_slice returns Vec<JsonPathValue>
     let found = path.find_slice(json);
 
-    // Get first match
+    // Get first match. Note: `find_slice` never returns an empty Vec - when
+    // nothing matches (out-of-bounds index, field access on a scalar, etc.)
+    // it returns `vec![JsonPathValue::NoValue]` as a placeholder. That's
+    // distinct from a real match whose value happens to be JSON `null`
+    // (`JsonPathValue::Slice(&Value::Null, _)`), so we must check the variant
+    // rather than treating "found anything at all" as success.
     match found.into_iter().next() {
+        Some(JsonPathValue::NoValue) | None => ExtractionResult {
+            name: extraction.name.clone(),
+            value: String::new(),
+            success: false,
+            error: Some(format!("No match found for JSONPath '{}'", expr)),
+        },
         Some(json_path_value) => {
             // JsonPathValue has a to_data() method to get the underlying Value
             let value = json_path_value.to_data();
@@ -85,12 +96,6 @@ fn extract_single(json: &Value, extraction: &VariableExtraction) -> ExtractionRe
                 error: None,
             }
         }
-        None => ExtractionResult {
-            name: extraction.name.clone(),
-            value: String::new(),
-            success: false,
-            error: Some(format!("No match found for JSONPath '{}'", expr)),
-        },
     }
 }
 
@@ -231,6 +236,60 @@ mod tests {
         assert!(results[1].success);
         assert_eq!(results[1].name, "user_id");
         assert_eq!(results[1].value, "42");
+    }
+
+    /// jsonpath-rust's `find_slice` returns `vec![JsonPathValue::NoValue]`
+    /// (not an empty result set) for an out-of-bounds array index. That's a
+    /// placeholder for "nothing matched", distinct from a real match whose
+    /// value happens to be JSON `null`. `extract_single` must report this as
+    /// a failed extraction rather than a successful empty-string value, so
+    /// a chained `@set` that points at the wrong array index (e.g.
+    /// off-by-one against a shorter-than-expected page of results) surfaces
+    /// an actionable error instead of silently "succeeding" with "".
+    #[test]
+    fn test_out_of_bounds_array_index_reports_false_success() {
+        let json = r#"{"items": [1, 2, 3]}"#;
+        let extractions = vec![VariableExtraction {
+            name: "x".to_string(),
+            expression: "$.items[10]".to_string(),
+        }];
+        let result = &extract_variables(json, &extractions)[0];
+        assert!(!result.success);
+        assert_eq!(result.value, "");
+        assert!(result.error.is_some());
+    }
+
+    /// Same `NoValue` placeholder is returned when the JSONPath expects an
+    /// object field but the response root (or matched node) is a scalar,
+    /// e.g. the endpoint returns a bare JSON string/number instead of the
+    /// expected object shape. This must also be reported as a failure.
+    #[test]
+    fn test_field_path_on_scalar_root_reports_false_success() {
+        let json = r#""hello""#;
+        let extractions = vec![VariableExtraction {
+            name: "x".to_string(),
+            expression: "$.foo".to_string(),
+        }];
+        let result = &extract_variables(json, &extractions)[0];
+        assert!(!result.success);
+        assert_eq!(result.value, "");
+        assert!(result.error.is_some());
+    }
+
+    /// A field that is genuinely `null` in the response must still be
+    /// distinguished from a failed extraction: it's a real match, so it
+    /// should report success with an empty string value.
+    #[test]
+    fn test_field_with_real_null_value_reports_success() {
+        let json = r#"{"x": null}"#;
+        let extractions = vec![VariableExtraction {
+            name: "x".to_string(),
+            expression: "$.x".to_string(),
+        }];
+        let result = &extract_variables(json, &extractions)[0];
+        assert!(result.success);
+        assert_eq!(result.value, "");
+        assert!(result.error.is_none());
     }
 
     #[test]

@@ -23,6 +23,8 @@ impl<E: WebSocketExecutor> Render for RequestPanel<E> {
                 if event.keystroke.key == "escape" {
                     if this.mode_dropdown_open { this.mode_dropdown_open = false; cx.notify(); return; }
                     if this.method_dropdown_open { this.method_dropdown_open = false; cx.notify(); return; }
+                    if this.grpc_service_picker_open { this.grpc_service_picker_open = false; cx.notify(); return; }
+                    if this.grpc_method_picker_open { this.grpc_method_picker_open = false; cx.notify(); return; }
                 }
                 if this.active_edit.is_some() { this.handle_edit_key(event, cx); }
             }))
@@ -30,6 +32,8 @@ impl<E: WebSocketExecutor> Render for RequestPanel<E> {
                 if !this.skip_blur && this.active_edit.is_some() { this.active_edit = None; cx.notify(); }
                 if this.method_dropdown_open { this.method_dropdown_open = false; cx.notify(); }
                 if this.mode_dropdown_open { this.mode_dropdown_open = false; cx.notify(); }
+                if this.grpc_service_picker_open { this.grpc_service_picker_open = false; cx.notify(); }
+                if this.grpc_method_picker_open { this.grpc_method_picker_open = false; cx.notify(); }
             }))
             .child(self.render_url_bar(window, cx))
             .child(self.render_tabs(cx))
@@ -43,6 +47,10 @@ impl<E: WebSocketExecutor> Render for RequestPanel<E> {
                 el.child(deferred(self.render_method_dropdown_overlay(window, cx)).with_priority(1)))
             .when(self.mode_dropdown_open, |el|
                 el.child(deferred(self.render_mode_dropdown_overlay(cx)).with_priority(1)))
+            .when(self.grpc_service_picker_open, |el|
+                el.child(deferred(self.render_grpc_service_dropdown_overlay(cx)).with_priority(1)))
+            .when(self.grpc_method_picker_open, |el|
+                el.child(deferred(self.render_grpc_method_dropdown_overlay(cx)).with_priority(1)))
             .when(self.kv_col_drag.is_some(), |el| el.child(deferred(
                 div().id("kv-col-resize-overlay")
                     .absolute().top_0().left_0().w_full().h_full()

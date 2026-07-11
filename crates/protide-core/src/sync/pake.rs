@@ -92,6 +92,38 @@ pub fn decrypt_message(session: &PakeSession, encrypted: &[u8]) -> Result<Vec<u8
         .map_err(|_| "Decryption error: wrong key or tampered data".to_string())
 }
 
+/// Fixed plaintext used for post-SPAKE2 key confirmation.
+///
+/// SPAKE2's `finish()` only checks that the peer's message is a well-formed
+/// curve point - it never proves the two sides actually derived the *same*
+/// key (that only happens if both used the same password/pairing code). To
+/// get a real proof, each side encrypts this constant under its own derived
+/// key (AEAD via ChaCha20Poly1305, see `encrypt_message`) and sends the
+/// ciphertext to the peer. The peer can only decrypt it successfully -
+/// ChaCha20Poly1305's Poly1305 tag check is constant-time - if it derived
+/// the identical key, which only happens when both sides used the same
+/// password. This is the standard "encrypt a known value, verify decryption"
+/// key-confirmation pattern (cf. TLS Finished, Noise handshake payloads).
+const CONFIRM_TAG: &[u8] = b"protide-pake-confirm";
+
+/// Build this side's key-confirmation blob to send to the peer.
+pub fn confirm_blob(session: &PakeSession) -> Result<Vec<u8>, String> {
+    encrypt_message(session, CONFIRM_TAG)
+}
+
+/// Verify a confirmation blob received from the peer against our own
+/// derived key. Returns `true` only if it decrypts (AEAD-authenticated) to
+/// the expected constant - i.e. the peer derived the same key we did. The
+/// authentication check inside `decrypt_message` is constant-time; the final
+/// equality against the public constant compares already-authenticated,
+/// non-secret data, so no additional constant-time handling is needed there.
+pub fn verify_confirm(session: &PakeSession, blob: &[u8]) -> bool {
+    match decrypt_message(session, blob) {
+        Ok(pt) => pt == CONFIRM_TAG,
+        Err(_) => false,
+    }
+}
+
 /// Generate a human-readable pairing code (Magic Wormhole style).
 /// Format: adjective-noun-###   e.g. "apple-banana-123"
 pub fn generate_pairing_code() -> String {
@@ -169,5 +201,66 @@ mod tests {
 
         // Different passwords should produce different keys
         assert_ne!(session_a.shared_key, session_b.shared_key);
+    }
+
+    /// `engine.rs`'s PAKE handling (`sync/engine.rs::poll`) used to treat
+    /// `pake_finish(..).is_ok()` as proof the peer knew the correct pairing
+    /// code and fired `SyncEvent::HandshakeComplete`. But SPAKE2's `finish()`
+    /// only validates that the peer's message is a well-formed curve point
+    /// of the right length/side byte (see spake2 0.4.0 `finish()`) - it never
+    /// checks the two sides actually agree on the password. `finish()` alone
+    /// still reports `Ok(_)` (with different derived keys) even when two
+    /// peers used completely different pairing codes - this test documents
+    /// that raw-SPAKE2 fact - but the engine no longer gates
+    /// `HandshakeComplete` on `finish()` alone: it now requires an explicit
+    /// `confirm_blob`/`verify_confirm` round-trip (see below), which
+    /// correctly rejects mismatched codes.
+    #[test]
+    fn test_key_confirmation_rejects_mismatched_codes() {
+        let (msg_a, state_a) = pake_initiate("correct-horse-battery").unwrap();
+        // Attacker/mismatched peer uses a totally different code, unrelated
+        // to the real pairing code.
+        let (msg_b, state_b) = pake_respond("totally-different-code").unwrap();
+
+        let session_a = pake_finish(state_a, &msg_b).unwrap();
+        let session_b = pake_finish(state_b, &msg_a).unwrap();
+
+        // Raw SPAKE2 finish() succeeds even though the codes differ, and the
+        // resulting keys differ - this is the vulnerability: `.is_ok()` is
+        // not proof of a shared secret.
+        assert_ne!(session_a.shared_key, session_b.shared_key);
+
+        // Explicit key confirmation must catch the mismatch: each side's
+        // confirm blob only decrypts correctly under the SAME derived key.
+        let confirm_a = confirm_blob(&session_a).unwrap();
+        let confirm_b = confirm_blob(&session_b).unwrap();
+
+        assert!(
+            !verify_confirm(&session_b, &confirm_a),
+            "B must reject A's confirmation blob - different codes were used"
+        );
+        assert!(
+            !verify_confirm(&session_a, &confirm_b),
+            "A must reject B's confirmation blob - different codes were used"
+        );
+    }
+
+    /// Sanity check for the happy path: two sides that used the SAME pairing
+    /// code produce confirm blobs that verify successfully against each
+    /// other's session.
+    #[test]
+    fn test_key_confirmation_accepts_matching_codes() {
+        let password = "apple-banana-123";
+        let (msg_a, state_a) = pake_initiate(password).unwrap();
+        let (msg_b, state_b) = pake_respond(password).unwrap();
+
+        let session_a = pake_finish(state_a, &msg_b).unwrap();
+        let session_b = pake_finish(state_b, &msg_a).unwrap();
+
+        let confirm_a = confirm_blob(&session_a).unwrap();
+        let confirm_b = confirm_blob(&session_b).unwrap();
+
+        assert!(verify_confirm(&session_b, &confirm_a));
+        assert!(verify_confirm(&session_a, &confirm_b));
     }
 }

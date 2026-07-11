@@ -8,15 +8,19 @@ pub fn generate_curl(request: &CodegenRequest) -> String {
 
     // Method (GET is default, only add if not GET)
     if request.method != "GET" {
-        parts.push(format!("-X {}", request.method));
+        parts.push(format!("-X '{}'", escape_single_quotes(&request.method)));
     }
 
     // URL
-    parts.push(format!("'{}'", request.url));
+    parts.push(format!("'{}'", escape_single_quotes(&request.url)));
 
     // Headers
     for (key, value) in &request.headers {
-        parts.push(format!("-H '{}: {}'", key, escape_single_quotes(value)));
+        parts.push(format!(
+            "-H '{}: {}'",
+            escape_single_quotes(key),
+            escape_single_quotes(value)
+        ));
     }
 
     // Body
@@ -51,7 +55,10 @@ mod tests {
             .with_headers(vec![("Content-Type".to_string(), "application/json".to_string())])
             .with_body(Some(r#"{"name": "John"}"#.to_string()));
         let code = generate_curl(&request);
-        assert!(code.contains("-X POST"));
+        // Method is now quoted+escaped like everything else (see the
+        // injection-escaping fix below), so it reads `-X 'POST'`, not the
+        // old bare `-X POST`.
+        assert!(code.contains("-X 'POST'"));
         assert!(code.contains("-H 'Content-Type: application/json'"));
         assert!(code.contains(r#"-d '{"name": "John"}'"#));
     }
@@ -62,5 +69,45 @@ mod tests {
             .with_body(Some("It's a test".to_string()));
         let code = generate_curl(&request);
         assert!(code.contains("It'\\''s a test"));
+    }
+
+    #[test]
+    fn test_url_injection_is_escaped() {
+        // A malicious URL containing a single quote could break out of the
+        // quoted argument and inject arbitrary shell commands.
+        let request = CodegenRequest::new(
+            "GET",
+            "https://example.com/'; rm -rf ~; echo '",
+        );
+        let code = generate_curl(&request);
+        // Note: correctly-escaped output for this payload necessarily
+        // *contains* the substring "'; rm -rf ~; echo '" as an artifact of
+        // the close-escape-reopen ('\'') single-quote escaping technique
+        // itself - that substring appearing is not evidence of a bug. The
+        // only thing that actually proves the payload is inert is that the
+        // whole argument reconstructs to the exact expected safely-escaped
+        // form below, with the URL still wrapped in a single quoted shell
+        // argument throughout.
+        assert!(code.contains("'https://example.com/'\\''; rm -rf ~; echo '\\'''"));
+    }
+
+    #[test]
+    fn test_method_injection_is_escaped() {
+        // HttpMethod::Custom allows arbitrary free text, so the method must
+        // be quoted and escaped just like headers/body.
+        let request = CodegenRequest::new("GET'; rm -rf ~; echo '", "https://example.com");
+        let code = generate_curl(&request);
+        assert!(!code.contains("-X GET'; rm -rf ~; echo '"));
+        assert!(code.contains("-X 'GET'\\''; rm -rf ~; echo '\\'''"));
+    }
+
+    #[test]
+    fn test_header_key_injection_is_escaped() {
+        let request = CodegenRequest::new("GET", "https://example.com").with_headers(vec![(
+            "X-Evil' -H 'X-Injected: yes".to_string(),
+            "value".to_string(),
+        )]);
+        let code = generate_curl(&request);
+        assert!(!code.contains("-H 'X-Evil' -H 'X-Injected: yes: value'"));
     }
 }

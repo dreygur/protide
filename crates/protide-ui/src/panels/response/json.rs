@@ -169,8 +169,13 @@ impl ResponsePanel {
         btn_extra
     }
 
+    /// Returns a **byte** offset into the row's display text for the value at
+    /// pixel-x `ex` (mirrors `hdr_val_byte_at` in `mod.rs`). Must not return a
+    /// char-count, since callers (e.g. `copy_json_selection`,
+    /// `render_selectable_json_value`) slice the text directly with `&text[..n]`.
     pub(super) fn json_val_char_at_x(&self, ex: Pixels, row_i: usize) -> usize {
         let Some(row) = self.json_rows.get(row_i) else { return 0 };
+        let RowKind::Leaf { .. } = &row.kind else { return 0 };
         let key_chars = match &row.kind {
             RowKind::Leaf { key: Some(k), .. } => k.len() + 4, // "key":
             _ => 0,
@@ -178,17 +183,12 @@ impl ResponsePanel {
         let bounds = self.json_tree_bounds.unwrap_or_default();
         let val_x = f32::from(bounds.origin.x) + GUTTER_W + (row.depth as f32) * INDENT_W + CHEVRON_W + (key_chars as f32) * JSON_CHAR_W;
         let char_x = (f32::from(ex) - val_x).max(0.0);
-        let max_len = match &row.kind {
-            RowKind::Leaf { val, .. } => match val {
-                PrimVal::Null => 4,
-                PrimVal::Bool(b) => if *b { 4 } else { 5 },
-                PrimVal::Num(n) => n.len(),
-                PrimVal::Str { display, .. } => display.len(),
-                PrimVal::EmptyArr | PrimVal::EmptyObj => 2,
-            },
-            _ => 0,
-        };
-        ((char_x / JSON_CHAR_W) as usize).min(max_len)
+        let char_idx = (char_x / JSON_CHAR_W) as usize;
+        let text = self.json_row_display_text(row_i);
+        text.char_indices()
+            .nth(char_idx)
+            .map(|(byte_pos, _)| byte_pos)
+            .unwrap_or(text.len())
     }
 
     pub(super) fn json_row_display_text(&self, row_i: usize) -> &str {
@@ -224,12 +224,16 @@ impl ResponsePanel {
         for i in sr..=er.min(n - 1) {
             let text = self.json_row_display_text(i);
             let tl = text.len();
+            // Offsets are clamped to a valid char boundary as a defensive backstop
+            // against panicking on `&text[..n]` (see floor_char_boundary docs).
             let chunk = if sr == er {
-                &text[so.min(eo).min(tl)..so.max(eo).min(tl)]
+                let s = floor_char_boundary(text, so.min(eo).min(tl));
+                let e = floor_char_boundary(text, so.max(eo).min(tl));
+                &text[s..e]
             } else if i == sr {
-                &text[so.min(tl)..]
+                &text[floor_char_boundary(text, so.min(tl))..]
             } else if i == er {
-                &text[..eo.min(tl)]
+                &text[..floor_char_boundary(text, eo.min(tl))]
             } else {
                 text
             };

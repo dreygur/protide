@@ -1,9 +1,27 @@
 use gpui::Context;
 use super::*;
 
+/// How close to the bottom (in px) the scroll position must be for new
+/// events to auto-scroll the view. Mirrors `WS_AUTOSCROLL_THRESHOLD`.
+const SIO_AUTOSCROLL_THRESHOLD: f32 = 48.0;
+
 impl<E: WebSocketExecutor> RequestPanel<E> {
+    /// True if the Socket.IO event list is scrolled at (or near) the bottom.
+    pub(super) fn sio_near_bottom(&self) -> bool {
+        let max = self.sio_scroll.max_offset().y;
+        if max <= gpui::px(0.0) {
+            return true;
+        }
+        let dist_from_bottom = max + self.sio_scroll.offset().y;
+        dist_from_bottom <= gpui::px(SIO_AUTOSCROLL_THRESHOLD)
+    }
+
     pub(super) fn connect_socketio(&mut self, cx: &mut Context<Self>) {
         if self.sio_state != SioConnectionState::Disconnected { return; }
+
+        self.sio_generation = self.sio_generation.wrapping_add(1);
+        let my_generation = self.sio_generation;
+
         self.sio_state = SioConnectionState::Connecting;
         self.sio_messages.clear();
         cx.notify();
@@ -40,6 +58,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                     SioUiEvent::Connected { .. } => {
                         let _ = cx.update(|cx| {
                             let _ = this.update(cx, |this, cx| {
+                                if this.sio_generation != my_generation { return; }
                                 this.sio_state = SioConnectionState::Connected;
                                 cx.notify();
                             });
@@ -48,7 +67,12 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                     SioUiEvent::Event(event) => {
                         let _ = cx.update(|cx| {
                             let _ = this.update(cx, |this, cx| {
+                                if this.sio_generation != my_generation { return; }
+                                let was_near_bottom = this.sio_near_bottom();
                                 this.sio_messages.push(event);
+                                if was_near_bottom {
+                                    this.sio_scroll.scroll_to_bottom();
+                                }
                                 cx.notify();
                             });
                         });
@@ -56,6 +80,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                     SioUiEvent::Disconnected => {
                         let _ = cx.update(|cx| {
                             let _ = this.update(cx, |this, cx| {
+                                if this.sio_generation != my_generation { return; }
                                 this.sio_state = SioConnectionState::Disconnected;
                                 this.sio_send_tx = None;
                                 cx.notify();
@@ -67,8 +92,10 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                         log::error!("SIO error: {}", e);
                         let _ = cx.update(|cx| {
                             let _ = this.update(cx, |this, cx| {
+                                if this.sio_generation != my_generation { return; }
                                 this.sio_state = SioConnectionState::Disconnected;
                                 this.sio_send_tx = None;
+                                let was_near_bottom = this.sio_near_bottom();
                                 this.sio_messages.push(protide_core::execution::sio::SioEvent {
                                     direction: protide_core::execution::sio::SioDirection::Received,
                                     namespace: "/".into(),
@@ -78,6 +105,9 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                                     is_ack: false,
                                     timestamp: chrono::Local::now(),
                                 });
+                                if was_near_bottom {
+                                    this.sio_scroll.scroll_to_bottom();
+                                }
                                 cx.notify();
                             });
                         });
@@ -87,6 +117,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             }
             let _ = cx.update(|cx| {
                 let _ = this.update(cx, |this, cx| {
+                    if this.sio_generation != my_generation { return; }
                     if this.sio_state != SioConnectionState::Disconnected {
                         this.sio_state = SioConnectionState::Disconnected;
                         this.sio_send_tx = None;

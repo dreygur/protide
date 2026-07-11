@@ -220,6 +220,7 @@ impl MainWindow {
         env_vars: std::collections::HashMap<String, String>,
         cx: &mut Context<Self>,
     ) {
+        self.close_all_overlays();
         self.show_runner = true;
         self.runner_panel.update(cx, |panel, cx| {
             panel.start(collection_path, env_vars, cx);
@@ -302,11 +303,25 @@ impl MainWindow {
         cx.notify();
     }
 
+    /// Close every overlay/modal. Call before opening one so at most a single
+    /// overlay (Help, About, Test Runner, top menu, pairing flyout) is ever visible.
+    pub(super) fn close_all_overlays(&mut self) {
+        self.show_help = false;
+        self.show_about = false;
+        self.show_runner = false;
+        self.open_menu = None;
+        self.presence.show_pairing = false;
+    }
+
     pub(super) fn dismiss_overlay(&mut self, cx: &mut Context<Self>) {
         if self.show_help {
             self.show_help = false;
         } else if self.show_about {
             self.show_about = false;
+        } else if self.show_runner {
+            self.show_runner = false;
+        } else if self.open_menu.is_some() {
+            self.open_menu = None;
         } else if self.presence.show_pairing {
             self.presence.show_pairing = false;
         }
@@ -317,6 +332,7 @@ impl MainWindow {
 #[cfg(test)]
 mod tests {
     use gpui::{AppContext as _, TestAppContext};
+    use super::{MainWindow, ShowHelp};
 
     /// Counter entity used as a lightweight stand-in — does not need Render.
     struct Counter(u32);
@@ -337,5 +353,41 @@ mod tests {
 
         // Weak update must now return Err — the C1 loop-break relies on this.
         assert!(weak.update(cx, |c, _| c.0).is_err());
+    }
+
+    /// Drives the real `ShowHelp` action through GPUI's action-dispatch
+    /// system (in-process, no OS input) to prove `close_all_overlays()` is
+    /// actually wired into the on_action handler registered in render() -
+    /// opening Help while the Test Runner is up must close the Runner, not
+    /// stack both overlays as it used to.
+    #[gpui::test]
+    fn test_show_help_action_closes_other_open_overlays(cx: &mut TestAppContext) {
+        cx.update(|cx| {
+            cx.set_global(gpui_component::Theme::default());
+            crate::theme::init(cx);
+            cx.set_global(crate::panels::RequestHistory::new());
+        });
+        let (window, cx) = cx.add_window_view(|window, cx| MainWindow::build(window, cx, None));
+
+        window.update(cx, |mw, _| {
+            assert!(!mw.show_help);
+            mw.show_runner = true;
+        });
+        cx.run_until_parked();
+
+        // Actions dispatch from the currently focused node; the real app
+        // focuses the root on window activation, which a headless test
+        // window never does automatically.
+        let focus_handle = window.read_with(cx, |mw, _| mw.focus.clone());
+        cx.update(|window, app| window.focus(&focus_handle, app));
+        cx.run_until_parked();
+
+        cx.dispatch_action(ShowHelp);
+        cx.run_until_parked();
+
+        window.read_with(cx, |mw, _| {
+            assert!(mw.show_help, "ShowHelp action should open the Help overlay");
+            assert!(!mw.show_runner, "opening Help must close the already-open Test Runner overlay");
+        });
     }
 }

@@ -83,5 +83,24 @@ pub(super) fn base64_decode(input: &str) -> Option<String> {
         }
     }
 
-    String::from_utf8(output).ok()
+    // Real `atob` semantics: produce a "binary string" with one JS string
+    // character per decoded byte (code points 0-255), not a UTF-8 string.
+    // Requiring valid UTF-8 here would silently return "" for arbitrary
+    // binary payloads (e.g. decoded images, protobufs).
+    Some(output.iter().map(|&b| b as char).collect::<String>())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn atob_decodes_non_utf8_bytes_as_binary_string() {
+        // '/w==' decodes to the single byte 0xFF, which is not valid UTF-8
+        // on its own. Real `atob` still returns a 1-character string whose
+        // code point is 255.
+        let decoded = base64_decode("/w==").expect("should decode");
+        assert_eq!(decoded.chars().count(), 1);
+        assert_eq!(decoded.chars().next().unwrap() as u32, 255);
+    }
 }

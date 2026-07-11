@@ -449,10 +449,17 @@ impl Default for Opacity {
 
 impl gpui::Global for Theme {}
 
-/// Initialize theme based on system preference
+/// Initialize theme based on system preference.
+///
+/// `App::window_appearance()` reads the OS-level light/dark setting directly from
+/// the platform (no `Window` required), matching how Zed's `SystemAppearance::init`
+/// bootstraps its theme before any window exists.
 pub fn init(cx: &mut App) {
-    // Default to dark theme (TODO: detect system preference)
-    cx.set_global(Theme::dark());
+    let theme = match cx.window_appearance() {
+        gpui::WindowAppearance::Light | gpui::WindowAppearance::VibrantLight => Theme::light(),
+        gpui::WindowAppearance::Dark | gpui::WindowAppearance::VibrantDark => Theme::dark(),
+    };
+    cx.set_global(theme);
 }
 
 /// Get the current theme

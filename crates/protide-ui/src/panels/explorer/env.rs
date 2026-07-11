@@ -121,16 +121,32 @@ impl ExplorerPanel {
         }
     }
 
-    pub(super) fn set_edit_text(&mut self, target: EnvEditTarget, text: String) {
+    pub(super) fn set_edit_text(&mut self, target: EnvEditTarget, text: String, cx: &mut Context<Self>) {
         match target {
             EnvEditTarget::VarKey(i) => {
-                if let Some(env) = self.env_state.active_mut() {
-                    if let Some((old_key, value)) = env
-                        .variables
-                        .iter()
-                        .nth(i)
-                        .map(|(k, v)| (k.clone(), v.clone()))
-                    {
+                let entry = self.env_state.active()
+                    .and_then(|env| env.variables.iter().nth(i).map(|(k, v)| (k.clone(), v.clone())));
+                if let Some((old_key, value)) = entry {
+                    // Refuse to rename a variable's key onto an existing *different*
+                    // key - that would silently destroy the other variable via the
+                    // shift_remove + insert below.
+                    let collides = text != old_key
+                        && self.env_state.active()
+                            .map(|env| env.variables.contains_key(&text))
+                            .unwrap_or(false);
+                    if collides {
+                        let message = format!(
+                            "Cannot rename variable '{}' to '{}': a variable with that name already exists.",
+                            old_key, text
+                        );
+                        if let Some(win) = self.main_window.upgrade() {
+                            win.update(cx, |win, cx| {
+                                win.show_modal("Rename Failed", message, cx);
+                            });
+                        }
+                        return;
+                    }
+                    if let Some(env) = self.env_state.active_mut() {
                         env.variables.shift_remove(&old_key);
                         if !text.is_empty() {
                             env.variables.insert(text, value);
@@ -167,7 +183,7 @@ impl ExplorerPanel {
             let current_text = self.get_edit_text(target);
             self.edit_redo_stack
                 .push_back((target, current_text, self.edit_selection.clone()));
-            self.set_edit_text(target, text);
+            self.set_edit_text(target, text, cx);
             self.edit_selection = selection;
             cx.notify();
         }
@@ -178,7 +194,7 @@ impl ExplorerPanel {
             let current_text = self.get_edit_text(target);
             self.edit_undo_stack
                 .push_back((target, current_text, self.edit_selection.clone()));
-            self.set_edit_text(target, text);
+            self.set_edit_text(target, text, cx);
             self.edit_selection = selection;
             cx.notify();
         }
@@ -218,7 +234,7 @@ impl ExplorerPanel {
         current.insert_str(pos, text);
         let new_pos = pos + text.len();
         self.edit_selection = new_pos..new_pos;
-        self.set_edit_text(target, current);
+        self.set_edit_text(target, current, cx);
         self.update_env_scroll(target);
         cx.notify();
     }

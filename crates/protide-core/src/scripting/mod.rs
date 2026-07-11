@@ -273,4 +273,93 @@ mod tests {
         let result = engine.run_pre_script("const x = 1 + 1;", &mut ctx);
         assert!(result.is_ok());
     }
+
+    /// `env.remove(name)` in a script must actually clear the key from the
+    /// persistent environment after execution, not just from the in-script
+    /// `globalThis.__envData` mirror.
+    #[test]
+    fn test_env_remove_propagates_to_context() {
+        let engine = ScriptEngine::new().unwrap();
+        let mut env = HashMap::new();
+        env.insert("secret".to_string(), "shh".to_string());
+        env.insert("keep".to_string(), "me".to_string());
+        let mut ctx = ScriptContext::new().with_env(env);
+
+        let result = engine.run_pre_script("env.remove('secret');", &mut ctx);
+        assert!(result.is_ok());
+        assert!(result.unwrap().success);
+
+        assert!(!ctx.env.contains_key("secret"), "removed key must not persist");
+        assert_eq!(ctx.env.get("keep"), Some(&"me".to_string()));
+    }
+
+    #[test]
+    fn test_atob_decodes_binary_string() {
+        let engine = ScriptEngine::new().unwrap();
+        let mut ctx = ScriptContext::new();
+
+        let script = r#"
+            const decoded = atob('/w==');
+            console.log(decoded.length);
+            console.log(decoded.charCodeAt(0));
+        "#;
+
+        let result = engine.run_pre_script(script, &mut ctx);
+        assert!(result.is_ok());
+        let outcome = result.unwrap();
+        assert!(outcome.success);
+        assert_eq!(outcome.console_output[0], "1");
+        assert_eq!(outcome.console_output[1], "255");
+    }
+
+    #[test]
+    fn test_to_equal_key_order_independent() {
+        let engine = ScriptEngine::new().unwrap();
+        let mut ctx = ScriptContext::new();
+
+        let script = r#"
+            expect({a: 1, b: 2}).toEqual({b: 2, a: 1});
+        "#;
+
+        let result = engine.run_tests(script, &mut ctx);
+        assert!(result.is_ok());
+        let outcome = result.unwrap();
+        assert!(outcome.test_results[0].passed);
+    }
+
+    #[test]
+    fn test_to_equal_nan_vs_null_fails() {
+        let engine = ScriptEngine::new().unwrap();
+        let mut ctx = ScriptContext::new();
+
+        let script = r#"
+            expect(NaN).toEqual(null);
+            expect(NaN).toEqual(NaN);
+        "#;
+
+        let result = engine.run_tests(script, &mut ctx);
+        assert!(result.is_ok());
+        let outcome = result.unwrap();
+        assert_eq!(outcome.test_results.len(), 2);
+        assert!(!outcome.test_results[0].passed, "NaN must not equal null");
+        assert!(outcome.test_results[1].passed, "NaN must equal NaN (Object.is semantics)");
+    }
+
+    #[test]
+    fn test_to_equal_undefined_property_differs_from_absent() {
+        let engine = ScriptEngine::new().unwrap();
+        let mut ctx = ScriptContext::new();
+
+        let script = r#"
+            expect({a: 1, b: undefined}).toEqual({a: 1});
+        "#;
+
+        let result = engine.run_tests(script, &mut ctx);
+        assert!(result.is_ok());
+        let outcome = result.unwrap();
+        assert!(
+            !outcome.test_results[0].passed,
+            "an explicit undefined-valued property must differ from an absent one"
+        );
+    }
 }

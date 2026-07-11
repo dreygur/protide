@@ -1,6 +1,30 @@
 use std::collections::HashMap;
 use tower_lsp::lsp_types::*;
 
+/// Convert a UTF-16 code-unit offset (as used by LSP's `Position.character`)
+/// into a byte offset into `line`.
+///
+/// LSP positions count UTF-16 code units, not bytes and not chars. Using
+/// `pos.character` directly as a byte index into a UTF-8 `&str` panics as
+/// soon as a multi-byte character appears before the cursor; using it as a
+/// char count silently misidentifies the position whenever an astral-plane
+/// character (most emoji) appears before the cursor, since those encode as
+/// two UTF-16 code units but one `char`. Walking `char_indices` and summing
+/// each character's `len_utf16()` handles both cases correctly.
+///
+/// Returns `line.len()` (a valid byte offset, one past the last byte) if
+/// `utf16_offset` is at or beyond the end of the line.
+pub fn utf16_offset_to_byte_offset(line: &str, utf16_offset: usize) -> usize {
+    let mut utf16_count = 0usize;
+    for (byte_idx, c) in line.char_indices() {
+        if utf16_count >= utf16_offset {
+            return byte_idx;
+        }
+        utf16_count += c.len_utf16();
+    }
+    line.len()
+}
+
 pub fn document_symbols(content: &str) -> Option<DocumentSymbolResponse> {
     let requests = http_parser::parse(content).ok()?;
     let symbols = requests
@@ -131,8 +155,12 @@ fn goto_variable(content: &str, uri: &Url, var_name: &str) -> Option<GotoDefinit
     }))
 }
 
-pub fn var_at_cursor(line: &str, cursor: usize) -> Option<&str> {
-    let before = &line[..cursor.min(line.len())];
+/// `utf16_cursor` is a UTF-16 code-unit offset (e.g. LSP `Position.character`),
+/// not a byte offset - it's converted internally so this never panics on
+/// multi-byte characters preceding the cursor.
+pub fn var_at_cursor(line: &str, utf16_cursor: usize) -> Option<&str> {
+    let cursor = utf16_offset_to_byte_offset(line, utf16_cursor);
+    let before = &line[..cursor];
     let open = before.rfind("{{")?;
     if before[open..].contains("}}") {
         return None;

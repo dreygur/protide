@@ -14,16 +14,21 @@ pub struct RawResponse {
 
 /// Resolve URL, headers, and body for the given execution mode.
 /// GraphQL wraps the query into a JSON body and injects Content-Type.
+/// Errors if `variables` is non-empty but not valid JSON (empty defaults to `{}`).
 fn resolve_request(
     url: &str,
     headers: &[(String, String)],
     body: &ExecutionBody,
     mode: &ExecutionMode,
-) -> (String, Vec<(String, String)>, ExecutionBody) {
+) -> Result<(String, Vec<(String, String)>, ExecutionBody), String> {
     match mode {
         ExecutionMode::GraphQL { query, variables, operation_name } => {
-            let vars: serde_json::Value = serde_json::from_str(variables)
-                .unwrap_or(serde_json::json!({}));
+            let vars: serde_json::Value = if variables.trim().is_empty() {
+                serde_json::json!({})
+            } else {
+                serde_json::from_str(variables)
+                    .map_err(|e| format!("Invalid GraphQL variables JSON: {}", e))?
+            };
             let mut gql_body = serde_json::json!({
                 "query": query,
                 "variables": vars,
@@ -37,9 +42,9 @@ fn resolve_request(
             if !hdrs.iter().any(|(k, _)| k.eq_ignore_ascii_case("content-type")) {
                 hdrs.push(("Content-Type".to_string(), "application/json".to_string()));
             }
-            (url.to_string(), hdrs, ExecutionBody::Text(gql_body.to_string()))
+            Ok((url.to_string(), hdrs, ExecutionBody::Text(gql_body.to_string())))
         }
-        ExecutionMode::Http => (url.to_string(), headers.to_vec(), body.clone()),
+        ExecutionMode::Http => Ok((url.to_string(), headers.to_vec(), body.clone())),
     }
 }
 
@@ -90,7 +95,7 @@ pub fn run_http(
 ) -> Result<RawResponse, String> {
     let start = Instant::now();
     let (resolved_url, mut resolved_headers, resolved_body) =
-        resolve_request(url, headers, body, mode);
+        resolve_request(url, headers, body, mode)?;
 
     if impersonate_browser {
         resolved_headers = apply_browser_profile(&resolved_headers);

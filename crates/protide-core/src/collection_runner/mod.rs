@@ -167,12 +167,15 @@ fn build_execution_request(req: &Request, env: &HashMap<String, String>) -> Exec
 }
 
 /// Substitute `{{var}}` in `input` using `env`.
+///
+/// Delegates to `Environment::substitute`, which performs a single left-to-right
+/// scan rather than N sequential whole-string replaces - this avoids cascading
+/// substitution when a variable's value itself contains `{{...}}`-shaped text
+/// (e.g. a value captured via `@set` from a prior response in the chain).
 pub(crate) fn substitute(input: &str, env: &HashMap<String, String>) -> String {
-    let mut result = input.to_string();
-    for (key, value) in env {
-        result = result.replace(&format!("{{{{{}}}}}", key), value);
-    }
-    result
+    let mut environment = crate::models::Environment::new(String::new());
+    environment.variables = env.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+    environment.substitute(input)
 }
 
 #[cfg(test)]
@@ -187,6 +190,29 @@ mod tests {
         assert_eq!(substitute("{{base_url}}/users", &env), "https://api.example.com/users");
         assert_eq!(substitute("Bearer {{token}}", &env), "Bearer abc123");
         assert_eq!(substitute("no vars here", &env), "no vars here");
+    }
+
+    /// Regression test: `substitute()` must perform substitution in a single
+    /// pass over the original string rather than N sequential whole-string
+    /// `.replace()` calls. If a chained variable's value (e.g. one set via
+    /// `@set` from a prior response in the chain, such as an API-returned
+    /// template string) itself contains literal `{{other_var}}`-shaped text,
+    /// that text must be used verbatim and must NOT be expanded again by a
+    /// later key's pass. Previously this depended on `HashMap` iteration
+    /// order (which key's pass ran "later"), making it a real
+    /// chain-consumer-visible bug: a request later in the chain could end up
+    /// sending a corrupted/leaked value instead of the literal extracted
+    /// string.
+    #[test]
+    fn test_substitute_does_not_cascade_into_value_containing_variable_syntax() {
+        let mut env = HashMap::new();
+        env.insert("secret".to_string(), "LEAKED".to_string());
+        env.insert("token".to_string(), "{{secret}}".to_string());
+
+        let result = substitute("Authorization: Bearer {{token}}", &env);
+        // {{token}}'s literal value "{{secret}}" must be used verbatim, not
+        // re-expanded into the "secret" variable's value.
+        assert_eq!(result, "Authorization: Bearer {{secret}}");
     }
 
     #[test]

@@ -76,6 +76,11 @@ pub struct SyncEngine {
     /// The pairing code used for the pending handshake
     #[cfg(feature = "pake-auth")]
     pake_pending_code: String,
+    /// Alice's derived session, stored after sending "resp" while waiting for
+    /// Bob's "confirm" message so the handshake isn't considered complete
+    /// until both sides have proven they derived the same key.
+    #[cfg(feature = "pake-auth")]
+    pake_pending_alice: Option<pake::PakeSession>,
 }
 
 impl SyncEngine {
@@ -103,6 +108,8 @@ impl SyncEngine {
             pake_pending: None,
             #[cfg(feature = "pake-auth")]
             pake_pending_code: String::new(),
+            #[cfg(feature = "pake-auth")]
+            pake_pending_alice: None,
         }
     }
 

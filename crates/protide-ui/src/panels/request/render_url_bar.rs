@@ -38,6 +38,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             .child(
                 div()
                     .id("mode-selector")
+                    .debug_selector(|| "mode-selector".to_string())
                     .w(px(110.0))
                     .h(px(32.0))
                     .px(px(12.0))
@@ -263,15 +264,26 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                     // Save button
                     .child({
                         let is_saved = self.save_feedback;
+                        let has_conflict = self.external_change_pending;
                         toolbar_btn("save-button", cx)
                             .when(is_saved, |el| el
                                 .text_color(theme.colors.status_success)
                                 .border_color(theme.colors.status_success.opacity(0.4))
                             )
+                            .when(has_conflict && !is_saved, |el| el
+                                .text_color(theme.colors.status_redirect)
+                                .border_color(theme.colors.status_redirect.opacity(0.4))
+                            )
                             .on_click(cx.listener(|this, _, _, cx| {
                                 this.save_request(cx);
                             }))
-                            .child(if is_saved { "Saved!" } else { "Save" })
+                            .child(if is_saved {
+                                "Saved!"
+                            } else if has_conflict {
+                                "Save (changed on disk)"
+                            } else {
+                                "Save"
+                            })
                     })
                     // Code generation button
                     .child(

@@ -55,7 +55,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             InputState::new(window, cx).multi_line(true).code_editor("json").default_value("{}")
         });
         let codegen_editor = cx.new(|cx| {
-            InputState::new(window, cx).multi_line(true).line_number(true)
+            InputState::new(window, cx).code_editor("sh").line_number(true)
         });
         let import_editor = cx.new(|cx| {
             InputState::new(window, cx).multi_line(true)
@@ -139,6 +139,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             ws_compose_h: 120.0,
             ws_compose_drag: None,
             ws_scroll: gpui::ScrollHandle::new(),
+            ws_generation: 0,
             grpc_message_editor,
             grpc_metadata: vec![KeyValuePair::default()],
             grpc_proto_path: None,
@@ -147,6 +148,8 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             grpc_service: None,
             grpc_methods: Vec::new(),
             grpc_method: None,
+            grpc_service_picker_open: false,
+            grpc_method_picker_open: false,
             trpc_procedure: String::new(),
             trpc_params_editor,
             trpc_pg_procedures: vec![],
@@ -181,6 +184,8 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             sio_send_tx: None,
             sio_room_name: String::new(),
             sio_active_rooms: Vec::new(),
+            sio_scroll: gpui::ScrollHandle::new(),
+            sio_generation: 0,
             kv_col_key_w: 150.0,
             kv_col_drag: None,
             script_pre_open: true,
@@ -191,6 +196,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             drag_script_pre: None,
             drag_script_post: None,
             current_file: None,
+            external_change_pending: false,
             save_feedback: false,
             custom_method_input: String::new(),
             custom_method_focus: cx.focus_handle(),

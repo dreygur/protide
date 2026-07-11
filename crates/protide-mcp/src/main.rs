@@ -160,7 +160,7 @@ fn tools_list() -> Value {
 async fn call_tool(id: Value, params: &Value) -> Response {
     let name = params["name"].as_str().unwrap_or("");
     if name != "send_request" {
-        return Response::rpc_error(id, -32602, "Unknown tool");
+        return Response::tool_error(id, format!("Unknown tool: {name}"));
     }
 
     let args: SendRequestArgs = match serde_json::from_value(params["arguments"].clone()) {
@@ -209,6 +209,11 @@ async fn call_tool(id: Value, params: &Value) -> Response {
 
 // ── Main loop ─────────────────────────────────────────────────────────────────
 
+/// Maximum accepted length (in bytes) for a single incoming stdin line.
+/// Generous for any legitimate `send_request` payload, but bounded so a
+/// single adversarial line can't force unbounded buffering.
+const MAX_LINE_BYTES: usize = 10 * 1024 * 1024;
+
 #[tokio::main]
 async fn main() {
     let stdin = std::io::stdin();
@@ -220,10 +225,37 @@ async fn main() {
             _ => continue,
         };
 
+        if line.len() > MAX_LINE_BYTES {
+            let resp = Response::rpc_error(
+                Value::Null,
+                -32600,
+                "Invalid Request: line exceeds maximum allowed size",
+            );
+            let _ = writeln!(stdout, "{}", serde_json::to_string(&resp).unwrap());
+            let _ = stdout.flush();
+            continue;
+        }
+
         let msg: Value = match serde_json::from_str(&line) {
             Ok(v) => v,
-            Err(_) => continue,
+            Err(_) => {
+                let resp = Response::rpc_error(Value::Null, -32700, "Parse error");
+                let _ = writeln!(stdout, "{}", serde_json::to_string(&resp).unwrap());
+                let _ = stdout.flush();
+                continue;
+            }
         };
+
+        if msg.is_array() {
+            let resp = Response::rpc_error(
+                Value::Null,
+                -32600,
+                "Invalid Request: batch requests are not supported",
+            );
+            let _ = writeln!(stdout, "{}", serde_json::to_string(&resp).unwrap());
+            let _ = stdout.flush();
+            continue;
+        }
 
         // Notifications (no id field) require no response
         let id = match msg.get("id").cloned() {

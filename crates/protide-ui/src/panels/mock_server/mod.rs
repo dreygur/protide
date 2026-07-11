@@ -13,6 +13,7 @@ pub struct MockServerPanel {
     pub(super) server: MockServer,
     pub(super) new_route_method: HttpMethod,
     pub(super) status_input: Entity<InputState>,
+    pub(super) mock_path_input: Entity<InputState>,
     pub(super) proxy_path_input: Entity<InputState>,
     pub(super) proxy_target_input: Entity<InputState>,
     pub(super) record_target_input: Entity<InputState>,
@@ -22,6 +23,7 @@ pub struct MockServerPanel {
 impl MockServerPanel {
     pub fn new(window: &mut Window, cx: &mut Context<Self>, main_window: WeakEntity<MainWindow>) -> Self {
         let status_input = cx.new(|cx| InputState::new(window, cx).default_value("200").placeholder("200"));
+        let mock_path_input = cx.new(|cx| InputState::new(window, cx).placeholder("/api/mock"));
         let proxy_path_input = cx.new(|cx| InputState::new(window, cx).placeholder("/api/*"));
         let proxy_target_input = cx.new(|cx| InputState::new(window, cx).placeholder("https://api.example.com"));
         let record_target_input = cx.new(|cx| InputState::new(window, cx).placeholder("https://api.example.com"));
@@ -29,6 +31,7 @@ impl MockServerPanel {
             server: MockServer::new(8080),
             new_route_method: HttpMethod::Get,
             status_input,
+            mock_path_input,
             proxy_path_input,
             proxy_target_input,
             record_target_input,
@@ -39,17 +42,21 @@ impl MockServerPanel {
     pub(super) fn toggle_server(&mut self, cx: &mut Context<Self>) {
         if self.server.is_running() {
             self.server.stop();
-        } else {
-            let _ = self.server.start();
+        } else if let Err(msg) = self.server.start() {
+            if let Some(win) = self.main_window.upgrade() {
+                win.update(cx, |win, cx| win.show_modal("Failed to Start Mock Server", msg, cx));
+            }
         }
         cx.notify();
     }
 
     pub(super) fn add_route(&mut self, cx: &mut Context<Self>) {
         let status = self.status_input.read(cx).value().to_string().trim().parse::<u16>().unwrap_or(200);
+        let raw_path = self.mock_path_input.read(cx).value().to_string();
+        let path = if raw_path.trim().is_empty() { "/api/mock".to_string() } else { raw_path.trim().to_string() };
         let response = MockResponse::new(status, r#"{"message":"mock response"}"#)
             .with_header("Content-Type", "application/json");
-        let route = MockRoute::new(self.new_route_method, "/api/mock", response);
+        let route = MockRoute::new(self.new_route_method, path, response);
         self.server.add_route(route);
         cx.notify();
     }
@@ -86,8 +93,11 @@ impl MockServerPanel {
             let target = self.record_target_input.read(cx).value().to_string().trim().to_string();
             let target = if target.is_empty() { None } else { Some(target) };
             self.server.set_record_mode(true, target);
-            if !self.server.is_running() {
-                let _ = self.server.start();
+            if !self.server.is_running()
+                && let Err(msg) = self.server.start()
+                && let Some(win) = self.main_window.upgrade()
+            {
+                win.update(cx, |win, cx| win.show_modal("Failed to Start Mock Server", msg, cx));
             }
         }
         cx.notify();

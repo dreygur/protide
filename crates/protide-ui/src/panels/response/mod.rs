@@ -33,6 +33,7 @@ use protide_core::scripting::results::TestResult;
 use crate::theme;
 use crate::components::selectable_text::{
     selectable_text_element, selection_changed, render_selectable_json_value, SelectionRange,
+    floor_char_boundary,
 };
 use crate::components::icons::{
     icon, ICON_SM, ICON_MD, ICON_CLOSE, ICON_CHECK, ICON_CIRCLE_CHECK,

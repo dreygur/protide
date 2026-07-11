@@ -185,6 +185,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                             let duration_ms = data.time.as_millis() as u64;
                             let status = data.status;
                             let body_preview = data.body.clone();
+                            let extraction_errors = data.extraction_errors.clone();
                             console.update(cx, |panel, cx| {
                                 panel.log(ConsoleEntry {
                                     timestamp: chrono::Local::now(),
@@ -199,6 +200,9 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                                     response_body: body_preview,
                                     troubleshoot_hint: None,
                                 }, cx);
+                                for err in extraction_errors {
+                                    panel.log(ConsoleEntry::extraction_error(err), cx);
+                                }
                             });
                         }
                         response_panel.update(cx, |panel, cx| {

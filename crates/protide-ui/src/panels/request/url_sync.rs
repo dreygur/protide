@@ -58,7 +58,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
         let query_parts: Vec<String> = self
             .params
             .iter()
-            .filter(|p| p.enabled && !p.key.is_empty())
+            .filter(|p| p.enabled)
             .map(|p| {
                 if p.value.is_empty() {
                     url_encode(&p.key)

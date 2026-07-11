@@ -92,6 +92,15 @@ impl ExplorerPanel {
                 match event {
                     WorkspaceEvent::FileCreated(p) | WorkspaceEvent::FileModified(p) => {
                         if !self.sync_skip_paths.remove(p) {
+                            if let Some(request_panel) = &self.request_panel {
+                                let is_open_file = request_panel.read(cx).current_file.as_deref() == Some(p.as_path());
+                                if is_open_file {
+                                    request_panel.update(cx, |panel, cx| {
+                                        panel.external_change_pending = true;
+                                        cx.notify();
+                                    });
+                                }
+                            }
                             if let Ok(content) = fs::read_to_string(p) {
                                 let p = p.clone();
                                 let root = root.clone();
@@ -158,6 +167,7 @@ impl ExplorerPanel {
                                 panel.set_variable_extractions(variable_extractions, cx);
                             }
                             panel.current_file = Some(path.clone());
+                            panel.external_change_pending = false;
                             if let Some(pp) = proto_path {
                                 panel.load_grpc_proto_from_path(pp, cx);
                             }

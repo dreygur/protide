@@ -17,7 +17,7 @@ pub(super) fn grpc_decode_message(data: &[u8]) -> Result<Vec<u8>, String> {
             data.len()
         ));
     }
-    let _compressed = data[0];
+    let compressed = data[0] != 0;
     let msg_len = u32::from_be_bytes([data[1], data[2], data[3], data[4]]) as usize;
     if data.len() < 5 + msg_len {
         return Err(format!(
@@ -26,7 +26,25 @@ pub(super) fn grpc_decode_message(data: &[u8]) -> Result<Vec<u8>, String> {
             5 + msg_len
         ));
     }
-    Ok(data[5..5 + msg_len].to_vec())
+    let payload = &data[5..5 + msg_len];
+    if compressed {
+        gzip_decompress(payload)
+    } else {
+        Ok(payload.to_vec())
+    }
+}
+
+/// Decompress a gzip-compressed gRPC message payload (`grpc-encoding: gzip`).
+fn gzip_decompress(data: &[u8]) -> Result<Vec<u8>, String> {
+    use flate2::read::GzDecoder;
+    use std::io::Read;
+
+    let mut decoder = GzDecoder::new(data);
+    let mut out = Vec::new();
+    decoder
+        .read_to_end(&mut out)
+        .map_err(|e| format!("gRPC gzip decompress error: {}", e))?;
+    Ok(out)
 }
 
 /// Resolve a `MethodDescriptor` from `pool` given `"[pkg.]Service/Method"`.

@@ -7,13 +7,17 @@ pub fn generate_python(request: &CodegenRequest) -> String {
     let mut lines = vec!["import requests".to_string(), String::new()];
 
     // URL
-    lines.push(format!("url = \"{}\"", request.url));
+    lines.push(format!("url = \"{}\"", escape_python_string(&request.url)));
 
     // Headers
     if !request.headers.is_empty() {
         lines.push("headers = {".to_string());
         for (key, value) in &request.headers {
-            lines.push(format!("    \"{}\": \"{}\",", key, escape_python_string(value)));
+            lines.push(format!(
+                "    \"{}\": \"{}\",",
+                escape_python_string(key),
+                escape_python_string(value)
+            ));
         }
         lines.push("}".to_string());
     }
@@ -44,8 +48,15 @@ pub fn generate_python(request: &CodegenRequest) -> String {
     lines.push(String::new());
 
     // Request call
-    let method = request.method.to_lowercase();
-    let mut call = format!("response = requests.{}(url", method);
+    // Use the generic `requests.request()` form and pass the method as a
+    // quoted/escaped string argument rather than splicing it as a bareword
+    // method name (e.g. `requests.get(...)`). The method can be arbitrary
+    // free text (HttpMethod::Custom), so treating it as an identifier would
+    // allow Python code injection.
+    let mut call = format!(
+        "response = requests.request(\"{}\", url",
+        escape_python_string(&request.method)
+    );
 
     if !request.headers.is_empty() {
         call.push_str(", headers=headers");
@@ -107,7 +118,7 @@ mod tests {
         let request = CodegenRequest::new("GET", "https://api.example.com/users");
         let code = generate_python(&request);
         assert!(code.contains("import requests"));
-        assert!(code.contains("requests.get(url)"));
+        assert!(code.contains("requests.request(\"GET\", url)"));
         assert!(code.contains("print(response.status_code)"));
     }
 
@@ -117,10 +128,46 @@ mod tests {
             .with_headers(vec![("Content-Type".to_string(), "application/json".to_string())])
             .with_body(Some(r#"{"name": "John", "active": true}"#.to_string()));
         let code = generate_python(&request);
-        assert!(code.contains("requests.post(url"));
+        assert!(code.contains("requests.request(\"POST\", url"));
         assert!(code.contains("json=data"));
         assert!(code.contains("\"name\": \"John\""));
         assert!(code.contains("\"active\": True"));
+    }
+
+    #[test]
+    fn test_url_injection_is_escaped() {
+        // A malicious URL containing an unescaped quote could break out of
+        // the Python string literal and inject arbitrary code.
+        let request = CodegenRequest::new("GET", "https://example.com/\"; import os; os.system(\"rm -rf ~\"); \"");
+        let code = generate_python(&request);
+        assert!(!code.contains("url = \"https://example.com/\"; import os"));
+        assert!(code.contains("url = \"https://example.com/\\\"; import os; os.system(\\\"rm -rf ~\\\"); \\\"\""));
+    }
+
+    #[test]
+    fn test_method_injection_uses_generic_request_call() {
+        // HttpMethod::Custom allows arbitrary free text. Splicing it as a
+        // bareword `requests.<method>(...)` call name would allow arbitrary
+        // attribute/code injection, so it must be passed as a quoted string
+        // argument to `requests.request()` instead.
+        let request = CodegenRequest::new(
+            "GET\"); import os; os.system(\"rm -rf ~", // attempted breakout
+            "https://example.com",
+        );
+        let code = generate_python(&request);
+        assert!(!code.contains("requests.GET"));
+        assert!(!code.contains("os.system(\"rm -rf ~\")(url"));
+        assert!(code.contains("requests.request(\""));
+    }
+
+    #[test]
+    fn test_header_key_injection_is_escaped() {
+        let request = CodegenRequest::new("GET", "https://example.com").with_headers(vec![(
+            "X-Evil\": \"1\", \"X-Injected".to_string(),
+            "value".to_string(),
+        )]);
+        let code = generate_python(&request);
+        assert!(!code.contains("\"X-Evil\": \"1\", \"X-Injected\": \"value\","));
     }
 
     #[test]

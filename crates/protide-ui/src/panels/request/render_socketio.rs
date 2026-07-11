@@ -28,6 +28,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
         let active_rooms = self.sio_active_rooms.clone();
         let want_ack = self.sio_want_ack;
         let edit_sel = self.edit_selection.clone();
+        let sio_scroll = self.sio_scroll.clone();
 
         div()
             .id("sio-events-tab")
@@ -104,6 +105,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                     .border_color(theme.colors.border)
                     .bg(theme.colors.bg_primary)
                     .overflow_scroll()
+                    .track_scroll(&sio_scroll)
                     .flex()
                     .flex_col()
                     .when(messages.is_empty(), |el| {

@@ -84,13 +84,42 @@ fn add_http_requests(
 
         let method = req.method.as_str().to_lowercase();
 
-        let operation = build_operation(req, query_params);
+        let mut operation = build_operation(req, query_params);
 
         let path_entry = paths
-            .entry(oas_path)
+            .entry(oas_path.clone())
             .or_insert_with(|| Value::Object(serde_json::Map::new()));
 
         if let Value::Object(obj) = path_entry {
+            // OpenAPI only allows a single operation per method+path, so a
+            // second request that maps to the same method+path would
+            // otherwise silently overwrite the first with no trace of it.
+            // Fold the discarded operation's identity into the surviving
+            // operation's description so the information isn't fully lost.
+            if let Some(existing) = obj.get(&method) {
+                let existing_name = existing
+                    .get("operationId")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("(unnamed request)");
+                let note = format!(
+                    "Note: this path+method is also used by another request named '{}' in the collection. \
+                     OpenAPI only supports one operation per method+path, so only the last one is kept as the primary operation.",
+                    existing_name
+                );
+                if let Value::Object(op_obj) = &mut operation {
+                    let desc = op_obj
+                        .entry("description".to_string())
+                        .or_insert_with(|| Value::String(String::new()));
+                    if let Value::String(s) = desc {
+                        if s.is_empty() {
+                            *s = note;
+                        } else {
+                            s.push_str("\n\n");
+                            s.push_str(&note);
+                        }
+                    }
+                }
+            }
             obj.insert(method, operation);
         }
     }
@@ -252,5 +281,46 @@ mod tests {
         assert_eq!(parsed["openapi"].as_str(), Some("3.0.0"));
         assert!(parsed["paths"].get("/users").is_some());
         assert!(parsed["paths"]["/users"].get("get").is_some());
+    }
+
+    #[test]
+    fn test_duplicate_method_path_requests_are_not_silently_lost() {
+        use std::io::Write;
+        let tmp = std::env::temp_dir().join(format!("protide_oas_dup_test_{}", std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH).unwrap().subsec_nanos()));
+        std::fs::create_dir_all(&tmp).unwrap();
+
+        // Two distinct named requests in the same .http file both hit
+        // POST /login (a common pattern: "valid login" vs "invalid login"
+        // scenarios against the same endpoint).
+        let http_file = tmp.join("login.http");
+        std::fs::File::create(&http_file).unwrap()
+            .write_all(
+                b"### Valid login\n# @name validLogin\nPOST https://api.example.com/login\nContent-Type: application/json\n\n{\"user\": \"good\"}\n\n\
+                  ### Invalid login\n# @name invalidLogin\nPOST https://api.example.com/login\nContent-Type: application/json\n\n{\"user\": \"bad\"}\n"
+            ).unwrap();
+
+        let result = export_openapi(&tmp).unwrap();
+        let _ = std::fs::remove_dir_all(&tmp);
+
+        let parsed: Value = serde_json::from_str(&result).unwrap();
+        let post_op = &parsed["paths"]["/login"]["post"];
+        // OpenAPI only supports one operation per method+path, so the last
+        // request written still wins the primary operation slot...
+        assert_eq!(
+            post_op["operationId"].as_str(),
+            Some("invalidLogin"),
+            "expected the last request to occupy the single method+path slot: {}",
+            post_op
+        );
+        // ...but the discarded request's identity must no longer disappear
+        // without a trace - it's folded into the description instead of
+        // being silently dropped.
+        let description = post_op["description"].as_str().unwrap_or("");
+        assert!(
+            description.contains("validLogin"),
+            "the overwritten request's name should be preserved in the description so data isn't silently lost: {}",
+            post_op
+        );
     }
 }

@@ -73,7 +73,9 @@ impl MainWindow {
                             )
                             .child(label)
                             .on_click(cx.listener(move |this, _, _, cx| {
-                                this.open_menu = if this.open_menu == Some(id) { None } else { Some(id) };
+                                let new_menu = if this.open_menu == Some(id) { None } else { Some(id) };
+                                this.close_all_overlays();
+                                this.open_menu = new_menu;
                                 cx.notify();
                             }))
                     }))
@@ -83,7 +85,9 @@ impl MainWindow {
                     .id("presence-bar")
                     .cursor_pointer()
                     .on_click(cx.listener(|this, _, _, cx| {
-                        this.presence.show_pairing = !this.presence.show_pairing;
+                        let opening = !this.presence.show_pairing;
+                        this.close_all_overlays();
+                        this.presence.show_pairing = opening;
                         cx.notify();
                     }))
                     .child(self.presence.render_presence_bar(&theme))

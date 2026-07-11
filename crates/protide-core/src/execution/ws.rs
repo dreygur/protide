@@ -157,13 +157,22 @@ async fn run_connection(
     use futures_util::{SinkExt, StreamExt};
     use tokio_tungstenite::connect_async;
 
-    let conn = connect_async(&params.url).await;
+    let conn = tokio::time::timeout(
+        std::time::Duration::from_secs(15),
+        connect_async(&params.url),
+    )
+    .await;
     match conn {
-        Err(e) => {
+        Err(_elapsed) => {
+            let _ = event_tx.send(WsEvent::Error(
+                "Connection timed out after 15s".to_string(),
+            ));
+        }
+        Ok(Err(e)) => {
             let msg = friendly_ws_error(&e);
             let _ = event_tx.send(WsEvent::Error(msg));
         }
-        Ok((ws_stream, _)) => {
+        Ok(Ok((ws_stream, _))) => {
             let _ = event_tx.send(WsEvent::Connected);
             let (mut write, mut read) = ws_stream.split();
 

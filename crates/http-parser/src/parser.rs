@@ -3,7 +3,7 @@
 //! Parses tokenized .http content into structured Request objects.
 
 use crate::ast::*;
-use crate::lexer::{Lexer, ScriptType, Token};
+use crate::lexer::{Lexer, ScriptType, Token, TokenSpan};
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -31,7 +31,7 @@ pub enum ParseError {
 /// Parser for .http files
 pub struct Parser<'a> {
     lexer: Lexer<'a>,
-    current_token: Token,
+    current_token: TokenSpan,
 }
 
 impl<'a> Parser<'a> {
@@ -47,8 +47,9 @@ impl<'a> Parser<'a> {
         self.current_token = self.lexer.next_token();
     }
 
+    /// Line number the currently-buffered token was actually read from.
     fn line_number(&self) -> usize {
-        self.lexer.line_number()
+        self.current_token.line
     }
 
     /// Parse the entire file into a list of requests
@@ -58,7 +59,7 @@ impl<'a> Parser<'a> {
         // Skip leading empty lines and comments
         self.skip_whitespace();
 
-        while self.current_token != Token::Eof {
+        while self.current_token.token != Token::Eof {
             if let Some(request) = self.parse_request()? {
                 requests.push(request);
             }
@@ -70,7 +71,7 @@ impl<'a> Parser<'a> {
 
     fn skip_whitespace(&mut self) {
         loop {
-            match &self.current_token {
+            match &self.current_token.token {
                 Token::EmptyLine | Token::Comment(_) => self.advance(),
                 Token::RequestSeparator => self.advance(),
                 _ => break,
@@ -80,13 +81,12 @@ impl<'a> Parser<'a> {
 
     /// Parse a single request
     fn parse_request(&mut self) -> Result<Option<Request>, ParseError> {
-        let start_line = self.line_number();
         let mut meta = RequestMeta::default();
         let mut scripts = Scripts::default();
 
         // Parse annotations, plain comments, and empty lines before the request line
         loop {
-            match &self.current_token {
+            match &self.current_token.token {
                 Token::Annotation(key, value) => {
                     let (k, v) = (key.clone(), value.clone());
                     self.parse_annotation(&mut meta, k, v)?;
@@ -107,14 +107,15 @@ impl<'a> Parser<'a> {
         }
 
         // Expect HTTP method
-        let method = match &self.current_token {
+        let (method, start_line) = match &self.current_token.token {
             Token::Method(m) => {
                 let method = HttpMethod::from_str(m).ok_or_else(|| ParseError::InvalidMethod {
                     line: self.line_number(),
                     method: m.clone(),
                 })?;
+                let start_line = self.line_number();
                 self.advance();
-                method
+                (method, start_line)
             }
             Token::Eof => return Ok(None),
             Token::RequestSeparator => {
@@ -125,13 +126,13 @@ impl<'a> Parser<'a> {
                 return Err(ParseError::UnexpectedToken {
                     line: self.line_number(),
                     expected: "HTTP method".to_string(),
-                    got: format!("{:?}", self.current_token),
+                    got: format!("{:?}", self.current_token.token),
                 });
             }
         };
 
         // Parse URL (might be on same line as method or next line)
-        let url = match &self.current_token {
+        let url = match &self.current_token.token {
             Token::Url(u) => {
                 let url = u.clone();
                 self.advance();
@@ -147,16 +148,32 @@ impl<'a> Parser<'a> {
                 return Err(ParseError::UnexpectedToken {
                     line: self.line_number(),
                     expected: "URL".to_string(),
-                    got: format!("{:?}", self.current_token),
+                    got: format!("{:?}", self.current_token.token),
                 });
             }
         };
 
-        // Parse headers
+        // Parse headers. A commented-out header line (`# Key: Value`) that
+        // looks like a real header is treated as a disabled header, so the
+        // enabled/disabled state can round-trip through save/load. Only
+        // comments immediately within the header block are considered here,
+        // so ordinary comments elsewhere in the file are unaffected.
         let mut headers = Vec::new();
-        while let Token::Header(key, value) = &self.current_token {
-            headers.push(KeyValue::new(key.clone(), value.clone()));
-            self.advance();
+        loop {
+            match &self.current_token.token {
+                Token::Header(key, value) => {
+                    headers.push(KeyValue::new(key.clone(), value.clone()));
+                    self.advance();
+                }
+                Token::Comment(text) => match parse_disabled_header(text) {
+                    Some((key, value)) => {
+                        headers.push(KeyValue { key, value, enabled: false });
+                        self.advance();
+                    }
+                    None => break,
+                },
+                _ => break,
+            }
         }
 
         // Skip empty line before body
@@ -164,7 +181,7 @@ impl<'a> Parser<'a> {
 
         // Parse body
         let mut body_lines = Vec::new();
-        while let Token::Body(line) = &self.current_token {
+        while let Token::Body(line) = &self.current_token.token {
             body_lines.push(line.clone());
             self.advance();
         }
@@ -187,7 +204,7 @@ impl<'a> Parser<'a> {
         self.skip_empty_lines();
 
         loop {
-            match &self.current_token {
+            match &self.current_token.token {
                 Token::Annotation(key, value) => {
                     self.parse_annotation(&mut meta, key.clone(), value.clone())?;
                     self.advance();
@@ -227,7 +244,7 @@ impl<'a> Parser<'a> {
     }
 
     fn skip_empty_lines(&mut self) {
-        while matches!(self.current_token, Token::EmptyLine) {
+        while matches!(self.current_token.token, Token::EmptyLine) {
             self.advance();
         }
     }
@@ -264,7 +281,7 @@ impl<'a> Parser<'a> {
 
     fn parse_script_block(&mut self) -> String {
         let mut lines = Vec::new();
-        while let Token::ScriptLine(line) = &self.current_token {
+        while let Token::ScriptLine(line) = &self.current_token.token {
             lines.push(line.clone());
             self.advance();
         }
@@ -282,6 +299,23 @@ fn parse_protocol(s: &str) -> Option<Protocol> {
         "trpc" => Some(Protocol::Trpc),
         _ => None,
     }
+}
+
+/// Parse a comment's text (already stripped of the leading `#`) as a
+/// disabled header line (`Key: Value`), using the same key validity rules
+/// as the lexer's real `Header` token so a disabled header round-trips
+/// exactly like an enabled one. Returns `None` for comments that don't
+/// look like a header, so freeform comments are left untouched.
+fn parse_disabled_header(text: &str) -> Option<(String, String)> {
+    let colon_pos = text.find(':')?;
+    let key = text[..colon_pos].trim();
+    let value = text[colon_pos + 1..].trim();
+
+    if key.is_empty() || key.contains(' ') || !key.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_') {
+        return None;
+    }
+
+    Some((key.to_string(), value.to_string()))
 }
 
 #[cfg(test)]
@@ -370,6 +404,41 @@ Content-Type: application/json
     }
 
     #[test]
+    fn test_request_line_numbers_point_at_method_line() {
+        // Realistic multi-request document with ### separators, blank lines,
+        // and annotations preceding each request. `Request.line` must point
+        // at the actual method-keyword line, not a preceding separator or
+        // blank line (see http-parser lexer/parser TokenSpan fix).
+        let content = "### Get Users\n\
+GET https://api.example.com/users\n\
+\n\
+###\n\
+\n\
+### Create User\n\
+# @name create-user\n\
+POST https://api.example.com/users\n\
+Content-Type: application/json\n\
+\n\
+{\"name\": \"John\"}\n\
+\n\
+### Delete User\n\
+\n\
+DELETE https://api.example.com/users/1\n";
+
+        let requests = parse(content).unwrap();
+        assert_eq!(requests.len(), 3);
+
+        assert_eq!(requests[0].method, HttpMethod::Get);
+        assert_eq!(requests[0].line, 2, "GET is on line 2");
+
+        assert_eq!(requests[1].method, HttpMethod::Post);
+        assert_eq!(requests[1].line, 8, "POST is on line 8, after the @name annotation");
+
+        assert_eq!(requests[2].method, HttpMethod::Delete);
+        assert_eq!(requests[2].line, 15, "DELETE is on line 15, after a blank line");
+    }
+
+    #[test]
     fn test_parse_graphql() {
         let content = r#"
 ### Get User by ID
@@ -453,5 +522,40 @@ Content-Type: application/json
         let content = include_str!("../../../e2e/trpc/trpc-example.http");
         let r = parse(content).expect("trpc-example.http failed to parse");
         assert!(r.len() >= 7);
+    }
+
+    #[test]
+    fn test_parse_disabled_header() {
+        let content = r#"
+GET https://api.example.com/users
+Authorization: Bearer token123
+# X-Disabled: should-not-be-sent
+Content-Type: application/json
+"#;
+        let requests = parse(content).unwrap();
+        assert_eq!(requests.len(), 1);
+        let headers = &requests[0].headers;
+        assert_eq!(headers.len(), 3);
+        assert_eq!(headers[0].key, "Authorization");
+        assert!(headers[0].enabled);
+        assert_eq!(headers[1].key, "X-Disabled");
+        assert_eq!(headers[1].value, "should-not-be-sent");
+        assert!(!headers[1].enabled);
+        assert_eq!(headers[2].key, "Content-Type");
+        assert!(headers[2].enabled);
+    }
+
+    #[test]
+    fn test_parse_header_block_comment_not_mistaken_for_header() {
+        // A comment in the header block that doesn't look like `Key: Value`
+        // (no colon, or an invalid key) must stop header parsing exactly as
+        // before, rather than being swallowed as a disabled header.
+        let content = r#"
+GET https://api.example.com/users
+Authorization: Bearer token123
+# just a note, no colon shape
+"#;
+        let requests = parse(content).unwrap();
+        assert_eq!(requests[0].headers.len(), 1);
     }
 }

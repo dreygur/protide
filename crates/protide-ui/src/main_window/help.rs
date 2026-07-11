@@ -40,7 +40,7 @@ impl MainWindow {
                     .border_1()
                     .border_color(theme.colors.border)
                     .shadow_lg()
-                    .on_mouse_down(MouseButton::Left, |_, _, _| {})
+                    .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
                     .child(
                         div()
                             .px(px(20.0))
@@ -163,7 +163,7 @@ impl MainWindow {
                     .border_1()
                     .border_color(theme.colors.border)
                     .shadow_lg()
-                    .on_mouse_down(MouseButton::Left, |_, _, _| {})
+                    .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
                     .child(
                         div()
                             .px(px(20.0))

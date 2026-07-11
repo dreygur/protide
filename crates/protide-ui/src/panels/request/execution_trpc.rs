@@ -152,10 +152,14 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
         {
             Ok(procs) => {
                 for p in procs {
-                    self.trpc_pg_procedures.push(TrpcPlaygroundProc {
+                    let proc = TrpcPlaygroundProc {
                         kind: if p.is_mutation { TrpcProcKind::Mutation } else { TrpcProcKind::Query },
                         name: p.name,
-                    });
+                    };
+                    match self.trpc_pg_procedures.iter_mut().find(|existing| existing.name == proc.name) {
+                        Some(existing) => *existing = proc,
+                        None => self.trpc_pg_procedures.push(proc),
+                    }
                 }
                 self.trpc_pg_schema_error = None;
             }
@@ -183,10 +187,14 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                     match result {
                         Ok(procs) => {
                             for p in procs {
-                                panel.trpc_pg_procedures.push(TrpcPlaygroundProc {
+                                let proc = TrpcPlaygroundProc {
                                     kind: if p.is_mutation { TrpcProcKind::Mutation } else { TrpcProcKind::Query },
                                     name: p.name,
-                                });
+                                };
+                                match panel.trpc_pg_procedures.iter_mut().find(|existing| existing.name == proc.name) {
+                                    Some(existing) => *existing = proc,
+                                    None => panel.trpc_pg_procedures.push(proc),
+                                }
                             }
                             panel.trpc_pg_show_import_url = false;
                             panel.trpc_pg_schema_error = None;

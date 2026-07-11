@@ -40,7 +40,7 @@ impl CrdtStore {
         data: String,
     ) -> Option<CrdtEntry> {
         let timestamp = match self.entries.get(&id) {
-            Some(existing) => std::cmp::max(timestamp_now(), existing.timestamp + 1),
+            Some(existing) => std::cmp::max(timestamp_now(), existing.timestamp.saturating_add(1)),
             None => timestamp_now(),
         };
         let entry = CrdtEntry {
@@ -60,7 +60,7 @@ impl CrdtStore {
     /// Forces a higher timestamp than existing to ensure tombstone wins.
     pub fn delete_local(&mut self, id: Uuid) -> Option<CrdtEntry> {
         let (timestamp, data_type) = match self.entries.get(&id) {
-            Some(existing) => (std::cmp::max(timestamp_now(), existing.timestamp + 1), existing.data_type),
+            Some(existing) => (std::cmp::max(timestamp_now(), existing.timestamp.saturating_add(1)), existing.data_type),
             None => (timestamp_now(), DataType::Request),
         };
         let tombstone = CrdtEntry {
@@ -230,5 +230,48 @@ mod tests {
         store.delete_local(entry.id);
         assert!(store.get(&entry.id).unwrap().deleted);
         assert!(store.get_by_type(DataType::Request).is_empty());
+    }
+
+    /// A malicious or corrupt remote peer can broadcast a CrdtEntry with
+    /// `timestamp: u64::MAX` for any id (merge_remote has no upper-bound
+    /// validation — "higher timestamp always wins"). `update_local`/
+    /// `delete_local` used to compute `existing.timestamp + 1` unchecked,
+    /// which overflowed and panicked in debug builds (or silently wrapped in
+    /// release, corrupting LWW ordering) the next time the local user
+    /// touched that entry. They now use `saturating_add(1)`, so a
+    /// `u64::MAX` timestamp just pins the entry there instead of crashing or
+    /// wrapping — a real but non-exploitable degenerate case.
+    #[test]
+    fn test_remote_max_timestamp_then_local_update_does_not_overflow() {
+        let node_a = NodeId("aaaa".into());
+        let id = Uuid::new_v4();
+        let mut store = CrdtStore::new(node_a);
+
+        // Attacker-controlled entry arriving over gossipsub / file sync.
+        // merge_remote has no upper-bound validation on timestamp, so this
+        // is accepted as-is.
+        let malicious = CrdtEntry {
+            id,
+            data_type: DataType::Request,
+            data: "evil".into(),
+            timestamp: u64::MAX,
+            node_id: "attacker".into(),
+            deleted: false,
+            version: 1,
+        };
+        let result = store.merge_remote(malicious);
+        assert!(matches!(result, MergeResult::Accepted(_)));
+
+        // The local user now edits that same entry (e.g. tweaks the URL).
+        // This must not panic or wrap; the entry just saturates at u64::MAX.
+        let updated = store.update_local(id, DataType::Request, "user edit".into())
+            .expect("entry should still exist");
+        assert_eq!(updated.timestamp, u64::MAX);
+        assert_eq!(updated.data, "user edit");
+
+        // delete_local has the identical pattern - confirm it too.
+        let deleted = store.delete_local(id).expect("entry should still exist");
+        assert_eq!(deleted.timestamp, u64::MAX);
+        assert!(deleted.deleted);
     }
 }

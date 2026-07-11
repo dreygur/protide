@@ -359,3 +359,63 @@ format!("{}={}", url_encode(&param.key), url_encode(&param.value))
 
 assert_eq!(encoded, "verbose");
 }
+
+/// Regression test for sync_url_from_params: an enabled param with an empty
+/// key (e.g. the user typed only a value) must still round-trip into the
+/// query string as `?=value` instead of being silently dropped.
+#[test]
+fn test_build_query_string_keeps_empty_key_when_enabled() {
+let base_url = "https://api.example.com/search";
+let params = vec![
+KeyValuePair {
+key: "".to_string(),
+value: "value".to_string(),
+enabled: true,
+},
+KeyValuePair {
+key: "".to_string(),
+value: "".to_string(),
+enabled: false, // untouched placeholder row, must stay excluded
+},
+];
+
+// Mirrors the fixed filter in sync_url_from_params: only disabled rows
+// are excluded, empty-key rows are kept.
+let query_parts: Vec<String> = params
+.iter()
+.filter(|p| p.enabled)
+.map(|p| {
+if p.value.is_empty() {
+    url_encode(&p.key)
+} else {
+    format!("{}={}", url_encode(&p.key), url_encode(&p.value))
+}
+})
+.collect();
+
+let url = if query_parts.is_empty() {
+base_url.to_string()
+} else {
+format!("{}?{}", base_url, query_parts.join("&"))
+};
+
+assert_eq!(url, "https://api.example.com/search?=value");
+}
+
+/// Regression test for move_to_next_field: the cursor position placed on the
+/// newly-focused field must be a char offset (compatible with edit_selection
+/// and char_to_byte_offset), not a byte length. For multi-byte text the two
+/// diverge, which previously left the cursor past the end of the field.
+#[test]
+fn test_char_count_not_byte_len_for_next_field_cursor() {
+let text = "café"; // 4 chars, 5 bytes (é is 2 bytes in UTF-8)
+let char_len = text.chars().count();
+let byte_len = text.len();
+assert_ne!(char_len, byte_len, "test text must contain a multi-byte character");
+assert_eq!(char_len, 4);
+assert_eq!(byte_len, 5);
+
+// The fix (chars().count()) lands exactly at the end of the string when
+// fed back through char_to_byte_offset, as edit_move_to/edit_select_all do.
+assert_eq!(char_to_byte_offset(text, char_len), byte_len);
+}

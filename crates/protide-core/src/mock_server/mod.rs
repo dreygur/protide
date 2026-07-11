@@ -221,4 +221,81 @@ mod tests {
         server.stop();
         assert!(!server.is_running());
     }
+
+    /// Regression test for a fixed bug in `server.rs`'s proxy URL construction:
+    /// the forwarded URL used to be built as `format!("{target}{path}{query}")`
+    /// where `query` comes from `Uri::query()` (which does NOT include a leading
+    /// `?`). That meant a request like `GET /echo?foo=bar` was forwarded upstream
+    /// as `GET /echofoo=bar` instead of `GET /echo?foo=bar` - the query string got
+    /// spliced directly onto the path, corrupting the target route entirely (not
+    /// just losing the query params). `server.rs` now re-attaches the `?`
+    /// separator via `build_proxy_url`, so the upstream mock server (which only
+    /// defines route `GET /echo`) correctly matches and returns 200.
+    #[test]
+    fn test_proxy_query_string_is_forwarded_correctly() {
+        let mut target = MockServer::new(0);
+        target.add_route(MockRoute::new(HttpMethod::Get, "/echo", MockResponse::ok("OK-ECHO")));
+        let target_addr = target.start().expect("target server should start");
+        let target_url = format!("http://{}", target_addr);
+
+        let mut proxy = MockServer::new(0);
+        proxy.add_route(MockRoute::proxy(HttpMethod::Get, "/echo", &target_url));
+        let proxy_addr = proxy.start().expect("proxy server should start");
+
+        let client = reqwest::blocking::Client::new();
+        let resp = client
+            .get(format!("http://{}/echo?foo=bar", proxy_addr))
+            .send()
+            .expect("request to proxy should succeed at the transport level");
+
+        // Correct behavior forwards to target as `/echo?foo=bar` and gets 200.
+        assert_eq!(resp.status(), 200, "query string should be forwarded correctly, not merged into the path");
+        let body = resp.text().unwrap_or_default();
+        assert_eq!(body, "OK-ECHO");
+
+        proxy.stop();
+        target.stop();
+    }
+
+    /// Regression test for the proxy hop-count guard in `server.rs`: two real
+    /// mock server instances are configured to proxy `/loop` at each other,
+    /// forming a genuine cycle. Without a hop limit this would recurse forever
+    /// (unbounded nested outbound connections). The guard rejects the request
+    /// with 508 Loop Detected once `MAX_PROXY_HOPS` (5) is exceeded, so this
+    /// test is bounded by the fix itself and cannot hang or spawn unbounded
+    /// connections.
+    #[test]
+    fn test_proxy_hop_limit_prevents_infinite_loop() {
+        let mut server_a = MockServer::new(0);
+        let mut server_b = MockServer::new(0);
+
+        // Placeholder targets - the real target URL needs the other server's
+        // port, which is only known after both servers have started.
+        server_a.add_route(MockRoute::proxy(HttpMethod::Get, "/loop", "http://placeholder"));
+        server_b.add_route(MockRoute::proxy(HttpMethod::Get, "/loop", "http://placeholder"));
+
+        let addr_a = server_a.start().expect("server A should start");
+        let addr_b = server_b.start().expect("server B should start");
+
+        server_a.update_route(0, MockRoute::proxy(HttpMethod::Get, "/loop", format!("http://{}", addr_b)));
+        server_b.update_route(0, MockRoute::proxy(HttpMethod::Get, "/loop", format!("http://{}", addr_a)));
+
+        let client = reqwest::blocking::Client::builder()
+            .timeout(std::time::Duration::from_secs(10))
+            .build()
+            .expect("client should build");
+        let resp = client
+            .get(format!("http://{}/loop", addr_a))
+            .send()
+            .expect("request should complete promptly instead of hanging, thanks to the hop-count guard");
+
+        assert_eq!(
+            resp.status().as_u16(),
+            508,
+            "hop-count guard should reject the request once the proxy loop exceeds the hop limit"
+        );
+
+        server_a.stop();
+        server_b.stop();
+    }
 }

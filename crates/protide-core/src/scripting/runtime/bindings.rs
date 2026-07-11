@@ -4,8 +4,8 @@ pub(super) use super::expect_js::setup_expect_js;
 
 use rquickjs::{Ctx, Function, Object, Value};
 
-use crate::scripting::context::{RequestData, ResponseData, ScriptContext};
-use crate::scripting::results::{ScriptError, ScriptOutcome, TestResult};
+use crate::scripting::context::{RequestData, ResponseData};
+use crate::scripting::results::ScriptError;
 use super::ScriptType;
 
 /// Set up global storage object for collecting results.
@@ -15,6 +15,7 @@ pub(super) fn setup_storage(ctx: &Ctx<'_>) -> Result<(), ScriptError> {
             consoleOutput: [],
             testResults: [],
             envChanges: [],
+            envRemovals: [],
             requestMods: {
                 url: null,
                 headersToSet: [],
@@ -81,6 +82,7 @@ pub(super) fn setup_env_js(
             },
             remove(name) {
                 delete globalThis.__envData[name];
+                globalThis.__storage.envRemovals.push(name);
             }
         };
         globalThis.env = env;
@@ -227,107 +229,4 @@ pub(super) fn setup_utils_js(ctx: &Ctx<'_>) -> Result<(), ScriptError> {
         .map_err(|e| ScriptError::new(format!("{}", e)))?;
 
     Ok(())
-}
-
-/// Extract results from JS `__storage` back into the Rust `ScriptContext`.
-pub(super) fn extract_results(
-    ctx: &Ctx<'_>,
-    script_ctx: &mut ScriptContext,
-) -> Result<ScriptOutcome, ScriptError> {
-    let globals = ctx.globals();
-
-    let storage: Object = globals
-        .get("__storage")
-        .map_err(|e| ScriptError::new(format!("Failed to get storage: {}", e)))?;
-
-    // Console output
-    let console_arr: rquickjs::Array = storage
-        .get("consoleOutput")
-        .map_err(|e| ScriptError::new(format!("{}", e)))?;
-    let mut console_output = Vec::new();
-    for i in 0..console_arr.len() {
-        if let Ok(s) = console_arr.get::<String>(i) {
-            console_output.push(s);
-        }
-    }
-    script_ctx.console_output = console_output.clone();
-
-    // Test results
-    let test_arr: rquickjs::Array = storage
-        .get("testResults")
-        .map_err(|e| ScriptError::new(format!("{}", e)))?;
-    let mut test_results = Vec::new();
-    for i in 0..test_arr.len() {
-        if let Ok(obj) = test_arr.get::<Object>(i) {
-            let passed: bool = obj.get("passed").unwrap_or(false);
-            let name: String = obj.get("name").unwrap_or_default();
-            let expected: String = obj.get("expected").unwrap_or_default();
-            let actual: String = obj.get("actual").unwrap_or_default();
-            if passed {
-                test_results.push(TestResult::pass(&name));
-            } else {
-                test_results.push(TestResult::fail(&name, &expected, &actual));
-            }
-        }
-    }
-    script_ctx.test_results = test_results.clone();
-
-    // Env changes
-    let env_arr: rquickjs::Array = storage
-        .get("envChanges")
-        .map_err(|e| ScriptError::new(format!("{}", e)))?;
-    let mut env_changes = Vec::new();
-    for i in 0..env_arr.len() {
-        if let Ok(pair) = env_arr.get::<rquickjs::Array>(i) {
-            let key: String = pair.get(0).unwrap_or_default();
-            let value: String = pair.get(1).unwrap_or_default();
-            env_changes.push((key.clone(), value.clone()));
-            script_ctx.env.insert(key, value);
-        }
-    }
-    script_ctx.env_changes = env_changes.clone();
-
-    // Request modifications
-    let mods: Object = storage
-        .get("requestMods")
-        .map_err(|e| ScriptError::new(format!("{}", e)))?;
-
-    let url: Option<String> = mods.get("url").ok();
-    script_ctx.modified_request.url = url.clone();
-
-    let headers_arr: rquickjs::Array = mods.get("headersToSet").unwrap_or_else(|_| {
-        rquickjs::Array::new(ctx.clone()).unwrap()
-    });
-    let mut headers_to_set = Vec::new();
-    for i in 0..headers_arr.len() {
-        if let Ok(pair) = headers_arr.get::<rquickjs::Array>(i) {
-            let key: String = pair.get(0).unwrap_or_default();
-            let value: String = pair.get(1).unwrap_or_default();
-            headers_to_set.push((key, value));
-        }
-    }
-    script_ctx.modified_request.headers_to_set = headers_to_set;
-
-    let remove_arr: rquickjs::Array = mods.get("headersToRemove").unwrap_or_else(|_| {
-        rquickjs::Array::new(ctx.clone()).unwrap()
-    });
-    let mut headers_to_remove = Vec::new();
-    for i in 0..remove_arr.len() {
-        if let Ok(s) = remove_arr.get::<String>(i) {
-            headers_to_remove.push(s);
-        }
-    }
-    script_ctx.modified_request.headers_to_remove = headers_to_remove;
-
-    let body: Option<String> = mods.get("body").ok();
-    script_ctx.modified_request.body = body;
-
-    Ok(ScriptOutcome {
-        success: true,
-        error: None,
-        test_results,
-        console_output,
-        modified_request: script_ctx.modified_request.clone(),
-        env_changes,
-    })
 }

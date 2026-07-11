@@ -99,7 +99,11 @@ fn append_http_request(md: &mut String, name: &str, content: &str, heading_level
             md.push_str("| Name | Value |\n");
             md.push_str("|------|-------|\n");
             for h in &enabled_headers {
-                md.push_str(&format!("| `{}` | `{}` |\n", h.key, h.value));
+                md.push_str(&format!(
+                    "| `{}` | `{}` |\n",
+                    escape_table_cell(&h.key),
+                    escape_table_cell(&h.value)
+                ));
             }
             md.push('\n');
         }
@@ -109,7 +113,8 @@ fn append_http_request(md: &mut String, name: &str, content: &str, heading_level
             if !trimmed.is_empty() {
                 md.push_str("**Request Body**\n\n");
                 let lang = detect_body_lang(trimmed);
-                md.push_str(&format!("```{}\n{}\n```\n\n", lang, trimmed));
+                let fence = code_fence(trimmed);
+                md.push_str(&format!("{}{}\n{}\n{}\n\n", fence, lang, trimmed, fence));
             }
         }
 
@@ -117,12 +122,37 @@ fn append_http_request(md: &mut String, name: &str, content: &str, heading_level
             let trimmed = tests.trim();
             if !trimmed.is_empty() {
                 md.push_str("**Test Scripts**\n\n");
-                md.push_str(&format!("```javascript\n{}\n```\n\n", trimmed));
+                let fence = code_fence(trimmed);
+                md.push_str(&format!("{}javascript\n{}\n{}\n\n", fence, trimmed, fence));
             }
         }
 
         md.push_str("---\n");
     }
+}
+
+/// Escape characters that would corrupt a Markdown table cell or break out
+/// of the surrounding inline-code backticks.
+fn escape_table_cell(s: &str) -> String {
+    s.replace('|', "\\|").replace('`', "\\`")
+}
+
+/// Choose a fenced-code-block delimiter long enough that it can't be closed
+/// early by a backtick run already present in `content` (Markdown's rule:
+/// the fence must be at least one backtick longer than the longest backtick
+/// run inside the content).
+fn code_fence(content: &str) -> String {
+    let mut longest_run = 0usize;
+    let mut current_run = 0usize;
+    for ch in content.chars() {
+        if ch == '`' {
+            current_run += 1;
+            longest_run = longest_run.max(current_run);
+        } else {
+            current_run = 0;
+        }
+    }
+    "`".repeat((longest_run + 1).max(3))
 }
 
 fn detect_body_lang(body: &str) -> &'static str {
@@ -179,6 +209,63 @@ expect(response.json().token).toBeTruthy();
         // Test scripts section must contain the assertions
         let tests_section = &md[tests_start..];
         assert!(tests_section.contains("expect(response.status).toBe(200)"), "test scripts must be documented");
+    }
+
+    #[test]
+    fn test_header_value_with_pipe_is_escaped_in_table() {
+        // A header value containing a literal "|" must be escaped so a
+        // Markdown table renderer treats it as literal pipe text instead of
+        // an extra column delimiter.
+        let content = "POST https://api.example.com/x\nX-Note: a | b\nContent-Type: application/json\n\n{}\n";
+        let mut md = String::new();
+        append_http_request(&mut md, "req", content, 2);
+
+        let header_row = md.lines().find(|l| l.contains("X-Note")).expect("header row present");
+        // A well-formed, properly-escaped 2-column row has exactly 3 raw
+        // (unescaped) '|' chars: leading, the column separator, and
+        // trailing. The pipe embedded in the value must be escaped as `\|`
+        // and therefore not counted as a raw delimiter.
+        assert!(
+            header_row.contains("a \\| b"),
+            "pipe in header value should be escaped: {:?}",
+            header_row
+        );
+        let raw_pipe_count = header_row.matches('|').count() - header_row.matches("\\|").count();
+        assert_eq!(
+            raw_pipe_count, 3,
+            "escaped pipe must not add a spurious table column: {:?}",
+            header_row
+        );
+    }
+
+    #[test]
+    fn test_body_with_code_fence_does_not_break_export_document() {
+        // A request body that itself contains a triple-backtick sequence
+        // must not prematurely close the Markdown fenced code block used to
+        // render it. The exporter should widen the fence so the body's
+        // embedded "```" lines stay inside the code block as plain text.
+        let content = "POST https://api.example.com/x\nContent-Type: text/plain\n\nline one\n```\ninjected as document text, not code\n```\nline two\n";
+        let mut md = String::new();
+        append_http_request(&mut md, "req", content, 2);
+
+        // The body's embedded "```" lines must be preserved verbatim inside
+        // the (now longer) fence, and there must be exactly one opening and
+        // one closing fence delimiter (found via 4-backtick markers), not
+        // extra open/close transitions from the embedded triple-backticks.
+        let body_start = md.find("**Request Body**").expect("body section present");
+        let body_section = &md[body_start..];
+        assert!(
+            body_section.contains("````text"),
+            "fence should be widened to 4 backticks to contain the embedded ```: {:?}",
+            body_section
+        );
+        assert!(
+            body_section.contains("injected as document text, not code"),
+            "embedded ``` line must remain inside the code block: {:?}",
+            body_section
+        );
+        // Exactly 2 fence markers (open + close) of 4-backtick length.
+        assert_eq!(body_section.matches("````").count(), 2);
     }
 
     #[test]

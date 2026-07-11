@@ -23,19 +23,25 @@ pub fn tokenize(content: &str) -> Vec<SemanticToken> {
         } else if trimmed.starts_with('#') {
             Some((0, line.len() as u32, TOK_COMMENT))
         } else if let Some(rest) = try_request_line(trimmed) {
-            let method_end = line.find(' ').unwrap_or(line.len());
+            // Method length must be measured within `trimmed`, not `line` -
+            // searching the untrimmed line for the first space finds
+            // `indent + method_len`, not `method_len`, which on any indented
+            // request line made the keyword token's length swallow the
+            // indentation and pushed the URL token's start/length off by the
+            // same amount.
+            let method_len = trimmed.find(' ').unwrap_or(trimmed.len()) as u32;
             let indent = (line.len() - trimmed.len()) as u32;
             tokens.push(make_token(
                 ln,
                 prev_line,
                 indent,
                 prev_start,
-                method_end as u32,
+                method_len,
                 TOK_KEYWORD,
             ));
             prev_line = ln;
             prev_start = indent;
-            let url_start = indent + method_end as u32 + 1;
+            let url_start = indent + method_len + 1;
             let url_len = rest.trim().len() as u32;
             Some((url_start, url_len, TOK_STRING))
         } else if trimmed.contains(':') && !trimmed.starts_with('{') {
@@ -165,5 +171,37 @@ pub fn make_token(
         length: len,
         token_type: tok_type,
         token_modifiers_bitset: 0,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn indented_request_line_gets_correct_method_and_url_token_spans() {
+        let tokens = tokenize("  GET https://example.com");
+        assert_eq!(tokens.len(), 2, "expected a KEYWORD token and a STRING token");
+
+        let method = &tokens[0];
+        assert_eq!(method.delta_start, 2, "method token should start after the 2-space indent");
+        assert_eq!(method.length, 3, "method token length should be just 'GET' (3), not indent + 'GET'");
+
+        let url = &tokens[1];
+        // Same line as the method token, so delta_start is relative to the
+        // method token's start (2), not absolute from column 0.
+        assert_eq!(url.delta_line, 0);
+        assert_eq!(url.delta_start, 4, "URL token should start right after 'GET ' (3 + 1 space)");
+        assert_eq!(url.length, "https://example.com".len() as u32);
+    }
+
+    #[test]
+    fn unindented_request_line_still_works() {
+        let tokens = tokenize("POST https://example.com/users");
+        assert_eq!(tokens.len(), 2);
+        assert_eq!(tokens[0].delta_start, 0);
+        assert_eq!(tokens[0].length, 4);
+        assert_eq!(tokens[1].delta_start, 5);
+        assert_eq!(tokens[1].length, "https://example.com/users".len() as u32);
     }
 }

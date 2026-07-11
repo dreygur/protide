@@ -1,4 +1,5 @@
 use tower_lsp::lsp_types::*;
+use crate::symbols::utf16_offset_to_byte_offset;
 
 pub fn complete(content: &str, pos: Position) -> Vec<CompletionItem> {
     let line = content
@@ -6,7 +7,10 @@ pub fn complete(content: &str, pos: Position) -> Vec<CompletionItem> {
         .nth(pos.line as usize)
         .unwrap_or("")
         .to_string();
-    let before = &line[..line.len().min(pos.character as usize)];
+    // `pos.character` is a UTF-16 code-unit offset, not a byte offset - using
+    // it directly to slice the UTF-8 `line` panics as soon as a multi-byte
+    // character precedes the cursor.
+    let before = &line[..utf16_offset_to_byte_offset(&line, pos.character as usize)];
     let trimmed = before.trim_start();
 
     if trimmed.starts_with("# @protocol") && trimmed.len() > "# @protocol".len() {

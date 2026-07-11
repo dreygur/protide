@@ -110,7 +110,7 @@ pub fn format_size(bytes: usize) -> String {
     }
 }
 
-pub(super) fn truncate_error(error: &str) -> String {
+pub(crate) fn truncate_error(error: &str) -> String {
     if error.chars().count() > 40 {
         let end = error.char_indices().nth(37).map(|(i, _)| i).unwrap_or(error.len());
         format!("{}...", &error[..end])

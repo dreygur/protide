@@ -95,6 +95,56 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
         if let Some(m) = self.grpc_methods.first() { self.grpc_method = Some(m.clone()); }
     }
 
+    pub(super) fn toggle_grpc_service_picker(&mut self, cx: &mut Context<Self>) {
+        self.grpc_service_picker_open = !self.grpc_service_picker_open;
+        self.grpc_method_picker_open = false;
+        cx.notify();
+    }
+
+    pub(super) fn toggle_grpc_method_picker(&mut self, cx: &mut Context<Self>) {
+        if self.grpc_service.is_none() { return; }
+        self.grpc_method_picker_open = !self.grpc_method_picker_open;
+        self.grpc_service_picker_open = false;
+        cx.notify();
+    }
+
+    pub(super) fn select_grpc_service(&mut self, service: String, cx: &mut Context<Self>) {
+        let prefix = format!("{}/", service);
+        self.grpc_method = self.grpc_methods.iter().find(|m| m.full_name.starts_with(&prefix)).cloned();
+        self.grpc_service = Some(service);
+        self.grpc_service_picker_open = false;
+        cx.notify();
+    }
+
+    pub(super) fn select_grpc_method(&mut self, method: GrpcMethodInfo, cx: &mut Context<Self>) {
+        self.grpc_method = Some(method);
+        self.grpc_method_picker_open = false;
+        cx.notify();
+    }
+
+    /// Splits the gRPC message editor content into multiple messages for
+    /// client-streaming/bidi calls. Messages are separated by a line
+    /// containing only `---` (matching the delimiter already used to join
+    /// streaming response chunks); a single-message editor with no
+    /// delimiter behaves exactly as before (one message).
+    fn split_grpc_messages(raw: &str) -> Vec<String> {
+        let mut messages = Vec::new();
+        let mut current = String::new();
+        for line in raw.lines() {
+            if line.trim() == "---" {
+                let msg = current.trim().to_string();
+                if !msg.is_empty() { messages.push(msg); }
+                current.clear();
+            } else {
+                current.push_str(line);
+                current.push('\n');
+            }
+        }
+        let msg = current.trim().to_string();
+        if !msg.is_empty() { messages.push(msg); }
+        messages
+    }
+
     pub(super) fn send_grpc_request(&mut self, cx: &mut Context<Self>) {
         let Some(method) = &self.grpc_method else { return; };
         let Some(proto_path) = self.grpc_proto_path.clone() else { return; };
@@ -175,14 +225,21 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
         cx.spawn(async move |this: gpui::WeakEntity<Self>, cx: &mut gpui::AsyncApp| {
             let result = protide_core::protocols::grpc::execute_server_streaming(&url, &method.full_name, &message, metadata, &proto_path).await;
             match result {
-                Ok(chunks) => {
-                    let body = chunks.join("\n---\n");
+                Ok(streaming) => {
+                    let body = streaming.chunks.join("\n---\n");
                     let body_size = body.len();
+                    let mut headers = vec![("content-type".to_string(), "application/grpc+json".to_string()), ("grpc-status".to_string(), "0".to_string()), ("x-streaming".to_string(), "true".to_string())];
+                    let status_text = if streaming.dropped_frames > 0 {
+                        headers.push(("x-dropped-frames".to_string(), streaming.dropped_frames.to_string()));
+                        format!("OK (streaming, {} frame(s) dropped)", streaming.dropped_frames)
+                    } else {
+                        "OK (streaming)".to_string()
+                    };
                     let _ = cx.update(|cx| {
                         response_panel.update(cx, |panel, cx| {
                             panel.set_response(ResponseData {
-                                status: 200, status_text: "OK (streaming)".to_string(),
-                                headers: vec![("content-type".to_string(), "application/grpc+json".to_string()), ("grpc-status".to_string(), "0".to_string()), ("x-streaming".to_string(), "true".to_string())],
+                                status: 200, status_text,
+                                headers,
                                 body, time: std::time::Duration::from_secs(1), size: body_size,
                             }, cx);
                         });
@@ -209,7 +266,8 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
         cx: &mut Context<Self>,
     ) {
         cx.spawn(async move |this: gpui::WeakEntity<Self>, cx: &mut gpui::AsyncApp| {
-            let result = protide_core::protocols::grpc::execute_client_streaming(&url, &method.full_name, vec![message], metadata, &proto_path).await;
+            let messages = Self::split_grpc_messages(&message);
+            let result = protide_core::protocols::grpc::execute_client_streaming(&url, &method.full_name, messages, metadata, &proto_path).await;
             match result {
                 Ok(body) => {
                     let body_size = body.len();
@@ -244,16 +302,24 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
         cx: &mut Context<Self>,
     ) {
         cx.spawn(async move |this: gpui::WeakEntity<Self>, cx: &mut gpui::AsyncApp| {
-            let result = protide_core::protocols::grpc::execute_bidi_streaming(&url, &method.full_name, vec![message], metadata, &proto_path).await;
+            let messages = Self::split_grpc_messages(&message);
+            let result = protide_core::protocols::grpc::execute_bidi_streaming(&url, &method.full_name, messages, metadata, &proto_path).await;
             match result {
-                Ok(chunks) => {
-                    let body = chunks.join("\n---\n");
+                Ok(streaming) => {
+                    let body = streaming.chunks.join("\n---\n");
                     let body_size = body.len();
+                    let mut headers = vec![("content-type".to_string(), "application/grpc+json".to_string()), ("grpc-status".to_string(), "0".to_string()), ("x-streaming".to_string(), "true".to_string())];
+                    let status_text = if streaming.dropped_frames > 0 {
+                        headers.push(("x-dropped-frames".to_string(), streaming.dropped_frames.to_string()));
+                        format!("OK (bidi, {} frame(s) dropped)", streaming.dropped_frames)
+                    } else {
+                        "OK (bidi)".to_string()
+                    };
                     let _ = cx.update(|cx| {
                         response_panel.update(cx, |panel, cx| {
                             panel.set_response(ResponseData {
-                                status: 200, status_text: "OK (bidi)".to_string(),
-                                headers: vec![("content-type".to_string(), "application/grpc+json".to_string()), ("grpc-status".to_string(), "0".to_string()), ("x-streaming".to_string(), "true".to_string())],
+                                status: 200, status_text,
+                                headers,
                                 body, time: std::time::Duration::from_secs(1), size: body_size,
                             }, cx);
                         });

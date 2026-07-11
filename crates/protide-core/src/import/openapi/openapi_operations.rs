@@ -69,7 +69,11 @@ pub(super) fn parse_operation(
 
         match param_in {
             "header" => headers.push(KeyValue::new(param_name, get_example_value(resolved, root))),
-            "query" => query_parts.push(format!("{}={}", param_name, get_example_value(resolved, root))),
+            "query" => query_parts.push(format!(
+                "{}={}",
+                urlencoding::encode(param_name),
+                urlencoding::encode(&get_example_value(resolved, root))
+            )),
             _ => {}
         }
     }

@@ -64,12 +64,30 @@ impl ExplorerPanel {
                 if new_name != old_name
                     && let Some(parent) = old_path.parent() {
                         let new_path = parent.join(new_name);
-                        match fs::rename(&old_path, &new_path) {
-                            Ok(_) => {
-                                info!("Renamed: {} → {}", old_name, new_name);
-                                self.refresh_collections(cx);
+                        // Refuse to silently clobber an existing file/folder. On
+                        // case-insensitive filesystems `new_path.exists()` can also
+                        // be true for a pure case-rename of the same path, so only
+                        // treat it as a conflict when it doesn't resolve back to
+                        // `old_path`.
+                        if new_path.exists() && new_path != old_path {
+                            let message = format!(
+                                "Cannot rename '{}' to '{}': a file or folder with that name already exists.",
+                                old_name, new_name
+                            );
+                            error!("Rename failed {} → {}: destination already exists", old_name, new_name);
+                            if let Some(win) = self.main_window.upgrade() {
+                                win.update(cx, |win, cx| {
+                                    win.show_modal("Rename Failed", message, cx);
+                                });
                             }
-                            Err(e) => error!("Rename failed {} → {}: {}", old_name, new_name, e),
+                        } else {
+                            match fs::rename(&old_path, &new_path) {
+                                Ok(_) => {
+                                    info!("Renamed: {} → {}", old_name, new_name);
+                                    self.refresh_collections(cx);
+                                }
+                                Err(e) => error!("Rename failed {} → {}: {}", old_name, new_name, e),
+                            }
                         }
                     }
             }

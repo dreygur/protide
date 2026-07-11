@@ -49,6 +49,8 @@ mod execution_trpc;
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tests_gpui;
 
 use std::ops::Range;
 use std::marker::PhantomData;
@@ -166,6 +168,9 @@ pub struct RequestPanel<E: WebSocketExecutor = TungsteniteExecutor> {
     pub(super) ws_compose_h: f32,
     pub(super) ws_compose_drag: Option<(f32, f32)>,
     pub(super) ws_scroll: ScrollHandle,
+    /// Bumped on every `connect_websocket` call; lets the spawned event loop
+    /// detect it belongs to a stale (superseded) connection and no-op.
+    pub(super) ws_generation: u64,
     pub(super) grpc_message_editor: Entity<InputState>,
     pub(super) grpc_metadata: Vec<KeyValuePair>,
     pub(super) grpc_proto_path: Option<std::path::PathBuf>,
@@ -174,6 +179,8 @@ pub struct RequestPanel<E: WebSocketExecutor = TungsteniteExecutor> {
     pub(super) grpc_service: Option<String>,
     pub(super) grpc_methods: Vec<GrpcMethodInfo>,
     pub(super) grpc_method: Option<GrpcMethodInfo>,
+    pub(super) grpc_service_picker_open: bool,
+    pub(super) grpc_method_picker_open: bool,
     pub(super) trpc_procedure: String,
     pub(super) trpc_params_editor: Entity<InputState>,
     pub(super) trpc_pg_procedures: Vec<TrpcPlaygroundProc>,
@@ -208,6 +215,10 @@ pub struct RequestPanel<E: WebSocketExecutor = TungsteniteExecutor> {
     sio_send_tx: Option<std::sync::mpsc::Sender<SioCommand>>,
     pub(super) sio_room_name: String,
     pub(super) sio_active_rooms: Vec<String>,
+    pub(super) sio_scroll: ScrollHandle,
+    /// Bumped on every `connect_socketio` call; lets the spawned event loop
+    /// detect it belongs to a stale (superseded) connection and no-op.
+    pub(super) sio_generation: u64,
     pub(super) kv_col_key_w: f32,
     pub(super) kv_col_drag: Option<(f32, f32)>,
     pub(super) script_pre_open: bool,
@@ -218,6 +229,12 @@ pub struct RequestPanel<E: WebSocketExecutor = TungsteniteExecutor> {
     pub(super) drag_script_pre: Option<(f32, f32)>,
     pub(super) drag_script_post: Option<(f32, f32)>,
     pub(super) current_file: Option<std::path::PathBuf>,
+    /// Set when the file watcher observes `current_file` change on disk
+    /// while it's open here. Rendered as a visible warning on the Save
+    /// button so the user can't blindly overwrite an external edit without
+    /// at least seeing it happened - cleared on the next successful save or
+    /// the next time the file is (re)loaded.
+    pub(super) external_change_pending: bool,
     pub(super) save_feedback: bool,
     pub(super) custom_method_input: String,
     pub(super) custom_method_focus: FocusHandle,

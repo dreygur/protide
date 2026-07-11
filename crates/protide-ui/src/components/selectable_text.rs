@@ -25,7 +25,14 @@ impl SelectionRange {
     }
 
     /// Returns the (start, end) byte offsets for a given row, if the row intersects selection.
-    pub fn offsets_for_row(&self, row: usize, text_len: usize) -> Option<(usize, usize)> {
+    ///
+    /// Offsets are clamped to the nearest valid UTF-8 char boundary at or before the
+    /// requested position. This is a defensive backstop: offsets should already be
+    /// genuine byte offsets by the time they reach here, but callers that slice the
+    /// text directly (e.g. `render_selectable_json_value`) would panic on a stray
+    /// mid-character offset, so we guard against that here rather than there.
+    pub fn offsets_for_row(&self, row: usize, text: &str) -> Option<(usize, usize)> {
+        let text_len = text.len();
         let (sr, er) = if self.start_row <= self.end_row {
             (self.start_row, self.end_row)
         } else {
@@ -42,20 +49,32 @@ impl SelectionRange {
         }
         if sr == er {
             // Both offsets are in the same row - min/max to normalize direction.
-            let s = so.min(eo).min(text_len);
-            let e = so.max(eo).min(text_len);
+            let s = floor_char_boundary(text, so.min(eo).min(text_len));
+            let e = floor_char_boundary(text, so.max(eo).min(text_len));
             return Some((s, e));
         }
         // Multi-row: so is the offset within sr, eo is the offset within er.
         // They are in different rows, so min/max across them is meaningless.
         if row == sr {
-            Some((so.min(text_len), text_len))
+            Some((floor_char_boundary(text, so.min(text_len)), text_len))
         } else if row == er {
-            Some((0, eo.min(text_len)))
+            Some((0, floor_char_boundary(text, eo.min(text_len))))
         } else {
             Some((0, text_len))
         }
     }
+}
+
+/// Clamps `idx` to the nearest valid UTF-8 char boundary at or before `idx`.
+/// Backstop for byte offsets that may not align to a char boundary (e.g. derived
+/// from a coordinate space that no longer matches the current text). Stable-Rust
+/// equivalent of the unstable `str::floor_char_boundary`.
+pub(crate) fn floor_char_boundary(text: &str, idx: usize) -> usize {
+    let mut i = idx.min(text.len());
+    while i > 0 && !text.is_char_boundary(i) {
+        i -= 1;
+    }
+    i
 }
 
 
@@ -150,7 +169,7 @@ pub fn render_selectable_json_value(
         .text_color(text_color);  // inherited by plain SharedString children
 
     // Only compute offsets when the selection actually touches this row.
-    if let Some((s, e)) = sel_range.and_then(|r| r.offsets_for_row(row_index, text.len())) {
+    if let Some((s, e)) = sel_range.and_then(|r| r.offsets_for_row(row_index, text)) {
         if s < e {
             // Non-empty selection: split into before / highlight / after.
             base

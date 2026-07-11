@@ -8,15 +8,28 @@ use prost_reflect::DynamicMessage;
 use std::path::Path;
 use std::time::Duration;
 
+/// Result of draining a streaming gRPC response.
+///
+/// `dropped_frames` counts frames whose length prefix was well-formed but that
+/// failed to decode (e.g. corrupt bytes, or a compressed frame that failed to
+/// decompress) — those frames are excluded from `chunks` rather than silently
+/// vanishing from the result entirely.
+#[derive(Debug, Clone, Default)]
+pub struct StreamingResult {
+    pub chunks: Vec<String>,
+    pub dropped_frames: usize,
+}
+
 /// Execute server streaming gRPC using async HTTP/2.
-/// Returns a vector of response chunks (JSON strings).
+/// Returns the decoded response chunks (JSON strings) plus a count of any
+/// frames that could not be decoded.
 pub async fn execute_server_streaming(
     url: &str,
     method_full_name: &str,
     message_json: &str,
     metadata: Vec<(String, String)>,
     proto_path: &Path,
-) -> Result<Vec<String>, String> {
+) -> Result<StreamingResult, String> {
     let pool = parse_proto_file(proto_path)?;
     let method_desc = resolve_method(&pool, method_full_name)?;
 
@@ -51,16 +64,17 @@ pub async fn execute_server_streaming(
     check_grpc_status(&response)?;
 
     let mut chunks = Vec::new();
+    let mut dropped_frames = 0usize;
     let mut buffer = Vec::new();
     let mut stream = response.bytes_stream();
 
     while let Some(chunk_result) = stream.next().await {
         let chunk = chunk_result.map_err(|e| format!("Read error: {}", e))?;
         buffer.extend_from_slice(&chunk);
-        drain_frames(&mut buffer, &method_desc, &mut chunks);
+        drain_frames(&mut buffer, &method_desc, &mut chunks, &mut dropped_frames);
     }
 
-    Ok(chunks)
+    Ok(StreamingResult { chunks, dropped_frames })
 }
 
 /// Execute client streaming gRPC.
@@ -131,7 +145,7 @@ pub async fn execute_bidi_streaming(
     messages: Vec<String>,
     metadata: Vec<(String, String)>,
     proto_path: &Path,
-) -> Result<Vec<String>, String> {
+) -> Result<StreamingResult, String> {
     if messages.is_empty() {
         return Err("No messages to send".to_string());
     }
@@ -173,16 +187,17 @@ pub async fn execute_bidi_streaming(
     check_grpc_status(&response)?;
 
     let mut chunks = Vec::new();
+    let mut dropped_frames = 0usize;
     let mut buffer = Vec::new();
     let mut stream = response.bytes_stream();
 
     while let Some(chunk_result) = stream.next().await {
         let chunk = chunk_result.map_err(|e| format!("Read error: {}", e))?;
         buffer.extend_from_slice(&chunk);
-        drain_frames(&mut buffer, &method_desc, &mut chunks);
+        drain_frames(&mut buffer, &method_desc, &mut chunks, &mut dropped_frames);
     }
 
-    Ok(chunks)
+    Ok(StreamingResult { chunks, dropped_frames })
 }
 
 // --- helpers ----------------------------------------------------------------
@@ -195,7 +210,9 @@ fn build_async_client(url: &str, method_path: &str) -> Result<(reqwest::Client, 
     let full_url = format!("{}/{}", http_url, method_path);
     let use_h2c = http_url.starts_with("http://");
 
-    let mut builder = reqwest::Client::builder().connect_timeout(Duration::from_secs(10));
+    let mut builder = reqwest::Client::builder()
+        .connect_timeout(Duration::from_secs(10))
+        .timeout(Duration::from_secs(30));
     if use_h2c {
         builder = builder.http2_prior_knowledge();
     }
@@ -229,21 +246,137 @@ fn drain_frames(
     buffer: &mut Vec<u8>,
     method_desc: &prost_reflect::MethodDescriptor,
     chunks: &mut Vec<String>,
+    dropped_frames: &mut usize,
 ) {
     while buffer.len() >= 5 {
         let msg_len =
             u32::from_be_bytes([buffer[1], buffer[2], buffer[3], buffer[4]]) as usize;
-        if buffer.len() >= 5 + msg_len {
-            let msg_bytes = buffer.drain(..5 + msg_len).skip(5).collect::<Vec<_>>();
-            if let Ok(response_msg) =
-                DynamicMessage::decode(method_desc.output(), msg_bytes.as_ref())
-            {
-                if let Ok(json) = serde_json::to_string_pretty(&response_msg) {
-                    chunks.push(json);
-                }
-            }
-        } else {
+        if buffer.len() < 5 + msg_len {
             break;
         }
+        let frame = buffer.drain(..5 + msg_len).collect::<Vec<_>>();
+        let decoded = grpc_decode_message(&frame).and_then(|msg_bytes| {
+            DynamicMessage::decode(method_desc.output(), msg_bytes.as_ref())
+                .map_err(|e| format!("Protobuf decode error: {}", e))
+        });
+        match decoded {
+            Ok(response_msg) => match serde_json::to_string_pretty(&response_msg) {
+                Ok(json) => chunks.push(json),
+                Err(e) => {
+                    log::warn!("gRPC stream frame dropped (JSON serialize error): {}", e);
+                    *dropped_frames += 1;
+                }
+            },
+            Err(e) => {
+                log::warn!("gRPC stream frame dropped (decode error): {}", e);
+                *dropped_frames += 1;
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Writes a minimal .proto file to a uniquely-named temp path and returns
+    /// the resolved `MethodDescriptor` for `test.TestService/Stream`, whose
+    /// reply type has a single `string msg = 1` field. The backing file is
+    /// deleted when the returned guard is dropped.
+    struct TestProtoFile(std::path::PathBuf);
+    impl Drop for TestProtoFile {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_file(&self.0);
+        }
+    }
+
+    fn test_method_desc() -> (TestProtoFile, prost_reflect::MethodDescriptor) {
+        let proto_path = std::env::temp_dir().join(format!(
+            "protide_grpc_streaming_test_{}.proto",
+            uuid::Uuid::new_v4()
+        ));
+        std::fs::write(
+            &proto_path,
+            r#"
+            syntax = "proto3";
+            package test;
+            message Empty {}
+            message Reply { string msg = 1; }
+            service TestService {
+              rpc Stream(Empty) returns (stream Reply);
+            }
+            "#,
+        )
+        .unwrap();
+        let pool = parse_proto_file(&proto_path).unwrap();
+        let method_desc = resolve_method(&pool, "test.TestService/Stream").unwrap();
+        (TestProtoFile(proto_path), method_desc)
+    }
+
+    fn encode_reply(method_desc: &prost_reflect::MethodDescriptor, msg: &str) -> Vec<u8> {
+        let json = format!(r#"{{"msg":"{}"}}"#, msg);
+        let dynamic = DynamicMessage::deserialize(
+            method_desc.output(),
+            &mut serde_json::Deserializer::from_str(&json),
+        )
+        .unwrap();
+        dynamic.encode_to_vec()
+    }
+
+    #[test]
+    fn drain_frames_surfaces_decode_failures_instead_of_silently_dropping() {
+        let (_dir, method_desc) = test_method_desc();
+
+        let mut buffer = Vec::new();
+        // Frame 1: valid, uncompressed.
+        buffer.extend_from_slice(&grpc_encode_message(&encode_reply(&method_desc, "hello")));
+        // Frame 2: corrupt — claims compression but payload isn't valid gzip,
+        // so it must fail to decode rather than vanish silently.
+        let garbage = b"not gzip data".to_vec();
+        buffer.push(1u8); // compression flag set
+        buffer.extend_from_slice(&(garbage.len() as u32).to_be_bytes());
+        buffer.extend_from_slice(&garbage);
+        // Frame 3: valid, uncompressed.
+        buffer.extend_from_slice(&grpc_encode_message(&encode_reply(&method_desc, "world")));
+
+        let mut chunks = Vec::new();
+        let mut dropped_frames = 0usize;
+        drain_frames(&mut buffer, &method_desc, &mut chunks, &mut dropped_frames);
+
+        // Before the fix, the corrupt frame was silently dropped with no
+        // signal at all. Now it must be counted...
+        assert_eq!(dropped_frames, 1, "the corrupt frame must be counted as dropped");
+        // ...while the two good frames on either side still decode fine.
+        assert_eq!(chunks.len(), 2);
+        assert!(chunks[0].contains("hello"));
+        assert!(chunks[1].contains("world"));
+        assert!(buffer.is_empty(), "all well-framed bytes should be consumed");
+    }
+
+    #[test]
+    fn drain_frames_decompresses_gzip_compressed_frames() {
+        use flate2::write::GzEncoder;
+        use flate2::Compression;
+        use std::io::Write;
+
+        let (_dir, method_desc) = test_method_desc();
+        let raw = encode_reply(&method_desc, "compressed-hello");
+
+        let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
+        encoder.write_all(&raw).unwrap();
+        let compressed = encoder.finish().unwrap();
+
+        let mut buffer = Vec::new();
+        buffer.push(1u8); // compression flag set
+        buffer.extend_from_slice(&(compressed.len() as u32).to_be_bytes());
+        buffer.extend_from_slice(&compressed);
+
+        let mut chunks = Vec::new();
+        let mut dropped_frames = 0usize;
+        drain_frames(&mut buffer, &method_desc, &mut chunks, &mut dropped_frames);
+
+        assert_eq!(dropped_frames, 0);
+        assert_eq!(chunks.len(), 1);
+        assert!(chunks[0].contains("compressed-hello"));
     }
 }

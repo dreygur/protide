@@ -106,7 +106,15 @@ impl SocketIoExecutor for TungsteniteSocketIoExecutor {
         let (event_tx, event_rx) = mpsc::channel::<SioUiEvent>();
 
         std::thread::spawn(move || {
-            let rt = tokio::runtime::Runtime::new().expect("sio tokio runtime");
+            let rt = match tokio::runtime::Runtime::new() {
+                Ok(rt) => rt,
+                Err(e) => {
+                    let _ = event_tx.send(SioUiEvent::Error(
+                        format!("Failed to start Socket.IO runtime: {}", e),
+                    ));
+                    return;
+                }
+            };
             rt.block_on(run_connection(params, cmd_rx, event_tx));
         });
 
@@ -126,12 +134,21 @@ async fn run_connection(
 
     let ws_url = build_ws_url(&params.url);
 
-    let (mut write, mut read) = match connect_async(&ws_url).await {
-        Err(e) => {
+    let (mut write, mut read) = match tokio::time::timeout(
+        std::time::Duration::from_secs(15),
+        connect_async(&ws_url),
+    )
+    .await
+    {
+        Err(_elapsed) => {
+            let _ = event_tx.send(SioUiEvent::Error("Connection timed out after 15s".into()));
+            return;
+        }
+        Ok(Err(e)) => {
             let _ = event_tx.send(SioUiEvent::Error(format!("Connection failed: {}", e)));
             return;
         }
-        Ok((stream, _)) => stream.split(),
+        Ok(Ok((stream, _))) => stream.split(),
     };
 
     // ── Engine.IO OPEN ────────────────────────────────────────────────────────

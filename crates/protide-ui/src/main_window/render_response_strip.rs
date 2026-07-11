@@ -1,7 +1,7 @@
 use gpui::{div, px, MouseButton, IntoElement, ParentElement, Styled, prelude::*};
 use crate::theme;
 use crate::components::icons::{icon, ICON_SM, ICON_CHEVRON_DOWN, ICON_CHEVRON_RIGHT};
-use crate::panels::format_size;
+use crate::panels::{format_size, truncate_error};
 use super::MainWindow;
 
 impl MainWindow {
@@ -20,9 +20,7 @@ impl MainWindow {
             let loading = panel.is_loading();
             let summary = panel.last_response_summary()
                 .map(|(s, st, ms, sz)| (s, st.to_string(), ms, sz));
-            let error = panel.last_error().map(|e| {
-                if e.len() > 42 { format!("{}…", &e[..40]) } else { e.to_string() }
-            });
+            let error = panel.last_error().map(truncate_error);
             (loading, summary, error)
         };
 

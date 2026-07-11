@@ -2,12 +2,30 @@ use gpui::Context;
 use super::*;
 use super::graphql::dns_troubleshoot_hint;
 
+/// How close to the bottom (in px) the scroll position must be for new
+/// messages to auto-scroll the view. Keeps autoscroll from fighting a user
+/// who has manually scrolled up to read history.
+const WS_AUTOSCROLL_THRESHOLD: f32 = 48.0;
+
 impl<E: WebSocketExecutor> RequestPanel<E> {
+    /// True if the WS message list is scrolled at (or near) the bottom.
+    pub(super) fn ws_near_bottom(&self) -> bool {
+        let max = self.ws_scroll.max_offset().y;
+        if max <= gpui::px(0.0) {
+            return true;
+        }
+        let dist_from_bottom = max + self.ws_scroll.offset().y;
+        dist_from_bottom <= gpui::px(WS_AUTOSCROLL_THRESHOLD)
+    }
+
     /// Connect to WebSocket server
     pub(super) fn connect_websocket(&mut self, cx: &mut Context<Self>) {
         if !matches!(self.ws_state, WsConnectionState::Disconnected | WsConnectionState::Error) {
             return;
         }
+
+        self.ws_generation = self.ws_generation.wrapping_add(1);
+        let my_generation = self.ws_generation;
 
         self.ws_state = WsConnectionState::Connecting;
         self.ws_messages.clear();
@@ -54,6 +72,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                         log::info!("WS connected: {}", ws_log_url);
                         let _ = cx.update(|cx| {
                             let _ = this.update(cx, |this, cx| {
+                                if this.ws_generation != my_generation { return; }
                                 this.ws_state = WsConnectionState::Connected;
                                 cx.notify();
                             });
@@ -62,13 +81,17 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                     WsEvent::Message { msg, env_changes } => {
                         let _ = cx.update(|cx| {
                             let _ = this.update(cx, |this, cx| {
+                                if this.ws_generation != my_generation { return; }
                                 for (k, v) in &env_changes {
                                     if let Some(ref ep) = explorer_panel {
                                         ep.update(cx, |p, cx| p.set_env_variable(k, v, cx));
                                     }
                                 }
+                                let was_near_bottom = this.ws_near_bottom();
                                 this.ws_messages.push(msg);
-                                this.ws_scroll.scroll_to_bottom();
+                                if was_near_bottom {
+                                    this.ws_scroll.scroll_to_bottom();
+                                }
                                 cx.notify();
                             });
                         });
@@ -77,6 +100,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                         log::info!("WS disconnected: {}", ws_log_url);
                         let _ = cx.update(|cx| {
                             let _ = this.update(cx, |this, cx| {
+                                if this.ws_generation != my_generation { return; }
                                 this.ws_state = WsConnectionState::Disconnected;
                                 this.ws_send_tx = None;
                                 cx.notify();
@@ -105,14 +129,18 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                                 console.update(cx, |panel, cx| panel.log(entry, cx));
                             }
                             let _ = this.update(cx, |this, cx| {
+                                if this.ws_generation != my_generation { return; }
                                 this.ws_state = WsConnectionState::Error;
                                 this.ws_send_tx = None;
+                                let was_near_bottom = this.ws_near_bottom();
                                 this.ws_messages.push(WsMessage {
                                     direction: WsDirection::Received,
                                     content: format!("Connection failed: {}", e),
                                     timestamp: chrono::Local::now(),
                                 });
-                                this.ws_scroll.scroll_to_bottom();
+                                if was_near_bottom {
+                                    this.ws_scroll.scroll_to_bottom();
+                                }
                                 cx.notify();
                             });
                         });
@@ -122,6 +150,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             }
             let _ = cx.update(|cx| {
                 let _ = this.update(cx, |this, cx| {
+                    if this.ws_generation != my_generation { return; }
                     if !matches!(this.ws_state, WsConnectionState::Disconnected | WsConnectionState::Error) {
                         this.ws_state = WsConnectionState::Disconnected;
                         this.ws_send_tx = None;

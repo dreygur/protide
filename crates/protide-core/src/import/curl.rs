@@ -10,8 +10,28 @@ use super::ImportResult;
 pub fn parse_curl(input: &str) -> Result<ImportResult, String> {
     let mut result = ImportResult::new();
 
-    // Handle multiple curl commands separated by newlines
+    // Join backslash-continued physical lines into logical lines first, so
+    // that when splitting multiple curl commands apart (below) a
+    // continuation line (which doesn't start with "curl ") stays attached to
+    // the command it belongs to instead of being silently dropped.
+    let mut logical_lines: Vec<String> = Vec::new();
+    let mut current = String::new();
     for line in input.lines() {
+        let trimmed_end = line.trim_end();
+        if let Some(stripped) = trimmed_end.strip_suffix('\\') {
+            current.push_str(stripped);
+            current.push(' ');
+        } else {
+            current.push_str(trimmed_end);
+            logical_lines.push(std::mem::take(&mut current));
+        }
+    }
+    if !current.is_empty() {
+        logical_lines.push(current);
+    }
+
+    // Handle multiple curl commands separated by newlines
+    for line in &logical_lines {
         let trimmed = line.trim();
         if trimmed.starts_with("curl ") || trimmed.starts_with("curl\t") {
             match parse_single_curl(trimmed) {
@@ -305,6 +325,28 @@ mod tests {
         let args = parse_curl_args(r#"-H "Content-Type: application/json" -d '{"key": "value"}' https://example.com"#).unwrap();
         assert!(args.contains(&"Content-Type: application/json".to_string()));
         assert!(args.contains(&r#"{"key": "value"}"#.to_string()));
+    }
+
+    #[test]
+    fn test_multiple_multiline_curl_commands_lose_headers() {
+        // Two curl commands, each using backslash line-continuation (as browsers'
+        // "copy as cURL" commonly produce). parse_curl() first joins
+        // backslash-continued physical lines into logical lines, then splits
+        // on lines starting with "curl ", so each command's continuation line
+        // stays attached to the right command and no headers are lost.
+        let cmd = "curl https://api.example.com/a \\\n  -H \"X-Test: 1\"\ncurl https://api.example.com/b \\\n  -H \"X-Test: 2\"";
+        let result = parse_curl(cmd).unwrap();
+        assert_eq!(result.requests.len(), 2, "expected 2 requests, got {:?}", result.requests);
+        assert!(
+            result.requests[0].headers.iter().any(|h| h.key == "X-Test" && h.value == "1"),
+            "expected X-Test header on first request, got {:?}",
+            result.requests[0].headers
+        );
+        assert!(
+            result.requests[1].headers.iter().any(|h| h.key == "X-Test" && h.value == "2"),
+            "expected X-Test header on second request, got {:?}",
+            result.requests[1].headers
+        );
     }
 
     #[test]

@@ -3,11 +3,13 @@
 mod base64;
 mod bindings;
 mod expect_js;
+mod extract;
 
 use bindings::{
-    extract_results, setup_console_js, setup_env_js, setup_expect_js, setup_request_js,
+    setup_console_js, setup_env_js, setup_expect_js, setup_request_js,
     setup_response_js, setup_storage, setup_utils_js,
 };
+use extract::extract_results;
 use rquickjs::{Context, Runtime, Value};
 
 use super::context::ScriptContext;

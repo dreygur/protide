@@ -264,7 +264,7 @@ impl ExplorerPanel {
                     let end = self.edit_selection.start.max(self.edit_selection.end);
                     text.replace_range(start..end, "");
                     self.edit_selection = start..start;
-                    self.set_edit_text(target, text);
+                    self.set_edit_text(target, text, cx);
                     self.update_env_scroll(target);
                     cx.notify();
                 } else if self.edit_selection.end > 0 {
@@ -272,7 +272,7 @@ impl ExplorerPanel {
                     let pos = self.edit_selection.end - 1;
                     text.remove(pos);
                     self.edit_selection = pos..pos;
-                    self.set_edit_text(target, text);
+                    self.set_edit_text(target, text, cx);
                     self.update_env_scroll(target);
                     cx.notify();
                 }

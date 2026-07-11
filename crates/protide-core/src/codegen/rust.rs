@@ -21,11 +21,19 @@ pub fn generate_rust(request: &CodegenRequest) -> String {
     lines.push(String::new());
 
     let method = request.method.to_lowercase();
-    lines.push(format!("    let response = client.{}(\"{}\")", method, request.url));
+    lines.push(format!(
+        "    let response = client.{}(\"{}\")",
+        method,
+        escape_rust_string(&request.url)
+    ));
 
     // Add headers
     for (key, value) in &request.headers {
-        lines.push(format!("        .header(\"{}\", \"{}\")", key, escape_rust_string(value)));
+        lines.push(format!(
+            "        .header(\"{}\", \"{}\")",
+            escape_rust_string(key),
+            escape_rust_string(value)
+        ));
     }
 
     // Add body
@@ -93,5 +101,28 @@ mod tests {
             ]);
         let code = generate_rust(&request);
         assert!(code.contains(".header(\"Authorization\", \"Bearer token\")"));
+    }
+
+    #[test]
+    fn test_url_injection_is_escaped() {
+        // A malicious URL containing an unescaped double quote could break
+        // out of the Rust string literal and inject arbitrary Rust code.
+        let request = CodegenRequest::new(
+            "GET",
+            "https://example.com/\"); std::process::exit(1); (\"",
+        );
+        let code = generate_rust(&request);
+        assert!(!code.contains("client.get(\"https://example.com/\"); std::process::exit(1); (\"\")"));
+        assert!(code.contains("\\\""));
+    }
+
+    #[test]
+    fn test_header_key_injection_is_escaped() {
+        let request = CodegenRequest::new("GET", "https://example.com").with_headers(vec![(
+            "X-Evil\")\n        .header(\"X-Injected".to_string(),
+            "value".to_string(),
+        )]);
+        let code = generate_rust(&request);
+        assert!(!code.contains(".header(\"X-Evil\")\n        .header(\"X-Injected\", \"value\")"));
     }
 }

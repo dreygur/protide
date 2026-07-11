@@ -90,6 +90,10 @@ pub struct ExecutionResult {
     pub console_output: Vec<String>,
     pub env_changes: Vec<(String, String)>,
     pub extracted_vars: Vec<(String, String)>,
+    /// Error messages for `@set` extractions that failed (e.g. JSONPath
+    /// didn't match anything). Kept separate from `extracted_vars` so
+    /// callers can surface failures instead of them vanishing silently.
+    pub extraction_errors: Vec<String>,
 }
 
 fn ser_duration_millis<S: serde::Serializer>(d: &Duration, s: S) -> Result<S::Ok, S::Error> {
@@ -173,15 +177,21 @@ pub fn execute(req: ExecutionRequest) -> Result<ExecutionResult, String> {
         }
 
     // 4. Variable extraction via @set JSONPath annotations
-    let extracted_vars: Vec<(String, String)> = if !req.variable_extractions.is_empty() {
-        chaining::extract_variables(&raw.body, &req.variable_extractions)
-            .into_iter()
-            .filter(|r| r.success)
-            .map(|r| (r.name, r.value))
-            .collect()
-    } else {
-        Vec::new()
-    };
+    let mut extracted_vars: Vec<(String, String)> = Vec::new();
+    let mut extraction_errors: Vec<String> = Vec::new();
+    if !req.variable_extractions.is_empty() {
+        for r in chaining::extract_variables(&raw.body, &req.variable_extractions) {
+            if r.success {
+                extracted_vars.push((r.name, r.value));
+            } else {
+                extraction_errors.push(format!(
+                    "@set {}: {}",
+                    r.name,
+                    r.error.unwrap_or_else(|| "extraction failed".to_string())
+                ));
+            }
+        }
+    }
 
     Ok(ExecutionResult {
         status: raw.status,
@@ -194,5 +204,72 @@ pub fn execute(req: ExecutionRequest) -> Result<ExecutionResult, String> {
         console_output,
         env_changes,
         extracted_vars,
+        extraction_errors,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::{Read, Write};
+    use std::net::TcpListener;
+
+    /// Spawns a one-shot HTTP server on 127.0.0.1 that replies with the given
+    /// JSON body to a single request, and returns its base URL.
+    fn spawn_json_server(json_body: &'static str) -> String {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind");
+        let addr = listener.local_addr().expect("addr");
+        std::thread::spawn(move || {
+            if let Ok((mut stream, _)) = listener.accept() {
+                let mut buf = [0u8; 1024];
+                let _ = stream.read(&mut buf);
+                let response = format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                    json_body.len(),
+                    json_body
+                );
+                let _ = stream.write_all(response.as_bytes());
+                let _ = stream.flush();
+            }
+        });
+        format!("http://{}/", addr)
+    }
+
+    /// A failed `@set` extraction must be reported via `extraction_errors`
+    /// instead of silently vanishing from `extracted_vars`.
+    #[test]
+    fn test_failed_extraction_surfaces_in_extraction_errors() {
+        let url = spawn_json_server(r#"{"items": [1, 2, 3]}"#);
+
+        let req = ExecutionRequest {
+            method: "GET".to_string(),
+            url,
+            headers: Vec::new(),
+            body: ExecutionBody::None,
+            mode: ExecutionMode::Http,
+            pre_script: String::new(),
+            post_script: String::new(),
+            tests: String::new(),
+            env_vars: HashMap::new(),
+            variable_extractions: vec![
+                VariableExtraction {
+                    name: "good".to_string(),
+                    expression: "$.items[0]".to_string(),
+                },
+                VariableExtraction {
+                    name: "bad".to_string(),
+                    expression: "$.items[10]".to_string(),
+                },
+            ],
+            timeout_secs: 5,
+            verify_ssl: true,
+            impersonate_browser: false,
+        };
+
+        let result = execute(req).expect("execute should succeed");
+
+        assert_eq!(result.extracted_vars, vec![("good".to_string(), "1".to_string())]);
+        assert_eq!(result.extraction_errors.len(), 1);
+        assert!(result.extraction_errors[0].contains("bad"));
+    }
 }
