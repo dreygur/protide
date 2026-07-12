@@ -208,11 +208,60 @@ impl Colors {
     }
 }
 
+/// User-selectable theme mode. `System` tracks the OS light/dark setting;
+/// `Light`/`Dark` pin the theme regardless of OS setting.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum ThemeMode {
+    System,
+    Light,
+    Dark,
+}
+
+const THEME_MODE_PREF_KEY: &str = "theme.mode";
+
+impl ThemeMode {
+    fn as_str(self) -> &'static str {
+        match self {
+            ThemeMode::System => "system",
+            ThemeMode::Light => "light",
+            ThemeMode::Dark => "dark",
+        }
+    }
+
+    fn from_str(s: &str) -> Self {
+        match s {
+            "light" => ThemeMode::Light,
+            "dark" => ThemeMode::Dark,
+            _ => ThemeMode::System,
+        }
+    }
+
+    fn load() -> Self {
+        crate::prefs::get_string(THEME_MODE_PREF_KEY)
+            .map(|s| Self::from_str(&s))
+            .unwrap_or(ThemeMode::System)
+    }
+
+    fn save(self) {
+        crate::prefs::set_string(THEME_MODE_PREF_KEY, self.as_str());
+    }
+
+    /// Cycle System -> Light -> Dark -> System.
+    fn next(self) -> Self {
+        match self {
+            ThemeMode::System => ThemeMode::Light,
+            ThemeMode::Light => ThemeMode::Dark,
+            ThemeMode::Dark => ThemeMode::System,
+        }
+    }
+}
+
 /// Current theme colors (will follow system preference)
 #[derive(Clone)]
 pub struct Theme {
     pub colors: Colors,
     pub is_dark: bool,
+    pub mode: ThemeMode,
 
     // Design tokens
     pub spacing: Spacing,
@@ -227,6 +276,7 @@ impl Theme {
         Self {
             colors: Colors::dark(),
             is_dark: true,
+            mode: ThemeMode::System,
             spacing: Spacing::new(),
             typography: Typography::new(),
             sizes: ComponentSizes::new(),
@@ -239,6 +289,7 @@ impl Theme {
         Self {
             colors: Colors::light(),
             is_dark: false,
+            mode: ThemeMode::System,
             spacing: Spacing::new(),
             typography: Typography::new(),
             sizes: ComponentSizes::new(),
@@ -449,17 +500,64 @@ impl Default for Opacity {
 
 impl gpui::Global for Theme {}
 
-/// Initialize theme based on system preference.
+fn theme_for_appearance(appearance: gpui::WindowAppearance, mode: ThemeMode) -> Theme {
+    let mut theme = match mode {
+        ThemeMode::Light => Theme::light(),
+        ThemeMode::Dark => Theme::dark(),
+        ThemeMode::System => match appearance {
+            gpui::WindowAppearance::Light | gpui::WindowAppearance::VibrantLight => Theme::light(),
+            gpui::WindowAppearance::Dark | gpui::WindowAppearance::VibrantDark => Theme::dark(),
+        },
+    };
+    theme.mode = mode;
+    theme
+}
+
+/// Initialize theme based on the persisted user preference (defaulting to
+/// following the system light/dark setting).
 ///
 /// `App::window_appearance()` reads the OS-level light/dark setting directly from
 /// the platform (no `Window` required), matching how Zed's `SystemAppearance::init`
 /// bootstraps its theme before any window exists.
+///
+/// On Linux this value comes from an async xdg-desktop-portal D-Bus query that
+/// hasn't resolved yet at this point in startup, so it reports the platform's
+/// hardcoded `Light` default rather than the real setting. Callers must also
+/// call [`sync_with_window`] once a window exists (and keep it live via
+/// `observe_window_appearance`) to pick up the real value and future changes.
 pub fn init(cx: &mut App) {
-    let theme = match cx.window_appearance() {
-        gpui::WindowAppearance::Light | gpui::WindowAppearance::VibrantLight => Theme::light(),
-        gpui::WindowAppearance::Dark | gpui::WindowAppearance::VibrantDark => Theme::dark(),
-    };
+    let theme = theme_for_appearance(cx.window_appearance(), ThemeMode::load());
     cx.set_global(theme);
+}
+
+/// Re-sync the global theme from a window's current appearance.
+///
+/// Call this from `observe_window_appearance` so the theme tracks the OS
+/// setting after `init()` (whose reading can be stale, see above) and whenever
+/// the user changes their system theme at runtime. A no-op when the user has
+/// pinned an explicit Light/Dark mode.
+pub fn sync_with_window(window: &gpui::Window, cx: &mut App) {
+    let mode = current(cx).mode;
+    if mode != ThemeMode::System {
+        return;
+    }
+    cx.set_global(theme_for_appearance(window.appearance(), mode));
+}
+
+/// Explicitly select a theme mode (System/Light/Dark), persist the choice,
+/// and apply it immediately.
+pub fn set_mode(mode: ThemeMode, window: &gpui::Window, cx: &mut App) {
+    mode.save();
+    cx.set_global(theme_for_appearance(window.appearance(), mode));
+}
+
+/// Cycle the theme mode (System -> Light -> Dark -> System) and apply it.
+///
+/// Cycles the *mode* itself, not the resolved colors - so the button's icon
+/// (keyed off `theme.mode`, not `theme.is_dark`) changes on every click even
+/// when System currently resolves to the same colors as Dark.
+pub fn toggle(window: &gpui::Window, cx: &mut App) {
+    set_mode(current(cx).mode.next(), window, cx);
 }
 
 /// Get the current theme

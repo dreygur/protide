@@ -53,7 +53,8 @@ use crate::theme;
 use protide_core::sync::{SyncEngine, SyncEvent};
 use crate::components::icons::{
     ICON_CHEVRON_DOWN, ICON_CHEVRON_RIGHT, ICON_CHEVRON_UP, ICON_CLOSE, ICON_COPY, ICON_FOLDER, ICON_MAXIMIZE,
-    ICON_MD, ICON_MENU, ICON_MINIMIZE, ICON_REFRESH, ICON_SETTINGS, ICON_SM, ICON_WINDOW_CLOSE, icon,
+    ICON_MD, ICON_MENU, ICON_MINIMIZE, ICON_MOON, ICON_REFRESH, ICON_SETTINGS, ICON_SM, ICON_SUN,
+    ICON_WINDOW_CLOSE, icon,
 };
 
 /// Main window containing the application layout
@@ -92,6 +93,9 @@ pub struct MainWindow {
     pub(super) open_menu: Option<u8>,
     /// Keeps the on_app_quit subscription alive for the lifetime of the window.
     pub(super) _quit_sub: gpui::Subscription,
+    /// Keeps the appearance-change subscription alive so the theme keeps
+    /// tracking the OS light/dark setting for the lifetime of the window.
+    pub(super) _appearance_sub: gpui::Subscription,
     /// Collaboration presence manager
     pub(super) presence: PresenceManager,
     /// Sync engine for peer discovery and CRDT sync
@@ -150,6 +154,16 @@ impl MainWindow {
             async move { crate::session::save_sync(&state); }
         });
 
+        // `theme::init` runs before any window exists, so on Linux it can read a
+        // stale appearance while the xdg-desktop-portal query is still in flight.
+        // Sync immediately now that a real window is available, and keep syncing
+        // whenever the OS theme changes at runtime.
+        theme::sync_with_window(window, cx);
+        let appearance_sub = cx.observe_window_appearance(window, |_this, window, cx| {
+            theme::sync_with_window(window, cx);
+            cx.notify();
+        });
+
         let join_input = cx.new(|cx| {
             InputState::new(window, cx).placeholder("enter pairing code…")
         });
@@ -206,6 +220,7 @@ impl MainWindow {
             focus: cx.focus_handle(),
             open_menu: None,
             _quit_sub: quit_sub,
+            _appearance_sub: appearance_sub,
             presence,
             sync_engine,
             join_input,

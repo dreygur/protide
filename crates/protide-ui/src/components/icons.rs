@@ -60,3 +60,5 @@ pub const ICON_LINK:           &str = "icons/external-link.svg";
 pub const ICON_EXPORT:         &str = "icons/arrow-up.svg";
 pub const ICON_NETWORK:        &str = "icons/network.svg";
 pub const ICON_TEAM:           &str = "icons/bot.svg";
+pub const ICON_SUN:            &str = "icons/sun.svg";
+pub const ICON_MOON:           &str = "icons/moon.svg";

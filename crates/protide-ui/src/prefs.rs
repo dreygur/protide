@@ -29,3 +29,19 @@ pub fn set_f32(key: &str, value: f32) {
     map.insert(key.to_string(), serde_json::Value::from(value as f64));
     save(&map);
 }
+
+pub fn get_string(key: &str) -> Option<String> {
+    load().get(key).and_then(|v| v.as_str()).map(str::to_string)
+}
+
+pub fn set_string(key: &str, value: &str) {
+    let mut map = load();
+    map.insert(key.to_string(), serde_json::Value::from(value));
+    save(&map);
+}
+
+pub fn remove(key: &str) {
+    let mut map = load();
+    map.remove(key);
+    save(&map);
+}

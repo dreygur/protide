@@ -136,6 +136,38 @@ impl MainWindow {
             )
             .child(
                 div()
+                    .id("btn-theme-toggle")
+                    .w(px(28.0))
+                    .h(px(22.0))
+                    .mr(px(6.0))
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .cursor_pointer()
+                    .bg(theme.colors.bg_elevated)
+                    .border_1()
+                    .border_color(theme.colors.border)
+                    .hover(|s| s.border_color(theme.colors.accent.opacity(0.5)))
+                    .on_click(cx.listener(|_, _, window, cx| {
+                        theme::toggle(window, cx);
+                        cx.notify();
+                    }))
+                    .child(match theme.mode {
+                        theme::ThemeMode::Light => icon(ICON_SUN, 12.0, theme.colors.text_secondary).into_any_element(),
+                        theme::ThemeMode::Dark => icon(ICON_MOON, 12.0, theme.colors.text_secondary).into_any_element(),
+                        // No "system/auto" icon in the bundled Lucide set - use a distinct
+                        // glyph so this state is visually distinguishable from Light/Dark
+                        // even when System currently resolves to the same colors as Dark.
+                        theme::ThemeMode::System => div()
+                            .text_size(px(10.0))
+                            .font_weight(FontWeight::BOLD)
+                            .text_color(theme.colors.text_secondary)
+                            .child("A")
+                            .into_any_element(),
+                    }),
+            )
+            .child(
+                div()
                     .flex()
                     .items_center()
                     .h_full()
