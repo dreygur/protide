@@ -105,3 +105,6 @@ protox = "0.7"
 
 # CSV parsing for data-driven testing
 csv = "1.3"
+
+# gzip (de)compression for gRPC message-level compression
+flate2 = "1"

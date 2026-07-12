@@ -6349,6 +6349,7 @@ dependencies = [
  "chrono",
  "csv",
  "dirs",
+ "flate2",
  "futures-util",
  "http-parser",
  "hyper",
