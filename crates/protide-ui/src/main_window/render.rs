@@ -93,8 +93,9 @@ impl Render for MainWindow {
                                     .flex_col()
                                     .w_full()
                                     .overflow_hidden()
-                                    .when(show_response, |el| el.flex_shrink_0().min_h(px(150.0)).h(px(self.request_height)))
-                                    .when(!show_response, |el| el.flex_1())
+                                    // A collapsed response panel gives its space back to the request panel
+                                    .when(show_response && !self.response_collapsed, |el| el.flex_shrink_0().min_h(px(150.0)).h(px(self.request_height)))
+                                    .when(!show_response || self.response_collapsed, |el| el.flex_1())
                                     .child(self.request_panel.clone()),
                             )
                             .when(show_response, |el| {

@@ -183,7 +183,7 @@ impl MainWindow {
             console_panel,
             docs_panel,
             show_console: false,
-            console_height: 160.0,
+            console_height: crate::prefs::get_f32("main.console_height", 160.0),
             drag_console: None,
             show_mock_server: false,
             show_docs: false,
@@ -309,6 +309,12 @@ impl MainWindow {
             self.show_about = false;
         } else if self.presence.show_pairing {
             self.presence.show_pairing = false;
+        } else if self.show_runner {
+            self.show_runner = false;
+        } else if self.open_menu.is_some() {
+            self.open_menu = None;
+        } else if self.request_panel.read(cx).import_modal_open {
+            self.request_panel.update(cx, |p, _| p.import_modal_open = false);
         }
         cx.notify();
     }

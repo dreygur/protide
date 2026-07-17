@@ -187,12 +187,26 @@ impl ResponsePanel {
         cx.notify();
     }
 
+    /// Headers shown in the Headers tab. set-cookie rows live in the Cookies
+    /// tab, so hit-testing and copy must use this same filtered view.
+    pub(super) fn display_headers(&self) -> Vec<&(String, String)> {
+        self.response
+            .as_ref()
+            .map(|r| {
+                r.headers
+                    .iter()
+                    .filter(|(k, _)| !k.eq_ignore_ascii_case("set-cookie"))
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
     pub(super) fn hdr_row_at(&self, ey: Pixels) -> Option<usize> {
         let bounds = self.hdr_table_bounds?;
         let rel_y = f32::from(ey) - f32::from(bounds.origin.y) - HDR_LABEL_ROW_H;
         if rel_y < 0.0 { return None; }
         let row = (rel_y / HDR_ROW_H) as usize;
-        let n = self.response.as_ref()?.headers.len();
+        let n = self.display_headers().len();
         (row < n).then_some(row)
     }
 
@@ -201,10 +215,8 @@ impl ResponsePanel {
         let val_col_x = f32::from(bounds.origin.x) + self.resp_header_col1_w + HDR_SPACER_W + HDR_PADDING;
         let char_x = (f32::from(ex) - val_col_x).max(0.0);
         let char_idx = (char_x / HDR_CHAR_W) as usize;
-        let val = self.response.as_ref()
-            .and_then(|r| r.headers.get(row))
-            .map(|(_, v)| v.as_str())
-            .unwrap_or("");
+        let headers = self.display_headers();
+        let val = headers.get(row).map(|(_, v)| v.as_str()).unwrap_or("");
         val.char_indices()
             .nth(char_idx)
             .map(|(byte_pos, _)| byte_pos)
@@ -276,6 +288,12 @@ impl ResponsePanel {
         self.json_sel = None;
         self.json_selecting = false;
         self.rebuild_json_rows();
+
+        // Clear state tied to the previous response
+        self.extraction_result = None;
+        self.hdr_sel = None;
+        self.json_context_menu = None;
+        self.copy_feedback = None;
 
         self.response = Some(response);
         self.loading = false;

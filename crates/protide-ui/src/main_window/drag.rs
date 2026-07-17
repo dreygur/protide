@@ -154,7 +154,9 @@ impl MainWindow {
                     if this.drag_docs.take().is_some() {
                         crate::prefs::set_f32("main.docs_width", this.docs_width);
                     }
-                    this.drag_console.take();
+                    if this.drag_console.take().is_some() {
+                        crate::prefs::set_f32("main.console_height", this.console_height);
+                    }
                     cx.notify();
                 }),
             )

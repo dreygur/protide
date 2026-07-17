@@ -11,6 +11,7 @@ impl MainWindow {
             ("View", "Ctrl+B", "Toggle sidebar"),
             ("View", "Ctrl+Shift+M", "Toggle mock server"),
             ("View", "Ctrl+Shift+D", "Toggle API explorer"),
+            ("View", "Ctrl+Shift+C", "Toggle console"),
             ("Help", "F1", "Show keyboard shortcuts"),
             ("Help", "Ctrl+Shift+A", "About Protide"),
             ("General", "Escape", "Close dialog / overlay"),

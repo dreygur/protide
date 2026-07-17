@@ -19,7 +19,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
         use crate::components::icons::{ICON_REFRESH, ICON_SEARCH, ICON_LOADER};
         let theme = theme::current(cx);
         let schema = self.graphql.schema.clone();
-        let search = self.graphql.schema_search.clone();
+        let search = self.graphql.schema_search.read(cx).value().to_string();
 
         let toolbar = div()
             .flex()
@@ -189,16 +189,10 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                                 div()
                                     .flex_1()
                                     .text_size(px(12.0))
-                                    .text_color(if search.is_empty() {
-                                        theme.colors.text_muted
-                                    } else {
-                                        theme.colors.text_primary
-                                    })
-                                    .child(if search.is_empty() {
-                                        SharedString::from("Filter types…")
-                                    } else {
-                                        SharedString::from(search.clone())
-                                    })
+                                    .child(
+                                        gpui_component::input::Input::new(&self.graphql.schema_search)
+                                            .appearance(false),
+                                    )
                             )
                     )
                     .child(

@@ -46,13 +46,12 @@ impl ResponsePanel {
                 .flex()
                 .items_center()
                 .gap(px(8.0))
-                .child(
+                .child(render_util::loading_ring(
                     div()
                         .size(px(14.0))
-
                         .border_2()
-                        .border_color(theme.colors.accent.opacity(0.5))
-                )
+                        .border_color(theme.colors.accent.opacity(0.5)),
+                ))
                 .child(
                     div()
                         .text_size(px(12.0))

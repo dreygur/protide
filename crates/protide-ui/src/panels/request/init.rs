@@ -102,7 +102,13 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             }),
             operation_name: String::new(),
             schema: GraphqlSchemaState::Idle,
-            schema_search: String::new(),
+            schema_search: {
+                let input = cx.new(|cx| InputState::new(window, cx).placeholder("Filter types…"));
+                // Re-render so the schema type list filters as the user types
+                cx.subscribe(&input, |_, _, _: &gpui_component::input::InputEvent, cx| cx.notify())
+                    .detach();
+                input
+            },
         };
         let scripts = ScriptPanel {
             pre: String::new(),

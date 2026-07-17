@@ -3,10 +3,7 @@ use super::*;
 impl ResponsePanel {
     pub(super) fn render_headers_tab(&self, response: &ResponseData, cx: &Context<Self>) -> gpui::AnyElement {
         let theme = theme::current(cx);
-        // set-cookie headers are shown in the Cookies tab; exclude them here to avoid duplication
-        let headers: Vec<&(String, String)> = response.headers.iter()
-            .filter(|(k, _)| !k.eq_ignore_ascii_case("set-cookie"))
-            .collect();
+        let headers = self.display_headers();
         let header_count = headers.len();
 
         if header_count == 0 {
@@ -157,10 +154,10 @@ impl ResponsePanel {
                                 let (a, b) = sel.range;
                                 let (s, e) = (a.min(b), a.max(b));
                                 if s != e {
-                                    if let Some((_, val)) = this.response.as_ref()
-                                        .and_then(|r| r.headers.get(sel.row))
-                                    {
-                                        let text = val[s.min(val.len())..e.min(val.len())].to_string();
+                                    let text = this.display_headers().get(sel.row).map(|(_, val)| {
+                                        val[s.min(val.len())..e.min(val.len())].to_string()
+                                    });
+                                    if let Some(text) = text {
                                         cx.write_to_clipboard(ClipboardItem::new_string(text));
                                         this.show_copy_feedback(CopyFeedback::HdrVal, cx);
                                     }

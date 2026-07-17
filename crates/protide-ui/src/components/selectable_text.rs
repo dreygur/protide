@@ -9,8 +9,13 @@ use gpui::{
     div, px, ElementId, Hsla, InteractiveElement, IntoElement, ParentElement, SharedString, Styled,
 };
 
+/// Convert a character index to a byte offset (clamped to the string's end)
+pub fn char_to_byte(s: &str, char_idx: usize) -> usize {
+    s.char_indices().nth(char_idx).map(|(b, _)| b).unwrap_or(s.len())
+}
+
 /// A selection range spanning multiple rows.
-/// Tracks start/end row indices and byte offsets within each row.
+/// Tracks start/end row indices and character offsets within each row.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct SelectionRange {
     pub start_row: usize,
@@ -24,7 +29,7 @@ impl SelectionRange {
         Self { start_row, start_offset, end_row, end_offset }
     }
 
-    /// Returns the (start, end) byte offsets for a given row, if the row intersects selection.
+    /// Returns the (start, end) character offsets for a given row, if the row intersects selection.
     pub fn offsets_for_row(&self, row: usize, text_len: usize) -> Option<(usize, usize)> {
         let (sr, er) = if self.start_row <= self.end_row {
             (self.start_row, self.end_row)
@@ -150,13 +155,15 @@ pub fn render_selectable_json_value(
         .text_color(text_color);  // inherited by plain SharedString children
 
     // Only compute offsets when the selection actually touches this row.
-    if let Some((s, e)) = sel_range.and_then(|r| r.offsets_for_row(row_index, text.len())) {
+    // Offsets are character indices - convert to byte offsets before slicing.
+    if let Some((s, e)) = sel_range.and_then(|r| r.offsets_for_row(row_index, text.chars().count())) {
         if s < e {
+            let (bs, be) = (char_to_byte(text, s), char_to_byte(text, e));
             // Non-empty selection: split into before / highlight / after.
             base
-                .child(SharedString::from(&text[..s]))
-                .child(div().bg(sel_color).child(SharedString::from(&text[s..e])))
-                .child(SharedString::from(&text[e..]))
+                .child(SharedString::from(&text[..bs]))
+                .child(div().bg(sel_color).child(SharedString::from(&text[bs..be])))
+                .child(SharedString::from(&text[be..]))
                 .into_any_element()
         } else {
             base.child(SharedString::from(text)).into_any_element()

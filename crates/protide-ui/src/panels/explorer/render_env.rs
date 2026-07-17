@@ -168,6 +168,7 @@ impl ExplorerPanel {
 
         div()
             .id("env-dropdown")
+            .w_full()
             .max_h(px(200.0))
             .overflow_scroll()
             .mx(px(12.0))

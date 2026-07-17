@@ -12,13 +12,12 @@ impl ResponsePanel {
                 .items_center()
                 .justify_center()
                 .gap(px(12.0))
-                .child(
+                .child(render_util::loading_ring(
                     div()
                         .size(px(32.0))
-
                         .border_3()
-                        .border_color(theme.colors.accent.opacity(0.4))
-                )
+                        .border_color(theme.colors.accent.opacity(0.4)),
+                ))
                 .child(
                     div()
                         .text_size(px(13.0))

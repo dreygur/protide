@@ -88,27 +88,25 @@ protide/
 │   │       ├── prefs.rs
 │   │       ├── session.rs
 │   │       ├── last_paths.rs
-│   │       └── ui/
-│   │           ├── main_window/        # Main window layout (split into 9 files)
-│   │           ├── components/
-│   │           │   ├── action_row.rs
-│   │           │   ├── code_editor/    # Syntax-highlighted editor
-│   │           │   ├── icons.rs
-│   │           │   ├── modal.rs
-│   │           │   ├── selectable_text.rs
-│   │           │   ├── text_input.rs
-│   │           │   └── ui_helpers.rs
-│   │           └── panels/
-│   │               ├── console.rs      # Log bus panel
-│   │               ├── docs/           # API documentation viewer
-│   │               ├── explorer/       # File tree + environments (split into ~15 files)
-│   │               ├── history.rs
-│   │               ├── mock_server/    # Mock server panel (split into 3 files)
-│   │               ├── presence.rs     # Collaboration presence UI
-│   │               ├── request/        # Request panel (split into ~40 files)
-│   │               ├── request_types.rs
-│   │               ├── request_utils.rs
-│   │               └── response/       # Response panel (split into ~12 files)
+│   │       ├── main_window/            # Main window layout (split into 9 files)
+│   │       ├── components/
+│   │       │   ├── action_row.rs
+│   │       │   ├── icons.rs
+│   │       │   ├── selectable_text.rs
+│   │       │   ├── text_view.rs
+│   │       │   └── ui_helpers.rs
+│   │       └── panels/
+│   │           ├── console/ console.rs # Log bus panel
+│   │           ├── docs/               # API documentation viewer
+│   │           ├── explorer/           # File tree + environments (split into ~15 files)
+│   │           ├── history.rs
+│   │           ├── mock_server/        # Mock server panel (split into 3 files)
+│   │           ├── presence.rs         # Collaboration presence UI
+│   │           ├── request/            # Request panel (split into ~40 files)
+│   │           ├── request_types.rs
+│   │           ├── request_utils.rs
+│   │           ├── response/           # Response panel (split into ~12 files)
+│   │           └── runner/             # Collection runner
 │   ├── protide-core/                   # Business logic (no UI)
 │   │   └── src/
 │   │       ├── chaining/               # JSONPath extraction, @set

@@ -32,6 +32,13 @@ impl ExplorerPanel {
         match result {
             Ok(_) => {
                 info!("Deleted: {}", path.display());
+                // Drop selection/rename state pointing at the removed path
+                if self.selected_item.as_ref().is_some_and(|p| p.starts_with(&path)) {
+                    self.selected_item = None;
+                }
+                if self.renaming_item.as_ref().is_some_and(|p| p.starts_with(&path)) {
+                    self.renaming_item = None;
+                }
                 self.refresh_collections(cx);
             }
             Err(e) => warn!("Delete failed {}: {}", path.display(), e),

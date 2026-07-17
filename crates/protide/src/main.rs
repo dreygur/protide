@@ -18,6 +18,23 @@ fn load_app_icon() -> Option<Arc<image::RgbaImage>> {
     Some(Arc::new(img.to_rgba8()))
 }
 
+/// Apply the gpui_component theme matching the system appearance,
+/// re-applying Protide's component style overrides.
+fn apply_component_theme(dark: bool, cx: &mut gpui::App) {
+    let mode = if dark { gpui_component::ThemeMode::Dark } else { gpui_component::ThemeMode::Light };
+    gpui_component::Theme::change(mode, None, cx);
+    let t = gpui_component::Theme::global_mut(cx);
+    t.radius = gpui::px(2.0);
+    t.radius_lg = gpui::px(4.0);
+    t.window_border = gpui::transparent_black();
+    t.colors.ring = gpui::rgb(0x4ade80).into();
+    if dark {
+        t.colors.foreground = gpui::rgb(0xe4e4ed).into();
+        t.colors.muted_foreground = gpui::rgb(0x7f7f92).into();
+    }
+    t.mono_font_family = "JetBrains Mono".into();
+}
+
 fn main() -> Result<()> {
     // Default to info level; override with RUST_LOG=debug cargo run
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
@@ -26,17 +43,7 @@ fn main() -> Result<()> {
         .with_assets(Assets)
         .run(|cx| {
             gpui_component::init(cx);
-            gpui_component::Theme::change(gpui_component::ThemeMode::Dark, None, cx);
-            {
-                let t = gpui_component::Theme::global_mut(cx);
-                t.radius = gpui::px(2.0);
-                t.radius_lg = gpui::px(4.0);
-                t.window_border = gpui::transparent_black();
-                t.colors.ring = gpui::rgb(0x4ade80).into();
-                t.colors.foreground = gpui::rgb(0xe4e4ed).into();
-                t.colors.muted_foreground = gpui::rgb(0x7f7f92).into();
-                t.mono_font_family = "JetBrains Mono".into();
-            }
+            apply_component_theme(protide_ui::theme::system_is_dark(cx), cx);
 
             cx.text_system()
                 .add_fonts(vec![
@@ -103,6 +110,17 @@ fn main() -> Result<()> {
             let sync_engine = Some(engine);
 
             cx.open_window(window_options, |window, cx| {
+                // Follow system light/dark changes at runtime
+                window
+                    .observe_window_appearance(|window, cx| {
+                        let dark = protide_ui::theme::system_is_dark(cx);
+                        if protide_ui::theme::current(cx).is_dark != dark {
+                            protide_ui::theme::init(cx);
+                            apply_component_theme(dark, cx);
+                            window.refresh();
+                        }
+                    })
+                    .detach();
                 let view = cx.new(|cx| MainWindow::build(window, cx, sync_engine));
                 cx.new(|cx| Root::new(view, window, cx).window_shadow_size(gpui::px(0.0)))
             })

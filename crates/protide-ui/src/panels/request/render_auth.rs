@@ -120,7 +120,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
     ) -> impl IntoElement {
         let theme = theme::current(cx);
         let display_text = if masked && !text.is_empty() {
-            "●".repeat(text.len())
+            "●".repeat(text.chars().count())
         } else {
             text.to_string()
         };

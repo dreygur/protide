@@ -1,8 +1,6 @@
 use gpui::{ClipboardItem, Context, KeyDownEvent, MouseDownEvent, MouseMoveEvent, MouseUpEvent};
 
-fn char_to_byte(s: &str, char_idx: usize) -> usize {
-    s.char_indices().nth(char_idx).map(|(b, _)| b).unwrap_or(s.len())
-}
+use super::util::char_to_byte;
 use super::*;
 
 impl ExplorerPanel {
@@ -206,7 +204,7 @@ impl ExplorerPanel {
         if ctrl {
             match key {
                 "a" => {
-                    let text_len = self.get_edit_text(target).len();
+                    let text_len = self.get_edit_text(target).chars().count();
                     self.edit_selection = 0..text_len;
                     cx.notify();
                     return;
@@ -216,7 +214,9 @@ impl ExplorerPanel {
                         let text = self.get_edit_text(target);
                         let start = self.edit_selection.start.min(self.edit_selection.end);
                         let end = self.edit_selection.start.max(self.edit_selection.end);
-                        cx.write_to_clipboard(ClipboardItem::new_string(text[start..end].to_string()));
+                        let bs = char_to_byte(&text, start);
+                        let be = char_to_byte(&text, end);
+                        cx.write_to_clipboard(ClipboardItem::new_string(text[bs..be].to_string()));
                     }
                     return;
                 }
@@ -246,6 +246,8 @@ impl ExplorerPanel {
                 if target == EnvEditTarget::NewEnvName {
                     self.cancel_new_env(cx);
                 } else {
+                    // Discard any in-progress key rename instead of committing it
+                    self.edit_key_buffer = None;
                     self.stop_editing(cx);
                 }
             }
@@ -262,7 +264,9 @@ impl ExplorerPanel {
                     self.save_edit_state();
                     let start = self.edit_selection.start.min(self.edit_selection.end);
                     let end = self.edit_selection.start.max(self.edit_selection.end);
-                    text.replace_range(start..end, "");
+                    let bs = char_to_byte(&text, start);
+                    let be = char_to_byte(&text, end);
+                    text.replace_range(bs..be, "");
                     self.edit_selection = start..start;
                     self.set_edit_text(target, text);
                     self.update_env_scroll(target);
@@ -270,7 +274,7 @@ impl ExplorerPanel {
                 } else if self.edit_selection.end > 0 {
                     self.save_edit_state();
                     let pos = self.edit_selection.end - 1;
-                    text.remove(pos);
+                    text.remove(char_to_byte(&text, pos));
                     self.edit_selection = pos..pos;
                     self.set_edit_text(target, text);
                     self.update_env_scroll(target);
@@ -288,7 +292,7 @@ impl ExplorerPanel {
                 }
             }
             "right" => {
-                let text_len = self.get_edit_text(target).len();
+                let text_len = self.get_edit_text(target).chars().count();
                 if self.edit_selection.end < text_len {
                     self.edit_selection.end += 1;
                     if !event.keystroke.modifiers.shift {

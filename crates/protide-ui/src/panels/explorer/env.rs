@@ -34,8 +34,11 @@ impl ExplorerPanel {
 
     pub(super) fn add_variable(&mut self, cx: &mut Context<Self>) {
         if let Some(env) = self.env_state.active_mut() {
-            let key = format!("var_{}", env.variables.len() + 1);
-            env.set(key, "");
+            let mut n = env.variables.len() + 1;
+            while env.variables.contains_key(&format!("var_{n}")) {
+                n += 1;
+            }
+            env.set(format!("var_{n}"), "");
             cx.notify();
         }
     }
@@ -88,7 +91,11 @@ impl ExplorerPanel {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        self.commit_key_edit();
         self.active_edit = Some(target);
+        if let EnvEditTarget::VarKey(_) = target {
+            self.edit_key_buffer = Some(self.get_edit_text(target));
+        }
         let text_len = self.get_edit_text(target).chars().count();
         self.edit_selection = text_len..text_len;
         self.edit_focus.focus(window, cx);
@@ -99,19 +106,50 @@ impl ExplorerPanel {
     }
 
     pub(super) fn stop_editing(&mut self, cx: &mut Context<Self>) {
+        self.commit_key_edit();
         self.active_edit = None;
         self.edit_selection = 0..0;
         self.edit_is_selecting = false;
         cx.notify();
     }
 
+    /// Commit the in-progress key rename to the variable map, preserving the
+    /// variable's position. Empty or duplicate keys revert to the old key.
+    pub(super) fn commit_key_edit(&mut self) {
+        let Some(EnvEditTarget::VarKey(i)) = self.active_edit else {
+            self.edit_key_buffer = None;
+            return;
+        };
+        if let Some(new_key) = self.edit_key_buffer.take() {
+            self.rename_key_at(i, new_key);
+        }
+    }
+
+    fn rename_key_at(&mut self, i: usize, new_key: String) {
+        if let Some(env) = self.env_state.active_mut()
+            && let Some(old_key) = env.variables.keys().nth(i)
+            && *old_key != new_key
+            && !new_key.is_empty()
+            && !env.variables.contains_key(&new_key)
+            && let Some((_, value)) = env.variables.shift_remove_index(i)
+        {
+            env.variables.shift_insert(i, new_key, value);
+        }
+    }
+
     pub(super) fn get_edit_text(&self, target: EnvEditTarget) -> String {
         match target {
-            EnvEditTarget::VarKey(i) => self
-                .env_state
-                .active()
-                .and_then(|e| e.variables.keys().nth(i).cloned())
-                .unwrap_or_default(),
+            EnvEditTarget::VarKey(i) => {
+                if self.active_edit == Some(target)
+                    && let Some(buf) = &self.edit_key_buffer
+                {
+                    return buf.clone();
+                }
+                self.env_state
+                    .active()
+                    .and_then(|e| e.variables.keys().nth(i).cloned())
+                    .unwrap_or_default()
+            }
             EnvEditTarget::VarValue(i) => self
                 .env_state
                 .active()
@@ -124,18 +162,10 @@ impl ExplorerPanel {
     pub(super) fn set_edit_text(&mut self, target: EnvEditTarget, text: String) {
         match target {
             EnvEditTarget::VarKey(i) => {
-                if let Some(env) = self.env_state.active_mut() {
-                    if let Some((old_key, value)) = env
-                        .variables
-                        .iter()
-                        .nth(i)
-                        .map(|(k, v)| (k.clone(), v.clone()))
-                    {
-                        env.variables.shift_remove(&old_key);
-                        if !text.is_empty() {
-                            env.variables.insert(text, value);
-                        }
-                    }
+                if self.active_edit == Some(target) {
+                    self.edit_key_buffer = Some(text);
+                } else {
+                    self.rename_key_at(i, text);
                 }
             }
             EnvEditTarget::VarValue(i) => {
@@ -210,13 +240,15 @@ impl ExplorerPanel {
         if self.edit_selection.start != self.edit_selection.end {
             let start = self.edit_selection.start.min(self.edit_selection.end);
             let end = self.edit_selection.start.max(self.edit_selection.end);
-            current.replace_range(start..end, "");
+            let bs = util::char_to_byte(&current, start);
+            let be = util::char_to_byte(&current, end);
+            current.replace_range(bs..be, "");
             self.edit_selection = start..start;
         }
 
         let pos = self.edit_selection.end;
-        current.insert_str(pos, text);
-        let new_pos = pos + text.len();
+        current.insert_str(util::char_to_byte(&current, pos), text);
+        let new_pos = pos + text.chars().count();
         self.edit_selection = new_pos..new_pos;
         self.set_edit_text(target, current);
         self.update_env_scroll(target);

@@ -180,6 +180,11 @@ impl ExplorerPanel {
                             let is_editing_key = self.active_edit == Some(EnvEditTarget::VarKey(i));
                             let is_editing_value = self.active_edit == Some(EnvEditTarget::VarValue(i));
                             let key_for_remove = key.clone();
+                            let key = if is_editing_key {
+                                self.get_edit_text(EnvEditTarget::VarKey(i))
+                            } else {
+                                key
+                            };
                             let drop_here = dragging_env && self.env_row_drag_over == Some(i);
 
                             div()

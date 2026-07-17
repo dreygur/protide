@@ -76,7 +76,7 @@ pub struct GraphqlPanel {
     pub(super) variables_editor: Entity<InputState>,
     pub(super) operation_name: String,
     pub(super) schema: GraphqlSchemaState,
-    pub(super) schema_search: String,
+    pub(super) schema_search: Entity<InputState>,
 }
 
 pub struct ScriptPanel {

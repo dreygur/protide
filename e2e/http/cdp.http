@@ -1,0 +1,6 @@
+### http://localhost:9222/json/new
+
+# @proto e2e/grpc/employee.proto
+GET http://localhost:9222/json/new
+
+{"purpose": "pre-script demo"}

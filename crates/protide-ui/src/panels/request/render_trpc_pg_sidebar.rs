@@ -233,7 +233,10 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                                     .hover(|s| s.text_color(theme.colors.status_client_error))
                                     .on_mouse_down(gpui::MouseButton::Left, cx.listener(move |this, _, _, cx| {
                                         cx.stop_propagation();
-                                        this.trpc.pg_procedures.remove(idx);
+                                        let removed = this.trpc.pg_procedures.remove(idx);
+                                        if this.trpc.procedure == removed.full_procedure() {
+                                            this.trpc.procedure = String::new();
+                                        }
                                         match this.trpc.pg_selected {
                                             Some(s) if s == idx => this.trpc.pg_selected = None,
                                             Some(s) if s > idx  => this.trpc.pg_selected = Some(s - 1),

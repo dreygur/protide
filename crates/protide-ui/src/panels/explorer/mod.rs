@@ -82,6 +82,8 @@ pub struct ExplorerPanel {
     pub(super) env_dropdown_open: bool,
     pub(super) env_editor_open: bool,
     pub(super) active_edit: Option<EnvEditTarget>,
+    /// In-progress key text while editing a VarKey; committed to the map on stop_editing
+    pub(super) edit_key_buffer: Option<String>,
     pub(super) edit_selection: Range<usize>,
     pub(super) edit_focus: FocusHandle,
     pub(super) new_env_name: String,

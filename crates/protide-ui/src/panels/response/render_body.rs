@@ -161,7 +161,8 @@ impl ResponsePanel {
                             .text_color(theme.colors.text_muted)
                             .child(format!("{} lines", line_count))
                     )
-                    .when(view_mode == BodyViewMode::Pretty, |el| {
+                    // Searchable editor only renders when the body isn't the JSON tree
+                    .when(view_mode == BodyViewMode::Pretty && self.json_value.is_none(), |el| {
                         el.child(
                             div()
                                 .text_size(px(10.0))

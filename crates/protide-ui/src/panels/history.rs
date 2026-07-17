@@ -50,10 +50,11 @@ impl HistoryEntry {
     /// Get a truncated URL for display
     pub fn display_url(&self) -> String {
         const MAX_LEN: usize = 40;
-        if self.url.len() <= MAX_LEN {
+        if self.url.chars().count() <= MAX_LEN {
             self.url.clone()
         } else {
-            format!("{}...", &self.url[..MAX_LEN - 3])
+            let truncated: String = self.url.chars().take(MAX_LEN - 3).collect();
+            format!("{truncated}...")
         }
     }
 }

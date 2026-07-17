@@ -1,0 +1,6 @@
+### ws://localhost:9222
+
+# @proto e2e/grpc/employee.proto
+GET ws://localhost:9222
+
+{"purpose": "pre-script demo"}

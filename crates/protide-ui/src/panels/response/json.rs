@@ -99,6 +99,8 @@ impl ResponsePanel {
             self.json_tree_collapsed.insert(path);
         }
         self.json_sel = None;
+        // expanded_strings keys on row index; collapsing shifts all later rows
+        self.expanded_strings.clear();
         self.rebuild_json_rows();
         cx.notify();
     }
@@ -140,10 +142,10 @@ impl ResponsePanel {
             .max(JSON_CHAR_W * 10.0);
         let text_w = match &row.kind {
             RowKind::Leaf { key, val, .. } => {
-                let kw = key.as_deref().map(|k| (k.len() + 4) as f32 * JSON_CHAR_W).unwrap_or(0.0);
+                let kw = key.as_deref().map(|k| (k.chars().count() + 4) as f32 * JSON_CHAR_W).unwrap_or(0.0);
                 let vw = match val {
-                    PrimVal::Str { display, .. } => display.len() as f32 * JSON_CHAR_W,
-                    PrimVal::Num(n) => n.len() as f32 * JSON_CHAR_W,
+                    PrimVal::Str { display, .. } => display.chars().count() as f32 * JSON_CHAR_W,
+                    PrimVal::Num(n) => n.chars().count() as f32 * JSON_CHAR_W,
                     _ => JSON_CHAR_W * 5.0,
                 };
                 kw + vw
@@ -172,7 +174,7 @@ impl ResponsePanel {
     pub(super) fn json_val_char_at_x(&self, ex: Pixels, row_i: usize) -> usize {
         let Some(row) = self.json_rows.get(row_i) else { return 0 };
         let key_chars = match &row.kind {
-            RowKind::Leaf { key: Some(k), .. } => k.len() + 4, // "key":
+            RowKind::Leaf { key: Some(k), .. } => k.chars().count() + 4, // "key":
             _ => 0,
         };
         let bounds = self.json_tree_bounds.unwrap_or_default();
@@ -182,8 +184,8 @@ impl ResponsePanel {
             RowKind::Leaf { val, .. } => match val {
                 PrimVal::Null => 4,
                 PrimVal::Bool(b) => if *b { 4 } else { 5 },
-                PrimVal::Num(n) => n.len(),
-                PrimVal::Str { display, .. } => display.len(),
+                PrimVal::Num(n) => n.chars().count(),
+                PrimVal::Str { display, .. } => display.chars().count(),
                 PrimVal::EmptyArr | PrimVal::EmptyObj => 2,
             },
             _ => 0,
@@ -223,13 +225,14 @@ impl ResponsePanel {
         let mut parts: Vec<String> = Vec::new();
         for i in sr..=er.min(n - 1) {
             let text = self.json_row_display_text(i);
-            let tl = text.len();
+            // Selection offsets are character indices - convert before slicing.
+            let cb = crate::components::char_to_byte;
             let chunk = if sr == er {
-                &text[so.min(eo).min(tl)..so.max(eo).min(tl)]
+                &text[cb(text, so.min(eo))..cb(text, so.max(eo))]
             } else if i == sr {
-                &text[so.min(tl)..]
+                &text[cb(text, so)..]
             } else if i == er {
-                &text[..eo.min(tl)]
+                &text[..cb(text, eo)]
             } else {
                 text
             };

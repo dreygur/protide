@@ -1,3 +1,5 @@
+pub use crate::components::char_to_byte;
+
 /// Sanitize a string to be used as a filename
 pub fn sanitize_filename(name: &str) -> String {
     name.chars()

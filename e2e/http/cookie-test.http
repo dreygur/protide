@@ -1,0 +1,4 @@
+### New Request
+# @name new-request
+
+GET https://api.example.com

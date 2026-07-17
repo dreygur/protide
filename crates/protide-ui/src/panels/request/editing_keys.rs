@@ -132,7 +132,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             _ => None,
         };
         if let Some(next) = next_target {
-            let len = self.get_edit_text(next).len();
+            let len = self.get_edit_text(next).chars().count();
             self.active_edit = Some(next);
             self.edit_selection = len..len;
             cx.notify();

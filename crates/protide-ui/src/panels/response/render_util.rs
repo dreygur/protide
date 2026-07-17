@@ -1,5 +1,17 @@
 use super::*;
 
+/// Turn a sized/bordered div into a pulsing loading ring.
+pub(super) fn loading_ring(spinner: gpui::Div) -> impl IntoElement {
+    use gpui::{Animation, AnimationExt, pulsating_between};
+    spinner.rounded_full().with_animation(
+        "loading-ring",
+        Animation::new(std::time::Duration::from_millis(900))
+            .repeat()
+            .with_easing(pulsating_between(0.3, 0.9)),
+        |el, delta| el.opacity(delta),
+    )
+}
+
 impl ResponsePanel {
     pub(super) fn run_extraction(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let Some(response) = &self.response else {
@@ -69,7 +81,10 @@ impl ResponsePanel {
                     .w(px(175.0))
                     .bg(theme.colors.bg_elevated)
                     .border_1()
-                    .border_color(theme.colors.border);
+                    .border_color(theme.colors.border)
+                    // Keep the backdrop's dismiss handler from racing item clicks
+                    .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                    .on_mouse_down(MouseButton::Right, |_, _, cx| cx.stop_propagation());
                 for (i, (label, value)) in items.into_iter().enumerate() {
                     let label_s = SharedString::from(label);
                     menu_box = menu_box.child(
@@ -82,9 +97,11 @@ impl ResponsePanel {
                             .text_color(theme.colors.text_primary)
                             .cursor_pointer()
                             .hover(move |s| s.bg(hover_bg))
-                            .on_click(move |_, _, cx| {
+                            .on_click(cx.listener(move |this, _, _, cx| {
                                 cx.write_to_clipboard(gpui::ClipboardItem::new_string(value.clone()));
-                            })
+                                this.json_context_menu = None;
+                                cx.notify();
+                            }))
                             .child(label_s),
                     );
                 }

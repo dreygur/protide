@@ -5,7 +5,7 @@ use gpui::{
 use std::{fs, path::PathBuf};
 use crate::theme;
 use crate::components::icons::{
-    ICON_CHEVRON_RIGHT, ICON_FILE, ICON_FOLDER, ICON_SM, icon,
+    ICON_CHEVRON_DOWN, ICON_FILE, ICON_FOLDER, ICON_SM, icon,
 };
 use super::DocsPanel;
 
@@ -51,7 +51,8 @@ impl DocsPanel {
                     }))
             })
             .when(is_folder, |el| {
-                el.child(icon(ICON_CHEVRON_RIGHT, ICON_SM, theme.colors.text_muted))
+                // Docs list is always fully expanded, so show an expanded chevron
+                el.child(icon(ICON_CHEVRON_DOWN, ICON_SM, theme.colors.text_muted))
                     .child(div().w(px(3.0)))
                     .child(icon(ICON_FOLDER, ICON_SM, theme.colors.text_muted))
                     .child(div().w(px(4.0)))

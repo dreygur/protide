@@ -21,6 +21,7 @@ impl ExplorerPanel {
 
         div()
             .w_full()
+            .h_full()
             .flex()
             .flex_col()
             .pt(px(8.0))
@@ -151,14 +152,12 @@ impl ExplorerPanel {
         flattened_items: Vec<(CollectionItem, usize)>,
         cx: &mut Context<Self>,
     ) -> gpui::Div {
-        const HEADER_H: f32 = 44.0; // pt(8) + h(32) + pt(4)
-        let tree_h = (self.collections_h - HEADER_H).max(0.0);
-
         el.child(
             div()
                 .id("collections-tree")
                 .w_full()
-                .h(px(tree_h))
+                .flex_1()
+                .min_h(px(0.0))
                 .overflow_scroll()
                 .child(
                     div()

@@ -168,6 +168,9 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
         if from < vec.len() && to < vec.len() {
             let item = vec.remove(from);
             vec.insert(to.min(vec.len()), item);
+            if matches!(list, KvList::Params) {
+                self.sync_url_from_params(cx);
+            }
         }
         cx.notify();
     }

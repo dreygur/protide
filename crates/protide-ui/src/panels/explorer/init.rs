@@ -14,6 +14,7 @@ impl ExplorerPanel {
             env_dropdown_open: false,
             env_editor_open: false,
             active_edit: None,
+            edit_key_buffer: None,
             edit_selection: 0..0,
             edit_focus: cx.focus_handle(),
             new_env_name: String::new(),

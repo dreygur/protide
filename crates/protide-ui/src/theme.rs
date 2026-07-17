@@ -449,10 +449,18 @@ impl Default for Opacity {
 
 impl gpui::Global for Theme {}
 
-/// Initialize theme based on system preference
+/// Whether the system window appearance is dark
+pub fn system_is_dark(cx: &App) -> bool {
+    matches!(
+        cx.window_appearance(),
+        gpui::WindowAppearance::Dark | gpui::WindowAppearance::VibrantDark
+    )
+}
+
+/// Initialize (or re-sync) the theme from the system appearance
 pub fn init(cx: &mut App) {
-    // Default to dark theme (TODO: detect system preference)
-    cx.set_global(Theme::dark());
+    let theme = if system_is_dark(cx) { Theme::dark() } else { Theme::light() };
+    cx.set_global(theme);
 }
 
 /// Get the current theme
