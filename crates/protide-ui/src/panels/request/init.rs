@@ -11,7 +11,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             InputState::new(window, cx).multi_line(true).code_editor("json").line_number(true).default_value(initial_body)
         });
         let codegen_editor = cx.new(|cx| {
-            InputState::new(window, cx).multi_line(true).line_number(true)
+            InputState::new(window, cx).multi_line(true).code_editor("sh").line_number(true)
         });
         let import_editor = cx.new(|cx| {
             InputState::new(window, cx).multi_line(true)

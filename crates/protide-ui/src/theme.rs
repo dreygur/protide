@@ -449,17 +449,39 @@ impl Default for Opacity {
 
 impl gpui::Global for Theme {}
 
-/// Whether the system window appearance is dark
-pub fn system_is_dark(cx: &App) -> bool {
+/// Whether a given platform appearance value counts as dark
+pub fn appearance_is_dark(appearance: gpui::WindowAppearance) -> bool {
     matches!(
-        cx.window_appearance(),
+        appearance,
         gpui::WindowAppearance::Dark | gpui::WindowAppearance::VibrantDark
     )
 }
 
-/// Initialize (or re-sync) the theme from the system appearance
+/// Whether the system window appearance is dark.
+///
+/// Queries the platform directly - only safe to call before any window
+/// exists (e.g. during app startup). Once a window is open, read
+/// `Window::appearance()` instead: it's a cached value with no platform
+/// call, whereas this re-enters the platform's window-system state and
+/// will panic ("RefCell already borrowed") if called from within an
+/// `observe_window_appearance` callback, which fires while that state
+/// is already borrowed.
+pub fn system_is_dark(cx: &App) -> bool {
+    appearance_is_dark(cx.window_appearance())
+}
+
+/// Initialize (or re-sync) the theme from the system appearance.
+/// Startup-only; see `system_is_dark` for why this can't be called
+/// from a window appearance observer.
 pub fn init(cx: &mut App) {
-    let theme = if system_is_dark(cx) { Theme::dark() } else { Theme::light() };
+    set_dark(cx, system_is_dark(cx));
+}
+
+/// Set the theme without querying the platform - safe to call from an
+/// `observe_window_appearance` callback using the window's cached
+/// `Window::appearance()` value.
+pub fn set_dark(cx: &mut App, dark: bool) {
+    let theme = if dark { Theme::dark() } else { Theme::light() };
     cx.set_global(theme);
 }
 

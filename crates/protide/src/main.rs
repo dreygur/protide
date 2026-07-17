@@ -113,9 +113,12 @@ fn main() -> Result<()> {
                 // Follow system light/dark changes at runtime
                 window
                     .observe_window_appearance(|window, cx| {
-                        let dark = protide_ui::theme::system_is_dark(cx);
+                        // Use the window's cached appearance, not the App/platform
+                        // query - this callback fires while the platform's window
+                        // state is already borrowed, and re-querying it panics.
+                        let dark = protide_ui::theme::appearance_is_dark(window.appearance());
                         if protide_ui::theme::current(cx).is_dark != dark {
-                            protide_ui::theme::init(cx);
+                            protide_ui::theme::set_dark(cx, dark);
                             apply_component_theme(dark, cx);
                             window.refresh();
                         }
