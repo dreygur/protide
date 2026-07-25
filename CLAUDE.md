@@ -71,7 +71,7 @@ Supports HTTP, GraphQL, WebSocket, gRPC, tRPC, and Socket.IO protocols.
 
 **UI/UX**
 - System theme support (light/dark)
-- Ubuntu Mono font
+- JetBrains Mono font (bundled in `crates/protide/assets/fonts/`, registered via `add_fonts`)
 - JSON tree with drag-select
 - ActionRow component with scroll-safe hover-revealed actions
 
