@@ -5,6 +5,9 @@ impl MainWindow {
     pub(super) fn render_title_bar(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = theme::current(cx);
         let show_mock = self.show_mock_server;
+        // macOS overlays its traffic lights on our titlebar, so reserve room for
+        // them and let the native buttons stand in for our own window controls.
+        let is_macos = cfg!(target_os = "macos");
 
         div()
             .id("titlebar")
@@ -15,6 +18,7 @@ impl MainWindow {
             .bg(theme.colors.bg_primary)
             .border_b_1()
             .border_color(theme.colors.border)
+            .when(is_macos, |el| el.pl(px(72.0)))
             .child(
                 div()
                     .id("titlebar-drag")
@@ -166,7 +170,7 @@ impl MainWindow {
                             .into_any_element(),
                     }),
             )
-            .child(
+            .when(!is_macos, |el| el.child(
                 div()
                     .flex()
                     .items_center()
@@ -221,6 +225,6 @@ impl MainWindow {
                             })
                             .child(icon(ICON_WINDOW_CLOSE, 12.0, theme.colors.text_secondary)),
                     ),
-            )
+            ))
     }
 }

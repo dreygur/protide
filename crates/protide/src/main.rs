@@ -78,8 +78,11 @@ fn main() -> Result<()> {
                 })),
                 titlebar: Some(gpui::TitlebarOptions {
                     title: Some("Protide".into()),
-                    appears_transparent: false,
-                    traffic_light_position: None,
+                    // macOS draws its own titlebar on top of ours unless this is
+                    // transparent - opaque here means two stacked title bars.
+                    appears_transparent: true,
+                    // Vertically centered for the 40px toolbar: (40 - 12) / 2.
+                    traffic_light_position: Some(gpui::point(px(9.0), px(14.0))),
                 }),
                 window_decorations: Some(gpui::WindowDecorations::Client),
                 app_id: Some("protide".into()),
