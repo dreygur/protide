@@ -14,12 +14,6 @@ pub fn icon(path: &'static str, size: f32, color: Hsla) -> impl IntoElement {
         .text_color(color)
 }
 
-/// Render a Lucide SVG icon without a fixed color - inherits `text_color` from parent.
-/// Use inside elements that set `.text_color()` on themselves with hover changes.
-pub fn icon_inherit(path: &'static str, size: f32) -> impl IntoElement {
-    svg().path(path).size(px(size))
-}
-
 // ── Path constants ─────────────────────────────────────────────────────────
 pub const ICON_CLOSE:          &str = "icons/close.svg";
 pub const ICON_CHECK:          &str = "icons/check.svg";

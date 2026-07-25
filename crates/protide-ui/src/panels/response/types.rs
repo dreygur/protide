@@ -110,90 +110,18 @@ pub fn format_size(bytes: usize) -> String {
     }
 }
 
+/// Truncate a long error for single-line display, on a char boundary.
+///
+/// Currently exercised only by its tests - the status header that used to call it
+/// is gone. Kept because the char-boundary handling is easy to get wrong (naive
+/// byte slicing panics on multi-byte input) and the tests pin that behavior.
+#[allow(dead_code)]
 pub(crate) fn truncate_error(error: &str) -> String {
     if error.chars().count() > 40 {
         let end = error.char_indices().nth(37).map(|(i, _)| i).unwrap_or(error.len());
         format!("{}...", &error[..end])
     } else {
         error.to_string()
-    }
-}
-
-pub(super) fn status_description(status: u16) -> Option<&'static str> {
-    match status {
-        // 1xx Informational
-        100 => Some("Continue - Server received request headers"),
-        101 => Some("Switching Protocols"),
-        102 => Some("Processing - Server is processing the request"),
-        103 => Some("Early Hints"),
-
-        // 2xx Success
-        200 => Some("Request succeeded"),
-        201 => Some("Resource created successfully"),
-        202 => Some("Request accepted for processing"),
-        203 => Some("Non-authoritative information"),
-        204 => Some("No content to return"),
-        205 => Some("Reset content"),
-        206 => Some("Partial content delivered"),
-        207 => Some("Multi-status response"),
-        208 => Some("Already reported"),
-        226 => Some("IM Used"),
-
-        // 3xx Redirection
-        300 => Some("Multiple choices available"),
-        301 => Some("Resource moved permanently"),
-        302 => Some("Resource found at different URI"),
-        303 => Some("See other resource"),
-        304 => Some("Resource not modified"),
-        305 => Some("Use proxy"),
-        307 => Some("Temporary redirect"),
-        308 => Some("Permanent redirect"),
-
-        // 4xx Client Errors
-        400 => Some("Bad request syntax or invalid"),
-        401 => Some("Authentication required"),
-        402 => Some("Payment required"),
-        403 => Some("Access forbidden"),
-        404 => Some("Resource not found"),
-        405 => Some("Method not allowed"),
-        406 => Some("Not acceptable format"),
-        407 => Some("Proxy authentication required"),
-        408 => Some("Request timeout"),
-        409 => Some("Conflict with current state"),
-        410 => Some("Resource no longer available"),
-        411 => Some("Length required"),
-        412 => Some("Precondition failed"),
-        413 => Some("Payload too large"),
-        414 => Some("URI too long"),
-        415 => Some("Unsupported media type"),
-        416 => Some("Range not satisfiable"),
-        417 => Some("Expectation failed"),
-        418 => Some("I'm a teapot"),
-        421 => Some("Misdirected request"),
-        422 => Some("Unprocessable entity"),
-        423 => Some("Resource is locked"),
-        424 => Some("Failed dependency"),
-        425 => Some("Too early"),
-        426 => Some("Upgrade required"),
-        428 => Some("Precondition required"),
-        429 => Some("Too many requests"),
-        431 => Some("Request header fields too large"),
-        451 => Some("Unavailable for legal reasons"),
-
-        // 5xx Server Errors
-        500 => Some("Internal server error"),
-        501 => Some("Not implemented"),
-        502 => Some("Bad gateway"),
-        503 => Some("Service unavailable"),
-        504 => Some("Gateway timeout"),
-        505 => Some("HTTP version not supported"),
-        506 => Some("Variant also negotiates"),
-        507 => Some("Insufficient storage"),
-        508 => Some("Loop detected"),
-        510 => Some("Not extended"),
-        511 => Some("Network authentication required"),
-
-        _ => None,
     }
 }
 

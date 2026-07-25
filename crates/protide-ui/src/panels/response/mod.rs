@@ -47,7 +47,7 @@ pub mod render_json_row;
 pub mod render_json;
 pub mod render;
 pub mod render_content;
-pub mod render_header;
+pub mod render_tabs;
 pub mod render_body;
 pub mod render_html_preview;
 pub mod render_headers;
