@@ -11,6 +11,7 @@ use std::ops::Range;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use super::file_dialog::{self, Pick};
 use super::history::{HistoryEntry, RequestHistory};
 use super::request::RequestPanel;
 use crate::last_paths;

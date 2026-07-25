@@ -3,6 +3,7 @@ use gpui::{Context, IntoElement, MouseButton, ParentElement, Styled, div, px, pr
 use protide_core::execution::ws::WebSocketExecutor;
 use crate::theme;
 use crate::panels::request_types::DataRunRow;
+use crate::panels::file_dialog::{self, Pick};
 use super::RequestPanel;
 
 impl<E: WebSocketExecutor> RequestPanel<E> {
@@ -133,14 +134,16 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
     }
 
     pub(super) fn pick_csv_file(&mut self, cx: &mut Context<Self>) {
-        let dialog = rfd::FileDialog::new()
-            .set_title("Select CSV File")
-            .add_filter("CSV", &["csv"]);
-        if let Some(path) = dialog.pick_file() {
-            self.csv_path = Some(path);
-            self.data_results.clear();
-            cx.notify();
-        }
+        file_dialog::prompt(
+            cx,
+            Pick::File,
+            |d| d.set_title("Select CSV File").add_filter("CSV", &["csv"]),
+            |this, path, cx| {
+                this.csv_path = Some(path);
+                this.data_results.clear();
+                cx.notify();
+            },
+        );
     }
 
     pub(super) fn run_with_csv(&mut self, cx: &mut Context<Self>) {

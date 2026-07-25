@@ -68,6 +68,7 @@ use protide_core::execution::sio::{
 };
 use super::console::{ConsoleEntry, ConsoleEntrySource, ConsolePanel, LogLevel};
 use super::explorer::ExplorerPanel;
+use super::file_dialog::{self, Pick};
 use super::request_types::{
     ApiKeyLocation, AuthType, BodyType, EditTarget, FormField, FormFieldType,
     GrpcMethodInfo, GrpcStreamingType, HttpMethod, KeyValuePair, KvList, PendingEditor, RequestMode,

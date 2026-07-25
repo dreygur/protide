@@ -11,6 +11,7 @@
 mod console;
 mod docs;
 mod explorer;
+pub(crate) mod file_dialog;
 mod history;
 mod mock_server;
 pub mod presence;

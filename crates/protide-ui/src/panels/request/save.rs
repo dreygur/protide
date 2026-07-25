@@ -42,28 +42,34 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
         };
 
         let start_dir = last_paths::last_dir("save_request").or_else(dirs::home_dir);
-        let mut dialog = rfd::FileDialog::new()
-            .set_title("Save Request")
-            .set_file_name(&default_name)
-            .add_filter("HTTP Request", &["http"]);
-        if let Some(dir) = start_dir {
-            dialog = dialog.set_directory(dir);
-        }
-
-        if let Some(path) = dialog.save_file() {
-            last_paths::save_last_dir("save_request", &path);
-            let path = if path.extension().map_or(true, |ext| ext != "http") {
-                path.with_extension("http")
-            } else {
-                path
-            };
-            if let Err(e) = std::fs::write(&path, &content) {
-                log::error!("Failed to save request {}: {}", path.display(), e);
-            } else {
-                log::info!("Saved: {}", path.display());
-                self.current_file = Some(path);
-            }
-        }
+        file_dialog::prompt(
+            cx,
+            Pick::Save,
+            move |d| {
+                let d = d
+                    .set_title("Save Request")
+                    .set_file_name(&default_name)
+                    .add_filter("HTTP Request", &["http"]);
+                match start_dir {
+                    Some(dir) => d.set_directory(dir),
+                    None => d,
+                }
+            },
+            move |this, path, _cx| {
+                last_paths::save_last_dir("save_request", &path);
+                let path = if path.extension().map_or(true, |ext| ext != "http") {
+                    path.with_extension("http")
+                } else {
+                    path
+                };
+                if let Err(e) = std::fs::write(&path, &content) {
+                    log::error!("Failed to save request {}: {}", path.display(), e);
+                } else {
+                    log::info!("Saved: {}", path.display());
+                    this.current_file = Some(path);
+                }
+            },
+        );
     }
 
     /// Generate .http file content from current request state

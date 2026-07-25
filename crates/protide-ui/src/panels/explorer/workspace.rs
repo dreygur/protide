@@ -141,14 +141,21 @@ impl ExplorerPanel {
 
     /// Open folder dialog and load collection
     pub fn open_folder(&mut self, cx: &mut Context<Self>) {
-        let mut dialog = rfd::FileDialog::new().set_title("Open Collection Folder");
-        if let Some(dir) = last_paths::last_dir("open_folder") {
-            dialog = dialog.set_directory(dir);
-        }
-        if let Some(folder) = dialog.pick_folder() {
-            last_paths::save_last_dir("open_folder", &folder);
-            self.load_collection_from_path(folder, cx);
-        }
+        file_dialog::prompt(
+            cx,
+            Pick::Folder,
+            |d| {
+                let d = d.set_title("Open Collection Folder");
+                match last_paths::last_dir("open_folder") {
+                    Some(dir) => d.set_directory(dir),
+                    None => d,
+                }
+            },
+            |this, folder, cx| {
+                last_paths::save_last_dir("open_folder", &folder);
+                this.load_collection_from_path(folder, cx);
+            },
+        );
     }
 
     /// Load a .http file into the request panel
@@ -188,35 +195,42 @@ impl ExplorerPanel {
         let start_dir = last_paths::last_dir("new_request")
             .or_else(|| last_paths::last_dir("save_request"))
             .or(default_dir);
-        let mut dialog = rfd::FileDialog::new()
-            .set_title("Create New Request")
-            .set_file_name("new-request.http")
-            .add_filter("HTTP Request", &["http"]);
-        if let Some(dir) = start_dir {
-            dialog = dialog.set_directory(dir);
-        }
-        if let Some(path) = dialog.save_file() {
-            last_paths::save_last_dir("new_request", &path);
-            last_paths::save_last_dir("save_request", &path);
-            let path = if path.extension().is_none() || path.extension().unwrap() != "http" {
-                path.with_extension("http")
-            } else {
-                path
-            };
-            let content = "### New Request\n# @name new-request\n\nGET https://api.example.com\n";
-            match fs::write(&path, content) {
-                Ok(_) => {
-                    info!("Created: {}", path.display());
-                    if let Some(workspace) = &self.workspace_path {
-                        if path.starts_with(workspace) {
-                            self.collection_items = self.scan_directory(workspace);
-                        }
-                    }
-                    self.load_request_file(path, cx);
+        file_dialog::prompt(
+            cx,
+            Pick::Save,
+            move |d| {
+                let d = d
+                    .set_title("Create New Request")
+                    .set_file_name("new-request.http")
+                    .add_filter("HTTP Request", &["http"]);
+                match start_dir {
+                    Some(dir) => d.set_directory(dir),
+                    None => d,
                 }
-                Err(e) => error!("Failed to create request {}: {}", path.display(), e),
-            }
-        }
+            },
+            |this, path, cx| {
+                last_paths::save_last_dir("new_request", &path);
+                last_paths::save_last_dir("save_request", &path);
+                let path = if path.extension().is_none() || path.extension().unwrap() != "http" {
+                    path.with_extension("http")
+                } else {
+                    path
+                };
+                let content = "### New Request\n# @name new-request\n\nGET https://api.example.com\n";
+                match fs::write(&path, content) {
+                    Ok(_) => {
+                        info!("Created: {}", path.display());
+                        if let Some(workspace) = &this.workspace_path {
+                            if path.starts_with(workspace) {
+                                this.collection_items = this.scan_directory(workspace);
+                            }
+                        }
+                        this.load_request_file(path, cx);
+                    }
+                    Err(e) => error!("Failed to create request {}: {}", path.display(), e),
+                }
+            },
+        );
     }
 
     pub(super) fn clone_file(&mut self, source_path: PathBuf, cx: &mut Context<Self>) {
@@ -255,33 +269,38 @@ impl ExplorerPanel {
     }
 
     pub(super) fn create_new_file_in_folder(&mut self, folder_path: PathBuf, cx: &mut Context<Self>) {
-        let dialog = rfd::FileDialog::new()
-            .set_title("Create New Request")
-            .set_file_name("new-request.http")
-            .set_directory(&folder_path)
-            .add_filter("HTTP Request", &["http"]);
-        if let Some(path) = dialog.save_file() {
-            last_paths::save_last_dir("new_request", &path);
-            last_paths::save_last_dir("save_request", &path);
-            let path = if path.extension().map_or(true, |e| e != "http") {
-                path.with_extension("http")
-            } else {
-                path
-            };
-            let content = "### New Request\n# @name new-request\n\nGET https://api.example.com\n";
-            match fs::write(&path, content) {
-                Ok(_) => {
-                    info!("Created: {}", path.display());
-                    if let Some(workspace) = &self.workspace_path {
-                        if path.starts_with(workspace) {
-                            self.collection_items = self.scan_directory(workspace);
+        file_dialog::prompt(
+            cx,
+            Pick::Save,
+            move |d| {
+                d.set_title("Create New Request")
+                    .set_file_name("new-request.http")
+                    .set_directory(&folder_path)
+                    .add_filter("HTTP Request", &["http"])
+            },
+            |this, path, cx| {
+                last_paths::save_last_dir("new_request", &path);
+                last_paths::save_last_dir("save_request", &path);
+                let path = if path.extension().map_or(true, |e| e != "http") {
+                    path.with_extension("http")
+                } else {
+                    path
+                };
+                let content = "### New Request\n# @name new-request\n\nGET https://api.example.com\n";
+                match fs::write(&path, content) {
+                    Ok(_) => {
+                        info!("Created: {}", path.display());
+                        if let Some(workspace) = &this.workspace_path {
+                            if path.starts_with(workspace) {
+                                this.collection_items = this.scan_directory(workspace);
+                            }
                         }
+                        this.load_request_file(path, cx);
                     }
-                    self.load_request_file(path, cx);
+                    Err(e) => error!("Failed to create request: {}", e),
                 }
-                Err(e) => error!("Failed to create request: {}", e),
-            }
-        }
+            },
+        );
     }
 
 }

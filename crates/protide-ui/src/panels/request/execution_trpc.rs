@@ -138,34 +138,40 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
     }
 
     pub(super) fn import_trpc_from_file(&mut self, cx: &mut Context<Self>) {
-        let mut dialog = rfd::FileDialog::new()
-            .set_title("Import tRPC Schema")
-            .add_filter("JSON", &["json"]);
-        if let Some(dir) = last_paths::last_dir("trpc_schema") {
-            dialog = dialog.set_directory(dir);
-        }
-        let Some(path) = dialog.pick_file() else { return };
-        last_paths::save_last_dir("trpc_schema", &path);
-        match std::fs::read_to_string(&path)
-            .map_err(|e| e.to_string())
-            .and_then(|s| protide_core::protocols::trpc::parse_trpc_schema(&s))
-        {
-            Ok(procs) => {
-                for p in procs {
-                    let proc = TrpcPlaygroundProc {
-                        kind: if p.is_mutation { TrpcProcKind::Mutation } else { TrpcProcKind::Query },
-                        name: p.name,
-                    };
-                    match self.trpc_pg_procedures.iter_mut().find(|existing| existing.name == proc.name) {
-                        Some(existing) => *existing = proc,
-                        None => self.trpc_pg_procedures.push(proc),
-                    }
+        file_dialog::prompt(
+            cx,
+            Pick::File,
+            |d| {
+                let d = d.set_title("Import tRPC Schema").add_filter("JSON", &["json"]);
+                match last_paths::last_dir("trpc_schema") {
+                    Some(dir) => d.set_directory(dir),
+                    None => d,
                 }
-                self.trpc_pg_schema_error = None;
-            }
-            Err(e) => { self.trpc_pg_schema_error = Some(e); }
-        }
-        cx.notify();
+            },
+            |this, path, cx| {
+                last_paths::save_last_dir("trpc_schema", &path);
+                match std::fs::read_to_string(&path)
+                    .map_err(|e| e.to_string())
+                    .and_then(|s| protide_core::protocols::trpc::parse_trpc_schema(&s))
+                {
+                    Ok(procs) => {
+                        for p in procs {
+                            let proc = TrpcPlaygroundProc {
+                                kind: if p.is_mutation { TrpcProcKind::Mutation } else { TrpcProcKind::Query },
+                                name: p.name,
+                            };
+                            match this.trpc_pg_procedures.iter_mut().find(|existing| existing.name == proc.name) {
+                                Some(existing) => *existing = proc,
+                                None => this.trpc_pg_procedures.push(proc),
+                            }
+                        }
+                        this.trpc_pg_schema_error = None;
+                    }
+                    Err(e) => { this.trpc_pg_schema_error = Some(e); }
+                }
+                cx.notify();
+            },
+        );
     }
 
     pub(super) fn import_trpc_from_url(&mut self, cx: &mut Context<Self>) {

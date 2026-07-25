@@ -3,27 +3,23 @@ use super::*;
 
 impl<E: WebSocketExecutor> RequestPanel<E> {
     pub(super) fn load_proto_file(&mut self, cx: &mut Context<Self>) {
-        use rfd::FileDialog;
-        let mut dialog = FileDialog::new()
-            .add_filter("Proto Files", &["proto"])
-            .set_title("Select Proto File");
-        if let Some(dir) = last_paths::last_dir("proto_file") {
-            dialog = dialog.set_directory(dir);
-        }
-        let path = dialog.pick_file();
-        if let Some(path) = path {
-            last_paths::save_last_dir("proto_file", &path);
-            match std::fs::read_to_string(&path) {
-                Ok(content) => {
-                    self.grpc_proto_path = Some(path);
-                    self.grpc_proto_content = content.clone();
-                    self.parse_proto_services(&content);
-                    log::info!("Proto loaded: {} ({} services)", self.grpc_proto_path.as_ref().unwrap().display(), self.grpc_services.len());
-                    cx.notify();
+        file_dialog::prompt(
+            cx,
+            Pick::File,
+            |d| {
+                let d = d
+                    .add_filter("Proto Files", &["proto"])
+                    .set_title("Select Proto File");
+                match last_paths::last_dir("proto_file") {
+                    Some(dir) => d.set_directory(dir),
+                    None => d,
                 }
-                Err(e) => { log::error!("Failed to read proto file: {}", e); }
-            }
-        }
+            },
+            |this, path, cx| {
+                last_paths::save_last_dir("proto_file", &path);
+                this.load_grpc_proto_from_path(path, cx);
+            },
+        );
     }
 
     pub fn load_grpc_proto_from_path(&mut self, path: std::path::PathBuf, cx: &mut Context<Self>) {

@@ -76,14 +76,21 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
     }
 
     pub(super) fn browse_binary_file(&mut self, cx: &mut Context<Self>) {
-        let mut dialog = rfd::FileDialog::new().set_title("Select Binary File");
-        if let Some(dir) = last_paths::last_dir("binary_file").or_else(dirs::home_dir) {
-            dialog = dialog.set_directory(dir);
-        }
-        if let Some(path) = dialog.pick_file() {
-            last_paths::save_last_dir("binary_file", &path);
-            self.binary_file_path = Some(path);
-            cx.notify();
-        }
+        file_dialog::prompt(
+            cx,
+            Pick::File,
+            |d| {
+                let d = d.set_title("Select Binary File");
+                match last_paths::last_dir("binary_file").or_else(dirs::home_dir) {
+                    Some(dir) => d.set_directory(dir),
+                    None => d,
+                }
+            },
+            |this, path, cx| {
+                last_paths::save_last_dir("binary_file", &path);
+                this.binary_file_path = Some(path);
+                cx.notify();
+            },
+        );
     }
 }

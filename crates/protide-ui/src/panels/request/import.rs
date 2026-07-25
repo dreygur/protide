@@ -26,27 +26,33 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
 
     pub(super) fn browse_import_file(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let start_dir = last_paths::last_dir("import_collection").or_else(dirs::home_dir);
-        let mut dialog = rfd::FileDialog::new()
-            .set_title("Import Collection")
-            .add_filter("All Supported", &["json", "yaml", "yml", "bru", "txt", "curl"])
-            .add_filter("Postman Collection", &["json"])
-            .add_filter("OpenAPI/Swagger", &["json", "yaml", "yml"])
-            .add_filter("Bruno Collection", &["bru"])
-            .add_filter("cURL Command", &["txt", "curl"])
-            .add_filter("All Files", &["*"]);
-
-        if let Some(dir) = start_dir {
-            dialog = dialog.set_directory(dir);
-        }
-
-        if let Some(path) = dialog.pick_file() {
-            last_paths::save_last_dir("import_collection", &path);
-            match std::fs::read_to_string(&path) {
-                Ok(content) => { self.set_import_text(content, window, cx); }
-                Err(e) => { self.import_error = Some(format!("Failed to read file: {}", e)); }
-            }
-        }
-        cx.notify();
+        file_dialog::prompt_in(
+            window,
+            cx,
+            Pick::File,
+            move |d| {
+                let d = d
+                    .set_title("Import Collection")
+                    .add_filter("All Supported", &["json", "yaml", "yml", "bru", "txt", "curl"])
+                    .add_filter("Postman Collection", &["json"])
+                    .add_filter("OpenAPI/Swagger", &["json", "yaml", "yml"])
+                    .add_filter("Bruno Collection", &["bru"])
+                    .add_filter("cURL Command", &["txt", "curl"])
+                    .add_filter("All Files", &["*"]);
+                match start_dir {
+                    Some(dir) => d.set_directory(dir),
+                    None => d,
+                }
+            },
+            |this, path, window, cx| {
+                last_paths::save_last_dir("import_collection", &path);
+                match std::fs::read_to_string(&path) {
+                    Ok(content) => { this.set_import_text(content, window, cx); }
+                    Err(e) => { this.import_error = Some(format!("Failed to read file: {}", e)); }
+                }
+                cx.notify();
+            },
+        );
     }
 
     pub(super) fn execute_import(&mut self, cx: &mut Context<Self>) {

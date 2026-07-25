@@ -121,21 +121,25 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
     }
 
     pub(super) fn select_form_file(&mut self, index: usize, cx: &mut Context<Self>) {
-        let mut dialog = rfd::FileDialog::new();
-        if let Some(dir) = last_paths::last_dir("form_file") {
-            dialog = dialog.set_directory(dir);
-        }
-        if let Some(path) = dialog.pick_file() {
-            last_paths::save_last_dir("form_file", &path);
-            if let Some(field) = self.form_data.get_mut(index) {
-                field.value = path.file_name()
-                    .and_then(|n| n.to_str())
-                    .unwrap_or("file")
-                    .to_string();
-                field.file_path = Some(path);
-                cx.notify();
-            }
-        }
+        file_dialog::prompt(
+            cx,
+            Pick::File,
+            |d| match last_paths::last_dir("form_file") {
+                Some(dir) => d.set_directory(dir),
+                None => d,
+            },
+            move |this, path, cx| {
+                last_paths::save_last_dir("form_file", &path);
+                if let Some(field) = this.form_data.get_mut(index) {
+                    field.value = path.file_name()
+                        .and_then(|n| n.to_str())
+                        .unwrap_or("file")
+                        .to_string();
+                    field.file_path = Some(path);
+                    cx.notify();
+                }
+            },
+        );
     }
 
     pub(super) fn remove_form_field(&mut self, index: usize, cx: &mut Context<Self>) {
