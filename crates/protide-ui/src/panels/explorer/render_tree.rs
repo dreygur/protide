@@ -21,6 +21,8 @@ impl ExplorerPanel {
 
         div()
             .w_full()
+            // Bounded height so the tree's `flex_1` has something to resolve against.
+            .h_full()
             .flex()
             .flex_col()
             .pt(px(8.0))
@@ -151,14 +153,17 @@ impl ExplorerPanel {
         flattened_items: Vec<(CollectionItem, usize)>,
         cx: &mut Context<Self>,
     ) -> gpui::Div {
-        const HEADER_H: f32 = 44.0; // pt(8) + h(32) + pt(4)
-        let tree_h = (self.collections_h - HEADER_H).max(0.0);
-
+        // Fill whatever the section wrapper gives us rather than deriving a fixed
+        // height from `collections_h`: that arithmetic only matched the wrapper in
+        // the history-expanded branch, so with history collapsed the tree stayed
+        // ~6 rows tall and silently clipped everything past it. `min_h(0)` lets the
+        // scroll area shrink below its content so `overflow_scroll` actually scrolls.
         el.child(
             div()
                 .id("collections-tree")
                 .w_full()
-                .h(px(tree_h))
+                .flex_1()
+                .min_h(px(0.0))
                 .overflow_scroll()
                 .child(
                     div()
