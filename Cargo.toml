@@ -12,9 +12,65 @@ members = [
 [workspace.package]
 version = "0.1.0-alpha.4"
 edition = "2024"
+# Floor implied by edition 2024. The toolchain actually used is pinned in
+# rust-toolchain.toml; this only documents the oldest compiler we claim to support.
+rust-version = "1.85"
 license = "MIT"
 repository = "https://github.com/dreygur/protide"
 authors = ["Protide Contributors"]
+
+# Mirrors Zed's release profile - Protide is built on GPUI and Zed is the
+# authoritative reference for how to ship it (see CLAUDE.md "GPUI Reference").
+# `debug = "limited"` keeps line tables so user crash reports stay readable.
+[profile.release]
+debug = "limited"
+lto = "thin"
+codegen-units = 1
+
+# Inherited by every member via `[lints] workspace = true`.
+# `make clippy` / `make verify` run with `-D warnings`, so anything left at
+# "warn" here is a hard failure before push.
+[workspace.lints.rust]
+unused_lifetimes = "warn"
+trivial_numeric_casts = "warn"
+unused_extern_crates = "warn"
+macro_use_extern_crate = "warn"
+# `unsafe_code` is deliberately absent: crates/protide/src/main.rs has one
+# legitimate objc2 call for the macOS Dock icon, and any level above "allow"
+# would fail the `-D warnings` gate.
+
+[workspace.lints.clippy]
+# Scaffolding that must never reach a commit.
+dbg_macro = "deny"
+todo = "deny"
+unimplemented = "deny"
+
+# Accepted by design: GPUI's builder/entity style makes these fire constantly
+# and rewriting around them makes the UI code worse, not better.
+arc_with_non_send_sync = "allow" # GPUI entities are single-threaded by construction
+let_unit_value = "allow"         # `let _ = cx.subscribe(..)` style bindings
+too_many_arguments = "allow"     # render fns thread window/cx plus real args
+type_complexity = "allow"        # boxed GPUI callback types
+
+# Style choices the codebase has settled on.
+collapsible_if = "allow"
+collapsible_match = "allow"
+large_enum_variant = "allow"
+manual_clamp = "allow"
+
+# Debt: all auto-fixable via `cargo clippy --fix`. Delete these lines as the
+# corresponding call sites are cleaned up.
+double_ended_iterator_last = "allow"
+if_same_then_else = "allow"
+items_after_test_module = "allow"
+let_and_return = "allow"
+manual_strip = "allow"
+needless_borrow = "allow"
+new_without_default = "allow"
+only_used_in_recursion = "allow"
+redundant_closure = "allow"
+unnecessary_map_or = "allow"
+useless_vec = "allow"
 
 [workspace.dependencies]
 # Internal crates

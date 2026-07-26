@@ -15,9 +15,16 @@ use crate::execution::{self, ExecutionBody, ExecutionMode, ExecutionRequest, Exe
 #[derive(Debug, Clone)]
 pub enum RunProgress {
     /// A request is about to start.
-    Starting { index: usize, total: usize, name: String },
+    Starting {
+        index: usize,
+        total: usize,
+        name: String,
+    },
     /// A request completed.
-    Completed { index: usize, result: RequestRunResult },
+    Completed {
+        index: usize,
+        result: RequestRunResult,
+    },
     /// The whole run finished.
     Done,
 }
@@ -66,10 +73,16 @@ pub fn run_collection(config: RunConfig, tx: Sender<RunProgress>) {
             }
         }
 
-        let failed = result.as_ref().map(|r| r.test_results.iter().any(|t| !t.passed)).unwrap_or(true);
+        let failed = result
+            .as_ref()
+            .map(|r| r.test_results.iter().any(|t| !t.passed))
+            .unwrap_or(true);
 
         let run_result = RequestRunResult { name, path, result };
-        let _ = tx.send_blocking(RunProgress::Completed { index, result: run_result });
+        let _ = tx.send_blocking(RunProgress::Completed {
+            index,
+            result: run_result,
+        });
 
         if config.stop_on_failure && failed {
             break;
@@ -93,13 +106,18 @@ fn collect_dir(dir: &Path, out: &mut Vec<(String, PathBuf, Request)>) {
     };
     entries.sort_by_key(|e| {
         let path = e.path();
-        (!path.is_dir(), e.file_name().to_string_lossy().to_lowercase())
+        (
+            !path.is_dir(),
+            e.file_name().to_string_lossy().to_lowercase(),
+        )
     });
 
     for entry in entries {
         let path = entry.path();
         let name = entry.file_name().to_string_lossy().to_string();
-        if name.starts_with('.') { continue; }
+        if name.starts_with('.') {
+            continue;
+        }
         if path.is_dir() {
             collect_dir(&path, out);
         } else if path.extension().and_then(|e| e.to_str()) == Some("http") {
@@ -107,8 +125,15 @@ fn collect_dir(dir: &Path, out: &mut Vec<(String, PathBuf, Request)>) {
                 if let Ok(requests) = http_parser::parse(&content) {
                     for (i, req) in requests.into_iter().enumerate() {
                         let req_name = req.meta.name.clone().unwrap_or_else(|| {
-                            let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("request");
-                            if i == 0 { stem.to_string() } else { format!("{} #{}", stem, i + 1) }
+                            let stem = path
+                                .file_stem()
+                                .and_then(|s| s.to_str())
+                                .unwrap_or("request");
+                            if i == 0 {
+                                stem.to_string()
+                            } else {
+                                format!("{} #{}", stem, i + 1)
+                            }
                         });
                         out.push((req_name, path.clone(), req));
                     }
@@ -123,7 +148,9 @@ fn build_execution_request(req: &Request, env: &HashMap<String, String>) -> Exec
     let sub = |s: &str| substitute(s, env);
 
     let url = sub(&req.url);
-    let headers: Vec<(String, String)> = req.headers.iter()
+    let headers: Vec<(String, String)> = req
+        .headers
+        .iter()
         .filter(|h| h.enabled)
         .map(|h| (h.key.clone(), sub(&h.value)))
         .collect();
@@ -134,18 +161,35 @@ fn build_execution_request(req: &Request, env: &HashMap<String, String>) -> Exec
         // Body is JSON like {"query": "...", "variables": {...}}
         if let Ok(json) = serde_json::from_str::<serde_json::Value>(&body_str) {
             let query = json["query"].as_str().unwrap_or("").to_string();
-            let vars = json.get("variables")
+            let vars = json
+                .get("variables")
                 .map(|v| serde_json::to_string(v).unwrap_or_default())
                 .unwrap_or_default();
             let op = json["operationName"].as_str().map(|s| s.to_string());
-            (ExecutionBody::None, ExecutionMode::GraphQL { query, variables: vars, operation_name: op })
+            (
+                ExecutionBody::None,
+                ExecutionMode::GraphQL {
+                    query,
+                    variables: vars,
+                    operation_name: op,
+                },
+            )
         } else {
-            (ExecutionBody::Text(body_str), ExecutionMode::GraphQL {
-                query: String::new(), variables: String::new(), operation_name: None,
-            })
+            (
+                ExecutionBody::Text(body_str),
+                ExecutionMode::GraphQL {
+                    query: String::new(),
+                    variables: String::new(),
+                    operation_name: None,
+                },
+            )
         }
     } else {
-        let eb = if body_str.is_empty() { ExecutionBody::None } else { ExecutionBody::Text(body_str) };
+        let eb = if body_str.is_empty() {
+            ExecutionBody::None
+        } else {
+            ExecutionBody::Text(body_str)
+        };
         (eb, ExecutionMode::Http)
     };
 
@@ -181,13 +225,20 @@ pub(crate) fn substitute(input: &str, env: &HashMap<String, String>) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_support::TempDir;
 
     #[test]
     fn test_substitute() {
         let mut env = HashMap::new();
-        env.insert("base_url".to_string(), "https://api.example.com".to_string());
+        env.insert(
+            "base_url".to_string(),
+            "https://api.example.com".to_string(),
+        );
         env.insert("token".to_string(), "abc123".to_string());
-        assert_eq!(substitute("{{base_url}}/users", &env), "https://api.example.com/users");
+        assert_eq!(
+            substitute("{{base_url}}/users", &env),
+            "https://api.example.com/users"
+        );
         assert_eq!(substitute("Bearer {{token}}", &env), "Bearer abc123");
         assert_eq!(substitute("no vars here", &env), "no vars here");
     }
@@ -217,25 +268,16 @@ mod tests {
 
     #[test]
     fn test_collect_requests_empty_dir() {
-        let tmp = std::env::temp_dir().join(format!("runner_test_{}", std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH).unwrap().subsec_nanos()));
-        std::fs::create_dir_all(&tmp).unwrap();
-        let requests = collect_requests(&tmp);
-        let _ = std::fs::remove_dir_all(&tmp);
-        assert!(requests.is_empty());
+        let tmp = TempDir::new("protide_runner_test");
+        assert!(collect_requests(tmp.path()).is_empty());
     }
 
     #[test]
     fn test_collect_requests_finds_http_files() {
-        use std::io::Write;
-        let tmp = std::env::temp_dir().join(format!("runner_test2_{}", std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH).unwrap().subsec_nanos()));
-        std::fs::create_dir_all(&tmp).unwrap();
-        std::fs::File::create(tmp.join("req.http")).unwrap()
-            .write_all(b"# @name myReq\nGET https://example.com\n").unwrap();
+        let tmp = TempDir::new("protide_runner_test");
+        tmp.write("req.http", b"# @name myReq\nGET https://example.com\n");
 
-        let requests = collect_requests(&tmp);
-        let _ = std::fs::remove_dir_all(&tmp);
+        let requests = collect_requests(tmp.path());
         assert_eq!(requests.len(), 1);
         assert_eq!(requests[0].0, "myReq");
     }

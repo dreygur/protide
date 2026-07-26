@@ -1,0 +1,12 @@
+#!/bin/sh
+# Full gate: fmt-check, clippy, tests, advisory audit.
+set -e
+
+if ! make verify; then
+	echo ""
+	echo "pre-push failed: 'make verify' did not pass"
+	echo "  fix:    run 'make verify' and work through the first failure"
+	echo "          (make fmt / cargo clippy --fix handle most of it)"
+	echo "  bypass: git push --no-verify"
+	exit 1
+fi

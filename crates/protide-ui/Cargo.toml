@@ -36,3 +36,6 @@ reqwest = { workspace = true }
 
 [dev-dependencies]
 gpui = { git = "https://github.com/zed-industries/zed", features = ["wayland", "test-support"] }
+
+[lints]
+workspace = true

@@ -9,9 +9,9 @@ use std::time::Duration;
 use http_parser::VariableExtraction;
 
 use crate::chaining;
+use crate::scripting::ScriptEngine;
 use crate::scripting::context::{RequestData, ResponseData as ScriptResponseData};
 use crate::scripting::results::TestResult;
-use crate::scripting::ScriptEngine;
 
 pub use http::run_http;
 
@@ -111,8 +111,7 @@ pub fn execute(req: ExecutionRequest) -> Result<ExecutionResult, String> {
 
     // 1. Pre-script: may modify url / headers / body
     if !req.pre_script.trim().is_empty() {
-        let engine = ScriptEngine::new()
-            .map_err(|e| format!("Script engine error: {}", e))?;
+        let engine = ScriptEngine::new().map_err(|e| format!("Script engine error: {}", e))?;
 
         let script_req = RequestData::new(&req.method, &url)
             .with_headers(headers.clone())
@@ -126,9 +125,10 @@ pub fn execute(req: ExecutionRequest) -> Result<ExecutionResult, String> {
             .map_err(|e| format!("Pre-script error: {}", e))?;
 
         if !outcome.success
-            && let Some(err) = outcome.error {
-                return Err(format!("Pre-script error: {}", err.message));
-            }
+            && let Some(err) = outcome.error
+        {
+            return Err(format!("Pre-script error: {}", err.message));
+        }
 
         console_output.extend(outcome.console_output);
         env_changes.extend(outcome.env_changes);
@@ -149,32 +149,43 @@ pub fn execute(req: ExecutionRequest) -> Result<ExecutionResult, String> {
     }
 
     // 2. Execute HTTP
-    let raw = run_http(&url, &req.method, &headers, &body, &req.mode, req.timeout_secs, req.verify_ssl, req.impersonate_browser)?;
+    let raw = run_http(
+        &url,
+        &req.method,
+        &headers,
+        &body,
+        &req.mode,
+        req.timeout_secs,
+        req.verify_ssl,
+        req.impersonate_browser,
+    )?;
 
     // 3. Post-script + tests
     let mut test_results: Vec<TestResult> = Vec::new();
     if (!req.post_script.trim().is_empty() || !req.tests.trim().is_empty())
-        && let Ok(engine) = ScriptEngine::new() {
-            let script_resp =
-                ScriptResponseData::new(raw.status, &raw.status_text, raw.body.clone())
-                    .with_headers(raw.headers.clone())
-                    .with_time(raw.time.as_millis() as u64)
-                    .with_size(raw.size);
+        && let Ok(engine) = ScriptEngine::new()
+    {
+        let script_resp = ScriptResponseData::new(raw.status, &raw.status_text, raw.body.clone())
+            .with_headers(raw.headers.clone())
+            .with_time(raw.time.as_millis() as u64)
+            .with_size(raw.size);
 
-            let mut ctx = crate::scripting::ScriptContext::new().with_env(req.env_vars.clone());
-            ctx.set_response(script_resp);
+        let mut ctx = crate::scripting::ScriptContext::new().with_env(req.env_vars.clone());
+        ctx.set_response(script_resp);
 
-            if !req.post_script.trim().is_empty()
-                && let Ok(outcome) = engine.run_post_script(&req.post_script, &mut ctx) {
-                    console_output.extend(outcome.console_output);
-                    env_changes.extend(outcome.env_changes);
-                }
-            if !req.tests.trim().is_empty()
-                && let Ok(outcome) = engine.run_tests(&req.tests, &mut ctx) {
-                    console_output.extend(outcome.console_output);
-                    test_results = outcome.test_results;
-                }
+        if !req.post_script.trim().is_empty()
+            && let Ok(outcome) = engine.run_post_script(&req.post_script, &mut ctx)
+        {
+            console_output.extend(outcome.console_output);
+            env_changes.extend(outcome.env_changes);
         }
+        if !req.tests.trim().is_empty()
+            && let Ok(outcome) = engine.run_tests(&req.tests, &mut ctx)
+        {
+            console_output.extend(outcome.console_output);
+            test_results = outcome.test_results;
+        }
+    }
 
     // 4. Variable extraction via @set JSONPath annotations
     let mut extracted_vars: Vec<(String, String)> = Vec::new();
@@ -213,24 +224,49 @@ mod tests {
     use super::*;
     use std::io::{Read, Write};
     use std::net::TcpListener;
+    use std::time::{Duration, Instant};
+
+    /// Every blocking socket operation in the test server is capped at this,
+    /// so a client that never connects (or never finishes its request) fails
+    /// the test loudly instead of parking the suite forever.
+    const SOCKET_TIMEOUT: Duration = Duration::from_secs(10);
 
     /// Spawns a one-shot HTTP server on 127.0.0.1 that replies with the given
     /// JSON body to a single request, and returns its base URL.
     fn spawn_json_server(json_body: &'static str) -> String {
         let listener = TcpListener::bind("127.0.0.1:0").expect("bind");
         let addr = listener.local_addr().expect("addr");
+        // `TcpListener::accept` has no timeout in std, so poll a non-blocking
+        // listener against a deadline instead.
+        listener.set_nonblocking(true).expect("set_nonblocking");
         std::thread::spawn(move || {
-            if let Ok((mut stream, _)) = listener.accept() {
-                let mut buf = [0u8; 1024];
-                let _ = stream.read(&mut buf);
-                let response = format!(
-                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
-                    json_body.len(),
-                    json_body
-                );
-                let _ = stream.write_all(response.as_bytes());
-                let _ = stream.flush();
-            }
+            let deadline = Instant::now() + SOCKET_TIMEOUT;
+            let mut stream = loop {
+                match listener.accept() {
+                    Ok((stream, _)) => break stream,
+                    Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                        if Instant::now() >= deadline {
+                            return;
+                        }
+                        std::thread::sleep(Duration::from_millis(5));
+                    }
+                    Err(_) => return,
+                }
+            };
+            // The accepted socket can inherit the listener's non-blocking flag.
+            let _ = stream.set_nonblocking(false);
+            let _ = stream.set_read_timeout(Some(SOCKET_TIMEOUT));
+            let _ = stream.set_write_timeout(Some(SOCKET_TIMEOUT));
+
+            let mut buf = [0u8; 1024];
+            let _ = stream.read(&mut buf);
+            let response = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                json_body.len(),
+                json_body
+            );
+            let _ = stream.write_all(response.as_bytes());
+            let _ = stream.flush();
         });
         format!("http://{}/", addr)
     }
@@ -268,7 +304,10 @@ mod tests {
 
         let result = execute(req).expect("execute should succeed");
 
-        assert_eq!(result.extracted_vars, vec![("good".to_string(), "1".to_string())]);
+        assert_eq!(
+            result.extracted_vars,
+            vec![("good".to_string(), "1".to_string())]
+        );
         assert_eq!(result.extraction_errors.len(), 1);
         assert!(result.extraction_errors[0].contains("bad"));
     }

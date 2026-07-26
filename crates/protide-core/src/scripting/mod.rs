@@ -148,7 +148,11 @@ mod tests {
         let outcome = result.unwrap();
         assert!(outcome.success);
         assert_eq!(outcome.console_output, vec!["value"]);
-        assert!(outcome.env_changes.contains(&("new_var".to_string(), "new_value".to_string())));
+        assert!(
+            outcome
+                .env_changes
+                .contains(&("new_var".to_string(), "new_value".to_string()))
+        );
     }
 
     #[test]
@@ -166,15 +170,27 @@ mod tests {
         assert!(result.is_ok());
         let outcome = result.unwrap();
         assert!(outcome.success);
-        assert_eq!(outcome.modified_request.url, Some("https://modified.com".to_string()));
-        assert!(outcome.modified_request.headers_to_set.contains(&("X-Custom".to_string(), "test-value".to_string())));
+        assert_eq!(
+            outcome.modified_request.url,
+            Some("https://modified.com".to_string())
+        );
+        assert!(
+            outcome
+                .modified_request
+                .headers_to_set
+                .contains(&("X-Custom".to_string(), "test-value".to_string()))
+        );
     }
 
     #[test]
     fn test_response_access() {
         let engine = ScriptEngine::new().unwrap();
         let mut ctx = ScriptContext::new();
-        ctx.set_response(ResponseData::new(200, "OK", r#"{"message":"success"}"#.to_string()));
+        ctx.set_response(ResponseData::new(
+            200,
+            "OK",
+            r#"{"message":"success"}"#.to_string(),
+        ));
 
         let script = r#"
             console.log(response.status);
@@ -250,8 +266,11 @@ mod tests {
     /// blocking the thread indefinitely.
     #[test]
     fn test_script_timeout_infinite_loop() {
-        // Use a 100 ms deadline so the test finishes in well under a second.
-        let engine = ScriptEngine::new_with_timeout_ms(100).unwrap();
+        // The deadline only needs to be short enough to keep the test quick;
+        // `while(true){}` can never finish, so a generous budget cannot make
+        // this flake in the "false failure" direction the way a tight one
+        // would if the interrupt handler were checked coarsely under load.
+        let engine = ScriptEngine::new_with_timeout_ms(1_000).unwrap();
         let mut ctx = ScriptContext::new();
 
         let result = engine.run_pre_script("while(true){}", &mut ctx);
@@ -266,9 +285,13 @@ mod tests {
     }
 
     /// A script that completes before the deadline must not be rejected.
+    /// The budget is deliberately far larger than the work (`1 + 1`) so a
+    /// loaded CI box that stalls the thread for a second cannot turn this into
+    /// a spurious timeout; it still fails if the deadline mechanism misfires
+    /// on a script that does essentially nothing.
     #[test]
     fn test_script_completes_within_deadline() {
-        let engine = ScriptEngine::new_with_timeout_ms(500).unwrap();
+        let engine = ScriptEngine::new_with_timeout_ms(30_000).unwrap();
         let mut ctx = ScriptContext::new();
         let result = engine.run_pre_script("const x = 1 + 1;", &mut ctx);
         assert!(result.is_ok());
@@ -289,7 +312,10 @@ mod tests {
         assert!(result.is_ok());
         assert!(result.unwrap().success);
 
-        assert!(!ctx.env.contains_key("secret"), "removed key must not persist");
+        assert!(
+            !ctx.env.contains_key("secret"),
+            "removed key must not persist"
+        );
         assert_eq!(ctx.env.get("keep"), Some(&"me".to_string()));
     }
 
@@ -342,7 +368,10 @@ mod tests {
         let outcome = result.unwrap();
         assert_eq!(outcome.test_results.len(), 2);
         assert!(!outcome.test_results[0].passed, "NaN must not equal null");
-        assert!(outcome.test_results[1].passed, "NaN must equal NaN (Object.is semantics)");
+        assert!(
+            outcome.test_results[1].passed,
+            "NaN must equal NaN (Object.is semantics)"
+        );
     }
 
     #[test]

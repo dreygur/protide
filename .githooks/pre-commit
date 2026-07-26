@@ -1,0 +1,14 @@
+#!/bin/sh
+# Fast gate only - no tests. `make verify` runs the full suite on push.
+set -e
+
+fail() {
+	echo ""
+	echo "pre-commit failed: $1"
+	echo "  fix:    $2"
+	echo "  bypass: git commit --no-verify"
+	exit 1
+}
+
+cargo fmt --all --check || fail "formatting" "make fmt"
+make clippy || fail "clippy" "cargo clippy --fix, or adjust [workspace.lints] in Cargo.toml"

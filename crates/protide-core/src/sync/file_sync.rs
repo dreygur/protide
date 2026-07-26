@@ -1,9 +1,9 @@
+use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use std::collections::HashSet;
 use std::fs;
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Receiver, Sender};
-use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use uuid::Uuid;
 
 use super::types::{CrdtEntry, NodeId};
@@ -62,9 +62,11 @@ impl FileSync {
 
         // Set up file watcher
         let watcher_tx = event_tx.clone();
-        let mut watcher = notify::recommended_watcher(move |result: Result<Event, notify::Error>| {
-            if let Ok(event) = result
-                && Self::is_crdt_event(&event) {
+        let mut watcher =
+            notify::recommended_watcher(move |result: Result<Event, notify::Error>| {
+                if let Ok(event) = result
+                    && Self::is_crdt_event(&event)
+                {
                     for path in &event.paths {
                         match event.kind {
                             EventKind::Create(_) | EventKind::Modify(_) => {
@@ -81,8 +83,8 @@ impl FileSync {
                         }
                     }
                 }
-        })
-        .map_err(|e| format!("Failed to create file watcher: {}", e))?;
+            })
+            .map_err(|e| format!("Failed to create file watcher: {}", e))?;
 
         watcher
             .watch(&entries_dir, RecursiveMode::NonRecursive)
@@ -105,10 +107,8 @@ impl FileSync {
             .map_err(|e| format!("Failed to serialize entry: {}", e))?;
         // Atomic write: write to temp file, then rename
         let tmp_path = self.entry_path_tmp(&entry.id);
-        fs::write(&tmp_path, &json)
-            .map_err(|e| format!("Failed to write entry: {}", e))?;
-        fs::rename(&tmp_path, &path)
-            .map_err(|e| format!("Failed to finalize entry: {}", e))?;
+        fs::write(&tmp_path, &json).map_err(|e| format!("Failed to write entry: {}", e))?;
+        fs::rename(&tmp_path, &path).map_err(|e| format!("Failed to finalize entry: {}", e))?;
         Ok(())
     }
 
@@ -228,20 +228,22 @@ pub fn default_sync_folder() -> Option<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::sync::crdt::CrdtStore;
     use crate::sync::DataType;
+    use crate::sync::crdt::CrdtStore;
+    use crate::test_support::TempDir;
 
     #[test]
     fn test_write_and_read_entry() {
-        let tmp = std::env::temp_dir().join("protide_file_sync_test");
-        let _ = fs::remove_dir_all(&tmp);
-        fs::create_dir_all(&tmp).unwrap();
+        let tmp = TempDir::new("protide_file_sync_test");
 
         let node = NodeId::new();
-        let sync = FileSync::open(&tmp, node).unwrap();
+        let sync = FileSync::open(tmp.path(), node).unwrap();
 
         let mut store = CrdtStore::new(NodeId::new());
-        let entry = store.apply_local(DataType::Request, r#"{"url":"https://api.example.com"}"#.into());
+        let entry = store.apply_local(
+            DataType::Request,
+            r#"{"url":"https://api.example.com"}"#.into(),
+        );
 
         sync.write_entry(&entry).unwrap();
 
@@ -249,18 +251,14 @@ mod tests {
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].id, entry.id);
         assert_eq!(entries[0].data, r#"{"url":"https://api.example.com"}"#);
-
-        let _ = fs::remove_dir_all(&tmp);
     }
 
     #[test]
     fn test_delete_entry() {
-        let tmp = std::env::temp_dir().join("protide_file_sync_del_test");
-        let _ = fs::remove_dir_all(&tmp);
-        fs::create_dir_all(&tmp).unwrap();
+        let tmp = TempDir::new("protide_file_sync_del_test");
 
         let node = NodeId::new();
-        let sync = FileSync::open(&tmp, node).unwrap();
+        let sync = FileSync::open(tmp.path(), node).unwrap();
 
         let mut store = CrdtStore::new(NodeId::new());
         let entry = store.apply_local(DataType::Request, "data".into());
@@ -270,7 +268,5 @@ mod tests {
 
         sync.delete_entry(&entry.id).unwrap();
         assert_eq!(sync.read_all_entries().len(), 0);
-
-        let _ = fs::remove_dir_all(&tmp);
     }
 }

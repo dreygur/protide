@@ -1,8 +1,8 @@
 //! Export a collection directory as an OpenAPI 3.0 JSON specification
 
+use serde_json::{Value, json};
 use std::collections::HashSet;
 use std::path::Path;
-use serde_json::{Value, json};
 
 /// Walk a collection root and produce an OpenAPI 3.0 JSON spec string.
 pub fn export_openapi(root: &Path) -> Result<String, String> {
@@ -17,9 +17,7 @@ pub fn export_openapi(root: &Path) -> Result<String, String> {
 
     collect_dir(root, &mut paths, &mut servers, &mut seen_servers)?;
 
-    let servers_val: Vec<Value> = servers.iter()
-        .map(|s| json!({ "url": s }))
-        .collect();
+    let servers_val: Vec<Value> = servers.iter().map(|s| json!({ "url": s })).collect();
 
     let spec = json!({
         "openapi": "3.0.0",
@@ -44,13 +42,18 @@ fn collect_dir(
 
     entries.sort_by_key(|e| {
         let path = e.path();
-        (!path.is_dir(), e.file_name().to_string_lossy().to_lowercase())
+        (
+            !path.is_dir(),
+            e.file_name().to_string_lossy().to_lowercase(),
+        )
     });
 
     for entry in entries {
         let path = entry.path();
         let name = entry.file_name().to_string_lossy().to_string();
-        if name.starts_with('.') { continue; }
+        if name.starts_with('.') {
+            continue;
+        }
 
         if path.is_dir() {
             collect_dir(&path, paths, servers, seen_servers)?;
@@ -129,7 +132,10 @@ fn add_http_requests(
 fn split_url(url: &str) -> (String, String, Vec<(String, String)>) {
     let (server, rest) = if url.starts_with("http://") || url.starts_with("https://") {
         let prefix = if url.starts_with("https://") { 8 } else { 7 };
-        let path_start = url[prefix..].find('/').map(|i| i + prefix).unwrap_or(url.len());
+        let path_start = url[prefix..]
+            .find('/')
+            .map(|i| i + prefix)
+            .unwrap_or(url.len());
         (url[..path_start].to_string(), &url[path_start..])
     } else {
         (String::new(), url)
@@ -163,7 +169,11 @@ fn build_operation(req: &http_parser::Request, query_params: Vec<(String, String
     let mut parameters: Vec<Value> = Vec::new();
 
     // Header parameters (skip Content-Type - goes in requestBody)
-    for h in req.headers.iter().filter(|h| h.enabled && !h.key.eq_ignore_ascii_case("content-type")) {
+    for h in req
+        .headers
+        .iter()
+        .filter(|h| h.enabled && !h.key.eq_ignore_ascii_case("content-type"))
+    {
         parameters.push(json!({
             "in": "header",
             "name": h.key,
@@ -175,9 +185,13 @@ fn build_operation(req: &http_parser::Request, query_params: Vec<(String, String
     // Query parameters extracted from URL
     for (k, v) in query_params {
         let name = k.replace('{', "{{").replace('}', "}}"); // restore protide syntax for display
-        let schema_type = if v.parse::<i64>().is_ok() { "integer" }
-            else if v == "true" || v == "false" { "boolean" }
-            else { "string" };
+        let schema_type = if v.parse::<i64>().is_ok() {
+            "integer"
+        } else if v == "true" || v == "false" {
+            "boolean"
+        } else {
+            "string"
+        };
         parameters.push(json!({
             "in": "query",
             "name": name,
@@ -201,7 +215,9 @@ fn build_operation(req: &http_parser::Request, query_params: Vec<(String, String
     if let Some(body) = &req.body {
         let trimmed = body.trim();
         if !trimmed.is_empty() {
-            let ct = req.headers.iter()
+            let ct = req
+                .headers
+                .iter()
                 .find(|h| h.enabled && h.key.eq_ignore_ascii_case("content-type"))
                 .map(|h| h.value.as_str())
                 .unwrap_or_else(|| detect_content_type(trimmed));
@@ -216,29 +232,40 @@ fn build_operation(req: &http_parser::Request, query_params: Vec<(String, String
                 json!({ "example": trimmed })
             };
 
-            op.insert("requestBody".to_string(), json!({
-                "required": true,
-                "content": { ct: content_value }
-            }));
+            op.insert(
+                "requestBody".to_string(),
+                json!({
+                    "required": true,
+                    "content": { ct: content_value }
+                }),
+            );
         }
     }
 
-    op.insert("responses".to_string(), json!({
-        "200": { "description": "OK" }
-    }));
+    op.insert(
+        "responses".to_string(),
+        json!({
+            "200": { "description": "OK" }
+        }),
+    );
 
     Value::Object(op)
 }
 
 fn detect_content_type(body: &str) -> &'static str {
-    if body.starts_with('{') || body.starts_with('[') { "application/json" }
-    else if body.starts_with('<') { "application/xml" }
-    else { "text/plain" }
+    if body.starts_with('{') || body.starts_with('[') {
+        "application/json"
+    } else if body.starts_with('<') {
+        "application/xml"
+    } else {
+        "text/plain"
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_support::TempDir;
 
     #[test]
     fn test_split_url_simple() {
@@ -265,17 +292,13 @@ mod tests {
 
     #[test]
     fn test_export_openapi_produces_valid_json() {
-        use std::io::Write;
-        let tmp = std::env::temp_dir().join(format!("protide_oas_test_{}", std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH).unwrap().subsec_nanos()));
-        std::fs::create_dir_all(&tmp).unwrap();
+        let tmp = TempDir::new("protide_oas_test");
+        tmp.write(
+            "get_users.http",
+            b"# @name getUsers\nGET https://api.example.com/users\nAccept: application/json\n",
+        );
 
-        let http_file = tmp.join("get_users.http");
-        std::fs::File::create(&http_file).unwrap()
-            .write_all(b"# @name getUsers\nGET https://api.example.com/users\nAccept: application/json\n").unwrap();
-
-        let result = export_openapi(&tmp).unwrap();
-        let _ = std::fs::remove_dir_all(&tmp);
+        let result = export_openapi(tmp.path()).unwrap();
 
         let parsed: Value = serde_json::from_str(&result).unwrap();
         assert_eq!(parsed["openapi"].as_str(), Some("3.0.0"));
@@ -285,23 +308,18 @@ mod tests {
 
     #[test]
     fn test_duplicate_method_path_requests_are_not_silently_lost() {
-        use std::io::Write;
-        let tmp = std::env::temp_dir().join(format!("protide_oas_dup_test_{}", std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH).unwrap().subsec_nanos()));
-        std::fs::create_dir_all(&tmp).unwrap();
+        let tmp = TempDir::new("protide_oas_dup_test");
 
         // Two distinct named requests in the same .http file both hit
         // POST /login (a common pattern: "valid login" vs "invalid login"
         // scenarios against the same endpoint).
-        let http_file = tmp.join("login.http");
-        std::fs::File::create(&http_file).unwrap()
-            .write_all(
-                b"### Valid login\n# @name validLogin\nPOST https://api.example.com/login\nContent-Type: application/json\n\n{\"user\": \"good\"}\n\n\
-                  ### Invalid login\n# @name invalidLogin\nPOST https://api.example.com/login\nContent-Type: application/json\n\n{\"user\": \"bad\"}\n"
-            ).unwrap();
+        tmp.write(
+            "login.http",
+            b"### Valid login\n# @name validLogin\nPOST https://api.example.com/login\nContent-Type: application/json\n\n{\"user\": \"good\"}\n\n\
+              ### Invalid login\n# @name invalidLogin\nPOST https://api.example.com/login\nContent-Type: application/json\n\n{\"user\": \"bad\"}\n",
+        );
 
-        let result = export_openapi(&tmp).unwrap();
-        let _ = std::fs::remove_dir_all(&tmp);
+        let result = export_openapi(tmp.path()).unwrap();
 
         let parsed: Value = serde_json::from_str(&result).unwrap();
         let post_op = &parsed["paths"]["/login"]["post"];

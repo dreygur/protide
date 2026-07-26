@@ -3,7 +3,7 @@
 mod routes;
 mod server;
 
-pub use routes::{MockRoute, MockResponse, HttpMethod};
+pub use routes::{HttpMethod, MockResponse, MockRoute};
 
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex, RwLock};
@@ -53,9 +53,10 @@ impl MockServer {
 
     pub fn remove_route(&mut self, index: usize) {
         if let Ok(mut routes) = self.routes.write()
-            && index < routes.len() {
-                routes.remove(index);
-            }
+            && index < routes.len()
+        {
+            routes.remove(index);
+        }
     }
 
     pub fn routes(&self) -> Vec<MockRoute> {
@@ -64,9 +65,10 @@ impl MockServer {
 
     pub fn update_route(&mut self, index: usize, route: MockRoute) {
         if let Ok(mut routes) = self.routes.write()
-            && index < routes.len() {
-                routes[index] = route;
-            }
+            && index < routes.len()
+        {
+            routes[index] = route;
+        }
     }
 
     pub fn clear_routes(&mut self) {
@@ -76,7 +78,8 @@ impl MockServer {
     }
 
     pub fn set_record_mode(&mut self, enabled: bool, target: Option<String>) {
-        self.record_mode.store(enabled, std::sync::atomic::Ordering::Relaxed);
+        self.record_mode
+            .store(enabled, std::sync::atomic::Ordering::Relaxed);
         if let Ok(mut t) = self.record_target.write() {
             *t = target;
         }
@@ -91,7 +94,10 @@ impl MockServer {
     }
 
     pub fn drain_recorded(&mut self) -> Vec<MockRoute> {
-        self.recorded_routes.lock().map(|mut r| std::mem::take(&mut *r)).unwrap_or_default()
+        self.recorded_routes
+            .lock()
+            .map(|mut r| std::mem::take(&mut *r))
+            .unwrap_or_default()
     }
 
     pub fn start(&mut self) -> Result<SocketAddr, String> {
@@ -120,7 +126,8 @@ impl MockServer {
             };
 
             rt.block_on(async move {
-                let app = server::create_router(routes, record_mode, record_target, recorded_routes);
+                let app =
+                    server::create_router(routes, record_mode, record_target, recorded_routes);
                 let addr = SocketAddr::from(([127, 0, 0, 1], port));
 
                 let listener = match tokio::net::TcpListener::bind(addr).await {
@@ -184,6 +191,16 @@ impl Drop for MockServer {
 mod tests {
     use super::*;
 
+    /// Every test request is capped so a hung proxy/route fails the test
+    /// rather than parking the suite on an unbounded socket read.
+    fn test_client() -> reqwest::blocking::Client {
+        reqwest::blocking::Client::builder()
+            .timeout(std::time::Duration::from_secs(5))
+            .connect_timeout(std::time::Duration::from_secs(5))
+            .build()
+            .expect("client should build")
+    }
+
     #[test]
     fn test_mock_server_creation() {
         let server = MockServer::new(9999);
@@ -234,7 +251,11 @@ mod tests {
     #[test]
     fn test_proxy_query_string_is_forwarded_correctly() {
         let mut target = MockServer::new(0);
-        target.add_route(MockRoute::new(HttpMethod::Get, "/echo", MockResponse::ok("OK-ECHO")));
+        target.add_route(MockRoute::new(
+            HttpMethod::Get,
+            "/echo",
+            MockResponse::ok("OK-ECHO"),
+        ));
         let target_addr = target.start().expect("target server should start");
         let target_url = format!("http://{}", target_addr);
 
@@ -242,14 +263,17 @@ mod tests {
         proxy.add_route(MockRoute::proxy(HttpMethod::Get, "/echo", &target_url));
         let proxy_addr = proxy.start().expect("proxy server should start");
 
-        let client = reqwest::blocking::Client::new();
-        let resp = client
+        let resp = test_client()
             .get(format!("http://{}/echo?foo=bar", proxy_addr))
             .send()
             .expect("request to proxy should succeed at the transport level");
 
         // Correct behavior forwards to target as `/echo?foo=bar` and gets 200.
-        assert_eq!(resp.status(), 200, "query string should be forwarded correctly, not merged into the path");
+        assert_eq!(
+            resp.status(),
+            200,
+            "query string should be forwarded correctly, not merged into the path"
+        );
         let body = resp.text().unwrap_or_default();
         assert_eq!(body, "OK-ECHO");
 
@@ -271,20 +295,30 @@ mod tests {
 
         // Placeholder targets - the real target URL needs the other server's
         // port, which is only known after both servers have started.
-        server_a.add_route(MockRoute::proxy(HttpMethod::Get, "/loop", "http://placeholder"));
-        server_b.add_route(MockRoute::proxy(HttpMethod::Get, "/loop", "http://placeholder"));
+        server_a.add_route(MockRoute::proxy(
+            HttpMethod::Get,
+            "/loop",
+            "http://placeholder",
+        ));
+        server_b.add_route(MockRoute::proxy(
+            HttpMethod::Get,
+            "/loop",
+            "http://placeholder",
+        ));
 
         let addr_a = server_a.start().expect("server A should start");
         let addr_b = server_b.start().expect("server B should start");
 
-        server_a.update_route(0, MockRoute::proxy(HttpMethod::Get, "/loop", format!("http://{}", addr_b)));
-        server_b.update_route(0, MockRoute::proxy(HttpMethod::Get, "/loop", format!("http://{}", addr_a)));
+        server_a.update_route(
+            0,
+            MockRoute::proxy(HttpMethod::Get, "/loop", format!("http://{}", addr_b)),
+        );
+        server_b.update_route(
+            0,
+            MockRoute::proxy(HttpMethod::Get, "/loop", format!("http://{}", addr_a)),
+        );
 
-        let client = reqwest::blocking::Client::builder()
-            .timeout(std::time::Duration::from_secs(10))
-            .build()
-            .expect("client should build");
-        let resp = client
+        let resp = test_client()
             .get(format!("http://{}/loop", addr_a))
             .send()
             .expect("request should complete promptly instead of hanging, thanks to the hop-count guard");

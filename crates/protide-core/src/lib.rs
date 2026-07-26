@@ -9,4 +9,6 @@ pub mod models;
 pub mod protocols;
 pub mod scripting;
 pub mod sync;
+#[cfg(test)]
+mod test_support;
 pub mod workspace;

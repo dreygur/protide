@@ -37,29 +37,33 @@ impl Workspace {
         let (tx, rx) = mpsc::channel::<WorkspaceEvent>();
 
         let watcher_tx = tx.clone();
-        let mut watcher = notify::recommended_watcher(
-            move |result: NotifyResult<Event>| {
-                if let Ok(event) = result {
-                    use notify::EventKind::*;
-                    for path in event.paths {
-                        let is_dir = path.is_dir();
-                        let evt = match event.kind {
-                            Create(_) => {
-                                if is_dir { WorkspaceEvent::DirCreated(path) }
-                                else { WorkspaceEvent::FileCreated(path) }
+        let mut watcher = notify::recommended_watcher(move |result: NotifyResult<Event>| {
+            if let Ok(event) = result {
+                use notify::EventKind::*;
+                for path in event.paths {
+                    let is_dir = path.is_dir();
+                    let evt = match event.kind {
+                        Create(_) => {
+                            if is_dir {
+                                WorkspaceEvent::DirCreated(path)
+                            } else {
+                                WorkspaceEvent::FileCreated(path)
                             }
-                            Modify(_) => WorkspaceEvent::FileModified(path),
-                            Remove(_) => {
-                                if is_dir { WorkspaceEvent::DirDeleted(path) }
-                                else { WorkspaceEvent::FileDeleted(path) }
+                        }
+                        Modify(_) => WorkspaceEvent::FileModified(path),
+                        Remove(_) => {
+                            if is_dir {
+                                WorkspaceEvent::DirDeleted(path)
+                            } else {
+                                WorkspaceEvent::FileDeleted(path)
                             }
-                            _ => continue,
-                        };
-                        let _ = watcher_tx.send(evt);
-                    }
+                        }
+                        _ => continue,
+                    };
+                    let _ = watcher_tx.send(evt);
                 }
-            },
-        )
+            }
+        })
         .map_err(|e| format!("Failed to create file watcher: {}", e))?;
 
         watcher
@@ -93,7 +97,9 @@ impl Workspace {
 }
 
 fn scan_dir(root: &Path, dir: &Path, depth: usize, out: &mut Vec<CollectionEntry>) {
-    let Ok(entries) = std::fs::read_dir(dir) else { return };
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
 
     let mut children: Vec<_> = entries.filter_map(|e| e.ok()).collect();
     children.sort_by(|a, b| {
@@ -114,10 +120,20 @@ fn scan_dir(root: &Path, dir: &Path, depth: usize, out: &mut Vec<CollectionEntry
         }
 
         if path.is_dir() {
-            out.push(CollectionEntry { path: path.clone(), name, is_dir: true, depth });
+            out.push(CollectionEntry {
+                path: path.clone(),
+                name,
+                is_dir: true,
+                depth,
+            });
             scan_dir(root, &path, depth + 1, out);
         } else if path.extension().and_then(|e| e.to_str()) == Some("http") {
-            out.push(CollectionEntry { path, name, is_dir: false, depth });
+            out.push(CollectionEntry {
+                path,
+                name,
+                is_dir: false,
+                depth,
+            });
         }
     }
 }
@@ -138,19 +154,21 @@ pub fn is_relevant(event: &WorkspaceEvent, root: &Path) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::fs;
+    use crate::test_support::TempDir;
 
     #[test]
     fn test_scan_empty_dir() {
-        let tmp = std::env::temp_dir().join("api_dash_workspace_test");
-        let _ = fs::create_dir_all(&tmp);
+        let tmp = TempDir::new("protide_workspace_test");
         let ws = Workspace {
-            root: tmp.clone(),
+            root: tmp.path().to_path_buf(),
             _watcher: None,
             rx: None,
         };
         let entries = ws.scan();
-        assert!(entries.iter().all(|e| e.path.extension().map(|x| x == "http").unwrap_or(true)));
-        let _ = fs::remove_dir_all(&tmp);
+        assert!(
+            entries
+                .iter()
+                .all(|e| e.path.extension().map(|x| x == "http").unwrap_or(true))
+        );
     }
 }

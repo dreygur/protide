@@ -1,10 +1,12 @@
-pub mod theme;
-pub mod panels;
+mod components;
 pub mod last_paths;
+mod main_window;
+pub mod panels;
 pub mod prefs;
 pub mod session;
-mod main_window;
-mod components;
+#[cfg(test)]
+mod test_support;
+pub mod theme;
 
 /// Path the binary's `AssetSource` serves the Protide logo from. The UI can't
 /// `include_bytes!` it - the PNG lives in the `protide` crate, which depends on
@@ -12,7 +14,6 @@ mod components;
 pub const LOGO_ASSET_PATH: &str = "protide-logo.png";
 
 pub use main_window::{
-    MainWindow, register_keybindings,
-    SendRequest, SaveRequest, ToggleSidebar, ToggleMockServer,
-    ShowHelp, ShowAbout, DismissOverlay, Quit,
+    DismissOverlay, MainWindow, Quit, SaveRequest, SendRequest, ShowAbout, ShowHelp,
+    ToggleMockServer, ToggleSidebar, register_keybindings,
 };

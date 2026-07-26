@@ -8,21 +8,17 @@
 
 #[cfg(test)]
 mod tests {
+    use crate::panels::request::RequestPanel;
+    use crate::panels::request_types::{
+        BodyType, FormField, FormFieldType, GrpcMethodInfo, GrpcStreamingType, RequestMode,
+    };
+    use crate::panels::response::ResponsePanel;
+    use crate::test_support::init_theme;
     use gpui::{AppContext, Modifiers, TestAppContext};
     use protide_core::codegen::Language as CodegenLanguage;
     use protide_core::execution::ws::TungsteniteExecutor;
-    use crate::panels::request::RequestPanel;
-    use crate::panels::request_types::{BodyType, FormField, FormFieldType, GrpcMethodInfo, GrpcStreamingType, RequestMode};
-    use crate::panels::response::ResponsePanel;
 
     type TestPanel = RequestPanel<TungsteniteExecutor>;
-
-    fn init_theme(cx: &mut TestAppContext) {
-        cx.update(|cx| {
-            cx.set_global(gpui_component::Theme::default());
-            crate::theme::init(cx);
-        });
-    }
 
     #[gpui::test]
     async fn test_mode_dropdown_click_opens_and_selects(cx: &mut TestAppContext) {
@@ -43,7 +39,10 @@ mod tests {
         cx.run_until_parked();
 
         panel.read_with(cx, |p, _| {
-            assert!(p.mode_dropdown_open, "clicking the mode selector should open the dropdown");
+            assert!(
+                p.mode_dropdown_open,
+                "clicking the mode selector should open the dropdown"
+            );
         });
 
         let ws_row_bounds = cx
@@ -53,8 +52,15 @@ mod tests {
         cx.run_until_parked();
 
         panel.read_with(cx, |p, _| {
-            assert_eq!(p.request_mode, RequestMode::WebSocket, "clicking the WebSocket row should switch modes");
-            assert!(!p.mode_dropdown_open, "selecting a mode should close the dropdown");
+            assert_eq!(
+                p.request_mode,
+                RequestMode::WebSocket,
+                "clicking the WebSocket row should switch modes"
+            );
+            assert!(
+                !p.mode_dropdown_open,
+                "selecting a mode should close the dropdown"
+            );
         });
     }
 
@@ -71,14 +77,29 @@ mod tests {
         // which isn't the concern of this test) and switch into gRPC mode so
         // the picker actually renders.
         panel.update(cx, |p, cx| {
-            p.grpc_services = vec!["greeter.Greeter".to_string(), "employee.EmployeeService".to_string()];
+            p.grpc_services = vec![
+                "greeter.Greeter".to_string(),
+                "employee.EmployeeService".to_string(),
+            ];
             p.grpc_methods = vec![
-                GrpcMethodInfo { full_name: "greeter.Greeter/SayHello".to_string(), streaming_type: GrpcStreamingType::Unary },
-                GrpcMethodInfo { full_name: "greeter.Greeter/SayHellos".to_string(), streaming_type: GrpcStreamingType::ServerStreaming },
-                GrpcMethodInfo { full_name: "employee.EmployeeService/GetEmployee".to_string(), streaming_type: GrpcStreamingType::Unary },
+                GrpcMethodInfo {
+                    full_name: "greeter.Greeter/SayHello".to_string(),
+                    streaming_type: GrpcStreamingType::Unary,
+                },
+                GrpcMethodInfo {
+                    full_name: "greeter.Greeter/SayHellos".to_string(),
+                    streaming_type: GrpcStreamingType::ServerStreaming,
+                },
+                GrpcMethodInfo {
+                    full_name: "employee.EmployeeService/GetEmployee".to_string(),
+                    streaming_type: GrpcStreamingType::Unary,
+                },
             ];
             p.grpc_service = Some("greeter.Greeter".to_string());
-            p.grpc_method = Some(GrpcMethodInfo { full_name: "greeter.Greeter/SayHello".to_string(), streaming_type: GrpcStreamingType::Unary });
+            p.grpc_method = Some(GrpcMethodInfo {
+                full_name: "greeter.Greeter/SayHello".to_string(),
+                streaming_type: GrpcStreamingType::Unary,
+            });
             p.set_request_mode(RequestMode::Grpc, cx);
         });
         cx.run_until_parked();
@@ -102,7 +123,10 @@ mod tests {
 
         panel.read_with(cx, |p, _| {
             assert_eq!(p.grpc_service.as_deref(), Some("employee.EmployeeService"));
-            assert!(!p.grpc_service_picker_open, "selecting a service should close its picker");
+            assert!(
+                !p.grpc_service_picker_open,
+                "selecting a service should close its picker"
+            );
             // select_grpc_service auto-picks the first method under the new service's prefix.
             assert_eq!(
                 p.grpc_method.as_ref().map(|m| m.full_name.as_str()),
@@ -113,7 +137,9 @@ mod tests {
         // Switch back to greeter.Greeter (directly - only the picker click
         // wiring is under test here, not this particular transition) and
         // exercise the method picker.
-        panel.update(cx, |p, cx| p.select_grpc_service("greeter.Greeter".to_string(), cx));
+        panel.update(cx, |p, cx| {
+            p.select_grpc_service("greeter.Greeter".to_string(), cx)
+        });
         cx.run_until_parked();
 
         let method_bounds = cx
@@ -130,9 +156,18 @@ mod tests {
         cx.run_until_parked();
 
         panel.read_with(cx, |p, _| {
-            assert_eq!(p.grpc_method.as_ref().map(|m| m.full_name.as_str()), Some("greeter.Greeter/SayHellos"));
-            assert_eq!(p.grpc_method.as_ref().map(|m| m.streaming_type), Some(GrpcStreamingType::ServerStreaming));
-            assert!(!p.grpc_method_picker_open, "selecting a method should close its picker");
+            assert_eq!(
+                p.grpc_method.as_ref().map(|m| m.full_name.as_str()),
+                Some("greeter.Greeter/SayHellos")
+            );
+            assert_eq!(
+                p.grpc_method.as_ref().map(|m| m.streaming_type),
+                Some(GrpcStreamingType::ServerStreaming)
+            );
+            assert!(
+                !p.grpc_method_picker_open,
+                "selecting a method should close its picker"
+            );
         });
     }
 
@@ -149,8 +184,20 @@ mod tests {
             p.url = "https://api.example.com/login".to_string();
             p.body_type = BodyType::Form;
             p.form_data = vec![
-                FormField { key: "username".to_string(), value: "bob".to_string(), field_type: FormFieldType::Text, file_path: None, enabled: true },
-                FormField { key: "password".to_string(), value: "secret".to_string(), field_type: FormFieldType::Text, file_path: None, enabled: true },
+                FormField {
+                    key: "username".to_string(),
+                    value: "bob".to_string(),
+                    field_type: FormFieldType::Text,
+                    file_path: None,
+                    enabled: true,
+                },
+                FormField {
+                    key: "password".to_string(),
+                    value: "secret".to_string(),
+                    field_type: FormFieldType::Text,
+                    file_path: None,
+                    enabled: true,
+                },
             ];
         });
 
@@ -169,7 +216,9 @@ mod tests {
     }
 
     #[gpui::test]
-    async fn test_generate_code_flags_file_upload_instead_of_silently_dropping_it(cx: &mut TestAppContext) {
+    async fn test_generate_code_flags_file_upload_instead_of_silently_dropping_it(
+        cx: &mut TestAppContext,
+    ) {
         init_theme(cx);
         let (panel, cx) = cx.add_window_view(|window, cx| {
             let response_panel = cx.new(|cx| ResponsePanel::new(window, cx));
@@ -180,9 +229,13 @@ mod tests {
         panel.update(cx, |p, _cx| {
             p.url = "https://api.example.com/upload".to_string();
             p.body_type = BodyType::Form;
-            p.form_data = vec![
-                FormField { key: "file".to_string(), value: "report.pdf".to_string(), field_type: FormFieldType::File, file_path: Some("/tmp/report.pdf".into()), enabled: true },
-            ];
+            p.form_data = vec![FormField {
+                key: "file".to_string(),
+                value: "report.pdf".to_string(),
+                field_type: FormFieldType::File,
+                file_path: Some("/tmp/report.pdf".into()),
+                enabled: true,
+            }];
         });
 
         panel.update_in(cx, |p, window, cx| {

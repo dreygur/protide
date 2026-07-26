@@ -74,7 +74,10 @@ pub async fn execute_server_streaming(
         drain_frames(&mut buffer, &method_desc, &mut chunks, &mut dropped_frames);
     }
 
-    Ok(StreamingResult { chunks, dropped_frames })
+    Ok(StreamingResult {
+        chunks,
+        dropped_frames,
+    })
 }
 
 /// Execute client streaming gRPC.
@@ -197,7 +200,10 @@ pub async fn execute_bidi_streaming(
         drain_frames(&mut buffer, &method_desc, &mut chunks, &mut dropped_frames);
     }
 
-    Ok(StreamingResult { chunks, dropped_frames })
+    Ok(StreamingResult {
+        chunks,
+        dropped_frames,
+    })
 }
 
 // --- helpers ----------------------------------------------------------------
@@ -237,7 +243,10 @@ fn check_grpc_status(response: &reqwest::Response) -> Result<(), String> {
             .and_then(|v| v.to_str().ok())
             .unwrap_or("Unknown gRPC error")
             .to_string();
-        return Err(format!("gRPC error status {}: {}", grpc_status, grpc_message));
+        return Err(format!(
+            "gRPC error status {}: {}",
+            grpc_status, grpc_message
+        ));
     }
     Ok(())
 }
@@ -249,8 +258,7 @@ fn drain_frames(
     dropped_frames: &mut usize,
 ) {
     while buffer.len() >= 5 {
-        let msg_len =
-            u32::from_be_bytes([buffer[1], buffer[2], buffer[3], buffer[4]]) as usize;
+        let msg_len = u32::from_be_bytes([buffer[1], buffer[2], buffer[3], buffer[4]]) as usize;
         if buffer.len() < 5 + msg_len {
             break;
         }
@@ -278,26 +286,17 @@ fn drain_frames(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_support::TempDir;
 
-    /// Writes a minimal .proto file to a uniquely-named temp path and returns
+    /// Writes a minimal .proto file to a uniquely-named temp dir and returns
     /// the resolved `MethodDescriptor` for `test.TestService/Stream`, whose
-    /// reply type has a single `string msg = 1` field. The backing file is
+    /// reply type has a single `string msg = 1` field. The backing directory is
     /// deleted when the returned guard is dropped.
-    struct TestProtoFile(std::path::PathBuf);
-    impl Drop for TestProtoFile {
-        fn drop(&mut self) {
-            let _ = std::fs::remove_file(&self.0);
-        }
-    }
-
-    fn test_method_desc() -> (TestProtoFile, prost_reflect::MethodDescriptor) {
-        let proto_path = std::env::temp_dir().join(format!(
-            "protide_grpc_streaming_test_{}.proto",
-            uuid::Uuid::new_v4()
-        ));
-        std::fs::write(
-            &proto_path,
-            r#"
+    fn test_method_desc() -> (TempDir, prost_reflect::MethodDescriptor) {
+        let dir = TempDir::new("protide_grpc_streaming_test");
+        let proto_path = dir.write(
+            "test.proto",
+            br#"
             syntax = "proto3";
             package test;
             message Empty {}
@@ -306,11 +305,10 @@ mod tests {
               rpc Stream(Empty) returns (stream Reply);
             }
             "#,
-        )
-        .unwrap();
+        );
         let pool = parse_proto_file(&proto_path).unwrap();
         let method_desc = resolve_method(&pool, "test.TestService/Stream").unwrap();
-        (TestProtoFile(proto_path), method_desc)
+        (dir, method_desc)
     }
 
     fn encode_reply(method_desc: &prost_reflect::MethodDescriptor, msg: &str) -> Vec<u8> {
@@ -345,18 +343,24 @@ mod tests {
 
         // Before the fix, the corrupt frame was silently dropped with no
         // signal at all. Now it must be counted...
-        assert_eq!(dropped_frames, 1, "the corrupt frame must be counted as dropped");
+        assert_eq!(
+            dropped_frames, 1,
+            "the corrupt frame must be counted as dropped"
+        );
         // ...while the two good frames on either side still decode fine.
         assert_eq!(chunks.len(), 2);
         assert!(chunks[0].contains("hello"));
         assert!(chunks[1].contains("world"));
-        assert!(buffer.is_empty(), "all well-framed bytes should be consumed");
+        assert!(
+            buffer.is_empty(),
+            "all well-framed bytes should be consumed"
+        );
     }
 
     #[test]
     fn drain_frames_decompresses_gzip_compressed_frames() {
-        use flate2::write::GzEncoder;
         use flate2::Compression;
+        use flate2::write::GzEncoder;
         use std::io::Write;
 
         let (_dir, method_desc) = test_method_desc();
