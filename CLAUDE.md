@@ -167,9 +167,28 @@ protide/
 
 ### Running the App
 ```bash
-cargo run --release   # Release build recommended
-cargo test            # ~190 tests total (19 http-parser + 93 protide-core + 78 protide-ui)
+make run              # Release build recommended
 ```
+
+### Verification
+
+`make verify` is the gate. Run it before pushing; it is what the git hooks run.
+
+```bash
+make verify     # fmt-check -> clippy (-D warnings) -> test -> audit
+make hooks      # one-time: enable .githooks (pre-commit fmt+clippy, pre-push verify)
+```
+
+- **278 tests** (23 http-parser + 170 protide-core + 80 protide-ui + 3 lsp + 2 mcp).
+  `protide-core` is 164 without `--features full-sync`; the 6 PAKE tests are
+  `#![cfg(feature = "pake-auth")]`.
+- Targets run **crate-by-crate on purpose**. A single `--workspace` invocation unifies
+  features across members and can pull in a native-TLS backend needing system packages
+  beyond `make deps`. Do not collapse them.
+- Tests must not use fixed temp paths or unbounded waits. Use the shared `TempDir` guard
+  (`protide-core/src/test_support.rs`) and always set socket/client timeouts.
+- `[workspace.lints]` in the root `Cargo.toml` carries `allow` entries with rationale.
+  Fix the code and delete the entry rather than adding new ones.
 
 ## Coding Rules
 
