@@ -189,3 +189,139 @@ fn header_value_completions(line: &str) -> Vec<CompletionItem> {
     }
     vec![]
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn labels(items: &[CompletionItem]) -> Vec<&str> {
+        items.iter().map(|i| i.label.as_str()).collect()
+    }
+
+    fn pos(line: u32, character: u32) -> Position {
+        Position { line, character }
+    }
+
+    #[test]
+    fn annotation_prefix_offers_annotation_keywords() {
+        let items = complete("# @\n", pos(0, 3));
+        assert!(labels(&items).contains(&"@name"));
+        assert!(labels(&items).contains(&"@depends"));
+        assert!(
+            items
+                .iter()
+                .all(|i| i.kind == Some(CompletionItemKind::KEYWORD))
+        );
+    }
+
+    #[test]
+    fn protocol_annotation_offers_protocol_values_not_annotations() {
+        let items = complete("# @protocol \n", pos(0, 12));
+        let labels = labels(&items);
+        assert!(labels.contains(&"graphql"));
+        assert!(labels.contains(&"socketio"));
+        assert!(!labels.contains(&"@name"));
+    }
+
+    #[test]
+    fn depends_annotation_offers_names_declared_in_the_document() {
+        let content = "\
+# @name Login
+POST https://example.com/login
+
+###
+# @depends \nGET https://example.com/me
+";
+        let items = complete(content, pos(4, 11));
+        assert_eq!(labels(&items), vec!["Login"]);
+    }
+
+    #[test]
+    fn depends_annotation_on_unparseable_content_yields_nothing_rather_than_panicking() {
+        assert!(complete("# @depends x\nnot a request\n", pos(0, 12)).is_empty());
+    }
+
+    #[test]
+    fn open_braces_offer_variables_from_set_and_from_other_usages() {
+        let content = "\
+# @set token = $.token
+GET https://example.com/a?x={{other}}
+GET https://example.com/b?y={{
+";
+        let items = complete(content, pos(2, 30));
+        let labels = labels(&items);
+        assert!(labels.contains(&"{{token}}"), "got {labels:?}");
+        assert!(labels.contains(&"{{other}}"), "got {labels:?}");
+        // The inserted text must be the bare name - the `{{` is already typed.
+        let token = items.iter().find(|i| i.label == "{{token}}").unwrap();
+        assert_eq!(token.insert_text.as_deref(), Some("token"));
+    }
+
+    #[test]
+    fn closed_braces_do_not_trigger_variable_completion() {
+        let items = complete("GET https://x.com?a={{id}}\n", pos(0, 26));
+        assert!(!labels(&items).iter().any(|l| l.starts_with("{{")));
+    }
+
+    #[test]
+    fn a_partial_method_offers_http_methods() {
+        let items = complete("GE\n", pos(0, 2));
+        assert!(labels(&items).contains(&"GET"));
+        assert!(labels(&items).contains(&"OPTIONS"));
+    }
+
+    #[test]
+    fn a_content_type_header_offers_media_types() {
+        let items = complete("Content-Type: \n", pos(0, 14));
+        assert!(labels(&items).contains(&"application/json"));
+    }
+
+    #[test]
+    fn an_unknown_header_offers_no_values() {
+        assert!(complete("X-Custom: \n", pos(0, 10)).is_empty());
+    }
+
+    #[test]
+    fn a_bare_word_offers_common_header_names() {
+        let items = complete("Cont\n", pos(0, 4));
+        assert!(items.iter().any(|i| i.label.starts_with("Content-Type")));
+        // Accepting the item must not re-type the value example.
+        let ct = items
+            .iter()
+            .find(|i| i.label.starts_with("Content-Type"))
+            .unwrap();
+        assert_eq!(ct.insert_text.as_deref(), Some("Content-Type: "));
+    }
+
+    #[test]
+    fn a_position_past_the_end_of_the_line_does_not_panic() {
+        // Every branch must tolerate an out-of-range character offset.
+        for line in [
+            "# @",
+            "# @protocol http",
+            "GET https://example.com",
+            "Content-Type: application/json",
+            "",
+        ] {
+            let content = format!("{line}\n");
+            let _ = complete(&content, pos(0, 9_999));
+        }
+    }
+
+    #[test]
+    fn a_position_past_the_end_of_the_document_does_not_panic() {
+        let _ = complete("GET https://example.com\n", pos(500, 3));
+    }
+
+    #[test]
+    fn a_multibyte_line_does_not_panic_at_any_offset() {
+        // `pos.character` is a UTF-16 offset; slicing the UTF-8 line with it
+        // directly would land mid-character and panic.
+        let line = "GET https://例え.com/日本語?x={{id}}";
+        let content = format!("{line}\n");
+        let units = line.chars().map(char::len_utf16).sum::<usize>();
+        for i in 0..=units + 3 {
+            let _ = complete(&content, pos(0, i as u32));
+        }
+    }
+}

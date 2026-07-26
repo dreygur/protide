@@ -178,4 +178,96 @@ mod tests {
         assert_eq!(diags[0].range.start.line, 2);
         assert_eq!(diags[0].severity, Some(DiagnosticSeverity::ERROR));
     }
+
+    #[test]
+    fn a_valid_document_has_no_diagnostics() {
+        let content = "\
+# @name Login
+POST https://example.com/login
+
+###
+# @depends Login
+GET https://example.com/me
+";
+        assert!(compute_diagnostics(content).is_empty());
+    }
+
+    #[test]
+    fn an_unknown_depends_target_is_warned_about_on_its_own_line() {
+        let content = "\
+# @name Login
+POST https://example.com/login
+
+###
+# @depends Missing
+GET https://example.com/me
+";
+        let diags = compute_diagnostics(content);
+        assert_eq!(diags.len(), 1);
+        assert_eq!(diags[0].severity, Some(DiagnosticSeverity::WARNING));
+        assert!(diags[0].message.contains("Missing"), "{}", diags[0].message);
+        assert_eq!(diags[0].range.start.line, 4);
+    }
+
+    #[test]
+    fn a_dependency_cycle_is_reported() {
+        let content = "\
+# @name A
+# @depends B
+GET https://example.com/a
+
+###
+# @name B
+# @depends A
+GET https://example.com/b
+";
+        let diags = compute_diagnostics(content);
+        assert!(
+            diags
+                .iter()
+                .any(|d| d.message.starts_with("Circular @depends")),
+            "expected a cycle diagnostic, got {diags:?}",
+        );
+    }
+
+    #[test]
+    fn a_self_dependency_is_reported_as_a_cycle() {
+        let content = "# @name A\n# @depends A\nGET https://example.com/a\n";
+        let diags = compute_diagnostics(content);
+        assert!(
+            diags
+                .iter()
+                .any(|d| d.message.starts_with("Circular @depends")),
+            "a request depending on itself is a cycle, got {diags:?}",
+        );
+    }
+
+    #[test]
+    fn a_long_dependency_chain_is_not_mistaken_for_a_cycle() {
+        let content = "\
+# @name A
+GET https://example.com/a
+
+###
+# @name B
+# @depends A
+GET https://example.com/b
+
+###
+# @name C
+# @depends B
+GET https://example.com/c
+";
+        assert!(compute_diagnostics(content).is_empty());
+    }
+
+    #[test]
+    fn an_empty_document_produces_no_diagnostics() {
+        assert!(compute_diagnostics("").is_empty());
+    }
+
+    #[test]
+    fn a_multibyte_document_does_not_panic() {
+        let _ = compute_diagnostics("# @name 日本語\nGET https://例え.com/ユーザー\n");
+    }
 }

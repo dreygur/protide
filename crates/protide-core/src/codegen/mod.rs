@@ -142,4 +142,80 @@ mod tests {
             );
         }
     }
+
+    /// Every generator must survive hostile/degenerate input without
+    /// panicking: control characters, lone quotes, newlines, NUL, emoji and
+    /// an empty method/url/header/body.
+    #[test]
+    fn test_all_generators_survive_adversarial_input() {
+        let hostile = [
+            "\"",
+            "'",
+            "\\",
+            "\n\r\t",
+            "\u{0}\u{7}\u{1b}[31m",
+            "🙈🙉🙊",
+            "",
+            "{{unclosed",
+        ];
+        for payload in hostile {
+            let request = CodegenRequest::new(payload, payload)
+                .with_headers(vec![(payload.to_string(), payload.to_string())])
+                .with_body(Some(payload.to_string()));
+            for lang in Language::all() {
+                let code = generate(&request, *lang);
+                assert!(
+                    !code.is_empty(),
+                    "{} produced empty output for payload {:?}",
+                    lang.name(),
+                    payload
+                );
+            }
+        }
+    }
+
+    /// Non-ASCII text must survive codegen intact rather than being mangled
+    /// or dropped by the escaping routines.
+    #[test]
+    fn test_all_generators_preserve_unicode() {
+        let request = CodegenRequest::new("POST", "https://例え.テスト/ユーザー?q=🙂")
+            .with_headers(vec![("X-Ünïcödé".to_string(), "välüe-🎉".to_string())])
+            .with_body(Some("{\"naïve\": \"café ☕\"}".to_string()));
+        for lang in Language::all() {
+            let code = generate(&request, *lang);
+            assert!(
+                code.contains("例え.テスト"),
+                "{} dropped unicode host: {}",
+                lang.name(),
+                code
+            );
+            assert!(
+                code.contains("välüe-🎉"),
+                "{} dropped unicode header value: {}",
+                lang.name(),
+                code
+            );
+            assert!(
+                code.contains("café ☕"),
+                "{} dropped unicode body: {}",
+                lang.name(),
+                code
+            );
+        }
+    }
+
+    /// A body large enough to matter must not be truncated by any generator.
+    #[test]
+    fn test_all_generators_keep_large_bodies_intact() {
+        let body = "x".repeat(200_000);
+        let request = CodegenRequest::new("POST", "https://example.com").with_body(Some(body));
+        for lang in Language::all() {
+            let code = generate(&request, *lang);
+            assert!(
+                code.contains(&"x".repeat(200_000)),
+                "{} truncated a large body",
+                lang.name()
+            );
+        }
+    }
 }

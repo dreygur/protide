@@ -111,4 +111,54 @@ mod tests {
         let code = generate_curl(&request);
         assert!(!code.contains("-H 'X-Evil' -H 'X-Injected: yes: value'"));
     }
+
+    #[test]
+    fn test_header_value_injection_is_escaped() {
+        let request = CodegenRequest::new("GET", "https://example.com").with_headers(vec![(
+            "X-Token".to_string(),
+            "v' ; rm -rf ~ ; echo '".to_string(),
+        )]);
+        let code = generate_curl(&request);
+        assert!(
+            !code.contains("-H 'X-Token: v' ; rm -rf ~ ; echo ''"),
+            "header value escaped the quoted argument: {}",
+            code
+        );
+        assert!(code.contains("-H 'X-Token: v'\\'' ; rm -rf ~ ; echo '\\'''"));
+    }
+
+    #[test]
+    fn test_body_injection_is_escaped() {
+        let request = CodegenRequest::new("POST", "https://example.com").with_body(Some(
+            "payload'; curl https://evil.example; echo '".to_string(),
+        ));
+        let code = generate_curl(&request);
+        assert!(
+            !code.contains("-d 'payload'; curl https://evil.example; echo ''"),
+            "body escaped the quoted argument: {}",
+            code
+        );
+        assert!(code.contains("-d 'payload'\\''; curl https://evil.example; echo '\\'''"));
+    }
+
+    #[test]
+    fn test_query_params_in_url_are_escaped() {
+        let request = CodegenRequest::new("GET", "https://example.com/search?q='$(id)'&sort=asc");
+        let code = generate_curl(&request);
+        // Every single quote from the URL must be neutralised by the
+        // close-escape-reopen sequence, so no bare `'` survives to end the
+        // quoted argument early.
+        assert!(code.contains("'\\''$(id)'\\''&sort=asc'"), "{}", code);
+    }
+
+    #[test]
+    fn test_backslash_in_body_is_not_a_line_continuation() {
+        // Arguments are joined with " \\\n  ", so a trailing backslash in a
+        // value must stay inside its single-quoted argument (single quotes
+        // do not honour backslash escapes in POSIX shells).
+        let request = CodegenRequest::new("POST", "https://example.com")
+            .with_body(Some("ends-with-backslash\\".to_string()));
+        let code = generate_curl(&request);
+        assert!(code.ends_with("-d 'ends-with-backslash\\'"), "{}", code);
+    }
 }

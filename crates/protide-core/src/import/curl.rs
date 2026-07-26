@@ -80,10 +80,12 @@ fn parse_single_curl(input: &str) -> Result<Request, String> {
                     headers.push(KeyValue::new(key, value));
                 }
             }
-            "-d" | "--data" | "--data-raw" | "--data-binary" => {
+            // Repeated data flags are concatenated with '&', as real curl does.
+            "-d" | "--data" | "--data-raw" | "--data-binary" | "-F" | "--form"
+            | "--form-string" => {
                 i += 1;
                 if i < args.len() {
-                    body = Some(args[i].clone());
+                    append_body(&mut body, &args[i]);
                     // Implicitly use POST if no method specified
                     if method == HttpMethod::Get {
                         method = HttpMethod::Post;
@@ -93,12 +95,7 @@ fn parse_single_curl(input: &str) -> Result<Request, String> {
             "--data-urlencode" => {
                 i += 1;
                 if i < args.len() {
-                    // URL encode the data
-                    let encoded = urlencoding::encode(&args[i]).to_string();
-                    body = Some(match body {
-                        Some(existing) => format!("{}&{}", existing, encoded),
-                        None => encoded,
-                    });
+                    append_body(&mut body, &urlencoding::encode(&args[i]));
                     if method == HttpMethod::Get {
                         method = HttpMethod::Post;
                     }
@@ -158,16 +155,20 @@ fn parse_single_curl(input: &str) -> Result<Request, String> {
                 }
             }
             _ => {
-                // Check if it's a URL (doesn't start with -)
-                if !arg.starts_with('-')
-                    && (arg.starts_with("http://")
-                        || arg.starts_with("https://")
-                        || arg.contains("://")
-                        || arg.contains('.'))
-                {
-                    url = arg.clone();
-                    // Try to extract name from URL
-                    if name.is_none() {
+                // Check if it's a URL (doesn't start with -).
+                //
+                // Values of flags we don't recognise arrive here as bare
+                // arguments, and the "contains a dot" heuristic happily
+                // accepts things like "photo.jpg" or "proxy.internal:8080".
+                // Keep the first URL found, and only let a later argument
+                // replace it if that one carries an explicit scheme and the
+                // current one doesn't - otherwise a stray flag value
+                // silently redirects the imported request.
+                if !arg.starts_with('-') && (arg.contains("://") || arg.contains('.')) {
+                    let upgrades_scheme = arg.contains("://") && !url.contains("://");
+                    if url.is_empty() || upgrades_scheme {
+                        url = arg.clone();
+                        // Try to extract name from URL
                         name = extract_name_from_url(&url);
                     }
                 }
@@ -194,6 +195,17 @@ fn parse_single_curl(input: &str) -> Result<Request, String> {
     };
 
     Ok(request)
+}
+
+/// Append a data segment to the body, joining repeated segments with '&'.
+fn append_body(body: &mut Option<String>, part: &str) {
+    match body {
+        Some(existing) => {
+            existing.push('&');
+            existing.push_str(part);
+        }
+        None => *body = Some(part.to_string()),
+    }
 }
 
 /// Parse cURL command into arguments, handling quotes
@@ -387,6 +399,121 @@ mod tests {
                 .any(|h| h.key == "X-Test" && h.value == "2"),
             "expected X-Test header on second request, got {:?}",
             result.requests[1].headers
+        );
+    }
+
+    #[test]
+    fn test_form_upload_does_not_overwrite_the_url() {
+        // `-F` was not recognised, so its value fell through to the URL
+        // heuristic (it contains a '.') and replaced the real URL that had
+        // already been parsed - the request silently pointed at
+        // "http://file=@photo.jpg" and the form data was dropped entirely.
+        let result =
+            parse_curl(r#"curl https://api.example.com/upload -F "file=@photo.jpg""#).unwrap();
+        let req = &result.requests[0];
+        assert_eq!(
+            req.url, "https://api.example.com/upload",
+            "form field must not be mistaken for the URL"
+        );
+        assert_eq!(req.method, HttpMethod::Post);
+        assert_eq!(
+            req.body.as_deref(),
+            Some("file=@photo.jpg"),
+            "form data must not be dropped"
+        );
+    }
+
+    #[test]
+    fn test_url_is_not_overwritten_by_unknown_flag_values() {
+        // An unrecognised flag that takes a value (here `--proxy`) leaves
+        // its value as a bareword argument; it must not displace the URL.
+        let result =
+            parse_curl("curl https://api.example.com/users --proxy proxy.internal:8080").unwrap();
+        assert_eq!(result.requests[0].url, "https://api.example.com/users");
+    }
+
+    #[test]
+    fn test_scheme_bearing_url_wins_over_earlier_bareword() {
+        let result = parse_curl("curl -F upload.txt https://api.example.com/users").unwrap();
+        assert_eq!(result.requests[0].url, "https://api.example.com/users");
+    }
+
+    #[test]
+    fn test_repeated_data_flags_are_concatenated() {
+        // Real curl joins repeated -d values with '&'. Keeping only the last
+        // one silently drops the rest of the payload.
+        let result = parse_curl("curl -d a=1 -d b=2 -d c=3 https://api.example.com").unwrap();
+        assert_eq!(result.requests[0].body.as_deref(), Some("a=1&b=2&c=3"));
+    }
+
+    #[test]
+    fn test_empty_and_degenerate_input_never_panics() {
+        for input in [
+            "",
+            "   ",
+            "\n\n",
+            "curl",
+            "curl ",
+            "curl -X",
+            "curl -H",
+            "curl -d",
+            "curl -u",
+            "curl --data-urlencode",
+            "curl -X POST",
+            "not a curl command at all",
+            "curl '",
+            "curl \"",
+            "curl \\",
+            "curl -H 'X: 1' \u{0}",
+            "🙂",
+        ] {
+            // Must return Ok or Err, never panic.
+            let _ = parse_curl(input);
+        }
+    }
+
+    #[test]
+    fn test_unterminated_quote_is_an_error_not_a_panic() {
+        assert!(parse_curl("curl 'https://api.example.com").is_err());
+        assert!(parse_curl("curl \"https://api.example.com").is_err());
+    }
+
+    #[test]
+    fn test_missing_url_is_an_error() {
+        let err = parse_curl("curl -X POST -H 'Accept: */*'").unwrap_err();
+        assert!(err.contains("No URL"), "unexpected error: {}", err);
+    }
+
+    #[test]
+    fn test_unicode_url_and_headers_survive() {
+        let result =
+            parse_curl("curl 'https://例え.テスト/ユーザー?q=🙂' -H 'X-Ünïcödé: välüe-🎉'")
+                .unwrap();
+        let req = &result.requests[0];
+        assert_eq!(req.url, "https://例え.テスト/ユーザー?q=🙂");
+        assert!(
+            req.headers
+                .iter()
+                .any(|h| h.key == "X-Ünïcödé" && h.value == "välüe-🎉")
+        );
+    }
+
+    #[test]
+    fn test_header_value_may_contain_colons() {
+        let result =
+            parse_curl("curl https://api.example.com -H 'X-Time: 12:30:00 +00:00'").unwrap();
+        assert_eq!(result.requests[0].headers[0].value, "12:30:00 +00:00");
+    }
+
+    #[test]
+    fn test_one_bad_command_does_not_drop_the_others() {
+        let input = "curl https://api.example.com/a\ncurl -X NOPE https://api.example.com/b\ncurl https://api.example.com/c";
+        let result = parse_curl(input).unwrap();
+        assert_eq!(result.requests.len(), 2, "good commands must still import");
+        assert_eq!(
+            result.warnings.len(),
+            1,
+            "the failed command must be reported, not silently dropped"
         );
     }
 

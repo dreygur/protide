@@ -1,4 +1,4 @@
-use crate::symbols::var_at_cursor;
+use crate::symbols::{utf16_offset_to_byte_offset, var_at_cursor};
 use tower_lsp::lsp_types::*;
 
 pub fn hover_at(content: &str, pos: Position) -> Option<Hover> {
@@ -70,19 +70,140 @@ fn find_set_expr<'a>(content: &'a str, var_name: &str) -> Option<&'a str> {
     })
 }
 
-pub fn word_at(line: &str, char_idx: usize) -> &str {
-    let chars: Vec<char> = line.chars().collect();
-    let start = chars[..char_idx.min(chars.len())]
-        .iter()
-        .rposition(|c| !c.is_alphanumeric() && *c != '_' && *c != '@')
-        .map(|i| i + 1)
+/// Word surrounding `utf16_cursor`, an LSP `Position.character` (a UTF-16
+/// code-unit offset). Treating that offset as a `char` index silently picked
+/// the wrong word whenever an astral-plane character (most emoji, 2 UTF-16
+/// units but 1 `char`) preceded the cursor on the same line.
+pub fn word_at(line: &str, utf16_cursor: usize) -> &str {
+    fn is_word(c: char) -> bool {
+        c.is_alphanumeric() || c == '_' || c == '@'
+    }
+    let cursor = utf16_offset_to_byte_offset(line, utf16_cursor);
+    let start = line[..cursor]
+        .rfind(|c: char| !is_word(c))
+        .map(|i| i + line[i..].chars().next().map_or(1, char::len_utf8))
         .unwrap_or(0);
-    let end = chars[char_idx.min(chars.len())..]
-        .iter()
-        .position(|c| !c.is_alphanumeric() && *c != '_' && *c != '@')
-        .map(|i| char_idx + i)
-        .unwrap_or(chars.len());
-    let byte_start = chars[..start].iter().map(|c| c.len_utf8()).sum::<usize>();
-    let byte_end = chars[..end].iter().map(|c| c.len_utf8()).sum::<usize>();
-    &line[byte_start..byte_end]
+    let end = line[cursor..]
+        .find(|c: char| !is_word(c))
+        .map(|i| cursor + i)
+        .unwrap_or(line.len());
+    &line[start..end]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn pos(line: u32, character: u32) -> Position {
+        Position { line, character }
+    }
+
+    fn text(h: &Hover) -> &str {
+        match &h.contents {
+            HoverContents::Markup(m) => &m.value,
+            _ => panic!("expected markup hover contents"),
+        }
+    }
+
+    #[test]
+    fn hovering_a_method_documents_it() {
+        let h = hover_at("GET https://example.com\n", pos(0, 1)).unwrap();
+        assert!(text(&h).contains("**GET**"));
+    }
+
+    #[test]
+    fn hovering_a_lowercase_method_still_documents_it() {
+        let h = hover_at("delete https://example.com\n", pos(0, 2)).unwrap();
+        assert!(text(&h).contains("**DELETE**"));
+    }
+
+    #[test]
+    fn hovering_a_variable_with_a_set_declaration_shows_the_expression() {
+        let content = "# @set token = $.data.token\nGET https://x.com?t={{token}}\n";
+        let h = hover_at(content, pos(1, 24)).unwrap();
+        assert!(text(&h).contains("$.data.token"), "got {}", text(&h));
+    }
+
+    #[test]
+    fn hovering_an_undeclared_variable_calls_it_an_environment_variable() {
+        let h = hover_at("GET https://x.com?t={{apiKey}}\n", pos(1 - 1, 24)).unwrap();
+        assert!(
+            text(&h).contains("environment variable"),
+            "got {}",
+            text(&h)
+        );
+    }
+
+    #[test]
+    fn hovering_an_annotation_documents_it() {
+        let h = hover_at("# @depends Login\nGET https://x.com\n", pos(0, 5)).unwrap();
+        assert!(text(&h).contains("**@depends**"));
+    }
+
+    #[test]
+    fn the_annotation_docs_do_not_leak_onto_ordinary_lines() {
+        // "name" only means "@name" inside a `# @` annotation line.
+        assert!(hover_at("name\n", pos(0, 2)).is_none());
+    }
+
+    #[test]
+    fn hovering_a_word_with_no_documentation_is_none() {
+        assert!(hover_at("Content-Type: application/json\n", pos(0, 2)).is_none());
+    }
+
+    #[test]
+    fn a_position_past_the_end_of_the_document_is_none_not_a_panic() {
+        assert!(hover_at("GET https://example.com\n", pos(999, 999)).is_none());
+    }
+
+    #[test]
+    fn a_position_past_the_end_of_the_line_does_not_panic() {
+        let _ = hover_at("GET https://example.com\n", pos(0, 9_999));
+    }
+
+    // ── word_at ──────────────────────────────────────────────────────────────
+
+    #[test]
+    fn word_at_returns_the_token_under_the_cursor() {
+        assert_eq!(word_at("GET https://x.com", 0), "GET");
+        assert_eq!(word_at("GET https://x.com", 2), "GET");
+        assert_eq!(word_at("# @name Login", 4), "@name");
+    }
+
+    #[test]
+    fn word_at_on_the_trailing_edge_of_a_word_still_returns_that_word() {
+        // Cursor sitting immediately after "GET" - editors treat that as
+        // hovering the word, so `GET |https://…` must still document GET.
+        assert_eq!(word_at("GET https://x.com", 3), "GET");
+    }
+
+    #[test]
+    fn word_at_surrounded_by_separators_is_empty() {
+        assert_eq!(word_at("GET  https://x.com", 4), "");
+    }
+
+    #[test]
+    fn word_at_past_the_end_of_the_line_does_not_panic() {
+        assert_eq!(word_at("GET", 9_999), "GET");
+        assert_eq!(word_at("", 9_999), "");
+    }
+
+    #[test]
+    fn word_at_uses_utf16_offsets_not_char_counts() {
+        // '😀' is one `char` but *two* UTF-16 code units. An LSP client puts
+        // the cursor on "GET" at character 3, and treating that as a char
+        // index would have selected the wrong token.
+        let line = "😀 GET";
+        assert_eq!(word_at(line, 3), "GET");
+        assert_eq!(word_at(line, 5), "GET");
+    }
+
+    #[test]
+    fn word_at_never_panics_on_a_multibyte_line() {
+        let line = "# @name 日本語Ünïcödé😀";
+        let units = line.chars().map(char::len_utf16).sum::<usize>();
+        for i in 0..=units + 3 {
+            let _ = word_at(line, i);
+        }
+    }
 }

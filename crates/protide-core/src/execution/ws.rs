@@ -364,4 +364,95 @@ mod tests {
         assert!(buf.is_empty());
         assert_eq!(buf.len(), 0);
     }
+
+    // ── Connection error paths (no live remote) ──────────────────────────────
+
+    /// Nothing here may touch the network: every URL below is rejected by the
+    /// client before a socket is opened.
+    fn connect_and_take_first_event(url: &str) -> WsEvent {
+        let handle = TungsteniteExecutor::connect(WsConnectionParams {
+            url: url.to_string(),
+            headers: Vec::new(),
+            on_message_script: String::new(),
+            env_vars: HashMap::new(),
+        });
+        handle
+            .event_rx
+            .recv_timeout(std::time::Duration::from_secs(10))
+            .expect("executor must report an event, not hang")
+    }
+
+    /// A malformed or non-WebSocket URL must surface as an `Error` event.
+    /// Reporting nothing would leave the UI stuck on "connecting" forever.
+    #[test]
+    fn connect_reports_error_for_unusable_url() {
+        for url in ["", "not a url", "http://example.invalid/", "ws://"] {
+            match connect_and_take_first_event(url) {
+                WsEvent::Error(msg) => assert!(!msg.is_empty(), "empty error for {url:?}"),
+                other => panic!("expected Error for {url:?}, got {other:?}"),
+            }
+        }
+    }
+
+    /// Dropping the handle (and with it `cmd_tx`) must end the session
+    /// thread rather than leaking it.
+    #[test]
+    fn dropping_handle_does_not_panic() {
+        let handle = TungsteniteExecutor::connect(WsConnectionParams {
+            url: "not a url".to_string(),
+            headers: Vec::new(),
+            on_message_script: String::new(),
+            env_vars: HashMap::new(),
+        });
+        drop(handle);
+    }
+
+    // ── Error formatting ─────────────────────────────────────────────────────
+
+    fn io_ws_error(message: &str) -> tokio_tungstenite::tungstenite::Error {
+        tokio_tungstenite::tungstenite::Error::Io(std::io::Error::other(message.to_string()))
+    }
+
+    #[test]
+    fn dns_failures_get_an_actionable_message() {
+        for raw in [
+            "failed to lookup address information: nodename nor servname provided",
+            "Name or service not known",
+            "Could not resolve host",
+        ] {
+            assert_eq!(
+                friendly_ws_error(&io_ws_error(raw)),
+                "Unable to resolve host. Check your internet connection.",
+                "input: {raw}"
+            );
+        }
+    }
+
+    /// Any other error must be passed through verbatim - swallowing the
+    /// detail would leave the user with nothing to debug.
+    #[test]
+    fn other_errors_are_passed_through_verbatim() {
+        let err = io_ws_error("connection reset by peer");
+        assert_eq!(friendly_ws_error(&err), err.to_string());
+    }
+
+    // ── On-message script hook ───────────────────────────────────────────────
+
+    #[test]
+    fn message_script_sees_body_and_returns_env_changes() {
+        let changes = run_message_script(
+            "env.set('last', JSON.parse(response.body).id);",
+            &HashMap::new(),
+            r#"{"id":"42"}"#,
+        );
+        assert_eq!(changes, vec![("last".to_string(), "42".to_string())]);
+    }
+
+    /// A broken script must never kill the connection: it yields no env
+    /// changes and the session carries on.
+    #[test]
+    fn broken_message_script_yields_no_changes() {
+        assert!(run_message_script("this is not ( valid js", &HashMap::new(), "{}").is_empty());
+        assert!(run_message_script("throw new Error('boom');", &HashMap::new(), "{}").is_empty());
+    }
 }

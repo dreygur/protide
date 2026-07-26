@@ -11,8 +11,16 @@ impl NodeId {
         Self(Uuid::new_v4().to_string())
     }
 
+    /// First 8 characters of the id, for display. Node ids are read from a
+    /// user-writable file (`load_or_create_node_id`), so this must not assume
+    /// a full-length UUID.
     pub fn short(&self) -> &str {
-        &self.0[..8]
+        let end = self
+            .0
+            .char_indices()
+            .nth(8)
+            .map_or(self.0.len(), |(i, _)| i);
+        &self.0[..end]
     }
 }
 
@@ -190,4 +198,222 @@ pub(crate) fn timestamp_now() -> u64 {
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_millis() as u64
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_support::TempDir;
+
+    fn entry(ts: u64, node: &str, data: &str) -> CrdtEntry {
+        CrdtEntry {
+            id: Uuid::new_v4(),
+            data_type: DataType::Request,
+            data: data.into(),
+            timestamp: ts,
+            node_id: node.into(),
+            deleted: false,
+            version: 1,
+        }
+    }
+
+    #[test]
+    fn test_node_id_short_never_panics_on_odd_ids() {
+        assert_eq!(NodeId::new().short().chars().count(), 8);
+        // Node ids come from a file the user can edit or truncate.
+        assert_eq!(NodeId(String::new()).short(), "");
+        assert_eq!(NodeId("abc".into()).short(), "abc");
+        assert_eq!(NodeId("ααααααααα".into()).short(), "αααααααα");
+    }
+
+    #[test]
+    fn test_node_ids_are_unique() {
+        assert_ne!(NodeId::new(), NodeId::default());
+    }
+
+    /// The entry wire format is what peers on other Protide versions parse;
+    /// renaming a field silently breaks sync, so pin the exact JSON shape.
+    #[test]
+    fn test_crdt_entry_wire_format_is_stable() {
+        let id = Uuid::nil();
+        let e = CrdtEntry {
+            id,
+            data_type: DataType::EnvironmentState,
+            data: "{}".into(),
+            timestamp: 7,
+            node_id: "n1".into(),
+            deleted: true,
+            version: 1,
+        };
+        let json = serde_json::to_value(&e).unwrap();
+        assert_eq!(
+            json,
+            serde_json::json!({
+                "id": "00000000-0000-0000-0000-000000000000",
+                "data_type": "EnvironmentState",
+                "data": "{}",
+                "timestamp": 7,
+                "node_id": "n1",
+                "deleted": true,
+                "version": 1,
+            })
+        );
+        let back: CrdtEntry = serde_json::from_value(json).unwrap();
+        assert_eq!(back, e);
+    }
+
+    #[test]
+    fn test_all_data_types_roundtrip() {
+        for dt in [
+            DataType::Collection,
+            DataType::Request,
+            DataType::Environment,
+            DataType::EnvironmentState,
+            DataType::CollectionMeta,
+            DataType::WorkspaceFile,
+        ] {
+            let json = serde_json::to_string(&dt).unwrap();
+            assert_eq!(serde_json::from_str::<DataType>(&json).unwrap(), dt);
+        }
+    }
+
+    /// Malformed or future-version entries from a peer must be a clean parse
+    /// error, never a panic.
+    #[test]
+    fn test_malformed_entries_are_rejected_cleanly() {
+        for bad in [
+            r#"{"data_type":"UnknownFutureType","id":"00000000-0000-0000-0000-000000000000","data":"","timestamp":1,"node_id":"n","deleted":false,"version":1}"#,
+            r#"{"id":"not-a-uuid","data_type":"Request","data":"","timestamp":1,"node_id":"n","deleted":false,"version":1}"#,
+            r#"{"id":"00000000-0000-0000-0000-000000000000","data_type":"Request"}"#,
+            r#"{"timestamp":-1}"#,
+            "null",
+            "",
+        ] {
+            assert!(
+                serde_json::from_str::<CrdtEntry>(bad).is_err(),
+                "accepted {}",
+                bad
+            );
+        }
+    }
+
+    /// `CrdtEntry::merge` duplicates the ordering rule in
+    /// `CrdtStore::merge_remote`; if the two ever drift, replicas that sync
+    /// through different code paths stop agreeing.
+    #[test]
+    fn test_entry_merge_matches_store_merge_and_is_commutative() {
+        let base = entry(100, "aaaa", "a");
+        let cases = [
+            (
+                base.clone(),
+                CrdtEntry {
+                    timestamp: 200,
+                    data: "b".into(),
+                    node_id: "bbbb".into(),
+                    ..base.clone()
+                },
+            ),
+            (
+                base.clone(),
+                CrdtEntry {
+                    timestamp: 100,
+                    data: "b".into(),
+                    node_id: "bbbb".into(),
+                    ..base.clone()
+                },
+            ),
+            (
+                base.clone(),
+                CrdtEntry {
+                    timestamp: 50,
+                    data: "b".into(),
+                    node_id: "bbbb".into(),
+                    ..base.clone()
+                },
+            ),
+        ];
+        for (left, right) in cases {
+            assert_eq!(
+                left.merge(&right),
+                right.merge(&left),
+                "merge must be commutative"
+            );
+            assert_eq!(left.merge(&left), left, "merge must be idempotent");
+
+            let mut store = crate::sync::CrdtStore::new(NodeId("replica".into()));
+            store.merge_remote(left.clone());
+            store.merge_remote(right.clone());
+            assert_eq!(*store.get(&left.id).unwrap(), left.merge(&right));
+        }
+    }
+
+    #[test]
+    fn test_live_activity_roundtrip() {
+        let activity = LiveActivity {
+            node_id: "n1".into(),
+            node_name: "alice".into(),
+            request_name: "Get users".into(),
+            status: 204,
+            time_ms: 12,
+            method: "DELETE".into(),
+            url: "https://api.example.com".into(),
+        };
+        let json = serde_json::to_string(&activity).unwrap();
+        let back: LiveActivity = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.node_id, activity.node_id);
+        assert_eq!(back.status, activity.status);
+        assert_eq!(back.url, activity.url);
+        // Every field is required - a partial payload is not silently defaulted.
+        assert!(serde_json::from_str::<LiveActivity>(r#"{"node_id":"n1"}"#).is_err());
+    }
+
+    #[test]
+    fn test_load_or_create_node_id_persists_across_calls() {
+        let tmp = TempDir::new("protide_node_id");
+        let path = tmp.path().join("nested").join("node_id");
+
+        let first = load_or_create_node_id(&path);
+        assert!(path.exists(), "missing parent directories must be created");
+        assert_eq!(
+            load_or_create_node_id(&path),
+            first,
+            "identity must be stable"
+        );
+        assert_eq!(std::fs::read_to_string(&path).unwrap().trim(), first.0);
+    }
+
+    #[test]
+    fn test_load_or_create_node_id_handles_damaged_files() {
+        let tmp = TempDir::new("protide_node_id_damaged");
+
+        // Trailing newline (what `echo >` leaves behind) must be trimmed.
+        let padded = tmp.write("padded", b"  abcd-1234 \n");
+        assert_eq!(load_or_create_node_id(&padded).0, "abcd-1234");
+
+        // An empty/whitespace-only file must yield a fresh, persisted id.
+        let empty = tmp.write("empty", b"   \n");
+        let created = load_or_create_node_id(&empty);
+        assert!(!created.0.is_empty());
+        assert_eq!(load_or_create_node_id(&empty), created);
+    }
+
+    #[test]
+    fn test_default_config_is_fully_offline() {
+        let config = SyncConfig::default();
+        assert!(!config.p2p_enabled);
+        assert!(!config.live_probe_enabled);
+        assert!(config.sync_folder.is_none());
+        assert!(config.pairing_code.is_none());
+        assert!(config.node_id_path.is_none());
+        assert!(config.node_name.starts_with("protide-"));
+        assert_ne!(SyncConfig::default().node_name, config.node_name);
+    }
+
+    #[test]
+    fn test_timestamp_now_is_monotonic_and_plausible() {
+        let t = timestamp_now();
+        // Any wall clock sane enough to sync with is past 2020-01-01.
+        assert!(t > 1_577_836_800_000, "timestamp {} looks wrong", t);
+        assert!(timestamp_now() >= t);
+    }
 }

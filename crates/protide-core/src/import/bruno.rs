@@ -294,6 +294,12 @@ fn parse_blocks(content: &str) -> Vec<(String, Vec<String>)> {
         }
     }
 
+    // A block left open at EOF (truncated file, or a missing closing brace)
+    // must still be emitted - dropping it silently loses whatever it held.
+    if let Some(name) = current_name.take() {
+        blocks.push((name, current_lines));
+    }
+
     blocks
 }
 
@@ -497,6 +503,145 @@ body:graphql:vars {
         let parsed: serde_json::Value = serde_json::from_str(body).expect("body must be JSON");
         assert!(parsed.get("query").is_some());
         assert_eq!(parsed["variables"]["id"].as_str(), Some("42"));
+    }
+
+    #[test]
+    fn test_unterminated_block_is_not_dropped() {
+        // A truncated .bru file (or one whose last block simply lacks its
+        // closing brace) used to have that whole block discarded, so the
+        // headers below were silently lost while the request still imported
+        // successfully - data loss with no error and no warning.
+        let bru = "meta {\n  name: Truncated\n}\n\nget {\n  url: https://api.example.com/x\n}\n\nheaders {\n  X-Kept: yes\n";
+        let result = parse_bruno(bru).unwrap();
+        let req = &result.requests[0];
+        assert!(
+            req.headers.iter().any(|h| h.key == "X-Kept"),
+            "headers from the unterminated block must survive: {:?}",
+            req.headers
+        );
+    }
+
+    #[test]
+    fn test_degenerate_input_never_panics() {
+        for input in [
+            "",
+            "   ",
+            "\n\n\n",
+            "{",
+            "}",
+            "meta {",
+            "meta {\n}",
+            "get {\n}",
+            "get {\n  url:\n}",
+            "headers {\n  novalue\n}",
+            "body:json {\n  {\"a\": \"}\"}\n}",
+            "\u{0}\u{1b}[31m",
+            "🙂 {\n  x: 1\n}",
+            "{\"info\": {\"name\": \"a postman file\"}}",
+            &"{".repeat(5000),
+            &"a {\n".repeat(2000),
+        ] {
+            let _ = parse_bruno(input);
+        }
+    }
+
+    #[test]
+    fn test_missing_url_is_an_error_not_an_empty_request() {
+        let err = parse_bruno("meta {\n  name: No URL\n}\n").unwrap_err();
+        assert!(err.contains("No URL"), "unexpected error: {}", err);
+    }
+
+    #[test]
+    fn test_unicode_name_url_and_headers() {
+        let bru = "meta {\n  name: ユーザー一覧 🙂\n}\n\nget {\n  url: https://例え.テスト/ユーザー\n}\n\nheaders {\n  X-Ünïcödé: välüe-🎉\n}\n";
+        let result = parse_bruno(bru).unwrap();
+        let req = &result.requests[0];
+        assert_eq!(req.meta.name.as_deref(), Some("ユーザー一覧 🙂"));
+        assert_eq!(req.url, "https://例え.テスト/ユーザー");
+        assert!(
+            req.headers
+                .iter()
+                .any(|h| h.key == "X-Ünïcödé" && h.value == "välüe-🎉")
+        );
+    }
+
+    #[test]
+    fn test_query_params_appended_to_url_that_already_has_a_query() {
+        let bru = "meta {\n  name: Q\n}\n\nget {\n  url: https://api.example.com/s?a=1\n}\n\nquery {\n  b: 2\n  ~c: 3\n}\n";
+        let result = parse_bruno(bru).unwrap();
+        let url = &result.requests[0].url;
+        assert!(url.contains("a=1"), "existing query lost: {}", url);
+        assert!(url.contains("b=2"), "new query param missing: {}", url);
+        assert!(
+            !url.contains("c=3"),
+            "disabled query param must not be sent: {}",
+            url
+        );
+        assert_eq!(
+            url.matches('?').count(),
+            1,
+            "malformed query string: {}",
+            url
+        );
+    }
+
+    #[test]
+    fn test_body_with_braces_in_strings_is_preserved() {
+        let bru = "meta {\n  name: Braces\n}\n\npost {\n  url: https://api.example.com/x\n}\n\nbody:json {\n  {\"tpl\": \"{{name}}\", \"brace\": \"}\"}\n}\n";
+        let result = parse_bruno(bru).unwrap();
+        let body = result.requests[0].body.as_deref().unwrap();
+        assert!(body.contains("{{name}}"), "body truncated: {}", body);
+        assert!(
+            body.contains("\"brace\": \"}\""),
+            "body truncated: {}",
+            body
+        );
+    }
+
+    #[test]
+    fn test_graphql_with_invalid_variables_json_keeps_the_query() {
+        let bru = "meta {\n  name: G\n  type: graphql\n}\n\npost {\n  url: https://api.example.com/graphql\n}\n\nbody:graphql {\n  query { me { id } }\n}\n\nbody:graphql:vars {\n  not json at all\n}\n";
+        let result = parse_bruno(bru).unwrap();
+        let body = result.requests[0].body.as_deref().unwrap();
+        let parsed: serde_json::Value =
+            serde_json::from_str(body).expect("body must still be valid JSON");
+        assert!(
+            parsed["query"].as_str().unwrap_or("").contains("me"),
+            "query lost when variables were unparseable: {}",
+            body
+        );
+    }
+
+    #[test]
+    fn test_basic_auth_without_password() {
+        let bru = "meta {\n  name: B\n}\n\nget {\n  url: https://api.example.com/x\n}\n\nauth:basic {\n  username: alice\n}\n";
+        let result = parse_bruno(bru).unwrap();
+        let auth = result.requests[0]
+            .headers
+            .iter()
+            .find(|h| h.key == "Authorization")
+            .expect("basic auth header must be emitted");
+        use base64::{Engine, engine::general_purpose::STANDARD};
+        assert_eq!(auth.value, format!("Basic {}", STANDARD.encode("alice:")));
+    }
+
+    /// Bruno's current (bru-lang v2) request files carry path variable
+    /// values in a `params:path` block, with the URL keeping the `:id`
+    /// placeholder. Protide has no path-parameter concept, so the block name
+    /// is unrecognised and the concrete values are dropped without a
+    /// warning. Fixing it means deciding how `:id` maps onto protide's
+    /// `{{id}}` substitution, which is a behaviour change rather than a
+    /// bugfix - left failing on purpose so the gap is visible.
+    #[test]
+    #[ignore = "known gap: Bruno params:path / params:query blocks are dropped silently"]
+    fn test_bruno_path_params_are_imported() {
+        let bru = "meta {\n  name: P\n}\n\nget {\n  url: https://api.example.com/users/:id\n}\n\nparams:path {\n  id: 42\n}\n";
+        let result = parse_bruno(bru).unwrap();
+        assert!(
+            result.requests[0].url.contains("42") || !result.warnings.is_empty(),
+            "path param value 42 was dropped with no warning: {:?}",
+            result.requests[0].url
+        );
     }
 
     #[test]

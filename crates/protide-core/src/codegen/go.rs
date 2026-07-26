@@ -151,4 +151,55 @@ mod tests {
             )
         );
     }
+
+    #[test]
+    fn test_body_injection_is_escaped() {
+        let request = CodegenRequest::new("POST", "https://example.com").with_body(Some(
+            "\"); os.Exit(1); _ = strings.NewReader(\"".to_string(),
+        ));
+        let code = generate_go(&request);
+        assert!(
+            !code.contains("strings.NewReader(\"\"); os.Exit(1); _ = strings.NewReader(\"\")"),
+            "body broke out of the Go string literal: {}",
+            code
+        );
+        assert!(code.contains("\\\"); os.Exit(1); _ = strings.NewReader(\\\""));
+    }
+
+    #[test]
+    fn test_header_value_injection_is_escaped() {
+        let request = CodegenRequest::new("GET", "https://example.com").with_headers(vec![(
+            "X-Token".to_string(),
+            "v\")\n    req.Header.Set(\"X-Injected\", \"yes".to_string(),
+        )]);
+        let code = generate_go(&request);
+        assert!(
+            !code.contains(
+                "req.Header.Set(\"X-Token\", \"v\")\n    req.Header.Set(\"X-Injected\", \"yes\")"
+            ),
+            "header value broke out: {}",
+            code
+        );
+    }
+
+    #[test]
+    fn test_newlines_in_body_do_not_break_the_literal() {
+        // Go interpreted string literals may not span lines, so a raw
+        // newline in the body would be a compile error.
+        let request =
+            CodegenRequest::new("POST", "https://example.com").with_body(Some("a\nb".to_string()));
+        let code = generate_go(&request);
+        assert!(code.contains("strings.NewReader(\"a\\nb\")"), "{}", code);
+    }
+
+    #[test]
+    fn test_query_params_in_url_are_escaped() {
+        let request = CodegenRequest::new("GET", "https://example.com/s?q=\"+os.Exit(1)+\"");
+        let code = generate_go(&request);
+        assert!(
+            !code.contains("\"https://example.com/s?q=\"+os.Exit(1)+\"\""),
+            "query string broke out of the URL literal: {}",
+            code
+        );
+    }
 }

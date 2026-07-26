@@ -23,6 +23,7 @@ pub mod pake;
 pub mod types;
 
 mod engine;
+mod handshake;
 
 use std::path::PathBuf;
 use std::sync::mpsc::{self, Receiver, Sender};

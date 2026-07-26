@@ -107,7 +107,7 @@ fn json_to_python(value: &serde_json::Value) -> String {
         serde_json::Value::Object(obj) => {
             let items: Vec<String> = obj
                 .iter()
-                .map(|(k, v)| format!("\"{}\": {}", k, json_to_python(v)))
+                .map(|(k, v)| format!("\"{}\": {}", escape_python_string(k), json_to_python(v)))
                 .collect();
             format!("{{{}}}", items.join(", "))
         }
@@ -181,6 +181,75 @@ mod tests {
         )]);
         let code = generate_python(&request);
         assert!(!code.contains("\"X-Evil\": \"1\", \"X-Injected\": \"value\","));
+    }
+
+    #[test]
+    fn test_json_body_key_injection_is_escaped() {
+        // JSON object *keys* are interpolated into a Python dict literal.
+        // An unescaped quote in a key breaks out of the string literal and
+        // injects arbitrary Python.
+        let body = serde_json::json!({ "a\": 1, \"injected": 2 }).to_string();
+        let request = CodegenRequest::new("POST", "https://example.com")
+            .with_headers(vec![(
+                "Content-Type".to_string(),
+                "application/json".to_string(),
+            )])
+            .with_body(Some(body));
+        let code = generate_python(&request);
+        assert!(
+            !code.contains("\"a\": 1, \"injected\": 2"),
+            "JSON key broke out of the Python string literal: {}",
+            code
+        );
+        assert!(
+            code.contains("\"a\\\": 1, \\\"injected\": 2"),
+            "JSON key should be escaped: {}",
+            code
+        );
+    }
+
+    #[test]
+    fn test_body_injection_is_escaped() {
+        // A non-JSON body is emitted as a Python string literal.
+        let request = CodegenRequest::new("POST", "https://example.com")
+            .with_body(Some("\"; import os; os.system(\"id\"); x = \"".to_string()));
+        let code = generate_python(&request);
+        assert!(
+            !code.contains("data = \"\"; import os"),
+            "body broke out of the Python string literal: {}",
+            code
+        );
+        assert!(code.contains("data = \"\\\"; import os; os.system(\\\"id\\\"); x = \\\"\""));
+    }
+
+    #[test]
+    fn test_header_value_injection_is_escaped() {
+        let request = CodegenRequest::new("GET", "https://example.com").with_headers(vec![(
+            "X-Token".to_string(),
+            "v\", \"X-Injected\": \"yes".to_string(),
+        )]);
+        let code = generate_python(&request);
+        assert!(
+            !code.contains("\"X-Token\": \"v\", \"X-Injected\": \"yes\","),
+            "header value broke out of the dict literal: {}",
+            code
+        );
+    }
+
+    #[test]
+    fn test_newlines_in_body_do_not_break_the_literal() {
+        let request = CodegenRequest::new("POST", "https://example.com")
+            .with_body(Some("line1\nprint('pwned')\nline2".to_string()));
+        let code = generate_python(&request);
+        let data_line = code
+            .lines()
+            .find(|l| l.starts_with("data = "))
+            .expect("data line present");
+        assert!(
+            data_line.contains("line1\\nprint('pwned')\\nline2"),
+            "newlines must be escaped so the body stays on one line: {:?}",
+            data_line
+        );
     }
 
     #[test]

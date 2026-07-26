@@ -78,6 +78,23 @@ fn escape_js_string(s: &str) -> String {
         .replace('\t', "\\t")
 }
 
+/// Render a JSON object key as an object-literal key. Only keys that are
+/// plain JS identifiers may be emitted bare; anything else (dashes, spaces,
+/// unicode, quotes) must be a quoted+escaped string literal, otherwise the
+/// key either produces invalid JS or breaks out of the object literal.
+fn js_object_key(key: &str) -> String {
+    let mut chars = key.chars();
+    let is_identifier = chars
+        .next()
+        .is_some_and(|c| c.is_ascii_alphabetic() || c == '_' || c == '$')
+        && chars.all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '$');
+    if is_identifier {
+        key.to_string()
+    } else {
+        format!("'{}'", escape_js_string(key))
+    }
+}
+
 fn json_to_js(value: &serde_json::Value, indent: usize) -> String {
     let spaces = " ".repeat(indent);
     match value {
@@ -99,7 +116,7 @@ fn json_to_js(value: &serde_json::Value, indent: usize) -> String {
             } else {
                 let items: Vec<String> = obj
                     .iter()
-                    .map(|(k, v)| format!("{}{}: {}", spaces, k, json_to_js(v, 0)))
+                    .map(|(k, v)| format!("{}{}: {}", spaces, js_object_key(k), json_to_js(v, 0)))
                     .collect();
                 format!(
                     "{{\n{}\n{}}}",
@@ -180,5 +197,90 @@ mod tests {
         )]);
         let code = generate_javascript(&request);
         assert!(!code.contains("'X-Evil': 'x', 'X-Injected': 'value',"));
+    }
+
+    #[test]
+    fn test_json_body_key_injection_is_escaped() {
+        // JSON object keys become object-literal keys. A bare key can
+        // contain arbitrary JS (`x: 1, injected: alert(1)`), so any key that
+        // is not a plain identifier must be quoted and escaped.
+        let body = serde_json::json!({ "x: 1, injected": 2 }).to_string();
+        let request = CodegenRequest::new("POST", "https://example.com")
+            .with_headers(vec![(
+                "Content-Type".to_string(),
+                "application/json".to_string(),
+            )])
+            .with_body(Some(body));
+        let code = generate_javascript(&request);
+        assert!(
+            !code.contains("  x: 1, injected: 2"),
+            "JSON key was spliced in as raw JS: {}",
+            code
+        );
+        assert!(
+            code.contains("'x: 1, injected': 2"),
+            "non-identifier JSON key should be quoted: {}",
+            code
+        );
+    }
+
+    #[test]
+    fn test_non_identifier_json_keys_are_quoted() {
+        // `content-type` as a bare object key is a subtraction expression,
+        // not a key - it must be quoted for the snippet to even parse.
+        let body = serde_json::json!({ "content-type": "a", "🙂": "b" }).to_string();
+        let request = CodegenRequest::new("POST", "https://example.com")
+            .with_headers(vec![(
+                "Content-Type".to_string(),
+                "application/json".to_string(),
+            )])
+            .with_body(Some(body));
+        let code = generate_javascript(&request);
+        assert!(code.contains("'content-type':"), "{}", code);
+        assert!(code.contains("'🙂':"), "{}", code);
+    }
+
+    #[test]
+    fn test_body_injection_is_escaped() {
+        let request = CodegenRequest::new("POST", "https://example.com").with_body(Some(
+            "', evil: fetch('https://evil.example'), x: '".to_string(),
+        ));
+        let code = generate_javascript(&request);
+        assert!(
+            !code.contains("body: '', evil: fetch('https://evil.example'), x: '',"),
+            "body broke out of the JS string literal: {}",
+            code
+        );
+        assert!(code.contains("\\'"), "{}", code);
+    }
+
+    #[test]
+    fn test_header_value_injection_is_escaped() {
+        let request = CodegenRequest::new("GET", "https://example.com").with_headers(vec![(
+            "X-Token".to_string(),
+            "v', 'X-Injected': 'yes".to_string(),
+        )]);
+        let code = generate_javascript(&request);
+        assert!(
+            !code.contains("'X-Token': 'v', 'X-Injected': 'yes',"),
+            "header value broke out of the headers object: {}",
+            code
+        );
+    }
+
+    #[test]
+    fn test_newlines_in_body_do_not_break_the_literal() {
+        let request = CodegenRequest::new("POST", "https://example.com")
+            .with_body(Some("a\nalert(1)\nb".to_string()));
+        let code = generate_javascript(&request);
+        let body_line = code
+            .lines()
+            .find(|l| l.trim_start().starts_with("body: "))
+            .expect("body line present");
+        assert!(
+            body_line.contains("a\\nalert(1)\\nb"),
+            "newlines must be escaped: {:?}",
+            body_line
+        );
     }
 }
