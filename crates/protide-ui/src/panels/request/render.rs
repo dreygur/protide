@@ -113,8 +113,7 @@ impl<E: WebSocketExecutor> Render for RequestPanel<E> {
                             .on_mouse_move(cx.listener(|this, event: &MouseMoveEvent, _, cx| {
                                 if let Some((start_x, start_w)) = this.kv_col_drag {
                                     let new_w = (start_w + f32::from(event.position.x) - start_x)
-                                        .max(60.0)
-                                        .min(500.0);
+                                        .clamp(60.0, 500.0);
                                     if (this.kv_col_key_w - new_w).abs() > 0.5 {
                                         this.kv_col_key_w = new_w;
                                         cx.notify();
@@ -167,10 +166,10 @@ impl<E: WebSocketExecutor> Render for RequestPanel<E> {
                                 cx.listener(|this, _, _, cx| {
                                     let drag = this.kv_row_drag.take();
                                     let over = this.kv_row_drag_over.take();
-                                    if let (Some((list, src, _)), Some(dst)) = (drag, over) {
-                                        if src != dst {
-                                            this.reorder_kv(list, src, dst, cx);
-                                        }
+                                    if let (Some((list, src, _)), Some(dst)) = (drag, over)
+                                        && src != dst
+                                    {
+                                        this.reorder_kv(list, src, dst, cx);
                                     }
                                     cx.notify();
                                 }),
@@ -210,10 +209,10 @@ impl<E: WebSocketExecutor> Render for RequestPanel<E> {
                                 cx.listener(|this, _, _, cx| {
                                     let drag = this.form_row_drag.take();
                                     let over = this.form_row_drag_over.take();
-                                    if let (Some((src, _)), Some(dst)) = (drag, over) {
-                                        if src != dst {
-                                            this.reorder_form_field(src, dst, cx);
-                                        }
+                                    if let (Some((src, _)), Some(dst)) = (drag, over)
+                                        && src != dst
+                                    {
+                                        this.reorder_form_field(src, dst, cx);
                                     }
                                     cx.notify();
                                 }),

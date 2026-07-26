@@ -298,10 +298,10 @@ impl Render for ExplorerPanel {
                                 cx.listener(|this, _: &MouseUpEvent, _, cx| {
                                     let drag = this.env_row_drag.take();
                                     let over = this.env_row_drag_over.take();
-                                    if let (Some((src, _)), Some(dst)) = (drag, over) {
-                                        if src != dst {
-                                            this.reorder_env_var(src, dst, cx);
-                                        }
+                                    if let (Some((src, _)), Some(dst)) = (drag, over)
+                                        && src != dst
+                                    {
+                                        this.reorder_env_var(src, dst, cx);
                                     }
                                     cx.notify();
                                 }),

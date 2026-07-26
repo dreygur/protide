@@ -22,16 +22,16 @@ fn check_references(content: &str, requests: &[http_parser::Request]) -> Vec<Dia
     let mut diagnostics = Vec::new();
     for req in requests {
         for dep in &req.meta.depends {
-            if !names.contains(dep.as_str()) {
-                if let Some(line_num) = find_depends_line(content, dep) {
-                    diagnostics.push(Diagnostic {
-                        range: line_range(line_num),
-                        severity: Some(DiagnosticSeverity::WARNING),
-                        message: format!("Unknown request name: '{dep}' (not found in this file)"),
-                        source: Some("protide-lsp".to_string()),
-                        ..Default::default()
-                    });
-                }
+            if !names.contains(dep.as_str())
+                && let Some(line_num) = find_depends_line(content, dep)
+            {
+                diagnostics.push(Diagnostic {
+                    range: line_range(line_num),
+                    severity: Some(DiagnosticSeverity::WARNING),
+                    message: format!("Unknown request name: '{dep}' (not found in this file)"),
+                    source: Some("protide-lsp".to_string()),
+                    ..Default::default()
+                });
             }
         }
     }
@@ -152,6 +152,16 @@ fn parse_error_diagnostic(e: &ParseError) -> Diagnostic {
     }
 }
 
+pub fn line_range(line: u32) -> Range {
+    Range {
+        start: Position { line, character: 0 },
+        end: Position {
+            line,
+            character: u32::MAX,
+        },
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -167,15 +177,5 @@ mod tests {
         assert_eq!(diags.len(), 1);
         assert_eq!(diags[0].range.start.line, 2);
         assert_eq!(diags[0].severity, Some(DiagnosticSeverity::ERROR));
-    }
-}
-
-pub fn line_range(line: u32) -> Range {
-    Range {
-        start: Position { line, character: 0 },
-        end: Position {
-            line,
-            character: u32::MAX,
-        },
     }
 }

@@ -80,7 +80,7 @@ impl Workspace {
     /// Scan the workspace and return a flat list of all entries (sorted: dirs first).
     pub fn scan(&self) -> Vec<CollectionEntry> {
         let mut entries = Vec::new();
-        scan_dir(&self.root, &self.root, 0, &mut entries);
+        scan_dir(&self.root, 0, &mut entries);
         entries
     }
 
@@ -96,7 +96,7 @@ impl Workspace {
     }
 }
 
-fn scan_dir(root: &Path, dir: &Path, depth: usize, out: &mut Vec<CollectionEntry>) {
+fn scan_dir(dir: &Path, depth: usize, out: &mut Vec<CollectionEntry>) {
     let Ok(entries) = std::fs::read_dir(dir) else {
         return;
     };
@@ -126,7 +126,7 @@ fn scan_dir(root: &Path, dir: &Path, depth: usize, out: &mut Vec<CollectionEntry
                 is_dir: true,
                 depth,
             });
-            scan_dir(root, &path, depth + 1, out);
+            scan_dir(&path, depth + 1, out);
         } else if path.extension().and_then(|e| e.to_str()) == Some("http") {
             out.push(CollectionEntry {
                 path,

@@ -175,7 +175,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                         let entity = cx.entity();
                         canvas(
                             move |bounds, _, cx| {
-                                let _ = entity.update(cx, |this, _| {
+                                entity.update(cx, |this, _| {
                                     this.url_input_left = f32::from(bounds.origin.x) + 14.0;
                                     this.url_input_width = f32::from(bounds.size.width);
                                 });

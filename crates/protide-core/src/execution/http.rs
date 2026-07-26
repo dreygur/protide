@@ -12,6 +12,9 @@ pub struct RawResponse {
     pub size: usize,
 }
 
+/// `(url, headers, body)` as resolved for the wire by [`resolve_request`].
+type ResolvedRequest = (String, Vec<(String, String)>, ExecutionBody);
+
 /// Resolve URL, headers, and body for the given execution mode.
 /// GraphQL wraps the query into a JSON body and injects Content-Type.
 /// Errors if `variables` is non-empty but not valid JSON (empty defaults to `{}`).
@@ -20,7 +23,7 @@ fn resolve_request(
     headers: &[(String, String)],
     body: &ExecutionBody,
     mode: &ExecutionMode,
-) -> Result<(String, Vec<(String, String)>, ExecutionBody), String> {
+) -> Result<ResolvedRequest, String> {
     match mode {
         ExecutionMode::GraphQL {
             query,

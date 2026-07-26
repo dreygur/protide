@@ -289,13 +289,12 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                                                     .value()
                                                     .trim()
                                                     .to_string();
-                                                if !n.is_empty() {
-                                                    if let Some(proc) =
+                                                if !n.is_empty()
+                                                    && let Some(proc) =
                                                         this.trpc_pg_procedures.get_mut(idx)
-                                                    {
-                                                        proc.name = n;
-                                                        proc.kind = this.trpc_pg_edit_kind;
-                                                    }
+                                                {
+                                                    proc.name = n;
+                                                    proc.kind = this.trpc_pg_edit_kind;
                                                 }
                                                 this.trpc_pg_editing = None;
                                                 cx.notify();

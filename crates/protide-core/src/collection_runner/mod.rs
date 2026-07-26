@@ -120,24 +120,23 @@ fn collect_dir(dir: &Path, out: &mut Vec<(String, PathBuf, Request)>) {
         }
         if path.is_dir() {
             collect_dir(&path, out);
-        } else if path.extension().and_then(|e| e.to_str()) == Some("http") {
-            if let Ok(content) = std::fs::read_to_string(&path) {
-                if let Ok(requests) = http_parser::parse(&content) {
-                    for (i, req) in requests.into_iter().enumerate() {
-                        let req_name = req.meta.name.clone().unwrap_or_else(|| {
-                            let stem = path
-                                .file_stem()
-                                .and_then(|s| s.to_str())
-                                .unwrap_or("request");
-                            if i == 0 {
-                                stem.to_string()
-                            } else {
-                                format!("{} #{}", stem, i + 1)
-                            }
-                        });
-                        out.push((req_name, path.clone(), req));
+        } else if path.extension().and_then(|e| e.to_str()) == Some("http")
+            && let Ok(content) = std::fs::read_to_string(&path)
+            && let Ok(requests) = http_parser::parse(&content)
+        {
+            for (i, req) in requests.into_iter().enumerate() {
+                let req_name = req.meta.name.clone().unwrap_or_else(|| {
+                    let stem = path
+                        .file_stem()
+                        .and_then(|s| s.to_str())
+                        .unwrap_or("request");
+                    if i == 0 {
+                        stem.to_string()
+                    } else {
+                        format!("{} #{}", stem, i + 1)
                     }
-                }
+                });
+                out.push((req_name, path.clone(), req));
             }
         }
     }
@@ -155,7 +154,7 @@ fn build_execution_request(req: &Request, env: &HashMap<String, String>) -> Exec
         .map(|h| (h.key.clone(), sub(&h.value)))
         .collect();
 
-    let body_str = req.body.as_deref().map(|b| sub(b)).unwrap_or_default();
+    let body_str = req.body.as_deref().map(sub).unwrap_or_default();
 
     let (body, mode) = if req.protocol() == Protocol::GraphQL {
         // Body is JSON like {"query": "...", "variables": {...}}

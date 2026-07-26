@@ -7,7 +7,7 @@ use gpui::{Context, Entity, FocusHandle, Pixels, Point, Subscription, WeakEntity
 use std::fs;
 use std::ops::Range;
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::rc::Rc;
 
 use super::file_dialog::{self, Pick};
 use super::history::{HistoryEntry, RequestHistory};
@@ -76,7 +76,7 @@ pub struct ExplorerPanel {
     pub(super) history_expanded: bool,
     pub(super) collections_expanded: bool,
     pub(super) workspace_path: Option<PathBuf>,
-    pub(super) workspace_watcher: Option<Arc<protide_core::workspace::Workspace>>,
+    pub(super) workspace_watcher: Option<Rc<protide_core::workspace::Workspace>>,
     pub(super) collection_items: Vec<CollectionItem>,
     pub(super) env_state: EnvironmentState,
     pub(super) env_dropdown_open: bool,

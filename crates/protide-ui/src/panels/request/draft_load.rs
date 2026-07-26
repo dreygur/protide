@@ -87,18 +87,18 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                 self.url = req.url.clone();
                 let len = self.url.chars().count();
                 self.url_selection = len..len;
-                if let Some(body) = &req.body {
-                    if let Ok(json) = serde_json::from_str::<serde_json::Value>(body) {
-                        if let Some(query) = json.get("query").and_then(|q| q.as_str()) {
-                            self.queue_editor(PendingEditor::GraphqlQuery, query.to_string());
-                        }
-                        if let Some(vars) = json.get("variables").filter(|v| !v.is_null()) {
-                            let v = serde_json::to_string_pretty(vars).unwrap_or_default();
-                            self.queue_editor(PendingEditor::GraphqlVariables, v);
-                        }
-                        if let Some(op) = json.get("operationName").and_then(|o| o.as_str()) {
-                            self.graphql_operation_name = op.to_string();
-                        }
+                if let Some(body) = &req.body
+                    && let Ok(json) = serde_json::from_str::<serde_json::Value>(body)
+                {
+                    if let Some(query) = json.get("query").and_then(|q| q.as_str()) {
+                        self.queue_editor(PendingEditor::GraphqlQuery, query.to_string());
+                    }
+                    if let Some(vars) = json.get("variables").filter(|v| !v.is_null()) {
+                        let v = serde_json::to_string_pretty(vars).unwrap_or_default();
+                        self.queue_editor(PendingEditor::GraphqlVariables, v);
+                    }
+                    if let Some(op) = json.get("operationName").and_then(|o| o.as_str()) {
+                        self.graphql_operation_name = op.to_string();
                     }
                 }
             }

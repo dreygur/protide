@@ -56,7 +56,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                 match result {
                     Ok((body, elapsed, status_code)) => {
                         let body_size = body.len();
-                        let _ = cx.update(|cx| {
+                        cx.update(|cx| {
                             response_panel.update(cx, |panel, cx| {
                                 panel.set_response(
                                     ResponseData {
@@ -77,7 +77,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                     }
                     Err(e) => {
                         log::error!("tRPC error: {}", e);
-                        let _ = cx.update(|cx| {
+                        cx.update(|cx| {
                             response_panel.update(cx, |panel, cx| {
                                 let error_body = serde_json::json!({ "error": e }).to_string();
                                 let error_size = error_body.len();
@@ -99,7 +99,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                         });
                     }
                 }
-                let _ = cx.update(|cx| {
+                cx.update(|cx| {
                     let _ = this.update(cx, |p, cx| {
                         p.loading = false;
                         cx.notify();
@@ -164,7 +164,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                 .join()
                 .unwrap_or_else(|_| Err("tRPC thread panicked".to_string()));
 
-                let _ = cx.update(|cx| {
+                cx.update(|cx| {
                     let _ = this.update(cx, |panel, cx| {
                         panel.trpc_pg_loading = false;
                         match result {
@@ -263,7 +263,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                 .join()
                 .unwrap_or_else(|_| Err("URL import thread panicked".to_string()));
 
-                let _ = cx.update(|cx| {
+                cx.update(|cx| {
                     let _ = this.update(cx, |panel, cx| {
                         panel.trpc_pg_schema_loading = false;
                         match result {
@@ -330,7 +330,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                 .join()
                 .unwrap_or_else(|_| Err("tRPC thread panicked".to_string()));
 
-                let _ = cx.update(|cx| {
+                cx.update(|cx| {
                     let _ = this.update(cx, |panel, cx| {
                         panel.trpc_pg_schema_loading = false;
                         match result {

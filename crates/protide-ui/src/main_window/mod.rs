@@ -124,7 +124,7 @@ impl MainWindow {
         let request_panel = cx.new(|cx| RequestPanel::new(window, cx, response_panel_clone));
         let mock_server_panel = cx.new(|cx| MockServerPanel::new(window, cx, main_window_weak));
         let console_panel = cx.new(ConsolePanel::new);
-        let docs_panel = cx.new(|_| DocsPanel::new());
+        let docs_panel = cx.new(|_| DocsPanel::default());
 
         let request_panel_clone = request_panel.clone();
         explorer.update(cx, |explorer, cx| {

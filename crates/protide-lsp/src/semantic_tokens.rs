@@ -18,9 +18,8 @@ pub fn tokenize(content: &str) -> Vec<SemanticToken> {
 
         let tok = if trimmed.starts_with("###") {
             Some((0u32, line.len() as u32, TOK_KEYWORD))
-        } else if trimmed.starts_with("# @") {
-            Some((0, line.len() as u32, TOK_COMMENT))
         } else if trimmed.starts_with('#') {
+            // Covers plain `#` comments and `# @name`-style annotations alike.
             Some((0, line.len() as u32, TOK_COMMENT))
         } else if let Some(rest) = try_request_line(trimmed) {
             // Method length must be measured within `trimmed`, not `line` -
@@ -116,7 +115,7 @@ fn highlight_inline(
                 let next_ok = line
                     .as_bytes()
                     .get(end)
-                    .map_or(true, |&n| !n.is_ascii_alphanumeric() && n != b'_');
+                    .is_none_or(|&n| !n.is_ascii_alphanumeric() && n != b'_');
                 if next_ok {
                     spans.push((i as u32, (end - i) as u32, TOK_NUMBER));
                 }
@@ -160,8 +159,8 @@ pub fn try_request_line(s: &str) -> Option<&str> {
         "GRPC ",
     ];
     for m in &methods {
-        if s.starts_with(m) {
-            return Some(&s[m.len()..]);
+        if let Some(rest) = s.strip_prefix(m) {
+            return Some(rest);
         }
     }
     None

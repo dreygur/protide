@@ -41,8 +41,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             let name = self
                 .url
                 .split('/')
-                .filter(|s| !s.is_empty() && !s.contains("://") && !s.contains('.'))
-                .last()
+                .rfind(|s| !s.is_empty() && !s.contains("://") && !s.contains('.'))
                 .unwrap_or("request");
             format!("{}.http", name)
         };
@@ -63,7 +62,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             },
             move |this, path, _cx| {
                 last_paths::save_last_dir("save_request", &path);
-                let path = if path.extension().map_or(true, |ext| ext != "http") {
+                let path = if path.extension().is_none_or(|ext| ext != "http") {
                     path.with_extension("http")
                 } else {
                     path
@@ -133,10 +132,11 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                 }
             }
             AuthType::ApiKey => {
-                if !self.api_key_name.is_empty() && !self.api_key_value.is_empty() {
-                    if self.api_key_location == ApiKeyLocation::Header {
-                        lines.push(format!("{}: {}", self.api_key_name, self.api_key_value));
-                    }
+                if !self.api_key_name.is_empty()
+                    && !self.api_key_value.is_empty()
+                    && self.api_key_location == ApiKeyLocation::Header
+                {
+                    lines.push(format!("{}: {}", self.api_key_name, self.api_key_value));
                 }
             }
         }
@@ -171,10 +171,10 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             let variables = self.graphql_variables_editor.read(cx).value().to_string();
             let mut obj = serde_json::Map::new();
             obj.insert("query".to_string(), serde_json::Value::String(query));
-            if !variables.trim().is_empty() {
-                if let Ok(v) = serde_json::from_str::<serde_json::Value>(&variables) {
-                    obj.insert("variables".to_string(), v);
-                }
+            if !variables.trim().is_empty()
+                && let Ok(v) = serde_json::from_str::<serde_json::Value>(&variables)
+            {
+                obj.insert("variables".to_string(), v);
             }
             if !self.graphql_operation_name.trim().is_empty() {
                 obj.insert(

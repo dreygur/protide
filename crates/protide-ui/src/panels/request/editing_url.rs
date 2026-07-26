@@ -189,10 +189,10 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                     return;
                 }
                 "v" => {
-                    if let Some(item) = cx.read_from_clipboard() {
-                        if let Some(text) = item.text() {
-                            self.insert_text(&text.replace('\n', ""), cx);
-                        }
+                    if let Some(item) = cx.read_from_clipboard()
+                        && let Some(text) = item.text()
+                    {
+                        self.insert_text(&text.replace('\n', ""), cx);
                     }
                     return;
                 }

@@ -11,6 +11,9 @@ use gpui::{
 
 use crate::theme;
 
+/// Boxed GPUI event handler, generic over the event type it receives.
+type Handler<E> = Box<dyn Fn(&E, &mut Window, &mut App) + 'static>;
+
 pub struct ActionRow {
     id: ElementId,
     group: SharedString,
@@ -22,8 +25,8 @@ pub struct ActionRow {
     actions: Vec<AnyElement>,
     /// Main content elements.
     content: Vec<AnyElement>,
-    on_click: Option<Box<dyn Fn(&ClickEvent, &mut Window, &mut App) + 'static>>,
-    on_right_click: Option<Box<dyn Fn(&MouseDownEvent, &mut Window, &mut App) + 'static>>,
+    on_click: Option<Handler<ClickEvent>>,
+    on_right_click: Option<Handler<MouseDownEvent>>,
 }
 
 impl ActionRow {

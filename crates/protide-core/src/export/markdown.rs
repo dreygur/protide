@@ -18,17 +18,12 @@ pub fn export_collection_markdown(root: &Path) -> Result<String, String> {
         chrono::Local::now().format("%Y-%m-%d")
     ));
 
-    collect_dir(root, root, &mut md, 2)?;
+    collect_dir(root, &mut md, 2)?;
 
     Ok(md)
 }
 
-fn collect_dir(
-    root: &Path,
-    dir: &Path,
-    md: &mut String,
-    heading_level: usize,
-) -> Result<(), String> {
+fn collect_dir(dir: &Path, md: &mut String, heading_level: usize) -> Result<(), String> {
     let mut entries: Vec<std::fs::DirEntry> = std::fs::read_dir(dir)
         .map_err(|e| format!("Cannot read directory {}: {}", dir.display(), e))?
         .filter_map(|e| e.ok())
@@ -54,7 +49,7 @@ fn collect_dir(
 
         if path.is_dir() {
             md.push_str(&format!("\n{} {}\n\n", hashes, name));
-            collect_dir(root, &path, md, (heading_level + 1).min(6))?;
+            collect_dir(&path, md, (heading_level + 1).min(6))?;
         } else if path.extension().and_then(|e| e.to_str()) == Some("http")
             && let Ok(content) = std::fs::read_to_string(&path)
         {

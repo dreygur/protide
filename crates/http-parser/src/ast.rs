@@ -173,7 +173,7 @@ impl Request {
 
     /// Check if request has a body
     pub fn has_body(&self) -> bool {
-        self.body.as_ref().map_or(false, |b| !b.trim().is_empty())
+        self.body.as_ref().is_some_and(|b| !b.trim().is_empty())
     }
 
     /// Get a header value by name (case-insensitive)

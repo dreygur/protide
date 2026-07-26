@@ -86,8 +86,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                             .on_mouse_move(cx.listener(|this, event: &MouseMoveEvent, _, cx| {
                                 if let Some((start_x, start_w)) = this.trpc_pg_sidebar_drag {
                                     let new_w = (start_w + f32::from(event.position.x) - start_x)
-                                        .max(160.0)
-                                        .min(400.0);
+                                        .clamp(160.0, 400.0);
                                     this.trpc_pg_sidebar_w = new_w;
                                     cx.notify();
                                 }

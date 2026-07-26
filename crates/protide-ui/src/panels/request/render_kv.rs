@@ -302,7 +302,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                 let entity = cx.entity();
                 canvas(
                     move |bounds, _, cx| {
-                        let _ = entity.update(cx, |this, _| {
+                        entity.update(cx, |this, _| {
                             this.edit_input_origins
                                 .insert(target, f32::from(bounds.origin.x) + 8.0);
                         });
@@ -380,7 +380,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                 let entity = cx.entity();
                 canvas(
                     move |bounds, _, cx| {
-                        let _ = entity.update(cx, |this, _| {
+                        entity.update(cx, |this, _| {
                             this.edit_input_origins
                                 .insert(target, f32::from(bounds.origin.x) + 9.0);
                         });

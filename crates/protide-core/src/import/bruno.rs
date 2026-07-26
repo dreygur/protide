@@ -25,11 +25,7 @@ pub fn parse_bruno(content: &str) -> Result<ImportResult, String> {
                     if let Some((k, v)) = split_kv(line) {
                         match k.as_str() {
                             "name" => name = v,
-                            "type" => {
-                                if v == "graphql" {
-                                    protocol = Some(Protocol::GraphQL);
-                                }
-                            }
+                            "type" if v == "graphql" => protocol = Some(Protocol::GraphQL),
                             _ => {}
                         }
                     }
@@ -38,10 +34,10 @@ pub fn parse_bruno(content: &str) -> Result<ImportResult, String> {
             "get" | "post" | "put" | "delete" | "patch" | "head" | "options" => {
                 method = block_name.to_uppercase();
                 for line in lines {
-                    if let Some((k, v)) = split_kv(line) {
-                        if k == "url" {
-                            url = v;
-                        }
+                    if let Some((k, v)) = split_kv(line)
+                        && k == "url"
+                    {
+                        url = v;
                     }
                 }
             }
@@ -73,14 +69,14 @@ pub fn parse_bruno(content: &str) -> Result<ImportResult, String> {
             }
             "auth:bearer" => {
                 for line in lines {
-                    if let Some((k, v)) = split_kv(line) {
-                        if k == "token" {
-                            headers.push(KeyValue {
-                                key: "Authorization".to_string(),
-                                value: format!("Bearer {}", v),
-                                enabled: true,
-                            });
-                        }
+                    if let Some((k, v)) = split_kv(line)
+                        && k == "token"
+                    {
+                        headers.push(KeyValue {
+                            key: "Authorization".to_string(),
+                            value: format!("Bearer {}", v),
+                            enabled: true,
+                        });
                     }
                 }
             }

@@ -210,27 +210,23 @@ impl ResponsePanel {
                     .on_mouse_up(
                         MouseButton::Left,
                         cx.listener(|this, _, _, cx| {
-                            if let Some(sel) = this.hdr_sel {
-                                if sel.selecting {
-                                    let (a, b) = sel.range;
-                                    let (s, e) = (a.min(b), a.max(b));
-                                    if s != e {
-                                        if let Some((_, val)) = this
-                                            .response
-                                            .as_ref()
-                                            .and_then(|r| r.headers.get(sel.row))
-                                        {
-                                            let text =
-                                                val[s.min(val.len())..e.min(val.len())].to_string();
-                                            cx.write_to_clipboard(ClipboardItem::new_string(text));
-                                            this.show_copy_feedback(CopyFeedback::HdrVal, cx);
-                                        }
-                                    }
-                                    this.hdr_sel = Some(HdrSel {
-                                        selecting: false,
-                                        ..sel
-                                    });
+                            if let Some(sel) = this.hdr_sel
+                                && sel.selecting
+                            {
+                                let (a, b) = sel.range;
+                                let (s, e) = (a.min(b), a.max(b));
+                                if s != e
+                                    && let Some((_, val)) =
+                                        this.response.as_ref().and_then(|r| r.headers.get(sel.row))
+                                {
+                                    let text = val[s.min(val.len())..e.min(val.len())].to_string();
+                                    cx.write_to_clipboard(ClipboardItem::new_string(text));
+                                    this.show_copy_feedback(CopyFeedback::HdrVal, cx);
                                 }
+                                this.hdr_sel = Some(HdrSel {
+                                    selecting: false,
+                                    ..sel
+                                });
                             }
                             cx.notify();
                         }),

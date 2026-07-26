@@ -57,10 +57,10 @@ fn collect_dir(
 
         if path.is_dir() {
             collect_dir(&path, paths, servers, seen_servers)?;
-        } else if path.extension().and_then(|e| e.to_str()) == Some("http") {
-            if let Ok(content) = std::fs::read_to_string(&path) {
-                add_http_requests(&content, paths, servers, seen_servers);
-            }
+        } else if path.extension().and_then(|e| e.to_str()) == Some("http")
+            && let Ok(content) = std::fs::read_to_string(&path)
+        {
+            add_http_requests(&content, paths, servers, seen_servers);
         }
     }
 

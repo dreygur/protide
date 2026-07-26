@@ -133,18 +133,18 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
     }
 
     pub(super) fn edit_delete_selection_no_save(&mut self, cx: &mut Context<Self>) {
-        if let Some(target) = self.active_edit {
-            if self.edit_has_selection() {
-                let char_start = self.edit_selection.start.min(self.edit_selection.end);
-                let char_end = self.edit_selection.start.max(self.edit_selection.end);
-                if let Some(text) = self.get_edit_text_mut(target) {
-                    let byte_start = char_to_byte_offset(text, char_start);
-                    let byte_end = char_to_byte_offset(text, char_end);
-                    text.replace_range(byte_start..byte_end, "");
-                    self.edit_selection = char_start..char_start;
-                    self.sync_after_edit(target, cx);
-                    cx.notify();
-                }
+        if let Some(target) = self.active_edit
+            && self.edit_has_selection()
+        {
+            let char_start = self.edit_selection.start.min(self.edit_selection.end);
+            let char_end = self.edit_selection.start.max(self.edit_selection.end);
+            if let Some(text) = self.get_edit_text_mut(target) {
+                let byte_start = char_to_byte_offset(text, char_start);
+                let byte_end = char_to_byte_offset(text, char_end);
+                text.replace_range(byte_start..byte_end, "");
+                self.edit_selection = char_start..char_start;
+                self.sync_after_edit(target, cx);
+                cx.notify();
             }
         }
     }
@@ -208,17 +208,18 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                         .params
                         .get(i)
                         .map_or((true, true), |p| (p.key.is_empty(), p.value.is_empty()));
-                    if let Some(param) = self.params.get_mut(i) {
-                        if !param.enabled && (!key_empty || !val_empty) {
-                            param.enabled = true;
-                            self.sync_url_from_params(cx);
-                        }
+                    if let Some(param) = self.params.get_mut(i)
+                        && !param.enabled
+                        && (!key_empty || !val_empty)
+                    {
+                        param.enabled = true;
+                        self.sync_url_from_params(cx);
                     }
                     if i + 1 == self.params.len()
                         && self
                             .params
                             .last()
-                            .map_or(false, |p| !p.key.is_empty() || !p.value.is_empty())
+                            .is_some_and(|p| !p.key.is_empty() || !p.value.is_empty())
                     {
                         self.params.push(KeyValuePair::default());
                         cx.notify();
@@ -229,16 +230,17 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                         .headers
                         .get(i)
                         .map_or((true, true), |h| (h.key.is_empty(), h.value.is_empty()));
-                    if let Some(header) = self.headers.get_mut(i) {
-                        if !header.enabled && (!key_empty || !val_empty) {
-                            header.enabled = true;
-                        }
+                    if let Some(header) = self.headers.get_mut(i)
+                        && !header.enabled
+                        && (!key_empty || !val_empty)
+                    {
+                        header.enabled = true;
                     }
                     if i + 1 == self.headers.len()
                         && self
                             .headers
                             .last()
-                            .map_or(false, |h| !h.key.is_empty() || !h.value.is_empty())
+                            .is_some_and(|h| !h.key.is_empty() || !h.value.is_empty())
                     {
                         self.headers.push(KeyValuePair::default());
                         cx.notify();
@@ -289,8 +291,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             2 => {
                 if let Some(target) = self.active_edit {
                     let text = self.get_edit_text(target);
-                    self.edit_selection =
-                        find_word_start(&text, index)..find_word_end(&text, index);
+                    self.edit_selection = find_word_start(text, index)..find_word_end(text, index);
                     cx.notify();
                 }
             }

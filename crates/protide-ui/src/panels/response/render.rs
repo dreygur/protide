@@ -36,7 +36,7 @@ impl Render for ResponsePanel {
             .child(
                 canvas(
                     move |bounds: Bounds<Pixels>, _win, cx| {
-                        let _ = entity.update(cx, |this, _| {
+                        entity.update(cx, |this, _| {
                             this.bounds_origin = bounds.origin;
                         });
                     },

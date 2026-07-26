@@ -265,7 +265,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                             .on_mouse_move(cx.listener(|this, event: &MouseMoveEvent, _, cx| {
                                 if let Some((start_y, start_h)) = this.drag_script_pre {
                                     let delta = f32::from(event.position.y) - start_y;
-                                    this.script_pre_h = (start_h + delta).max(60.0).min(600.0);
+                                    this.script_pre_h = (start_h + delta).clamp(60.0, 600.0);
                                     cx.notify();
                                 }
                             }))
@@ -296,7 +296,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                             .on_mouse_move(cx.listener(|this, event: &MouseMoveEvent, _, cx| {
                                 if let Some((start_y, start_h)) = this.drag_script_post {
                                     let delta = f32::from(event.position.y) - start_y;
-                                    this.script_post_h = (start_h + delta).max(60.0).min(600.0);
+                                    this.script_post_h = (start_h + delta).clamp(60.0, 600.0);
                                     cx.notify();
                                 }
                             }))

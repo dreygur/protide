@@ -202,14 +202,12 @@ impl LanguageServer for HttpLsp {
         }
 
         // Multi-file: @depends not found in same file - search workspace
-        if let Some(line) = content.lines().nth(pos.line as usize) {
-            if let Some(dep) = parse_annotation_value(line.trim_start(), "# @depends") {
-                if let Some(root) = self.root_uri.get() {
-                    if let Ok(root_path) = root.to_file_path() {
-                        return Ok(workspace_goto_depends(&root_path, dep));
-                    }
-                }
-            }
+        if let Some(line) = content.lines().nth(pos.line as usize)
+            && let Some(dep) = parse_annotation_value(line.trim_start(), "# @depends")
+            && let Some(root) = self.root_uri.get()
+            && let Ok(root_path) = root.to_file_path()
+        {
+            return Ok(workspace_goto_depends(&root_path, dep));
         }
 
         Ok(None)

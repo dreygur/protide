@@ -52,12 +52,12 @@ impl MockServerPanel {
     pub(super) fn toggle_server(&mut self, cx: &mut Context<Self>) {
         if self.server.is_running() {
             self.server.stop();
-        } else if let Err(msg) = self.server.start() {
-            if let Some(win) = self.main_window.upgrade() {
-                win.update(cx, |win, cx| {
-                    win.show_modal("Failed to Start Mock Server", msg, cx)
-                });
-            }
+        } else if let Err(msg) = self.server.start()
+            && let Some(win) = self.main_window.upgrade()
+        {
+            win.update(cx, |win, cx| {
+                win.show_modal("Failed to Start Mock Server", msg, cx)
+            });
         }
         cx.notify();
     }

@@ -68,20 +68,19 @@ impl ExplorerPanel {
     }
 
     pub(super) fn parse_method_from_file(&self, path: &PathBuf) -> Option<String> {
-        if let Ok(content) = fs::read_to_string(path) {
-            if let Ok(requests) = http_parser::parse(&content) {
-                if let Some(req) = requests.first() {
-                    let label = match req.protocol() {
-                        Protocol::GraphQL => "GQL",
-                        Protocol::WebSocket => "WS",
-                        Protocol::Grpc => "GRPC",
-                        Protocol::SocketIO => "SIO",
-                        Protocol::Trpc => "TRPC",
-                        Protocol::Http => req.method.as_str(),
-                    };
-                    return Some(label.to_string());
-                }
-            }
+        if let Ok(content) = fs::read_to_string(path)
+            && let Ok(requests) = http_parser::parse(&content)
+            && let Some(req) = requests.first()
+        {
+            let label = match req.protocol() {
+                Protocol::GraphQL => "GQL",
+                Protocol::WebSocket => "WS",
+                Protocol::Grpc => "GRPC",
+                Protocol::SocketIO => "SIO",
+                Protocol::Trpc => "TRPC",
+                Protocol::Http => req.method.as_str(),
+            };
+            return Some(label.to_string());
         }
         None
     }

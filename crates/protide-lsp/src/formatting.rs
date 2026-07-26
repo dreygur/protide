@@ -43,13 +43,12 @@ pub fn format_document(content: &str) -> Vec<TextEdit> {
                     format!("{}{normalized}{rest}", &line[..indent]),
                 ));
             }
-            if name.to_lowercase() == "content-type" {
-                if trimmed[colon + 1..]
+            if name.to_lowercase() == "content-type"
+                && trimmed[colon + 1..]
                     .to_lowercase()
                     .contains("application/json")
-                {
-                    is_json = true;
-                }
+            {
+                is_json = true;
             }
         }
     }

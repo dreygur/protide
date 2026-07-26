@@ -158,21 +158,20 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
         }
         if let Some(ref proto_path) = draft.grpc_proto_path {
             self.load_grpc_proto_from_path(proto_path.clone(), cx);
-            if let Some(ref svc) = draft.grpc_service {
-                if self.grpc_services.contains(svc) {
-                    self.grpc_service = Some(svc.clone());
-                    self.grpc_methods
-                        .retain(|m| m.full_name.starts_with(svc.as_str()));
-                }
+            if let Some(ref svc) = draft.grpc_service
+                && self.grpc_services.contains(svc)
+            {
+                self.grpc_service = Some(svc.clone());
+                self.grpc_methods
+                    .retain(|m| m.full_name.starts_with(svc.as_str()));
             }
-            if let Some(ref method_name) = draft.grpc_method_name {
-                if let Some(m) = self
+            if let Some(ref method_name) = draft.grpc_method_name
+                && let Some(m) = self
                     .grpc_methods
                     .iter()
                     .find(|m| &m.full_name == method_name)
-                {
-                    self.grpc_method = Some(m.clone());
-                }
+            {
+                self.grpc_method = Some(m.clone());
             }
         }
 

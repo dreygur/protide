@@ -47,33 +47,33 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
         self.grpc_service = None;
         self.grpc_method = None;
 
-        if let Some(ref path) = self.grpc_proto_path.clone() {
-            if let Ok(pool) = protide_core::protocols::grpc::parse_proto_file(path) {
-                for svc in pool.services() {
-                    let svc_name = svc.full_name().to_string();
-                    self.grpc_services.push(svc_name.clone());
-                    for method in svc.methods() {
-                        let streaming_type =
-                            match (method.is_client_streaming(), method.is_server_streaming()) {
-                                (false, false) => GrpcStreamingType::Unary,
-                                (false, true) => GrpcStreamingType::ServerStreaming,
-                                (true, false) => GrpcStreamingType::ClientStreaming,
-                                (true, true) => GrpcStreamingType::BidiStreaming,
-                            };
-                        self.grpc_methods.push(GrpcMethodInfo {
-                            full_name: format!("{}/{}", svc_name, method.name()),
-                            streaming_type,
-                        });
-                    }
+        if let Some(ref path) = self.grpc_proto_path.clone()
+            && let Ok(pool) = protide_core::protocols::grpc::parse_proto_file(path)
+        {
+            for svc in pool.services() {
+                let svc_name = svc.full_name().to_string();
+                self.grpc_services.push(svc_name.clone());
+                for method in svc.methods() {
+                    let streaming_type =
+                        match (method.is_client_streaming(), method.is_server_streaming()) {
+                            (false, false) => GrpcStreamingType::Unary,
+                            (false, true) => GrpcStreamingType::ServerStreaming,
+                            (true, false) => GrpcStreamingType::ClientStreaming,
+                            (true, true) => GrpcStreamingType::BidiStreaming,
+                        };
+                    self.grpc_methods.push(GrpcMethodInfo {
+                        full_name: format!("{}/{}", svc_name, method.name()),
+                        streaming_type,
+                    });
                 }
-                if let Some(s) = self.grpc_services.first() {
-                    self.grpc_service = Some(s.clone());
-                }
-                if let Some(m) = self.grpc_methods.first() {
-                    self.grpc_method = Some(m.clone());
-                }
-                return;
             }
+            if let Some(s) = self.grpc_services.first() {
+                self.grpc_service = Some(s.clone());
+            }
+            if let Some(m) = self.grpc_methods.first() {
+                self.grpc_method = Some(m.clone());
+            }
+            return;
         }
 
         // Fallback: basic text parsing
@@ -81,27 +81,26 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
         let mut current_service = String::new();
         for line in content.lines() {
             let trimmed = line.trim();
-            if trimmed.starts_with("service ") {
-                if let Some(name) = trimmed
+            if trimmed.starts_with("service ")
+                && let Some(name) = trimmed
                     .strip_prefix("service ")
                     .and_then(|s| s.split_whitespace().next())
-                {
-                    current_service = name.to_string();
-                    self.grpc_services.push(current_service.clone());
-                    in_service = true;
-                }
+            {
+                current_service = name.to_string();
+                self.grpc_services.push(current_service.clone());
+                in_service = true;
             }
-            if in_service && trimmed.starts_with("rpc ") {
-                if let Some(name) = trimmed
+            if in_service
+                && trimmed.starts_with("rpc ")
+                && let Some(name) = trimmed
                     .strip_prefix("rpc ")
                     .and_then(|s| s.split('(').next())
                     .map(|s| s.trim())
-                {
-                    self.grpc_methods.push(GrpcMethodInfo {
-                        full_name: format!("{}/{}", current_service, name),
-                        streaming_type: GrpcStreamingType::Unary,
-                    });
-                }
+            {
+                self.grpc_methods.push(GrpcMethodInfo {
+                    full_name: format!("{}/{}", current_service, name),
+                    streaming_type: GrpcStreamingType::Unary,
+                });
             }
             if in_service && trimmed == "}" {
                 in_service = false;
@@ -278,7 +277,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                 match result {
                     Ok((body, elapsed)) => {
                         let body_size = body.len();
-                        let _ = cx.update(|cx| {
+                        cx.update(|cx| {
                             response_panel.update(cx, |panel, cx| {
                                 panel.set_response(
                                     ResponseData {
@@ -303,7 +302,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                     Err(e) => {
                         // covers both gRPC errors and thread panics; gRPC library deadline handles timeouts
                         log::error!("gRPC error: {}", e);
-                        let _ = cx.update(|cx| {
+                        cx.update(|cx| {
                             response_panel.update(cx, |panel, cx| {
                                 panel.set_response(
                                     ResponseData {
@@ -320,7 +319,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                         });
                     }
                 }
-                let _ = cx.update(|cx| {
+                cx.update(|cx| {
                     let _ = this.update(cx, |p, cx| {
                         p.loading = false;
                         cx.notify();
@@ -375,7 +374,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                         } else {
                             "OK (streaming)".to_string()
                         };
-                        let _ = cx.update(|cx| {
+                        cx.update(|cx| {
                             response_panel.update(cx, |panel, cx| {
                                 panel.set_response(
                                     ResponseData {
@@ -393,7 +392,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                     }
                     Err(e) => {
                         log::error!("gRPC streaming error: {}", e);
-                        let _ = cx.update(|cx| {
+                        cx.update(|cx| {
                             response_panel.update(cx, |panel, cx| {
                                 panel.set_response(
                                     ResponseData {
@@ -410,7 +409,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                         });
                     }
                 }
-                let _ = cx.update(|cx| {
+                cx.update(|cx| {
                     let _ = this.update(cx, |p, cx| {
                         p.loading = false;
                         cx.notify();
@@ -445,7 +444,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                 match result {
                     Ok(body) => {
                         let body_size = body.len();
-                        let _ = cx.update(|cx| {
+                        cx.update(|cx| {
                             response_panel.update(cx, |panel, cx| {
                                 panel.set_response(
                                     ResponseData {
@@ -469,7 +468,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                     }
                     Err(e) => {
                         log::error!("gRPC client-streaming error: {}", e);
-                        let _ = cx.update(|cx| {
+                        cx.update(|cx| {
                             response_panel.update(cx, |panel, cx| {
                                 panel.set_response(
                                     ResponseData {
@@ -486,7 +485,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                         });
                     }
                 }
-                let _ = cx.update(|cx| {
+                cx.update(|cx| {
                     let _ = this.update(cx, |p, cx| {
                         p.loading = false;
                         cx.notify();
@@ -539,7 +538,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                         } else {
                             "OK (bidi)".to_string()
                         };
-                        let _ = cx.update(|cx| {
+                        cx.update(|cx| {
                             response_panel.update(cx, |panel, cx| {
                                 panel.set_response(
                                     ResponseData {
@@ -557,7 +556,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                     }
                     Err(e) => {
                         log::error!("gRPC bidi-streaming error: {}", e);
-                        let _ = cx.update(|cx| {
+                        cx.update(|cx| {
                             response_panel.update(cx, |panel, cx| {
                                 panel.set_response(
                                     ResponseData {
@@ -574,7 +573,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                         });
                     }
                 }
-                let _ = cx.update(|cx| {
+                cx.update(|cx| {
                     let _ = this.update(cx, |p, cx| {
                         p.loading = false;
                         cx.notify();

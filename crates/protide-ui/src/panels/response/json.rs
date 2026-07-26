@@ -281,7 +281,7 @@ impl ResponsePanel {
         let text_lines = (text_w / available_w).ceil().max(1.0);
         // Expandable strings (> COLLAPSE_CHARS) add a toggle button row.
         // When expanded, they wrap the full text (already counted above).
-        let btn_extra = match &row.kind {
+        match &row.kind {
             RowKind::Leaf {
                 val: PrimVal::Str { display, .. },
                 ..
@@ -294,8 +294,7 @@ impl ResponsePanel {
                 visible_lines * ROW_H + ROW_H // content + button
             }
             _ => text_lines * ROW_H,
-        };
-        btn_extra
+        }
     }
 
     /// Returns a **byte** offset into the row's display text for the value at

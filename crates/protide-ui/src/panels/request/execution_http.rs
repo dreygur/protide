@@ -252,24 +252,22 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                             data.status_text,
                             data.time.as_millis()
                         );
-                        let _ = cx.update(|cx| {
+                        cx.update(|cx| {
                             cx.update_global::<super::super::history::RequestHistory, _>(
                                 |history, _| {
                                     history.update_response(history_id, data.status, data.time);
                                 },
                             );
-                            if !data.extracted_vars.is_empty() || !data.env_changes.is_empty() {
-                                if let Some(explorer) = &explorer_panel {
-                                    explorer.update(cx, |panel, cx| {
-                                        for (name, value) in data
-                                            .extracted_vars
-                                            .iter()
-                                            .chain(data.env_changes.iter())
-                                        {
-                                            panel.set_env_variable(name, value, cx);
-                                        }
-                                    });
-                                }
+                            if (!data.extracted_vars.is_empty() || !data.env_changes.is_empty())
+                                && let Some(explorer) = &explorer_panel
+                            {
+                                explorer.update(cx, |panel, cx| {
+                                    for (name, value) in
+                                        data.extracted_vars.iter().chain(data.env_changes.iter())
+                                    {
+                                        panel.set_env_variable(name, value, cx);
+                                    }
+                                });
                             }
                             if let Some(console) = &console_panel {
                                 let duration_ms = data.time.as_millis() as u64;
@@ -318,7 +316,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                     }
                     Err(e) => {
                         log::error!("[{}] Request failed {}: {}", log_protocol, log_url, e);
-                        let _ = cx.update(|cx| {
+                        cx.update(|cx| {
                             if let Some(console) = &console_panel {
                                 let err = e.clone();
                                 let hint = dns_troubleshoot_hint(&err);
@@ -347,7 +345,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                         });
                     }
                 }
-                let _ = cx.update(|cx| {
+                cx.update(|cx| {
                     let _ = this.update(cx, |this, cx| {
                         this.loading = false;
                         cx.notify();

@@ -29,7 +29,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                         .unwrap_or_else(|_| GraphqlSchemaState::Error("thread join error".into()))
                 })
                 .await;
-            let _ = cx.update(|cx| {
+            cx.update(|cx| {
                 let _ = this.update(cx, |panel, cx| {
                     panel.graphql_schema = result;
                     cx.notify();
@@ -52,7 +52,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                     .background_executor()
                     .spawn(async move { parse_schema_file(&path) })
                     .await;
-                let _ = cx.update(|cx| {
+                cx.update(|cx| {
                     let _ = this.update(cx, |panel, cx| {
                         panel.graphql_schema = result;
                         cx.notify();
@@ -144,8 +144,8 @@ pub(super) fn parse_schema_file(path: &std::path::Path) -> GraphqlSchemaState {
                 "input ",
                 "scalar ",
             ] {
-                if t.starts_with(prefix) {
-                    let rest = t[prefix.len()..].split_whitespace().next()?;
+                if let Some(after) = t.strip_prefix(prefix) {
+                    let rest = after.split_whitespace().next()?;
                     let name = rest.trim_end_matches('{').to_string();
                     if !name.starts_with("__") {
                         return Some(GqlSchemaType {

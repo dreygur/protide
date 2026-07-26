@@ -38,7 +38,7 @@ impl ExplorerPanel {
         match protide_core::workspace::Workspace::open(&path) {
             Ok(ws) => {
                 info!("Workspace loaded: {}", path.display());
-                self.workspace_watcher = Some(Arc::new(ws));
+                self.workspace_watcher = Some(Rc::new(ws));
             }
             Err(e) => {
                 error!("File watcher failed: {}", e);
@@ -72,7 +72,7 @@ impl ExplorerPanel {
         match protide_core::workspace::Workspace::open(&path) {
             Ok(ws) => {
                 info!("Workspace loaded: {}", path.display());
-                self.workspace_watcher = Some(Arc::new(ws));
+                self.workspace_watcher = Some(Rc::new(ws));
             }
             Err(e) => {
                 error!("Workspace watcher: {}", e);
@@ -124,14 +124,15 @@ impl ExplorerPanel {
                         }
                     }
                     WorkspaceEvent::FileDeleted(p) => {
-                        if !self.sync_skip_paths.remove(p) {
-                            let p = p.clone();
-                            let root = root.clone();
-                            if let Some(win) = self.main_window.upgrade() {
-                                win.update(cx, |win, _| {
-                                    win.broadcast_workspace_file(&root, &p, String::new(), true)
-                                });
-                            }
+                        if self.sync_skip_paths.remove(p) {
+                            continue;
+                        }
+                        let p = p.clone();
+                        let root = root.clone();
+                        if let Some(win) = self.main_window.upgrade() {
+                            win.update(cx, |win, _| {
+                                win.broadcast_workspace_file(&root, &p, String::new(), true)
+                            });
                         }
                     }
                     _ => {}
@@ -237,10 +238,10 @@ impl ExplorerPanel {
                 match fs::write(&path, content) {
                     Ok(_) => {
                         info!("Created: {}", path.display());
-                        if let Some(workspace) = &this.workspace_path {
-                            if path.starts_with(workspace) {
-                                this.collection_items = this.scan_directory(workspace);
-                            }
+                        if let Some(workspace) = &this.workspace_path
+                            && path.starts_with(workspace)
+                        {
+                            this.collection_items = this.scan_directory(workspace);
                         }
                         this.load_request_file(path, cx);
                     }
@@ -275,10 +276,10 @@ impl ExplorerPanel {
         match fs::write(&new_path, &content) {
             Ok(_) => {
                 info!("Cloned: {}", new_path.display());
-                if let Some(workspace) = &self.workspace_path {
-                    if new_path.starts_with(workspace) {
-                        self.collection_items = self.scan_directory(workspace);
-                    }
+                if let Some(workspace) = &self.workspace_path
+                    && new_path.starts_with(workspace)
+                {
+                    self.collection_items = self.scan_directory(workspace);
                 }
                 self.load_request_file(new_path, cx);
             }
@@ -306,7 +307,7 @@ impl ExplorerPanel {
             |this, path, cx| {
                 last_paths::save_last_dir("new_request", &path);
                 last_paths::save_last_dir("save_request", &path);
-                let path = if path.extension().map_or(true, |e| e != "http") {
+                let path = if path.extension().is_none_or(|e| e != "http") {
                     path.with_extension("http")
                 } else {
                     path
@@ -316,10 +317,10 @@ impl ExplorerPanel {
                 match fs::write(&path, content) {
                     Ok(_) => {
                         info!("Created: {}", path.display());
-                        if let Some(workspace) = &this.workspace_path {
-                            if path.starts_with(workspace) {
-                                this.collection_items = this.scan_directory(workspace);
-                            }
+                        if let Some(workspace) = &this.workspace_path
+                            && path.starts_with(workspace)
+                        {
+                            this.collection_items = this.scan_directory(workspace);
                         }
                         this.load_request_file(path, cx);
                     }

@@ -78,41 +78,39 @@ pub(super) fn apply_security(
     query_parts: &mut Vec<String>,
 ) {
     for req in security {
-        if let Some(obj) = req.as_object() {
-            if let Some(scheme_name) = obj.keys().next() {
-                if let Some(info) = schemes.get(scheme_name) {
-                    match info {
-                        SecuritySchemeInfo::BearerHttp | SecuritySchemeInfo::OAuth2 => {
-                            if !headers
-                                .iter()
-                                .any(|h| h.key.eq_ignore_ascii_case("Authorization"))
-                            {
-                                headers.push(KeyValue::new("Authorization", "Bearer {{token}}"));
-                            }
-                        }
-                        SecuritySchemeInfo::BasicHttp => {
-                            if !headers
-                                .iter()
-                                .any(|h| h.key.eq_ignore_ascii_case("Authorization"))
-                            {
-                                headers
-                                    .push(KeyValue::new("Authorization", "Basic {{credentials}}"));
-                            }
-                        }
-                        SecuritySchemeInfo::ApiKeyHeader(name) => {
-                            if !headers.iter().any(|h| h.key == name.as_str()) {
-                                headers.push(KeyValue::new(name.clone(), "{{api_key}}"));
-                            }
-                        }
-                        SecuritySchemeInfo::ApiKeyQuery(name) => {
-                            if !query_parts.iter().any(|q| q.starts_with(name.as_str())) {
-                                query_parts.push(format!("{}={{{{api_key}}}}", name));
-                            }
-                        }
+        if let Some(obj) = req.as_object()
+            && let Some(scheme_name) = obj.keys().next()
+            && let Some(info) = schemes.get(scheme_name)
+        {
+            match info {
+                SecuritySchemeInfo::BearerHttp | SecuritySchemeInfo::OAuth2 => {
+                    if !headers
+                        .iter()
+                        .any(|h| h.key.eq_ignore_ascii_case("Authorization"))
+                    {
+                        headers.push(KeyValue::new("Authorization", "Bearer {{token}}"));
                     }
-                    break;
+                }
+                SecuritySchemeInfo::BasicHttp => {
+                    if !headers
+                        .iter()
+                        .any(|h| h.key.eq_ignore_ascii_case("Authorization"))
+                    {
+                        headers.push(KeyValue::new("Authorization", "Basic {{credentials}}"));
+                    }
+                }
+                SecuritySchemeInfo::ApiKeyHeader(name) => {
+                    if !headers.iter().any(|h| h.key == name.as_str()) {
+                        headers.push(KeyValue::new(name.clone(), "{{api_key}}"));
+                    }
+                }
+                SecuritySchemeInfo::ApiKeyQuery(name) => {
+                    if !query_parts.iter().any(|q| q.starts_with(name.as_str())) {
+                        query_parts.push(format!("{}={{{{api_key}}}}", name));
+                    }
                 }
             }
+            break;
         }
     }
 }

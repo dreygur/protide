@@ -8,17 +8,16 @@ impl ExplorerPanel {
     }
 
     pub(super) fn load_history_item(&mut self, entry_id: u64, cx: &mut Context<Self>) {
-        let entry_data: Option<(String, String, Vec<(String, String)>, Option<String>)> =
-            cx.read_global::<RequestHistory, _>(|history, _| {
-                history.get(entry_id).map(|entry| {
-                    (
-                        entry.method.clone(),
-                        entry.url.clone(),
-                        entry.headers.clone(),
-                        entry.body.clone(),
-                    )
-                })
-            });
+        let entry_data = cx.read_global::<RequestHistory, _>(|history, _| {
+            history.get(entry_id).map(|entry| {
+                (
+                    entry.method.clone(),
+                    entry.url.clone(),
+                    entry.headers.clone(),
+                    entry.body.clone(),
+                )
+            })
+        });
 
         if let Some((method, url, headers, body)) = entry_data
             && let Some(request_panel) = &self.request_panel

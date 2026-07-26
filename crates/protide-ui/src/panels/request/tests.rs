@@ -291,7 +291,7 @@ fn test_parse_query_string() {
 fn test_build_query_string() {
     // Simulate the logic from sync_url_from_params
     let base_url = "https://api.example.com/search";
-    let params = vec![
+    let params = [
         KeyValuePair {
             key: "q".to_string(),
             value: "rust programming".to_string(),
@@ -363,7 +363,7 @@ fn test_key_only_param() {
 #[test]
 fn test_build_query_string_keeps_empty_key_when_enabled() {
     let base_url = "https://api.example.com/search";
-    let params = vec![
+    let params = [
         KeyValuePair {
             key: "".to_string(),
             value: "value".to_string(),

@@ -8,7 +8,7 @@ mod tests {
     #[gpui::test]
     async fn test_response_panel_initial_state(cx: &mut TestAppContext) {
         init_theme(cx);
-        let (panel, _cx) = cx.add_window_view(|window, cx| ResponsePanel::new(window, cx));
+        let (panel, _cx) = cx.add_window_view(ResponsePanel::new);
         cx.run_until_parked();
         panel.read_with(cx, |p, _cx| {
             assert!(p.response.is_none());
@@ -21,7 +21,7 @@ mod tests {
     #[gpui::test]
     async fn test_response_panel_set_loading(cx: &mut TestAppContext) {
         init_theme(cx);
-        let (panel, _cx) = cx.add_window_view(|window, cx| ResponsePanel::new(window, cx));
+        let (panel, _cx) = cx.add_window_view(ResponsePanel::new);
         panel.update(cx, |p, cx| p.set_loading(cx));
         cx.run_until_parked();
         panel.read_with(cx, |p, _cx| {
@@ -33,7 +33,7 @@ mod tests {
     #[gpui::test]
     async fn test_response_panel_set_error_clears_loading(cx: &mut TestAppContext) {
         init_theme(cx);
-        let (panel, _cx) = cx.add_window_view(|window, cx| ResponsePanel::new(window, cx));
+        let (panel, _cx) = cx.add_window_view(ResponsePanel::new);
         panel.update(cx, |p, cx| p.set_loading(cx));
         panel.update(cx, |p, cx| {
             p.set_error("connection refused".to_string(), cx)
@@ -48,7 +48,7 @@ mod tests {
     #[gpui::test]
     async fn test_response_panel_set_response(cx: &mut TestAppContext) {
         init_theme(cx);
-        let (panel, _cx) = cx.add_window_view(|window, cx| ResponsePanel::new(window, cx));
+        let (panel, _cx) = cx.add_window_view(ResponsePanel::new);
         let data = ResponseData {
             status: 200,
             status_text: "OK".to_string(),
@@ -70,7 +70,7 @@ mod tests {
     #[gpui::test]
     async fn test_response_panel_set_response_clears_error(cx: &mut TestAppContext) {
         init_theme(cx);
-        let (panel, _cx) = cx.add_window_view(|window, cx| ResponsePanel::new(window, cx));
+        let (panel, _cx) = cx.add_window_view(ResponsePanel::new);
         panel.update(cx, |p, cx| p.set_error("old error".to_string(), cx));
         let data = ResponseData {
             status: 201,
@@ -127,7 +127,7 @@ mod tests {
     #[gpui::test]
     async fn test_json_tree_collapse_reduces_rows(cx: &mut TestAppContext) {
         init_theme(cx);
-        let (panel, _cx) = cx.add_window_view(|window, cx| ResponsePanel::new(window, cx));
+        let (panel, _cx) = cx.add_window_view(ResponsePanel::new);
         panel.update(cx, |p, cx| {
             p.set_response(
                 ResponseData {
@@ -172,7 +172,7 @@ mod tests {
     #[gpui::test]
     async fn test_copy_json_selection_multibyte_utf8_no_panic(cx: &mut TestAppContext) {
         init_theme(cx);
-        let (panel, _cx) = cx.add_window_view(|window, cx| ResponsePanel::new(window, cx));
+        let (panel, _cx) = cx.add_window_view(ResponsePanel::new);
         panel.update(cx, |p, cx| {
             p.set_response(
                 ResponseData {

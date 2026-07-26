@@ -95,51 +95,48 @@ pub(super) fn create_router(
 
         let recording = state.record_mode.load(Ordering::Relaxed);
         let live_target = state.record_target.read().ok().and_then(|t| t.clone());
-        if recording {
-            if let Some(ref target) = live_target {
-                if hop_count >= MAX_PROXY_HOPS {
-                    return (
-                        StatusCode::LOOP_DETECTED,
-                        "Proxy hop limit exceeded - possible proxy loop",
-                    )
-                        .into_response();
-                }
-                let full_url = build_proxy_url(target, &path, &query);
-                req_headers.push((PROXY_HOP_HEADER.to_string(), (hop_count + 1).to_string()));
-                let resp =
-                    proxy_request(&method, &full_url, req_headers, body_bytes.to_vec()).await;
-                let status = resp.status().as_u16();
-                let body_clone = axum::body::to_bytes(resp.into_body(), 16 * 1024 * 1024)
-                    .await
-                    .unwrap_or_default();
-                let body_str = String::from_utf8_lossy(&body_clone).into_owned();
-                let method_enum = match method.to_uppercase().as_str() {
-                    "GET" => HttpMethod::Get,
-                    "POST" => HttpMethod::Post,
-                    "PUT" => HttpMethod::Put,
-                    "PATCH" => HttpMethod::Patch,
-                    "DELETE" => HttpMethod::Delete,
-                    "HEAD" => HttpMethod::Head,
-                    "OPTIONS" => HttpMethod::Options,
-                    _ => HttpMethod::Any,
-                };
-                let new_route = MockRoute::new(
-                    method_enum,
-                    &path,
-                    MockResponse::new(status, body_str.clone()),
-                );
-                if let Ok(mut recorded) = state.recorded_routes.lock() {
-                    recorded.push(new_route);
-                }
-                let mut builder = axum::http::Response::builder().status(status);
-                builder = builder.header("Content-Type", "application/json");
-                return builder.body(Body::from(body_str)).unwrap_or_else(|_| {
-                    axum::http::Response::builder()
-                        .status(502)
-                        .body(Body::from("Record proxy error"))
-                        .expect("infallible response builder")
-                });
+        if recording && let Some(ref target) = live_target {
+            if hop_count >= MAX_PROXY_HOPS {
+                return (
+                    StatusCode::LOOP_DETECTED,
+                    "Proxy hop limit exceeded - possible proxy loop",
+                )
+                    .into_response();
             }
+            let full_url = build_proxy_url(target, &path, &query);
+            req_headers.push((PROXY_HOP_HEADER.to_string(), (hop_count + 1).to_string()));
+            let resp = proxy_request(&method, &full_url, req_headers, body_bytes.to_vec()).await;
+            let status = resp.status().as_u16();
+            let body_clone = axum::body::to_bytes(resp.into_body(), 16 * 1024 * 1024)
+                .await
+                .unwrap_or_default();
+            let body_str = String::from_utf8_lossy(&body_clone).into_owned();
+            let method_enum = match method.to_uppercase().as_str() {
+                "GET" => HttpMethod::Get,
+                "POST" => HttpMethod::Post,
+                "PUT" => HttpMethod::Put,
+                "PATCH" => HttpMethod::Patch,
+                "DELETE" => HttpMethod::Delete,
+                "HEAD" => HttpMethod::Head,
+                "OPTIONS" => HttpMethod::Options,
+                _ => HttpMethod::Any,
+            };
+            let new_route = MockRoute::new(
+                method_enum,
+                &path,
+                MockResponse::new(status, body_str.clone()),
+            );
+            if let Ok(mut recorded) = state.recorded_routes.lock() {
+                recorded.push(new_route);
+            }
+            let mut builder = axum::http::Response::builder().status(status);
+            builder = builder.header("Content-Type", "application/json");
+            return builder.body(Body::from(body_str)).unwrap_or_else(|_| {
+                axum::http::Response::builder()
+                    .status(502)
+                    .body(Body::from("Record proxy error"))
+                    .expect("infallible response builder")
+            });
         }
 
         if let Some(route) = matched {

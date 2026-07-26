@@ -68,7 +68,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                 while let Ok(event) = fwd_rx.recv().await {
                     match event {
                         SioUiEvent::Connected { .. } => {
-                            let _ = cx.update(|cx| {
+                            cx.update(|cx| {
                                 let _ = this.update(cx, |this, cx| {
                                     if this.sio_generation != my_generation {
                                         return;
@@ -79,7 +79,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                             });
                         }
                         SioUiEvent::Event(event) => {
-                            let _ = cx.update(|cx| {
+                            cx.update(|cx| {
                                 let _ = this.update(cx, |this, cx| {
                                     if this.sio_generation != my_generation {
                                         return;
@@ -94,7 +94,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                             });
                         }
                         SioUiEvent::Disconnected => {
-                            let _ = cx.update(|cx| {
+                            cx.update(|cx| {
                                 let _ = this.update(cx, |this, cx| {
                                     if this.sio_generation != my_generation {
                                         return;
@@ -108,14 +108,15 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                         }
                         SioUiEvent::Error(e) => {
                             log::error!("SIO error: {}", e);
-                            let _ =
-                                cx.update(|cx| {
-                                    let _ = this.update(cx, |this, cx| {
-                                if this.sio_generation != my_generation { return; }
-                                this.sio_state = SioConnectionState::Disconnected;
-                                this.sio_send_tx = None;
-                                let was_near_bottom = this.sio_near_bottom();
-                                this.sio_messages.push(protide_core::execution::sio::SioEvent {
+                            cx.update(|cx| {
+                                let _ = this.update(cx, |this, cx| {
+                                    if this.sio_generation != my_generation {
+                                        return;
+                                    }
+                                    this.sio_state = SioConnectionState::Disconnected;
+                                    this.sio_send_tx = None;
+                                    let was_near_bottom = this.sio_near_bottom();
+                                    this.sio_messages.push(protide_core::execution::sio::SioEvent {
                                     direction: protide_core::execution::sio::SioDirection::Received,
                                     namespace: "/".into(),
                                     event_name: "error".into(),
@@ -124,17 +125,17 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                                     is_ack: false,
                                     timestamp: chrono::Local::now(),
                                 });
-                                if was_near_bottom {
-                                    this.sio_scroll.scroll_to_bottom();
-                                }
-                                cx.notify();
-                            });
+                                    if was_near_bottom {
+                                        this.sio_scroll.scroll_to_bottom();
+                                    }
+                                    cx.notify();
                                 });
+                            });
                             break;
                         }
                     }
                 }
-                let _ = cx.update(|cx| {
+                cx.update(|cx| {
                     let _ = this.update(cx, |this, cx| {
                         if this.sio_generation != my_generation {
                             return;

@@ -99,50 +99,48 @@ pub(super) fn parse_operation(
     };
 
     // Swagger 2.0: body parameter + consumes-driven Content-Type
-    if body.is_none() {
-        if let Some(body_param) = all_params
+    if body.is_none()
+        && let Some(body_param) = all_params
             .iter()
             .find(|p| p.get("in").and_then(|v| v.as_str()) == Some("body"))
+    {
+        let resolved = if let Some(r) = body_param.get("$ref").and_then(|v| v.as_str()) {
+            schema::resolve_ref(root, r).unwrap_or(body_param)
+        } else {
+            body_param
+        };
+        let op_consumes: Vec<String> = operation
+            .get("consumes")
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                    .collect()
+            })
+            .unwrap_or_default();
+        let content_type = op_consumes
+            .first()
+            .or_else(|| global_consumes.first())
+            .map(|s| s.as_str())
+            .unwrap_or("application/json");
+        if !headers
+            .iter()
+            .any(|h| h.key.eq_ignore_ascii_case("Content-Type"))
         {
-            let resolved = if let Some(r) = body_param.get("$ref").and_then(|v| v.as_str()) {
-                schema::resolve_ref(root, r).unwrap_or(body_param)
-            } else {
-                body_param
-            };
-            let op_consumes: Vec<String> = operation
-                .get("consumes")
-                .and_then(|v| v.as_array())
-                .map(|arr| {
-                    arr.iter()
-                        .filter_map(|v| v.as_str().map(|s| s.to_string()))
-                        .collect()
-                })
-                .unwrap_or_default();
-            let content_type = op_consumes
-                .first()
-                .or_else(|| global_consumes.first())
-                .map(|s| s.as_str())
-                .unwrap_or("application/json");
-            if !headers
-                .iter()
-                .any(|h| h.key.eq_ignore_ascii_case("Content-Type"))
-            {
-                headers.push(KeyValue::new("Content-Type", content_type));
-            }
-            if let Some(schema_val) = resolved.get("schema") {
-                let content_entry = serde_json::json!({ "schema": schema_val });
-                body = get_schema_example(&content_entry, root);
-            }
+            headers.push(KeyValue::new("Content-Type", content_type));
+        }
+        if let Some(schema_val) = resolved.get("schema") {
+            let content_entry = serde_json::json!({ "schema": schema_val });
+            body = get_schema_example(&content_entry, root);
         }
     }
 
     // Swagger 2.0 Accept from produces
-    if let Some(produces) = operation.get("produces").and_then(|v| v.as_array()) {
-        if let Some(first) = produces.first().and_then(|v| v.as_str()) {
-            if !headers.iter().any(|h| h.key.eq_ignore_ascii_case("Accept")) {
-                headers.push(KeyValue::new("Accept", first));
-            }
-        }
+    if let Some(produces) = operation.get("produces").and_then(|v| v.as_array())
+        && let Some(first) = produces.first().and_then(|v| v.as_str())
+        && !headers.iter().any(|h| h.key.eq_ignore_ascii_case("Accept"))
+    {
+        headers.push(KeyValue::new("Accept", first));
     }
 
     // Security: operation-level then global
@@ -226,16 +224,16 @@ pub(super) fn parse_request_body(
         }
         return get_schema_example(mp_content, root);
     }
-    if let Some(obj) = content.as_object() {
-        if let Some((ct, type_content)) = obj.iter().next() {
-            if !headers
-                .iter()
-                .any(|h| h.key.eq_ignore_ascii_case("Content-Type"))
-            {
-                headers.push(KeyValue::new("Content-Type", ct.clone()));
-            }
-            return get_schema_example(type_content, root);
+    if let Some(obj) = content.as_object()
+        && let Some((ct, type_content)) = obj.iter().next()
+    {
+        if !headers
+            .iter()
+            .any(|h| h.key.eq_ignore_ascii_case("Content-Type"))
+        {
+            headers.push(KeyValue::new("Content-Type", ct.clone()));
         }
+        return get_schema_example(type_content, root);
     }
 
     None

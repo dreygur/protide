@@ -99,13 +99,11 @@ fn collect_http_files(dir: &Path, out: &mut Vec<std::path::PathBuf>, depth: usiz
             let skip = path
                 .file_name()
                 .and_then(|n| n.to_str())
-                .map_or(false, |n| {
-                    n.starts_with('.') || n == "target" || n == "node_modules"
-                });
+                .is_some_and(|n| n.starts_with('.') || n == "target" || n == "node_modules");
             if !skip {
                 collect_http_files(&path, out, depth - 1);
             }
-        } else if path.extension().map_or(false, |e| e == "http") {
+        } else if path.extension().is_some_and(|e| e == "http") {
             out.push(path);
         }
     }

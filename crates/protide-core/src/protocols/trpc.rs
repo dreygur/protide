@@ -137,10 +137,10 @@ pub fn fetch_trpc_schema_raw(base_url: &str) -> Result<String, String> {
             .get(url.as_str())
             .header("Accept", "application/json")
             .send();
-        if let Ok(r) = resp {
-            if r.status().is_success() {
-                return r.text().map_err(|e| format!("Read error: {}", e));
-            }
+        if let Ok(r) = resp
+            && r.status().is_success()
+        {
+            return r.text().map_err(|e| format!("Read error: {}", e));
         }
     }
     Err("No schema endpoint responded. Add procedures manually: select Q or M, type the procedure name (e.g. users.getAll), and press +.".to_string())

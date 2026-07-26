@@ -22,10 +22,10 @@ pub fn complete(content: &str, pos: Position) -> Vec<CompletionItem> {
     if trimmed.starts_with("# @") {
         return annotation_completions();
     }
-    if let Some(open) = before.rfind("{{") {
-        if !before[open..].contains("}}") {
-            return variable_completions(content);
-        }
+    if let Some(open) = before.rfind("{{")
+        && !before[open..].contains("}}")
+    {
+        return variable_completions(content);
     }
     if is_request_line(before) {
         return method_completions();

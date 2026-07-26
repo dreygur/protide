@@ -25,8 +25,8 @@ pub(super) fn parse_path_item(
         .unwrap_or_default();
 
     for method_str in methods {
-        if let Some(operation) = item.get(method_str) {
-            if let Some((folder, req)) = parse_operation(
+        if let Some(operation) = item.get(method_str)
+            && let Some((folder, req)) = parse_operation(
                 path,
                 method_str,
                 operation,
@@ -36,9 +36,9 @@ pub(super) fn parse_path_item(
                 security_schemes,
                 global_consumes,
                 global_security,
-            ) {
-                result.add_request_in_folder(req, folder);
-            }
+            )
+        {
+            result.add_request_in_folder(req, folder);
         }
     }
 }

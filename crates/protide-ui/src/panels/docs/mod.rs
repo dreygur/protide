@@ -4,19 +4,13 @@ use std::path::PathBuf;
 
 pub mod render;
 
+#[derive(Default)]
 pub struct DocsPanel {
     pub(super) explorer: Option<Entity<ExplorerPanel>>,
     pub(super) selected_path: Option<PathBuf>,
 }
 
 impl DocsPanel {
-    pub fn new() -> Self {
-        Self {
-            explorer: None,
-            selected_path: None,
-        }
-    }
-
     pub fn set_explorer(&mut self, explorer: Entity<ExplorerPanel>) {
         self.explorer = Some(explorer);
     }

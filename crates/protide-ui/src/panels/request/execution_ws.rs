@@ -95,7 +95,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                     match event {
                         WsEvent::Connected => {
                             log::info!("WS connected: {}", ws_log_url);
-                            let _ = cx.update(|cx| {
+                            cx.update(|cx| {
                                 let _ = this.update(cx, |this, cx| {
                                     if this.ws_generation != my_generation {
                                         return;
@@ -106,7 +106,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                             });
                         }
                         WsEvent::Message { msg, env_changes } => {
-                            let _ = cx.update(|cx| {
+                            cx.update(|cx| {
                                 let _ = this.update(cx, |this, cx| {
                                     if this.ws_generation != my_generation {
                                         return;
@@ -127,7 +127,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                         }
                         WsEvent::Disconnected => {
                             log::info!("WS disconnected: {}", ws_log_url);
-                            let _ = cx.update(|cx| {
+                            cx.update(|cx| {
                                 let _ = this.update(cx, |this, cx| {
                                     if this.ws_generation != my_generation {
                                         return;
@@ -141,7 +141,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                         }
                         WsEvent::Error(e) => {
                             log::error!("WS error {}: {}", ws_log_url, e);
-                            let _ = cx.update(|cx| {
+                            cx.update(|cx| {
                                 let hint = dns_troubleshoot_hint(&e);
                                 if let Some(ref console) = ws_console_panel {
                                     let entry = ConsoleEntry {
@@ -181,7 +181,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                         }
                     }
                 }
-                let _ = cx.update(|cx| {
+                cx.update(|cx| {
                     let _ = this.update(cx, |this, cx| {
                         if this.ws_generation != my_generation {
                             return;
