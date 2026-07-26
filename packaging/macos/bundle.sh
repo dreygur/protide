@@ -14,7 +14,8 @@ APP="${1:-$ROOT/target/Protide.app}"
 [[ -f "$BINARY" ]] || { echo "No release binary at $BINARY - run 'make release' first" >&2; exit 1; }
 [[ -f "$LOGO" ]] || { echo "No logo at $LOGO" >&2; exit 1; }
 
-VERSION="$(sed -n 's/^version = "\(.*\)"/\1/p' "$ROOT/Cargo.toml" | head -1)"
+# Release CI passes the tag through PROTIDE_VERSION; local builds read the workspace
+VERSION="${PROTIDE_VERSION:-$(sed -n 's/^version = "\(.*\)"/\1/p' "$ROOT/Cargo.toml" | head -1)}"
 
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"

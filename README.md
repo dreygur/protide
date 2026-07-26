@@ -100,6 +100,14 @@ make bundle-mac        # → target/Protide.app
 open target/Protide.app
 ```
 
+The released `.dmg` is ad-hoc signed, not notarized (that needs a paid Apple
+Developer certificate), so macOS quarantines it on download. First launch needs
+either right-click → **Open**, or:
+
+```bash
+xattr -dr com.apple.quarantine /Applications/Protide.app
+```
+
 ### LSP
 
 ```bash
