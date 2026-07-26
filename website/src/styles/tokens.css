@@ -1,136 +1,47 @@
-/* Dark theme — exact values from theme.rs Colors::dark() */
-@theme {
+/* Design tokens — exact values from the app's theme.rs (Colors::dark() / Colors::light()).
+   light-dark() picks per mode from `color-scheme`: the system preference on the landing
+   page, and next-themes' explicit `color-scheme` on docs pages, so one declaration
+   covers both modes and the docs light/dark toggle. */
+:root {
+  color-scheme: light dark;
+
   /* ── Backgrounds ── */
-  --color-bg-primary:   #0d0d0f;
-  --color-bg-secondary: #111113;
-  --color-bg-tertiary:  #131315;
-  --color-bg-elevated:  #1b1b1e;
+  --color-bg-primary:   light-dark(#ffffff, #0d0d0f);
+  --color-bg-secondary: light-dark(#f3f3f3, #111113);
+  --color-bg-tertiary:  light-dark(#e8e8e8, #131315);
+  --color-bg-elevated:  light-dark(#ffffff, #1b1b1e);
 
   /* ── Text ── */
-  --color-text-primary:   #e4e4ed;
-  --color-text-secondary: #7f7f92;
-  --color-text-muted:     #3e3e4a;
+  --color-text-primary:   light-dark(#1e1e1e, #e4e4ed);
+  --color-text-secondary: light-dark(#616161, #7f7f92);
+  --color-text-muted:     light-dark(#9e9e9e, #3e3e4a);
 
-  /* ── Borders ── */
-  --color-border:         #252529;
-  --color-border-focused: #4ade80;
+  /* ── Borders & accent ── */
+  --color-border:       light-dark(#d4d4d4, #252529);
+  --color-accent:       light-dark(#007acc, #4ade80);
+  --color-accent-hover: light-dark(#0066b8, #6ee7a0);
 
-  /* ── Accent ── */
-  --color-accent:       #4ade80;
-  --color-accent-hover: #6ee7a0;
-
-  /* ── HTTP Method colors ── */
-  --color-method-get:     #4ade80;
-  --color-method-post:    #60a5fa;
-  --color-method-put:     #fbbf24;
-  --color-method-patch:   #fb923c;
-  --color-method-delete:  #f87171;
-  --color-method-head:    #a78bfa;
-  --color-method-options: #94a3b8;
+  /* ── HTTP method colors ── */
+  --color-method-get:     light-dark(#0066cc, #4ade80);
+  --color-method-post:    light-dark(#2e7d32, #60a5fa);
+  --color-method-put:     light-dark(#ef6c00, #fbbf24);
+  --color-method-patch:   light-dark(#00897b, #fb923c);
+  --color-method-delete:  light-dark(#c62828, #f87171);
+  --color-method-head:    light-dark(#7c3aed, #a78bfa);
+  --color-method-options: light-dark(#475569, #94a3b8);
 
   /* ── Protocol colors ── */
-  --color-proto-ws:      #34d399;
-  --color-proto-grpc:    #818cf8;
-  --color-proto-graphql: #f472b6;
-  --color-proto-trpc:    #818cf8;
-  --color-proto-sio:     #34d399;
+  --color-proto-ws:      light-dark(#059669, #34d399);
+  --color-proto-grpc:    light-dark(#4338ca, #818cf8);
+  --color-proto-graphql: light-dark(#db2777, #f472b6);
+  --color-proto-trpc:    light-dark(#4338ca, #818cf8);
+  --color-proto-sio:     light-dark(#059669, #34d399);
 
   /* ── Status codes ── */
-  --color-status-2xx:          #4ade80;
-  --color-status-3xx:          #fbbf24;
-  --color-status-4xx:          #fb923c;
-  --color-status-5xx:          #f87171;
-  --color-status-success:      #4ade80;
-  --color-status-redirect:     #fbbf24;
-  --color-status-client-error: #fb923c;
-  --color-status-server-error: #f87171;
+  --color-status-2xx: light-dark(#2e7d32, #4ade80);
+  --color-status-3xx: light-dark(#ef6c00, #fbbf24);
+  --color-status-4xx: light-dark(#c62828, #fb923c);
 
-  /* ── Semantic ── */
-  --color-success: #4ade80;
-  --color-warning: #fbbf24;
-  --color-error:   #f87171;
-  --color-info:    #60a5fa;
-
-  /* ── Interactive overlays ── */
-  --color-hover-overlay:  rgba(255, 255, 255, 0.035);
-  --color-active-overlay: rgba(255, 255, 255, 0.055);
-  --color-selected-bg:    rgba(255, 255, 255, 0.055);
-  --color-overlay:        rgba(0, 0, 0, 0.5);
-
-  /* ── Focus ── */
-  --color-focus-ring:       #4ade80;
-  --color-focus-ring-error: #f87171;
-
-  /* ── Collaboration / sync ── */
-  --color-team-accent: #4ade80;
-  --color-sync-active: #22c55e;
-
-  /* ── Typography ── */
-  --font-family-sans: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
-  --font-family-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
-
-  /* ── Border radius (from BorderRadius::new()) ── */
-  --radius-sm: 4px;
-  --radius-md: 6px;
-  --radius-lg: 8px;
-  --radius-xl: 12px;
-}
-
-/* Light theme — exact values from theme.rs Colors::light() */
-@media (prefers-color-scheme: light) {
-  :root {
-    --color-bg-primary:   #ffffff;
-    --color-bg-secondary: #f3f3f3;
-    --color-bg-tertiary:  #e8e8e8;
-    --color-bg-elevated:  #ffffff;
-
-    --color-text-primary:   #1e1e1e;
-    --color-text-secondary: #616161;
-    --color-text-muted:     #9e9e9e;
-
-    --color-border:         #d4d4d4;
-    --color-border-focused: #007acc;
-
-    --color-accent:       #007acc;
-    --color-accent-hover: #0066b8;
-
-    --color-method-get:     #0066cc;
-    --color-method-post:    #2e7d32;
-    --color-method-put:     #ef6c00;
-    --color-method-patch:   #00897b;
-    --color-method-delete:  #c62828;
-    --color-method-head:    #7c3aed;
-    --color-method-options: #475569;
-
-    --color-proto-ws:      #059669;
-    --color-proto-grpc:    #4338ca;
-    --color-proto-graphql: #db2777;
-    --color-proto-trpc:    #4338ca;
-    --color-proto-sio:     #059669;
-
-    --color-status-2xx:          #2e7d32;
-    --color-status-3xx:          #ef6c00;
-    --color-status-4xx:          #c62828;
-    --color-status-5xx:          #c62828;
-    --color-status-success:      #2e7d32;
-    --color-status-redirect:     #ef6c00;
-    --color-status-client-error: #c62828;
-    --color-status-server-error: #c62828;
-
-    --color-success: #2e7d32;
-    --color-warning: #ef6c00;
-    --color-error:   #c62828;
-    --color-info:    #007acc;
-
-    --color-hover-overlay:  rgba(0, 0, 0, 0.04);
-    --color-active-overlay: rgba(0, 0, 0, 0.08);
-    --color-selected-bg:    rgba(0, 122, 204, 0.15);
-    --color-overlay:        rgba(0, 0, 0, 0.4);
-
-    --color-focus-ring:       #007acc;
-    --color-focus-ring-error: #c62828;
-
-    --color-team-accent: #007acc;
-    --color-sync-active: #008000;
-  }
+  /* ── Typography (JetBrains Mono, as in the app; loaded via next/font) ── */
+  --font-family-mono: var(--font-jetbrains-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
 }

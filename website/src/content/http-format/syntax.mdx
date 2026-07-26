@@ -1,0 +1,151 @@
+---
+title: .http Syntax
+description: How Protide parses .http files - request separators, methods, headers, bodies, comments, and script blocks.
+---
+
+# .http file syntax
+
+A `.http` file holds one or more requests. Protide parses it with its own `http-parser` crate, which
+follows the familiar REST-client format and adds annotations for protocols, scripts, and chaining.
+
+## Anatomy of a request
+
+```http filename="users.http"
+### Create User
+# @name create-user
+# @description Registers a user and captures the new id
+
+POST {{base_url}}/users
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "name": "Ada",
+  "email": "ada@example.com"
+}
+
+# @set user_id = $.id
+
+# @tests
+expect(response.status).toBe(201);
+expect(response.json().name).toBe("Ada");
+```
+
+Reading top to bottom:
+
+| Line | Meaning |
+| --- | --- |
+| `### Create User` | Request separator. Everything until the next `###` belongs to this request; the trailing text is a title comment. |
+| `# @name`, `# @description` | [Annotations](/docs/http-format/annotations) — metadata for this request. |
+| `POST {{base_url}}/users` | Request line: method, then URL. |
+| `Content-Type: ...` | Headers, one `Key: Value` per line. |
+| *(blank line)* | Separates headers from body. |
+| `{ ... }` | Body — everything until the next `#` line or `###`. |
+| `# @set` | Extracts a value from the response into a variable. |
+| `# @tests` | Starts a script block; the following lines are JavaScript. |
+
+## Request separators
+
+`###` starts a new request. Text after it is treated as a comment, so it doubles as a human-readable
+title:
+
+```http
+### List all posts
+GET https://example.com/posts
+
+### Get one post
+GET https://example.com/posts/1
+```
+
+A file without any `###` is a single request.
+
+## Methods and URLs
+
+The method must be the first token on the request line. Recognised methods:
+
+`GET`, `POST`, `PUT`, `PATCH`, `DELETE`, `HEAD`, `OPTIONS`, `CONNECT`, `TRACE`, plus the
+protocol-specific `WEBSOCKET` (alias `WS`) and `GRPC`.
+
+The URL may be on the same line or the next one, and may contain `{{variable}}` placeholders:
+
+```http
+GET {{base_url}}/posts?userId={{user_id}}
+```
+
+URLs are also recognised by scheme — `http://`, `https://`, `ws://`, `wss://`, `grpc://` — or by
+containing a `{{variable}}`.
+
+## Headers
+
+Headers are `Key: Value` lines after the request line. A line starting with `{` or `[` is treated as
+a body, never a header, so JSON bodies are never mistaken for one.
+
+```http
+GET https://httpbin.org/headers
+X-Protide-Test: hello
+Accept: application/json
+```
+
+**Disabled headers** round-trip as comments. Unchecking a header row in the UI writes it as
+`# Key: Value`, and reading the file back restores it as a disabled row:
+
+```http
+GET https://example.com/
+Accept: application/json
+# X-Debug: 1
+```
+
+## Bodies
+
+The body is everything after the blank line that follows the headers, until a `#` line or the next
+`###`. JSON, XML, and plain text all work as-is:
+
+```http
+POST https://httpbin.org/post
+Content-Type: application/json
+
+{"probe": "protide", "value": 42}
+```
+
+For WebSocket and Socket.IO requests the body is the message to send; for gRPC and tRPC it is the
+request message or procedure input. Form and binary bodies are configured in the UI's **Body** tab.
+
+## Comments
+
+A `#` line that is not an annotation is a comment. Comments are preserved on save.
+
+```http
+### Bearer auth
+# httpbin returns 200 only when the token is present
+GET https://httpbin.org/bearer
+Authorization: Bearer my-secret-token
+```
+
+## Script blocks
+
+`# @pre-script`, `# @post-script`, and `# @tests` start a JavaScript block. The block runs until the
+next annotation (`# @…`) or the next `###` — there is no closing delimiter:
+
+```http
+POST https://httpbin.org/post
+
+{"purpose": "pre-script demo"}
+
+# @pre-script
+request.setHeader("X-Timestamp", new Date().toISOString());
+
+# @tests
+expect(response.status).toBe(200);
+```
+
+<Callout type="warning">
+Protide does **not** support the `> {% … %}` script syntax used by some other REST clients. Use the
+annotation blocks above.
+</Callout>
+
+## What is not supported
+
+- **File-level variable declarations.** `@name = value` lines at the top of a file are not parsed;
+  define variables in an [environment](/docs/workspace/environments) instead.
+- **`> file.json` body references** and response-ref (`<>`) directives.
+- **Unknown annotations** are ignored rather than rejected, so extra metadata is harmless.

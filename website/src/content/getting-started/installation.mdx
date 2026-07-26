@@ -1,0 +1,139 @@
+---
+title: Installation
+description: Install Protide on macOS or Linux from a release, a package, the install script, or source.
+---
+
+# Installation
+
+Every release ships a macOS `.dmg` and Linux `.tar.gz`, `.deb`, and `.rpm` packages for `x86_64`.
+Other platforms (Windows, Linux on ARM) build from source.
+
+<Callout type="info">
+Protide is alpha software distributed unsigned. macOS Gatekeeper will need
+`System Settings → Privacy & Security → Open Anyway` the first time you launch it.
+</Callout>
+
+## macOS
+
+Download `protide-<version>-macos.dmg` from the
+[latest release](https://github.com/dreygur/protide/releases/latest), open it, and drag
+**Protide** into `/Applications`.
+
+## Linux
+
+<Tabs items={['Install script', 'Debian / Ubuntu', 'Fedora / RHEL', 'Tarball']}>
+  <Tabs.Tab>
+The script detects your architecture, downloads the matching release tarball, and installs the
+binary into `/usr/local/bin` (using `sudo` only if that directory is not writable):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/dreygur/protide/main/install.sh | bash
+```
+
+It reads three optional environment variables: `PROTIDE_VERSION` (default `latest`),
+`PROTIDE_INSTALL_DIR` (default `/usr/local/bin`), and `PROTIDE_REPO`.
+  </Tabs.Tab>
+  <Tabs.Tab>
+Release assets are named `protide-<tag>-amd64.deb`, so with tag `v0.1.0-alpha.4`:
+
+```bash
+curl -LO https://github.com/dreygur/protide/releases/download/v0.1.0-alpha.4/protide-v0.1.0-alpha.4-amd64.deb
+sudo apt install ./protide-v0.1.0-alpha.4-amd64.deb
+```
+
+The package installs `/usr/bin/protide`, the assets under `/usr/share/protide`, and a desktop
+entry with icon.
+  </Tabs.Tab>
+  <Tabs.Tab>
+Release assets are named `protide-<tag>-x86_64.rpm`:
+
+```bash
+curl -LO https://github.com/dreygur/protide/releases/download/v0.1.0-alpha.4/protide-v0.1.0-alpha.4-x86_64.rpm
+sudo dnf install ./protide-v0.1.0-alpha.4-x86_64.rpm
+```
+  </Tabs.Tab>
+  <Tabs.Tab>
+The tarball contains the binary, the `assets/` directory, a `.desktop` file, and
+`install-desktop.sh` for registering the app with your desktop environment:
+
+```bash
+tar xzf protide-<version>-x86_64-linux.tar.gz
+cd protide-<version>-x86_64-linux
+./install-desktop.sh   # optional: adds the menu entry and icon
+./protide
+```
+  </Tabs.Tab>
+</Tabs>
+
+## Build from source
+
+You need a recent stable Rust toolchain.
+
+<Steps>
+### Install system dependencies
+
+Protide draws through GPUI, so it needs the same native libraries as Zed. On Ubuntu/Debian the
+repository's `Makefile` installs them for you:
+
+```bash
+make deps
+```
+
+That target installs the compiler toolchain (`clang`, `lld`, `cmake`), Wayland/X11 and xkbcommon
+headers, `libssl-dev`, `libfontconfig-dev`, `libgit2-dev`, `libvulkan1`, `libasound2-dev`,
+`pipewire`, and `xdg-desktop-portal`. macOS needs only Xcode command line tools.
+
+### Build the release binary
+
+```bash
+git clone https://github.com/dreygur/protide
+cd protide
+make release        # cargo build --release -p protide
+./target/release/protide
+```
+
+<Callout type="warning">
+Build one crate at a time (`-p protide`), which is what the `Makefile` does. Building the whole
+workspace in a single cargo invocation unifies feature flags across members and can pull in an
+optional native-TLS backend that needs system packages beyond `make deps`.
+</Callout>
+
+### Run the test suite
+
+```bash
+make test      # ~190 tests: http-parser, protide-core, protide-ui, protide-lsp, protide-mcp
+```
+</Steps>
+
+## Language server
+
+The LSP server for `.http` files installs separately from crates.io-style git installs:
+
+```bash
+cargo install --git https://github.com/dreygur/protide protide-lsp
+```
+
+See [Editor support](/docs/tools/lsp) for wiring it into Zed, VS Code, or Neovim.
+
+## MCP server
+
+The MCP server is a second binary in the same repository:
+
+```bash
+cargo install --git https://github.com/dreygur/protide protide-mcp
+```
+
+See [MCP server](/docs/tools/mcp) for the client configuration.
+
+## Where Protide keeps its files
+
+| Path | Contents |
+| --- | --- |
+| `<config>/protide/session.json` | Last workspace, open file, editor draft, expanded folders, active environment |
+| `<config>/protide/prefs.json` | UI preferences |
+| `<config>/protide/last_paths.json` | Last-used directories for the file dialogs |
+| `<config>/protide/node_id` | Stable node identity for collaboration |
+
+`<config>` is `~/Library/Application Support` on macOS and `${XDG_CONFIG_HOME:-~/.config}` on Linux.
+Requests themselves live wherever your collections are — Protide never copies them into a hidden
+store.

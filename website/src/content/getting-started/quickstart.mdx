@@ -1,0 +1,120 @@
+---
+title: Quickstart
+description: Send your first request, save it as a .http file, and add an assertion.
+---
+
+# Quickstart
+
+This walks through one request end to end: send it, save it, assert on it, and reuse a value from
+its response.
+
+<Steps>
+### Open a folder as your workspace
+
+Protide has no import step and no internal database. Click the folder icon in the **Explorer** and
+pick any directory — that directory is now your workspace, its subfolders are collections, and its
+`.http` files are requests.
+
+An empty directory is fine; you can save your first request into it.
+
+### Send a request
+
+In the URL bar, leave the mode selector on **HTTP**, keep the method on `GET`, and enter:
+
+```
+https://jsonplaceholder.typicode.com/posts/1
+```
+
+Press <kbd>Ctrl</kbd>+<kbd>Enter</kbd> (or click **Send**). The response pane shows the status code,
+elapsed time, payload size, and a collapsible JSON tree.
+
+### Add a header
+
+Open the **Headers** tab and add `Accept: application/json`. Each row has a checkbox — unchecking it
+keeps the header in the file but excludes it from the request, and it round-trips through the `.http`
+file as a commented-out line.
+
+### Save it as a .http file
+
+Press <kbd>Ctrl</kbd>+<kbd>S</kbd> and save as `posts.http` in your workspace. The file is plain
+text you can diff and commit:
+
+```http filename="posts.http"
+### Get Single Post
+# @name get-post
+
+GET https://jsonplaceholder.typicode.com/posts/1
+Accept: application/json
+```
+
+### Assert on the response
+
+Open the **Scripts** tab, expand **Tests**, and add two assertions:
+
+```js
+expect(response.status).toBe(200);
+expect(response.json().id).toBe(1);
+```
+
+Send again — results appear per assertion with pass/fail state. Saved to the file, the test block
+is an annotation:
+
+```http filename="posts.http"
+### Get Single Post
+# @name get-post
+
+GET https://jsonplaceholder.typicode.com/posts/1
+Accept: application/json
+
+# @tests
+expect(response.status).toBe(200);
+expect(response.json().id).toBe(1);
+```
+
+### Use an environment variable
+
+Open the environment editor in the Explorer's `ENV` row and set `base_url` to
+`https://jsonplaceholder.typicode.com` in the **Development** environment, then rewrite the URL as:
+
+```http
+GET {{base_url}}/posts/1
+```
+
+`{{variable}}` substitution applies to the URL, headers, and body. See
+[Environments](/docs/workspace/environments).
+
+### Chain a second request
+
+Add a request that stores a value from its response and one that consumes it:
+
+```http filename="posts.http"
+### Create Post
+# @name create-post
+
+POST {{base_url}}/posts
+Content-Type: application/json
+
+{"title": "Protide", "body": "hello", "userId": 1}
+
+# @set new_post_id = $.id
+
+### Read It Back
+# @name read-post
+# @depends create-post
+
+GET {{base_url}}/posts/{{new_post_id}}
+```
+
+`# @set` runs a JSONPath expression against the response and writes the result into the active
+environment, so the next request can interpolate it. See
+[Request chaining](/docs/scripting/chaining).
+</Steps>
+
+## Where to go next
+
+<Cards>
+  <Cards.Card title=".http file syntax" href="/docs/http-format/syntax" arrow />
+  <Cards.Card title="Annotations" href="/docs/http-format/annotations" arrow />
+  <Cards.Card title="Scripting" href="/docs/scripting/overview" arrow />
+  <Cards.Card title="Mock server" href="/docs/tools/mock-server" arrow />
+</Cards>

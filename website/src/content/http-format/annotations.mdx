@@ -1,0 +1,130 @@
+---
+title: Annotation Reference
+description: Every annotation Protide understands in a .http file, with accepted values and examples.
+---
+
+# Annotation reference
+
+Annotations are comment lines that begin with `@`. They must appear on their own line as
+`# @key value`, either before the request line or after the body.
+
+| Annotation | Value | Purpose |
+| --- | --- | --- |
+| `# @name` | identifier | Names the request. Used by `# @depends`, the request list, and export. |
+| `# @description` | free text | Human-readable description; shown in the UI and in exported docs. |
+| `# @protocol` | see below | Chooses the protocol. Defaults to `http` (or the protocol implied by a `WEBSOCKET`/`GRPC` method). |
+| `# @proto` | path | Path to the `.proto` file for a gRPC request. |
+| `# @depends` | comma-separated names | Declares that this request needs other named requests to have run first. |
+| `# @set` | `name = expression` | Extracts a JSONPath value from the response into a variable. Repeatable. |
+| `# @pre-script` | *(block)* | Starts a JavaScript block that runs before the request is sent. |
+| `# @post-script` | *(block)* | Starts a JavaScript block that runs after the response arrives. |
+| `# @tests` | *(block)* | Starts a JavaScript block of `expect()` assertions. |
+
+Unrecognised annotations are ignored, so you can keep your own metadata in the file.
+
+## `@protocol`
+
+| Value | Aliases | Docs |
+| --- | --- | --- |
+| `http` | `rest` | [HTTP](/docs/protocols/http) |
+| `graphql` | `gql` | [GraphQL](/docs/protocols/graphql) |
+| `websocket` | `ws` | [WebSocket](/docs/protocols/websocket) |
+| `grpc` | — | [gRPC](/docs/protocols/grpc) |
+| `trpc` | — | [tRPC](/docs/protocols/trpc) |
+| `socketio` | `socket.io` | [Socket.IO](/docs/protocols/socketio) |
+
+Values are case-insensitive. An unknown value is a parse error that points at the offending line.
+
+```http
+### Countries query
+# @protocol graphql
+
+POST https://countries.trevorblades.com/graphql
+Content-Type: application/json
+
+{"query": "{ countries { code name } }"}
+```
+
+## `@name` and `@depends`
+
+`@name` gives the request a stable identifier. `@depends` records that this request consumes
+something another request produced — typically a variable set by `# @set`:
+
+```http
+### Login
+# @name login
+
+POST {{base_url}}/login
+Content-Type: application/json
+
+{"user": "protide", "password": "secret"}
+
+# @set auth_token = $.token
+
+### Profile
+# @name profile
+# @depends login
+
+GET {{base_url}}/me
+Authorization: Bearer {{auth_token}}
+```
+
+Multiple dependencies go on one line: `# @depends login, seed-data`.
+
+## `@set`
+
+`# @set name = expression` evaluates a [JSONPath](https://goessner.net/articles/JsonPath/)
+expression against the response body and stores the result in the active environment:
+
+```http
+# @set new_post_id = $.id
+# @set first_user_email = $.0.email
+# @set country_name = $.data.country.name
+```
+
+Extraction requires a JSON response; a non-JSON body fails every extraction on that request with an
+explanatory error. Details in [Request chaining](/docs/scripting/chaining).
+
+## `@proto`
+
+Points at the `.proto` file describing the service. Relative paths resolve against your working
+directory:
+
+```http
+### Get employee
+# @protocol grpc
+# @proto e2e/grpc/employee.proto
+
+GRPC grpc://{{grpc_host}}/e2e.testing.EmployeeService/GetEmployee
+
+{"id": 1}
+```
+
+## Script annotations
+
+Each of the three script blocks runs in a fresh QuickJS runtime with a 5-second deadline. The
+globals differ per block — see [Scripting](/docs/scripting/overview).
+
+```http
+POST {{base_url}}/orders
+Content-Type: application/json
+
+{"sku": "ABC", "qty": 2}
+
+# @pre-script
+request.setHeader("Idempotency-Key", "order-" + Date.now());
+
+# @post-script
+console.log("created in", response.time + "ms");
+env.set("order_id", response.json().id);
+
+# @tests
+expect(response.status).toBe(201);
+expect(response.json()).toHaveProperty("id");
+```
+
+<Callout>
+`expect()` is only defined inside `# @tests`. `response` is only available in `# @post-script` and
+`# @tests`; the request-mutation helpers (`request.setUrl`, `setHeader`, `removeHeader`, `setBody`)
+only in `# @pre-script`.
+</Callout>

@@ -1,0 +1,47 @@
+---
+title: History & Console
+description: Replay recent requests from the history panel and read structured logs in the console.
+---
+
+# History & console
+
+## Request history
+
+Every request you send is recorded in the Explorer's history list with its method, URL, response
+status, and duration. Selecting an entry loads its method, URL, headers, and body back into the
+editor so you can re-send or tweak it.
+
+History keeps the **50 most recent** requests, newest first, and is per session — it is not written
+to disk.
+
+## Console
+
+The console panel (<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>C</kbd>) is a structured log of what the app
+is doing. Each entry carries a level and a source:
+
+| Level | Used for |
+| --- | --- |
+| `Info` | Normal progress — request sent, response received |
+| `Debug` | Detail useful when diagnosing behaviour |
+| `Error` | Failed requests, script errors, connection problems |
+
+| Source | Origin |
+| --- | --- |
+| `Request` | Request execution |
+| `Script` | Your `console.log` / `console.warn` / `console.error` calls in scripts |
+| `System` | App-level events |
+| `Team` | Collaboration and sync activity |
+
+Anything a script logs shows up here as well as next to the response:
+
+```js
+console.log("Status:", response.status);
+console.warn("slow:", response.time + "ms");
+console.error("unexpected shape", response.body);
+```
+
+`console.info` is an alias for `console.log`; `warn` and `error` prefix their messages with
+`[WARN]` / `[ERROR]`.
+
+For running Rust-level logging, start the app with `RUST_LOG=debug` — the binary uses `env_logger`
+and defaults to `info`.

@@ -1,0 +1,58 @@
+---
+title: gRPC
+description: Load a .proto file, pick a service and method, send metadata, and use every streaming mode.
+---
+
+# gRPC
+
+gRPC mode loads a `.proto` file, reflects the services and methods inside it, and encodes your JSON
+message into protobuf using that descriptor. The streaming mode comes from the method's declaration
+in the proto.
+
+## Request shape
+
+The URL identifies the server plus the fully-qualified method path:
+
+```
+grpc://<host>:<port>/<package>.<Service>/<Method>
+```
+
+```http filename="grpc-employee.http"
+### gRPC — Get Employee by ID
+# @name grpc-get-employee
+# @description Fetch a single employee by ID (unary RPC)
+# @protocol grpc
+# @proto e2e/grpc/employee.proto
+
+GRPC grpc://{{grpc_host}}/e2e.testing.EmployeeService/GetEmployee
+
+{"id": 1}
+```
+
+- `# @proto` points at the descriptor. Without it Protide cannot encode the message.
+- The body is the request message as JSON; field names follow the proto.
+- `{{variables}}` work in the URL, so `grpc_host = localhost:50051` keeps the file portable.
+
+## Choosing a service and method
+
+Load the proto in the **gRPC** tab and Protide lists every service and method it declares. Picking a
+method fills in the URL path and records its streaming type.
+
+## Streaming modes
+
+| Mode | Behaviour |
+| --- | --- |
+| `unary` | One request message, one response message. |
+| `server` | One request, a stream of responses collected as they arrive. |
+| `client` | A stream of request messages, one response. |
+| `bidi` | Both directions stream concurrently. |
+
+## Metadata
+
+The metadata table sends gRPC metadata (the protocol's equivalent of headers) as key/value pairs —
+this is where an `authorization` entry goes.
+
+<Callout type="info">
+Protide talks gRPC over HTTP/2 directly. It does not use server reflection: a `.proto` file is
+required, and errors from the server are surfaced with their gRPC status.
+</Callout>

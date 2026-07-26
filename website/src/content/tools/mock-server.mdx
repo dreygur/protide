@@ -1,0 +1,64 @@
+---
+title: Mock Server
+description: Serve static routes from a local HTTP server, or record real traffic into routes.
+---
+
+# Mock server
+
+The mock server panel (<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>M</kbd>) runs an HTTP server inside
+Protide on a port you choose. Point your frontend or your requests at it and it answers from the
+routes you configure.
+
+## Starting it
+
+Pick a port and press **Start**; the panel shows the base URL (for example
+`http://localhost:3001`) and a live indicator. **Stop** shuts it down. Route edits apply immediately —
+no restart.
+
+## Routes
+
+A route matches a method and a path, and returns a configured response.
+
+| Field | Notes |
+| --- | --- |
+| Name | Label shown in the panel |
+| Method | `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, `HEAD`, `OPTIONS`, or `ANY` |
+| Path | Path pattern; `*` is a wildcard segment matcher |
+| Status | Any HTTP status code |
+| Headers | Response headers, e.g. `Content-Type: application/json` |
+| Body | Response body text |
+| Delay | Artificial latency in milliseconds |
+| Enabled | Disable a route without deleting it |
+| Proxy target | When set, the request is forwarded here instead of answering statically |
+
+Wildcards make id-shaped paths easy: `/api/users/*` answers `/api/users/42` and `/api/users/abc`.
+
+```
+GET    /api/users        → 200
+POST   /api/auth/login   → 201
+GET    /api/users/*      → 200
+DELETE /api/users/*      → 204
+```
+
+## Delays
+
+A per-route delay lets you exercise loading states and timeout handling deterministically — set
+`delay` to 1500 ms and your spinner has something to do.
+
+## Record / proxy mode
+
+Enable record mode with a target URL and the mock server becomes a recording proxy: it forwards
+incoming requests to the real API, returns the real response, and captures it as a new static route.
+Turn record mode off and you are serving those captured responses locally — a snapshot of production
+behaviour with nothing hitting production.
+
+<Callout type="info">
+Recorded routes are captured with the status, headers, and body the upstream returned. Review them
+before relying on them; anything sensitive in a recorded response is now in your mock configuration.
+</Callout>
+
+## Typical uses
+
+- Develop a frontend before the backend exists.
+- Reproduce an error response (`500`, malformed body) that is hard to trigger for real.
+- Take a recording of a working flow, then iterate offline.

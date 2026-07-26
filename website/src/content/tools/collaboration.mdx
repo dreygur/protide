@@ -1,0 +1,75 @@
+---
+title: Collaboration
+description: Local-first CRDT sync over libp2p with PAKE pairing, plus bring-your-own-backend file sync.
+---
+
+# Collaboration
+
+Protide's sync is local-first: there is no Protide server, no account, and no telemetry. Peers find
+each other on your network and exchange changes directly, or through a folder you already sync
+yourself.
+
+## How state converges
+
+Shared state is modelled as CRDTs — last-writer-wins registers stamped with a logical clock and a
+node id. Concurrent edits converge to the same result on every peer without a merge dialog: for a
+given field, the highest timestamp wins, with the node id breaking ties deterministically.
+
+Each install has a stable identity persisted at `<config>/protide/node_id`, so a restart rejoins as
+the same node rather than as a stranger.
+
+## Pairing
+
+Every session generates a pairing code in the shape `adjective-noun-NNN`, for example
+`brave-falcon-042`. Share it with a teammate; they paste it into **Join peer** and the two instances
+pair.
+
+The code is the input to a **PAKE** (password-authenticated key exchange), so the channel is
+encrypted from first contact and the code itself never travels over the wire in plaintext. The
+gossip topic derived from the code is a one-way hash, so observers on the mesh cannot recover the
+code from the topic name either.
+
+<Callout type="warning">
+Pairing codes are short and human-shareable, which is what makes them convenient — treat one like a
+password for the session and share it over a channel you trust.
+</Callout>
+
+## Peer-to-peer transport
+
+- **[libp2p](https://libp2p.io/)** carries the messages.
+- **mDNS** discovers peers on the local network automatically.
+- **Gossipsub** propagates CRDT updates on a topic scoped to your pairing code.
+- A lightweight **UDP live probe** (default port `42069`) announces presence so the peer list
+  updates promptly on a LAN.
+
+The presence panel lists connected peers with their names, which default to your `$USER` name.
+
+## Bring your own backend (file sync)
+
+When peers are not on the same network, Protide can sync through a folder you already replicate —
+Dropbox, Google Drive, iCloud, a Git repository, a network share. It creates a `.protide/` directory
+inside the folder and writes individual `.crdt` files there, watching for changes written by other
+peers.
+
+<FileTree>
+  <FileTree.Folder name="Dropbox" defaultOpen>
+    <FileTree.Folder name="team-api" defaultOpen>
+      <FileTree.Folder name=".protide" defaultOpen>
+        <FileTree.File name="a1b2c3.crdt" />
+        <FileTree.File name="d4e5f6.crdt" />
+      </FileTree.Folder>
+      <FileTree.File name="auth.http" />
+      <FileTree.File name="users.http" />
+    </FileTree.Folder>
+  </FileTree.Folder>
+</FileTree>
+
+Because updates are per-file CRDT documents rather than a single shared blob, two people editing
+different requests do not produce a conflicted copy.
+
+## What sync is not
+
+- It does not replace Git for the `.http` files themselves — commit those as usual.
+- It does not require the internet on a LAN, and does not phone home when off it.
+- Environment **values** are not persisted or synced in this alpha; see
+  [Environments](/docs/workspace/environments).

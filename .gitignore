@@ -25,7 +25,9 @@ Thumbs.db
 # Compiled WASM artifacts
 *.wasm
 
-# Website
+# Website (Next.js + Nextra)
 website/node_modules/
-website/dist/
-website/.astro/
+website/.next/
+website/out/
+website/next-env.d.ts
+website/tsconfig.tsbuildinfo

@@ -1,0 +1,98 @@
+---
+title: Contributing
+description: Repository layout, build and test commands, and the conventions Protide follows.
+---
+
+# Contributing
+
+Protide is MIT-licensed and developed in the open at
+[github.com/dreygur/protide](https://github.com/dreygur/protide). Issues and pull requests are
+welcome — especially bug reports with a `.http` file that reproduces the problem.
+
+## Repository layout
+
+<FileTree>
+  <FileTree.Folder name="crates" defaultOpen>
+    <FileTree.Folder name="protide">
+      <FileTree.File name="main.rs — binary entry point" />
+    </FileTree.Folder>
+    <FileTree.Folder name="protide-ui">
+      <FileTree.File name="panels/ — request, response, explorer, mock server, console" />
+    </FileTree.Folder>
+    <FileTree.Folder name="protide-core">
+      <FileTree.File name="execution/ import/ export/ codegen/ scripting/ sync/ mock_server/" />
+    </FileTree.Folder>
+    <FileTree.Folder name="http-parser">
+      <FileTree.File name="lexer.rs parser.rs ast.rs" />
+    </FileTree.Folder>
+    <FileTree.Folder name="protide-lsp">
+      <FileTree.File name="hover.rs completion.rs diagnostics.rs …" />
+    </FileTree.Folder>
+    <FileTree.Folder name="protide-mcp">
+      <FileTree.File name="main.rs" />
+    </FileTree.Folder>
+  </FileTree.Folder>
+  <FileTree.Folder name="extensions">
+    <FileTree.File name="zed/ vscode/" />
+  </FileTree.Folder>
+  <FileTree.Folder name="e2e">
+    <FileTree.File name=".http suites per protocol" />
+  </FileTree.Folder>
+  <FileTree.Folder name="website">
+    <FileTree.File name="this site (Next.js + Nextra)" />
+  </FileTree.Folder>
+</FileTree>
+
+- **`protide-ui`** holds all GPUI code. **`protide-core`** holds business logic and stays UI-free, so
+  it is testable without a window.
+- **`http-parser`** is a standalone crate — usable outside Protide.
+
+## Commands
+
+```bash
+make deps       # system packages (Ubuntu/Debian)
+make release    # cargo build --release -p protide
+make run        # cargo run --release -p protide
+make test       # full suite, crate by crate
+make check      # cargo check, crate by crate
+make clippy     # lints, crate by crate
+make fmt        # cargo fmt --all
+```
+
+<Callout type="warning">
+Targets build and test **one crate at a time** rather than `--workspace`. A single workspace-wide
+cargo invocation unifies feature flags across members and can drag in an optional native-TLS backend
+that needs system packages beyond `make deps`.
+</Callout>
+
+Run the app with `RUST_LOG=debug` for verbose logging.
+
+## Conventions
+
+The repository's `CLAUDE.md` records the house rules; the ones that shape review most often:
+
+- **Minimum code.** No speculative abstraction, no padding.
+- **DRY.** Extract shared logic the second time you need it.
+- **No dead code.** Unused functions, fields, and imports get removed.
+- **333 lines per file** maximum, tests excluded — split before exceeding.
+- **GPUI patterns come from Zed.** Zed's source is the reference for layout and rendering questions;
+  check it before inventing an approach.
+
+## End-to-end suites
+
+`e2e/` holds real `.http` files per protocol — HTTP, GraphQL, WebSocket, gRPC, tRPC, Socket.IO — that
+double as documentation and as a manual smoke test. Several point at public echo services
+(`httpbin.org`, `jsonplaceholder.typicode.com`, `echo.websocket.org`); the gRPC, tRPC, and Socket.IO
+suites need a local server, and each file documents what to start.
+
+## Working on this site
+
+```bash
+cd website
+npm install
+npm run dev     # http://localhost:3000/protide
+npm run build   # static export into out/ then a Pagefind search index
+```
+
+Docs pages are MDX under `website/src/content/`, with `_meta.ts` files controlling sidebar order and
+titles. The landing page is React under `website/src/components/landing/`.

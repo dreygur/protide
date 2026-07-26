@@ -4,16 +4,27 @@
   "version": "0.1.0-alpha.4",
   "private": true,
   "scripts": {
-    "dev": "astro dev",
-    "build": "astro build",
-    "preview": "astro preview"
+    "dev": "next dev --webpack",
+    "build": "next build --webpack",
+    "postbuild": "pagefind --site out --output-path out/_pagefind"
   },
   "dependencies": {
-    "@astrojs/sitemap": "^3.7.2",
-    "astro": "^6.3.6"
+    "next": "^16.2.11",
+    "nextra": "^4.6.1",
+    "nextra-theme-docs": "^4.6.1",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
+  },
+  "overrides": {
+    "postcss": "^8.5.23",
+    "sharp": "^0.35.3",
+    "zod": "~4.1.12"
   },
   "devDependencies": {
-    "@tailwindcss/vite": "~4.1.18",
+    "@tailwindcss/postcss": "~4.1.18",
+    "@types/node": "^24.0.0",
+    "@types/react": "^19.2.0",
+    "pagefind": "^1.5.2",
     "tailwindcss": "~4.1.18",
     "typescript": "^5.5.0"
   }

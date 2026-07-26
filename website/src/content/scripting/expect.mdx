@@ -1,0 +1,116 @@
+---
+title: expect() Reference
+description: Every matcher in Protide's assertion API, including .not negation.
+---
+
+# `expect()` reference
+
+`expect(actual)` returns a matcher object. Each matcher records a result — name, expected value, and
+actual value — which the response pane lists as a pass or fail. Assertions do not throw, so one
+failure does not stop the rest of the block.
+
+`expect()` is defined **only inside `# @tests`** blocks.
+
+## Matchers
+
+| Matcher | Passes when |
+| --- | --- |
+| `toBe(expected)` | `actual === expected` |
+| `toEqual(expected)` | Deep equality (objects, arrays, primitives; key order ignored) |
+| `toBeTruthy()` | `!!actual` |
+| `toBeFalsy()` | `!actual` |
+| `toBeNull()` | `actual === null` |
+| `toBeUndefined()` | `actual === undefined` |
+| `toBeDefined()` | `actual !== undefined` |
+| `toBeGreaterThan(n)` | `actual > n` |
+| `toBeGreaterThanOrEqual(n)` | `actual >= n` |
+| `toBeLessThan(n)` | `actual < n` |
+| `toBeLessThanOrEqual(n)` | `actual <= n` |
+| `toContain(item)` | String contains substring, or array includes item |
+| `toHaveLength(n)` | `actual.length === n` |
+| `toHaveProperty(path)` | Dotted path exists (`"address.geo.lat"`) |
+| `toHaveProperty(path, value)` | Path exists and strictly equals `value` |
+| `toMatch(pattern)` | `RegExp` (or string compiled to one) matches |
+
+## Negation
+
+`.not` inverts the next matcher and prefixes the reported name with `not`:
+
+```js
+expect(response.status).not.toBe(500);
+expect(response.json()).not.toHaveProperty("errors");
+expect(response.body).not.toContain("stack trace");
+```
+
+## Deep equality details
+
+`toEqual` compares recursively with `Object.is` semantics, so `NaN` equals `NaN` but never equals
+`null` or `undefined`. Arrays must match in length and order. A property explicitly set to
+`undefined` counts as present, so `{a: 1, b: undefined}` does **not** equal `{a: 1}`.
+
+## Examples
+
+```http
+### Get All Posts
+# @name get-posts
+
+GET https://jsonplaceholder.typicode.com/posts
+
+# @tests
+expect(response.status).toBe(200);
+expect(response.json()).toHaveLength(100);
+expect(response.json()[0]).toHaveProperty("userId");
+```
+
+Loops, locals, and helper functions are all fine inside a block:
+
+```http
+### Posts by user
+# @name get-posts-by-user
+
+GET https://jsonplaceholder.typicode.com/posts?userId=1
+
+# @tests
+const posts = response.json();
+expect(posts.length).toBeGreaterThan(0);
+for (const p of posts) {
+  expect(p.userId).toBe(1);
+}
+```
+
+Assert on shape and types:
+
+```http
+### User shape
+# @name assert-shape
+
+GET https://jsonplaceholder.typicode.com/users/1
+
+# @tests
+const u = response.json();
+expect(u.email).toContain("@");
+expect(u.address).toHaveProperty("city");
+expect(u.address.geo).toHaveProperty("lat");
+expect(typeof u.phone).toBe("string");
+```
+
+Timing and negative cases are assertions too:
+
+```http
+### Timing
+# @name timing
+
+GET https://httpbin.org/delay/1
+
+# @tests
+expect(response.time).toBeLessThan(5000);
+expect(response.time).toBeGreaterThan(800);
+
+### Missing resource
+# @name assert-404
+
+GET https://httpbin.org/status/404
+
+# @tests
+expect(response.status).toBe(404);
+```

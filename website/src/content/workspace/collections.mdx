@@ -1,0 +1,56 @@
+---
+title: Collections
+description: Folders are collections, .http files are requests - how Protide organises a workspace.
+---
+
+# Collections
+
+A collection is a folder. A request is a `.http` file. There is no database, no proprietary export
+format, and no import step: point Protide at a directory and it is your workspace.
+
+## Layout
+
+<FileTree>
+  <FileTree.Folder name="api-tests" defaultOpen>
+    <FileTree.Folder name="auth" defaultOpen>
+      <FileTree.File name="login.http" />
+      <FileTree.File name="refresh.http" />
+    </FileTree.Folder>
+    <FileTree.Folder name="users">
+      <FileTree.File name="crud.http" />
+    </FileTree.Folder>
+    <FileTree.Folder name="grpc">
+      <FileTree.File name="employee.proto" />
+      <FileTree.File name="employee.http" />
+    </FileTree.Folder>
+  </FileTree.Folder>
+</FileTree>
+
+One file can hold many requests, separated by `###`. Group them however your team already groups
+code — by service, by feature, by test suite.
+
+## Why files
+
+- **Git is the sync layer.** Requests diff and review like source; branches and history come free.
+- **Nothing is hidden.** No cache to clear, no cloud copy to reconcile.
+- **Other tools can read them.** `.http` is a widely supported format, and the same files drive
+  Protide's [language server](/docs/tools/lsp).
+
+## Working in the Explorer
+
+The Explorer shows the folder tree with a protocol or method badge per request, plus the request
+[history](/docs/workspace/history) and the environment selector. Files open in the request editor;
+<kbd>Ctrl</kbd>+<kbd>S</kbd> writes the editor state back to disk.
+
+Protide remembers, per workspace, which file was open, which folders were expanded, which environment
+was active, and any unsaved draft — so reopening the app puts you back where you were.
+
+## Getting requests in and out
+
+| Direction | Formats |
+| --- | --- |
+| Import | cURL commands, Postman collections, Bruno `.bru`, OpenAPI/Swagger |
+| Export | Markdown documentation for a whole collection tree |
+| Generate | Client code in cURL, Python, JavaScript, Go, or Rust |
+
+See [Import & export](/docs/tools/import-export) and [Code generation](/docs/tools/codegen).

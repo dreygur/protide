@@ -1,0 +1,53 @@
+---
+title: Introduction
+description: Protide is a native, GPU-accelerated desktop API client for HTTP, GraphQL, WebSocket, gRPC, tRPC, and Socket.IO.
+---
+
+# Protide
+
+Protide is a native desktop API testing tool built with **Rust** and
+[GPUI](https://github.com/zed-industries/zed), the GPU-accelerated UI framework behind the Zed
+editor. It speaks HTTP, GraphQL, WebSocket, gRPC, tRPC, and Socket.IO from one window, and stores
+every request as a plain `.http` file on your disk.
+
+<Callout type="warning">
+Protide is **alpha** software. Formats and UI are still moving; expect rough edges and please
+[open an issue](https://github.com/dreygur/protide/issues/new) when you hit one.
+</Callout>
+
+## Why another API client
+
+- **Native, not Electron.** A Rust binary drawing through the GPU — it starts in milliseconds and
+  stays responsive with large responses.
+- **Your files, your repo.** A collection is a folder; a request is a `.http` file. Diff it, review
+  it, and commit it like any other source file.
+- **One tool per protocol is a tax.** HTTP, GraphQL, WebSocket, gRPC, tRPC, and Socket.IO all live
+  in the same editor, switched by a single `# @protocol` annotation.
+- **Scriptable.** JavaScript pre/post-request scripts and an `expect()` assertion API run inside the
+  app via [rquickjs](https://github.com/DelSkayn/rquickjs).
+- **No account, no cloud.** Team sync is peer-to-peer and local-first; nothing leaves your machine
+  unless you point it at your own storage.
+
+## Start here
+
+<Cards>
+  <Cards.Card title="Installation" href="/docs/getting-started/installation" arrow />
+  <Cards.Card title="Quickstart" href="/docs/getting-started/quickstart" arrow />
+  <Cards.Card title=".http file syntax" href="/docs/http-format/syntax" arrow />
+  <Cards.Card title="Annotation reference" href="/docs/http-format/annotations" arrow />
+</Cards>
+
+## What's in the box
+
+| Area | What you get |
+| --- | --- |
+| Protocols | HTTP/HTTPS, GraphQL, WebSocket, gRPC (all streaming modes), tRPC, Socket.IO |
+| Request editor | Method + URL bar, headers, query params, JSON/raw/XML/form/binary bodies, Bearer / Basic / API-key auth |
+| Collections | Folder-based collections, request history, `{{variable}}` environments |
+| Scripting | Pre-request and post-response JavaScript, `expect()` tests, JSONPath chaining |
+| Mock server | Local HTTP server with static routes, delays, and record/proxy mode |
+| Codegen | cURL, Python, JavaScript, Go, Rust |
+| Import | cURL commands, Postman collections, Bruno `.bru`, OpenAPI/Swagger |
+| Export | Markdown documentation for a whole collection |
+| Collaboration | CRDT sync over libp2p (mDNS + Gossipsub), PAKE pairing, bring-your-own-backend file sync |
+| Tooling | `protide-lsp` language server, `protide-mcp` MCP server, Zed and VS Code extensions |

@@ -1,0 +1,67 @@
+---
+title: tRPC
+description: Call tRPC queries and mutations over the HTTP adapter, with schema-assisted procedure selection.
+---
+
+# tRPC
+
+tRPC mode targets the tRPC v10/v11 HTTP adapter. You supply the base URL, a procedure name, and the
+procedure input as JSON; Protide decides the HTTP shape from the procedure prefix.
+
+## Queries vs mutations
+
+The procedure name may carry a prefix that selects the verb:
+
+| Procedure | Request |
+| --- | --- |
+| `query.users.get` | `GET <base>/users.get?input={"json":<params>}` |
+| `mutation.users.create` | `POST <base>/users.create` with body `{"json":<params>}` |
+| `users.get` *(no prefix)* | Treated as a query. |
+
+## In a .http file
+
+Everything after `/trpc/` in the URL is the procedure; the body is the input:
+
+```http filename="trpc-example.http"
+### tRPC — Query: get user by ID
+# @name trpc-users-get
+# @protocol trpc
+
+GET http://localhost:3000/trpc/users.getById
+
+{"id": 1}
+
+### tRPC — Mutation: create user
+# @name trpc-users-create
+# @protocol trpc
+
+POST http://localhost:3000/trpc/users.create
+
+{"name": "Alice", "email": "alice@example.com"}
+```
+
+<Callout>
+Protide wraps your input in tRPC's `{"json": …}` envelope for you — write the plain input object, not
+the envelope.
+</Callout>
+
+## Procedure discovery
+
+If your server exposes its schema, Protide can fetch it and list the available procedures in a
+sidebar; selecting one fills in the procedure field with its full name, including the
+`query.`/`mutation.` prefix.
+
+## Responses are unwrapped
+
+Protide peels off the tRPC envelope before showing you the response: it unwraps a batch array,
+then reads `result.data.json`, falling back to `result.data` and then `result`. What you see — and
+what assertions run against — is the procedure's return value itself:
+
+```http
+# @tests
+expect(response.status).toBe(200);
+expect(response.json()).toHaveProperty("id");
+```
+
+A tRPC `error` in the payload (v10's `error.json`, or a bare `error` for older servers) is reported
+as a failed request with its code, message, and data, rather than as a successful response.

@@ -1,0 +1,77 @@
+---
+title: Environments
+description: Define {{variable}} sets per environment and substitute them into URLs, headers, and bodies.
+---
+
+# Environments
+
+An environment is a named set of key/value pairs. The active environment's values are substituted
+into every `{{variable}}` placeholder before a request is sent.
+
+## Defaults
+
+Protide starts with two environments:
+
+| Environment | Variables |
+| --- | --- |
+| **Development** *(active)* | `base_url = http://localhost:3000`, `api_key = dev-api-key-123` |
+| **Production** | `base_url = https://api.example.com`, `api_key = prod-api-key-456` |
+
+Edit them, rename them, add your own, or delete the ones you do not need — one environment always
+remains.
+
+## Where substitution applies
+
+`{{variable}}` is expanded in the URL, headers, query parameters, body, and auth fields:
+
+```http
+### Variable substitution
+# @name variable-substitution
+
+GET {{base_url}}/get?userId={{user_id}}
+X-User-ID: {{user_id}}
+Authorization: Bearer {{auth_token}}
+```
+
+Two details worth knowing:
+
+- An **unknown variable is left verbatim** (`{{typo}}` stays in the URL) rather than replaced with an
+  empty string, so mistakes are visible instead of producing a silently wrong request.
+- Substituted values are **not re-scanned**. If a value captured from a response happens to contain
+  `{{…}}`-shaped text, it is passed through literally instead of being expanded again.
+
+## Setting variables at runtime
+
+Two mechanisms write into the active environment while requests run:
+
+```http
+# From the response body, by JSONPath
+# @set auth_token = $.json.token
+```
+
+```js
+// From a script
+env.set("auth_token", response.json().token);
+env.get("auth_token");
+env.has("auth_token");
+env.remove("auth_token");
+```
+
+Both are covered in [Request chaining](/docs/scripting/chaining).
+
+## Switching environments
+
+The `ENV` row at the bottom of the Explorer selects the active environment; the editor opens from the
+same row. Protide remembers the active environment per workspace and re-selects it on restart.
+
+<Callout type="warning">
+Environment **values are not written to disk** in this alpha — only the name of the active
+environment is remembered between sessions. Treat them as scratch space for now, and keep anything
+you need to persist in the `.http` files themselves or in your shell environment.
+</Callout>
+
+## Secrets
+
+Because environment values are not persisted, they are also not committed anywhere by Protide. For
+shared setups, keep placeholders like `{{token}}` in the committed `.http` files and fill the values
+per machine — or capture them at runtime with a login request and `# @set`.

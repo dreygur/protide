@@ -1,0 +1,95 @@
+---
+title: HTTP
+description: Methods, headers, query params, body types, and authentication for HTTP requests.
+---
+
+# HTTP
+
+HTTP is the default protocol: any request without a `# @protocol` annotation is sent over HTTP by a
+blocking `reqwest` client on a background thread, so the UI stays responsive while a request is in
+flight.
+
+## Methods
+
+`GET`, `POST`, `PUT`, `PATCH`, `DELETE`, `HEAD`, `OPTIONS`, `CONNECT`, and `TRACE` are all
+recognised. The method dropdown colours each one the same way the response status pills are
+coloured, so a file's shape is readable at a glance.
+
+## Query parameters
+
+The **Params** tab and the URL stay in sync: editing `?userId=1` in the URL fills the params table,
+and editing the table rewrites the URL. Rows can be disabled without deleting them.
+
+```http
+### Posts by user
+# @name get-posts-by-user
+
+GET https://jsonplaceholder.typicode.com/posts?userId=1
+```
+
+## Headers
+
+Headers are `Key: Value` lines. Each row has an enable checkbox; disabled rows persist to the file as
+`# Key: Value` comments and come back as disabled rows.
+
+```http
+GET https://httpbin.org/headers
+X-Protide-Test: hello
+Accept: application/json
+
+# @tests
+expect(response.json().headers["X-Protide-Test"]).toBe("hello");
+```
+
+## Body types
+
+The **Body** tab offers five types:
+
+| Type | Notes |
+| --- | --- |
+| `json` | JSON editor with syntax highlighting; sends `Content-Type: application/json` when you set it. |
+| `xml` | Raw text with XML highlighting. |
+| `raw` | Any text payload, no assumptions. |
+| `form` | Key/value pairs, including file fields for multipart uploads. |
+| `binary` | Sends a file from disk as the body. |
+
+In a `.http` file, the body is simply the text after the blank line following the headers:
+
+```http
+POST https://httpbin.org/post
+Content-Type: application/json
+
+{"probe": "protide", "value": 42}
+```
+
+## Authentication
+
+The **Auth** tab writes the appropriate header or query parameter for you:
+
+| Type | Effect |
+| --- | --- |
+| `none` | No auth applied. |
+| `bearer` | `Authorization: Bearer <token>` |
+| `basic` | `Authorization: Basic <base64(user:password)>` |
+| `apikey` | Key/value sent either as a header or as a query parameter. |
+
+Auth values accept `{{variables}}`, so a token captured by a previous request can be used directly:
+
+```http
+### Authenticated request
+# @name use-stored-token
+# @depends extract-token
+
+GET https://httpbin.org/bearer
+Authorization: Bearer {{auth_token}}
+
+# @tests
+expect(response.status).toBe(200);
+expect(response.json().authenticated).toBe(true);
+```
+
+## Reading the response
+
+The response pane reports status, elapsed time, and payload size, and renders JSON as a collapsible
+tree with drag-select for copying subtrees. Assertion results from `# @tests` and anything logged
+with `console.log` appear alongside it.

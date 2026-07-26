@@ -1,0 +1,85 @@
+---
+title: Socket.IO
+description: Connect to a Socket.IO v4 server, emit events with payloads, and request acknowledgements.
+---
+
+# Socket.IO
+
+Socket.IO mode speaks the Socket.IO v4 protocol: it connects to a namespace, emits named events with
+JSON payloads, and records every event it receives — including acknowledgements — in a ring buffer
+shown as the event history.
+
+## Connecting
+
+The URL is the server origin; a path segment selects a namespace. In a `.http` file the request is a
+`POST` with `# @protocol socketio`:
+
+```http filename="socketio-echo.http"
+### Socket.IO — Connect to Default Namespace
+# @name sio-connect-default
+# @protocol socketio
+
+POST {{sio_host}}
+
+### Socket.IO — Custom Namespace
+# @name sio-custom-namespace
+# @protocol socketio
+
+POST {{sio_host}}/chat
+
+{"event": "join", "payload": {"room": "general"}}
+```
+
+The server must define the namespace — `io.of('/chat').on('connection', …)` for the example above.
+
+## Emitting events
+
+The body describes the emit: the event name, its payload, and whether to wait for an
+acknowledgement.
+
+```http
+### Socket.IO — Emit Chat Message
+# @name sio-emit-chat
+# @protocol socketio
+
+POST {{sio_host}}
+
+{"event": "chat", "payload": {"text": "Hello from Protide!", "user": "e2e-test"}}
+```
+
+| Field | Meaning |
+| --- | --- |
+| `event` | Event name to emit. |
+| `payload` | JSON value sent as the event argument. |
+| `ack` | When `true`, requests an acknowledgement; the server's callback arrives as an ACK entry in the history. |
+
+```http
+### Socket.IO — Emit with Acknowledgement
+# @name sio-emit-ack
+# @protocol socketio
+
+POST {{sio_host}}
+
+{"event": "ping", "payload": {"seq": 1}, "ack": true}
+```
+
+## A local echo server for testing
+
+```bash
+npm i -g socket.io
+node -e "
+  const { Server } = require('socket.io');
+  const io = new Server(3000, { cors: { origin: '*' } });
+  io.on('connection', socket => {
+    socket.onAny((event, ...args) => socket.emit(event, ...args));
+  });
+"
+```
+
+Then set `sio_host = http://localhost:3000` in your environment.
+
+## Event history
+
+Received events are stored with their namespace, event name, payload, and ACK id, and the newest
+entries push the oldest out of the buffer. Use it to confirm both what you emitted and what came
+back.

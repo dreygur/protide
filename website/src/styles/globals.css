@@ -1,0 +1,67 @@
+@import "tailwindcss";
+@import "./tokens.css";
+
+@layer base {
+  /* JetBrains Mono for every code block in the docs theme (Nextra's own token) */
+  :root {
+    --x-font-mono: var(--font-family-mono);
+  }
+
+  html {
+    background-color: var(--color-bg-primary);
+    color: var(--color-text-primary);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    scroll-behavior: smooth;
+  }
+
+  ::selection {
+    background: color-mix(in srgb, var(--color-accent) 30%, transparent);
+  }
+
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: var(--color-bg-primary);
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: var(--color-border);
+    border-radius: 3px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--color-text-muted);
+  }
+}
+
+/* Landing page shell — mono type, matching the app's chrome */
+.landing {
+  font-family: var(--font-family-mono);
+  background: var(--color-bg-primary);
+  color: var(--color-text-primary);
+}
+
+.landing .feature-card:hover {
+  border-color: var(--card-accent);
+}
+
+/* Scroll-reveal, driven by the IntersectionObserver in ScrollReveal.tsx */
+@media (prefers-reduced-motion: no-preference) {
+  .landing [data-animate] {
+    opacity: 0;
+    transform: translateY(18px);
+    transition:
+      opacity 0.55s ease,
+      transform 0.55s ease;
+    transition-delay: var(--anim-delay, 0ms);
+  }
+
+  .landing [data-animate].in-view {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

@@ -1,0 +1,58 @@
+---
+title: Import & Export
+description: Bring requests in from cURL, Postman, Bruno, or OpenAPI, and export a collection as Markdown.
+---
+
+# Import & export
+
+## Import
+
+Protide reads four formats and converts them into ordinary requests you can save as `.http` files.
+
+| Format | Recognised by |
+| --- | --- |
+| **cURL** command | Content starting with `curl ` |
+| **Postman** collection | JSON with an `info.schema` field |
+| **Bruno** `.bru` | `.bru` extension, or a `meta { … }` block with a method block |
+| **OpenAPI / Swagger** | `.yaml` / `.yml`, or JSON with an OpenAPI/Swagger version field |
+
+Format detection tries the file extension first, then inspects the content — so a `.json` file is
+classified as Postman or OpenAPI by what is inside it, not by its name.
+
+### Importing a cURL command
+
+Paste a command copied from your browser's network tab:
+
+```bash
+curl 'https://api.example.com/users' \
+  -H 'Authorization: Bearer abc123' \
+  -H 'Accept: application/json'
+```
+
+Method, URL, headers, and body are mapped onto the request editor.
+
+### Folder structure
+
+Postman folders and OpenAPI tags become folders, so an imported collection keeps its grouping when
+you save it to disk. Imports also report **warnings** for anything that could not be represented —
+worth reading rather than dismissing, since that is where auth schemes and exotic body types show up.
+
+<Callout type="warning">
+Bruno and OpenAPI import cover the common cases; unusual constructs may be dropped with a warning.
+If you hit a gap, the import warnings tell you what was skipped —
+[open an issue](https://github.com/dreygur/protide/issues/new) with the source file.
+</Callout>
+
+## Export as Markdown
+
+A whole collection tree can be exported as a single Markdown document: folders become nested
+sections, each `.http` file contributes its requests, and each request is documented with its name,
+description, method, URL, headers, and body. The document is dated and titled after the collection
+folder.
+
+Use it for a README, a wiki page, or a PR description — it is plain Markdown with fenced code blocks.
+
+## Code generation
+
+For per-request output in a programming language, see
+[Code generation](/docs/tools/codegen).

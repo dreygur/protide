@@ -1,0 +1,57 @@
+---
+title: WebSocket
+description: Connect to a WebSocket endpoint, send messages, and watch the message history.
+---
+
+# WebSocket
+
+WebSocket mode replaces **Send** with **Connect**/**Disconnect** and shows a message history that
+autoscrolls as frames arrive. Messages you type are sent on the open connection; the history records
+both directions.
+
+## In a .http file
+
+Use the `WEBSOCKET` method (alias `WS`) with a `ws://` or `wss://` URL. The body is the message to
+send after connecting:
+
+```http filename="websocket-echo.http"
+### WebSocket Echo — JSON Payload
+# @name ws-echo-json
+# @description Send a structured JSON message
+# @protocol websocket
+
+WEBSOCKET wss://echo.websocket.org
+
+{"event": "ping", "id": 1}
+```
+
+## Handshake headers
+
+Headers on a WebSocket request are sent with the HTTP upgrade handshake, which is how you
+authenticate:
+
+```http
+### WebSocket With Custom Headers
+# @name ws-echo-headers
+# @protocol websocket
+
+WEBSOCKET wss://echo.websocket.org
+Authorization: Bearer demo-token
+X-Client-Name: protide-e2e
+
+{"type": "greet", "auth": "present"}
+```
+
+## Variables
+
+`{{variable}}` substitution works in the URL, so environments can point the same request at a local
+or remote server:
+
+```http
+WEBSOCKET {{ws_host}}/socket
+```
+
+<Callout type="info">
+`# @tests` assertions run against request/response pairs and do not apply to a streaming WebSocket
+session. Verify frames in the message history instead.
+</Callout>

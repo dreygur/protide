@@ -34,6 +34,7 @@ jobs:
         run: npm install
         working-directory: website
 
+      # Static export into website/out, then a Pagefind search index (postbuild)
       - name: Build
         run: npm run build
         working-directory: website
@@ -41,7 +42,7 @@ jobs:
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: website/dist
+          path: website/out
 
   deploy:
     name: Deploy

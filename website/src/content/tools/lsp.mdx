@@ -1,0 +1,84 @@
+---
+title: Editor Support (LSP)
+description: Install protide-lsp for .http files in Zed, VS Code, Neovim, or any LSP client.
+---
+
+# Editor support
+
+`protide-lsp` is a standalone language server for `.http` files, built on
+[tower-lsp](https://github.com/ebkalderon/tower-lsp). It speaks the same parser the app uses, so the
+editor and Protide agree on what a file means.
+
+## Install
+
+```bash
+cargo install --git https://github.com/dreygur/protide protide-lsp
+```
+
+The binary is `protide-lsp` and communicates over stdio.
+
+## Capabilities
+
+| Feature | What you get |
+| --- | --- |
+| Hover | Documentation for methods, headers, and annotations |
+| Completion | Methods, header names, annotations, and variables |
+| Diagnostics | Parse errors, unknown `@protocol` values, malformed requests |
+| Semantic tokens | Precise highlighting for methods, URLs, headers, annotations, scripts |
+| Document symbols | Each `###` request as a symbol for outline and quick-jump |
+| Workspace symbols | Search requests across the whole workspace |
+| Go to definition | Jump from a `{{variable}}` or `@depends` to where it comes from |
+| Rename | Rename a request or variable with prepare-rename support |
+| Code actions | Quick fixes and refactors on the request under the cursor |
+| Formatting | Normalise a whole `.http` document |
+| Inlay hints | Inline detail where the syntax leaves it implicit |
+
+## Zed
+
+The repository ships a Zed extension in `extensions/zed/` that registers the language server and a
+tree-sitter grammar for `.http`.
+
+Install it as a dev extension: **zed: install dev extension** from the command palette, then pick the
+`extensions/zed` directory. Make sure `protide-lsp` is on your `PATH`.
+
+## VS Code
+
+The extension in `extensions/vscode/` contributes the `http` language (for `.http` and `.rest`
+files), a TextMate grammar, and a `vscode-languageclient` that launches `protide-lsp`.
+
+```bash
+cd extensions/vscode
+npm install
+npm run compile
+```
+
+Then load the folder with **Developer: Install Extension from Location…**, or press <kbd>F5</kbd> to
+run it in an Extension Development Host.
+
+<Callout type="info">
+Neither extension is published to a marketplace yet — both install from the repository. Packaging
+them is [tracked as future work](https://github.com/dreygur/protide/issues).
+</Callout>
+
+## Neovim
+
+Register the server with any LSP client. With `nvim-lspconfig`:
+
+```lua
+vim.filetype.add({ extension = { http = "http" } })
+
+require("lspconfig.configs").protide_lsp = {
+  default_config = {
+    cmd = { "protide-lsp" },
+    filetypes = { "http" },
+    root_dir = require("lspconfig.util").find_git_ancestor,
+    settings = {},
+  },
+}
+require("lspconfig").protide_lsp.setup({})
+```
+
+## Any other client
+
+Anything that can start a stdio language server works — point it at the `protide-lsp` binary and
+associate it with the `http` filetype.

@@ -129,6 +129,13 @@ protide/
 │           ├── ast.rs
 │           ├── lexer.rs
 │           └── parser.rs
+└── website/                            # Marketing site + docs (Next.js 16 + Nextra 4)
+    ├── next.config.mjs                 # static export, basePath /protide, contentDirBasePath /docs
+    └── src/
+        ├── app/                        # / landing, /docs catch-all, sitemap
+        ├── components/landing/         # landing page React components + UI mockups
+        ├── content/                    # docs MDX + _meta.ts sidebar config
+        └── styles/                     # tokens.css (light-dark() mirror of theme.rs)
 ```
 
 ### Key Technical Decisions
@@ -138,6 +145,8 @@ protide/
 4. **UI framework**: GPUI from Zed - GPU-accelerated, immediate mode style
 5. **Collaboration**: Local-first CRDT, no central server required
 6. **MCP**: JSON-RPC 2.0 over stdio - lets AI tools (Claude, etc.) drive requests
+7. **Website**: Next.js + Nextra (docs theme), statically exported to GitHub Pages. `zod` is pinned
+   to `~4.1` in `website/package.json` overrides - zod 4.4 breaks `nextra-theme-docs`' prop schemas.
 
 ### GPUI Reference
 - **Zed editor is the authoritative GPUI example source.** Always look at Zed's source code for correct GPUI patterns before guessing.

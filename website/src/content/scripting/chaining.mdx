@@ -1,0 +1,124 @@
+---
+title: Request Chaining
+description: Extract values from a response with JSONPath and feed them into the next request.
+---
+
+# Request chaining
+
+Chaining means one request consumes something a previous request produced. Protide gives you two
+ways to capture a value, and `{{variable}}` substitution to spend it.
+
+## `# @set` with JSONPath
+
+`# @set name = expression` runs a JSONPath expression against the response body and writes the result
+into the active environment:
+
+```http filename="chain.http"
+### Create Post
+# @name chain-create
+# @description Step 1 - create a post and store its id
+
+POST https://jsonplaceholder.typicode.com/posts
+Content-Type: application/json
+
+{"title": "Chain Test", "body": "Step 1", "userId": 1}
+
+# @set chained_id = $.id
+
+# @tests
+expect(response.status).toBe(201);
+
+### Read It Back
+# @name chain-read
+# @description Step 2 - read the post created above
+# @depends chain-create
+
+GET https://jsonplaceholder.typicode.com/posts/{{chained_id}}
+
+# @tests
+expect(response.status).toBe(200);
+```
+
+### Expression syntax
+
+| Expression | Selects |
+| --- | --- |
+| `$.id` | Top-level `id` |
+| `$.data.country.name` | Nested field |
+| `$.0.email` | `email` of the first array element |
+| `$.items[0].sku` | Bracket indexing |
+| `$.token` | A login token |
+
+Several extractions per request are fine — repeat the annotation:
+
+```http
+# @set access_token = $.token
+# @set user_id = $.user.id
+```
+
+<Callout type="warning">
+Extraction requires a JSON body. If the response is not valid JSON, every `# @set` on that request
+fails with an explanatory error rather than storing an empty value.
+</Callout>
+
+## `env.set()` in a script
+
+When the value needs computing — decoding, formatting, choosing between fields — use a post-response
+script instead:
+
+```http
+### Login
+# @name login
+
+POST {{base_url}}/login
+Content-Type: application/json
+
+{"user": "protide", "password": "secret"}
+
+# @post-script
+const body = response.json();
+env.set("auth_token", body.access_token);
+env.set("token_expiry", String(Date.now() + body.expires_in * 1000));
+```
+
+## Spending the value
+
+Any `{{variable}}` in the URL, headers, query params, body, or auth fields is substituted before the
+request goes out:
+
+```http
+### Authenticated request
+# @name use-stored-token
+# @depends login
+
+GET https://httpbin.org/bearer
+Authorization: Bearer {{auth_token}}
+```
+
+## `# @depends`
+
+`# @depends other-request` documents the dependency. It is metadata for you and your teammates —
+Protide does not reorder or auto-run dependencies for you. To execute a whole chain in order, use the
+[collection runner](/docs/scripting/runner), which walks files in filesystem order and carries
+captured variables forward.
+
+## Refreshing a token in a pre-request script
+
+```http
+### Any protected call
+# @name protected
+
+GET {{base_url}}/me
+Authorization: Bearer {{auth_token}}
+
+# @pre-script
+const expiry = Number(env.get("token_expiry") || 0);
+if (Date.now() > expiry) {
+  console.warn("token expired - run the login request again");
+}
+```
+
+<Callout type="info">
+Scripts cannot issue HTTP requests of their own (there is no `fetch`). Model a refresh as its own
+request in the collection and run the chain with the collection runner.
+</Callout>

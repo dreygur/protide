@@ -1,0 +1,64 @@
+---
+title: GraphQL
+description: Send GraphQL queries and mutations with variables and an operation name.
+---
+
+# GraphQL
+
+Switch the mode selector to **GraphQL**, or set `# @protocol graphql` in the file. Protide then shows
+a query editor and a separate variables editor, and posts them as a standard GraphQL request body.
+
+## From the UI
+
+The GraphQL mode keeps three fields: the **query**, a JSON **variables** object, and an optional
+**operation name** (needed when a document defines several operations).
+
+## In a .http file
+
+The request is a `POST` whose body is the GraphQL envelope:
+
+```http filename="countries.http"
+### Get Country by Code
+# @name get-country
+# @description Fetch a single country by ISO code using a variable
+# @protocol graphql
+
+POST https://countries.trevorblades.com/graphql
+Content-Type: application/json
+
+{
+  "query": "query GetCountry($code: ID!) { country(code: $code) { name capital currency } }",
+  "variables": { "code": "US" }
+}
+
+# @set country_name = $.data.country.name
+
+# @tests
+expect(response.status).toBe(200);
+const c = response.json().data.country;
+expect(c.name).toBe("United States");
+expect(c.currency).toContain("USD");
+```
+
+## Assertions and extraction
+
+GraphQL responses nest payloads under `data`, so JSONPath expressions and assertions address that
+path:
+
+```http
+# @set country_name = $.data.country.name
+
+# @tests
+expect(response.json().data.countries.length).toBeGreaterThan(200);
+expect(response.json()).not.toHaveProperty("errors");
+```
+
+<Callout>
+A GraphQL error response usually still returns HTTP 200 with an `errors` array. Assert on the payload
+shape, not just the status code.
+</Callout>
+
+## MCP
+
+The MCP server can also issue GraphQL requests: pass `mode: "graphql"` with `graphql_query`,
+`graphql_variables`, and optionally `graphql_operation_name`. See [MCP server](/docs/tools/mcp).

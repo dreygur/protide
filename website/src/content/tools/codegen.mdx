@@ -1,0 +1,58 @@
+---
+title: Code Generation
+description: Turn any request into runnable client code in cURL, Python, JavaScript, Go, or Rust.
+---
+
+# Code generation
+
+Any request can be emitted as client code. The codegen panel shows tabs per language, a
+line-numbered preview, and a copy button.
+
+| Language | Output |
+| --- | --- |
+| cURL | A `curl` invocation with `-X`, `-H`, and `-d` flags (`.sh`) |
+| Python | `requests`-style call (`.py`) |
+| JavaScript | `fetch` call (`.js`) |
+| Go | `net/http` request (`.go`) |
+| Rust | `reqwest` request (`.rs`) |
+
+## Variables are resolved first
+
+Environment variables are substituted before generation, so the output is runnable as-is — no
+`{{base_url}}` placeholders left behind. If you want the placeholder in the output, deactivate the
+environment before copying.
+
+## Example
+
+For this request:
+
+```http
+GET {{base_url}}/users
+Authorization: Bearer {{token}}
+Accept: application/json
+```
+
+the cURL output is:
+
+```bash
+curl \
+  -X GET \
+  'https://api.example.com/users' \
+  -H 'Authorization: Bearer eyJhbGc...' \
+  -H 'Accept: application/json'
+```
+
+and the Rust output:
+
+```rust
+let resp = client
+    .get("https://api.example.com/users")
+    .bearer_auth(token)
+    .send()
+    .await?;
+```
+
+<Callout type="info">
+Code generation covers the HTTP shape of a request: method, URL, headers, and body. Scripts,
+assertions, and non-HTTP protocols (gRPC, Socket.IO) are not part of the generated code.
+</Callout>

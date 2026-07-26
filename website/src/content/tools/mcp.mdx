@@ -1,0 +1,101 @@
+---
+title: MCP Server
+description: Let Claude and other MCP clients send requests through Protide's execution engine.
+---
+
+# MCP server
+
+`protide-mcp` is a Model Context Protocol server: JSON-RPC 2.0 over stdio, one message per line. It
+exposes a single tool, `send_request`, backed by the same execution engine as the app — so scripts,
+assertions, and variable substitution behave identically.
+
+## Install
+
+```bash
+cargo install --git https://github.com/dreygur/protide protide-mcp
+```
+
+## Configure a client
+
+<Tabs items={['Claude Code', 'Claude Desktop', 'Generic']}>
+  <Tabs.Tab>
+```bash
+claude mcp add protide -- protide-mcp
+```
+  </Tabs.Tab>
+  <Tabs.Tab>
+Add to your `claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "protide": {
+      "command": "protide-mcp"
+    }
+  }
+}
+```
+  </Tabs.Tab>
+  <Tabs.Tab>
+Any MCP client that launches a stdio server works. Command: `protide-mcp`, no arguments, no
+environment required.
+  </Tabs.Tab>
+</Tabs>
+
+## The `send_request` tool
+
+| Parameter | Type | Notes |
+| --- | --- | --- |
+| `method` | string, **required** | `GET`, `POST`, `PUT`, `PATCH`, or `DELETE` |
+| `url` | string, **required** | Supports `{{variable}}` substitution |
+| `headers` | array of `{key, value}` | Request headers |
+| `body` | string | Raw body (JSON, XML, text) |
+| `env_vars` | object of string → string | Values substituted into url, headers, and body |
+| `mode` | `"http"` \| `"graphql"` | Defaults to `http` |
+| `graphql_query` | string | Required when `mode` is `graphql` |
+| `graphql_variables` | string | GraphQL variables as a JSON string |
+| `graphql_operation_name` | string | Operation name, when the document has several |
+| `pre_script` | string | JavaScript run before the request |
+| `post_script` | string | JavaScript run after the response |
+| `tests` | string | `expect()` assertions |
+
+Scripts get the same globals as in the app — see [Scripting](/docs/scripting/overview).
+
+Requests execute with a 30-second timeout and TLS verification enabled.
+
+## Example exchange
+
+```json
+{"jsonrpc":"2.0","id":1,"method":"tools/list"}
+```
+
+```json
+{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{
+  "name":"send_request",
+  "arguments":{
+    "method":"POST",
+    "url":"{{base_url}}/login",
+    "env_vars":{"base_url":"https://httpbin.org"},
+    "headers":[{"key":"Content-Type","value":"application/json"}],
+    "body":"{\"user\":\"protide\"}",
+    "tests":"expect(response.status).toBe(200);"
+  }
+}}
+```
+
+The result is a text content block containing the full execution result as pretty-printed JSON:
+status, headers, body, timing, size, console output, assertion results, and any environment changes
+the scripts made.
+
+## Protocol notes
+
+- One JSON-RPC message per line on stdin; one response per line on stdout.
+- Notifications (messages without an `id`) get no response.
+- **Batch requests are rejected** with `-32600`.
+- Lines over 10 MB are rejected rather than buffered.
+- Tool-level failures come back as a normal result with `isError: true`, not as a JSON-RPC error.
+
+<Callout type="warning">
+An MCP client driving this tool can reach anything your machine can reach, including internal hosts,
+and it sends whatever headers it is told to. Treat it like handing out a curl shell.
+</Callout>

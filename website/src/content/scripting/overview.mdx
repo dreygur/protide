@@ -1,0 +1,119 @@
+---
+title: Scripting Overview
+description: Pre-request, post-response, and test scripts - the JavaScript globals available in each.
+---
+
+# Scripting
+
+Protide embeds QuickJS (via [rquickjs](https://github.com/DelSkayn/rquickjs)) and runs three kinds of
+script per request:
+
+| Block | Runs | Typical use |
+| --- | --- | --- |
+| `# @pre-script` | Before the request is sent | Rewrite the URL, add headers, mint a token |
+| `# @post-script` | After the response arrives | Store values, log, post-process |
+| `# @tests` | After the response arrives | `expect()` assertions |
+
+Each block executes in a **fresh runtime** with a **5-second deadline** — a runaway loop is
+interrupted rather than hanging the app. There is no shared state between blocks except the
+environment.
+
+## Globals by block
+
+| Global | pre-script | post-script | tests |
+| --- | :---: | :---: | :---: |
+| `console.log` / `info` / `warn` / `error` | ✅ | ✅ | ✅ |
+| `env.get` / `set` / `has` / `remove` | ✅ | ✅ | ✅ |
+| `request.method` / `url` / `headers` / `body` | ✅ | ✅ | ✅ |
+| `request.setUrl` / `setHeader` / `removeHeader` / `setBody` | ✅ | — | — |
+| `response.*` (status, body, `json()`, …) | — | ✅ | ✅ |
+| `expect()` | — | — | ✅ |
+| `btoa()` / `atob()` | ✅ | ✅ | ✅ |
+
+Standard ECMAScript built-ins (`JSON`, `Date`, `Math`, `RegExp`, string/array methods, `async`
+syntax) are available. There is no `fetch`, no `require`, no Node API, and no `pm.*` namespace.
+
+## `request`
+
+```js
+request.method;  // "POST"
+request.url;     // "https://api.example.com/orders"
+request.headers; // { "Content-Type": "application/json" }
+request.body;    // string, or null
+```
+
+In a pre-request script you can also mutate the outgoing request:
+
+```js
+// @pre-script
+const ts = new Date().toISOString();
+env.set("request_ts", ts);
+request.setUrl("https://httpbin.org/get");
+request.setHeader("X-Request-ID", "protide-" + Math.random().toString(36).slice(2));
+request.setHeader("X-Timestamp", ts);
+request.removeHeader("X-Debug");
+request.setBody(JSON.stringify({ retry: true }));
+```
+
+## `response`
+
+```js
+response.status;      // 200
+response.statusText;  // "OK"
+response.body;        // raw string
+response.time;        // elapsed milliseconds
+response.size;        // bytes
+response.headers;     // object, lower-cased keys
+response.json();      // JSON.parse(response.body)
+response.getHeader("Content-Type"); // case-insensitive lookup, or null
+```
+
+## `env`
+
+```js
+env.get("base_url");            // value, or null
+env.set("auth_token", "abc");   // writes into the active environment
+env.has("auth_token");          // boolean
+env.remove("auth_token");
+```
+
+Values written with `env.set` are visible to subsequent requests through `{{variable}}`
+substitution — the basis of [request chaining](/docs/scripting/chaining).
+
+## `btoa` / `atob`
+
+Base64 helpers backed by native Rust, useful for Basic auth headers:
+
+```js
+request.setHeader("Authorization", "Basic " + btoa("protide:password"));
+```
+
+## Full example
+
+```http filename="http-scripting.http"
+### Post-Script: Extract & Store Token
+# @name extract-token
+# @description Simulates a login and stores the token for later requests
+
+POST https://httpbin.org/post
+Content-Type: application/json
+
+{"username": "protide", "password": "secret", "token": "eyJhbGciOiJIUzI1NiJ9.demo"}
+
+# @set auth_token = $.json.token
+
+# @post-script
+const body = response.json();
+env.set("auth_token", body.json.token);
+console.log("Token stored:", env.get("auth_token").slice(0, 20) + "...");
+
+# @tests
+expect(response.status).toBe(200);
+expect(response.json().json.token).toBeTruthy();
+```
+
+## Errors and timeouts
+
+A thrown exception fails the script and reports the message; exceeding the deadline reports
+`Script execution timed out after 5000ms`. Both appear in the response pane and the
+[console](/docs/workspace/history).

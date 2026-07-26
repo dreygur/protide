@@ -1,0 +1,45 @@
+---
+title: Collection Runner
+description: Run every request in a folder sequentially with pass/fail counts and variables carried forward.
+---
+
+# Collection runner
+
+The runner executes every request in a collection folder one after another, reporting each request's
+result and a running pass/fail tally.
+
+## What it runs
+
+- Every `.http` file **recursively** under the chosen folder, skipping dot-files and dot-directories.
+- Every request inside each file (files with several `###` sections contribute all of them).
+- In **filesystem order**: directories first, then files, each alphabetically. `# @depends` does not
+  affect ordering, so name things so the natural order is the order you want — a `01-login.http`
+  prefix is a reasonable habit.
+
+Requests are named by their `# @name` annotation, or by file stem when unnamed (`crud`, `crud #2`, …).
+
+## Variables flow forward
+
+The run starts from the active environment's variables. After each request, anything it changed is
+merged into the running set for subsequent requests:
+
+- variables written by scripts with `env.set(…)`
+- variables captured by `# @set name = $.path`
+
+That is what makes a login-then-use chain work in a single run.
+
+## Stop on failure
+
+A request counts as failed when any of its `# @tests` assertions fail, or when the request itself
+errors. With **stop on failure** enabled the run halts at the first failure; otherwise it continues
+and reports the totals at the end.
+
+## Results
+
+Each entry shows the request name, its source file, the status and timing, and the individual
+assertion results. Totals are reported as passed and failed counts.
+
+<Callout type="info">
+The runner is sequential by design: requests frequently depend on each other's side effects, and
+concurrency would make chained variables non-deterministic.
+</Callout>
