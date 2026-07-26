@@ -179,9 +179,14 @@ make verify     # fmt-check -> clippy (-D warnings) -> test -> audit
 make hooks      # one-time: enable .githooks (pre-commit fmt+clippy, pre-push verify)
 ```
 
-- **278 tests** (23 http-parser + 170 protide-core + 80 protide-ui + 3 lsp + 2 mcp).
-  `protide-core` is 164 without `--features full-sync`; the 6 PAKE tests are
+- **503 tests** (23 http-parser + 300 protide-core + 80 protide-ui + 98 lsp + 2 mcp),
+  plus 2 `#[ignore]`d tests that document real unfixed defects — see their comments
+  in `execution/sio_codec.rs` and `import/bruno.rs`. Do not delete them; un-ignore
+  them when the defect is fixed.
+  `protide-core` drops tests without `--features full-sync`; the PAKE tests are
   `#![cfg(feature = "pake-auth")]`.
+- Use `execution/test_server.rs` (`TestServer`) for anything needing a real HTTP
+  socket. Never hit an external endpoint from a test.
 - Targets run **crate-by-crate on purpose**. A single `--workspace` invocation unifies
   features across members and can pull in a native-TLS backend needing system packages
   beyond `make deps`. Do not collapse them.
