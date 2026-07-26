@@ -14,32 +14,47 @@ permissions:
   contents: write
 
 jobs:
+  # Gate: no artifact is built or published unless the full local gate passes on
+  # both platforms first. `make verify` is the same command developers run, so
+  # there is one definition of "verified" rather than a CI-only variant.
+  test:
+    name: Verify (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/linux-deps
+        if: runner.os == 'Linux'
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+
+      # fmt-check -> clippy (-D warnings) -> tests -> audit. cargo-audit is not
+      # installed on the runner, so that final step reports a skip rather than
+      # failing; advisories are tracked locally against .cargo/audit.toml.
+      - name: make verify
+        run: make verify
+
   build-linux:
     name: Build Linux
+    needs: test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install system dependencies
+      - uses: ./.github/actions/linux-deps
+
+      - name: Install packaging dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y \
-            libgtk-3-dev \
-            libwebkit2gtk-4.1-dev \
-            libxkbcommon-dev \
-            libxkbcommon-x11-dev \
-            libwayland-dev \
-            libx11-dev \
-            libxcb-shm0-dev \
-            libxcb-xfixes0-dev \
-            libxcb-shape0-dev \
-            libasound2-dev \
-            libfontconfig-dev \
-            libudev-dev \
-            libegl-dev \
-            mesa-common-dev \
-            ruby-dev \
-            rpm
+          sudo apt-get install -y ruby-dev rpm
 
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -107,6 +122,7 @@ jobs:
 
   build-macos:
     name: Build macOS
+    needs: test
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4

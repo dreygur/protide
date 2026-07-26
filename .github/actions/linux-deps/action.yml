@@ -1,0 +1,26 @@
+name: Linux build dependencies
+description: >
+  System packages required to compile and test the GPUI workspace on Ubuntu.
+  Defined once so the test job and the release build job cannot drift apart.
+
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          libgtk-3-dev \
+          libwebkit2gtk-4.1-dev \
+          libxkbcommon-dev \
+          libxkbcommon-x11-dev \
+          libwayland-dev \
+          libx11-dev \
+          libxcb-shm0-dev \
+          libxcb-xfixes0-dev \
+          libxcb-shape0-dev \
+          libasound2-dev \
+          libfontconfig-dev \
+          libudev-dev \
+          libegl-dev \
+          mesa-common-dev
