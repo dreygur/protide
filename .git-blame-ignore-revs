@@ -1,0 +1,5 @@
+# Mechanical reformats. Ignore with:
+#   git config blame.ignoreRevsFile .git-blame-ignore-revs
+
+# style: apply rustfmt across the workspace
+8e498b96bf01365a9df2f724157e05a7af76f3c7
