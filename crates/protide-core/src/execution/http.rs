@@ -22,7 +22,11 @@ fn resolve_request(
     mode: &ExecutionMode,
 ) -> Result<(String, Vec<(String, String)>, ExecutionBody), String> {
     match mode {
-        ExecutionMode::GraphQL { query, variables, operation_name } => {
+        ExecutionMode::GraphQL {
+            query,
+            variables,
+            operation_name,
+        } => {
             let vars: serde_json::Value = if variables.trim().is_empty() {
                 serde_json::json!({})
             } else {
@@ -39,10 +43,17 @@ fn resolve_request(
                 gql_body["operationName"] = serde_json::Value::String(op.clone());
             }
             let mut hdrs = headers.to_vec();
-            if !hdrs.iter().any(|(k, _)| k.eq_ignore_ascii_case("content-type")) {
+            if !hdrs
+                .iter()
+                .any(|(k, _)| k.eq_ignore_ascii_case("content-type"))
+            {
                 hdrs.push(("Content-Type".to_string(), "application/json".to_string()));
             }
-            Ok((url.to_string(), hdrs, ExecutionBody::Text(gql_body.to_string())))
+            Ok((
+                url.to_string(),
+                hdrs,
+                ExecutionBody::Text(gql_body.to_string()),
+            ))
         }
         ExecutionMode::Http => Ok((url.to_string(), headers.to_vec(), body.clone())),
     }
@@ -52,11 +63,20 @@ fn resolve_request(
 /// Applied when `impersonate_browser` is true.  Existing user-supplied values
 /// for the same header names are preserved (user headers take precedence).
 const CHROME_PROFILE: &[(&str, &str)] = &[
-    ("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"),
-    ("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7"),
+    (
+        "User-Agent",
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+    ),
+    (
+        "Accept",
+        "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+    ),
     ("Accept-Language", "en-US,en;q=0.9"),
     ("Accept-Encoding", "gzip, deflate, br, zstd"),
-    ("sec-ch-ua", "\"Google Chrome\";v=\"131\", \"Chromium\";v=\"131\", \"Not_A Brand\";v=\"24\""),
+    (
+        "sec-ch-ua",
+        "\"Google Chrome\";v=\"131\", \"Chromium\";v=\"131\", \"Not_A Brand\";v=\"24\"",
+    ),
     ("sec-ch-ua-mobile", "?0"),
     ("sec-ch-ua-platform", "\"Windows\""),
     ("Upgrade-Insecure-Requests", "1"),
@@ -121,8 +141,12 @@ pub fn run_http(
 
     match &resolved_body {
         ExecutionBody::None => {}
-        ExecutionBody::Text(s) => { req_builder = req_builder.body(s.clone()); }
-        ExecutionBody::Binary(bytes) => { req_builder = req_builder.body(bytes.clone()); }
+        ExecutionBody::Text(s) => {
+            req_builder = req_builder.body(s.clone());
+        }
+        ExecutionBody::Binary(bytes) => {
+            req_builder = req_builder.body(bytes.clone());
+        }
         ExecutionBody::Multipart(parts) => {
             let mut form = reqwest::blocking::multipart::Form::new();
             for part in parts {
@@ -153,7 +177,14 @@ pub fn run_http(
     let body_str = response.text().unwrap_or_default();
     let size = body_str.len();
 
-    Ok(RawResponse { status, status_text, headers: resp_headers, body: body_str, time: elapsed, size })
+    Ok(RawResponse {
+        status,
+        status_text,
+        headers: resp_headers,
+        body: body_str,
+        time: elapsed,
+        size,
+    })
 }
 
 pub(crate) fn status_text(status: u16) -> &'static str {

@@ -1,6 +1,6 @@
+use crate::panels::explorer::{CollectionItem, ExplorerPanel};
 use gpui::Entity;
 use std::path::PathBuf;
-use crate::panels::explorer::{CollectionItem, ExplorerPanel};
 
 pub mod render;
 
@@ -11,7 +11,10 @@ pub struct DocsPanel {
 
 impl DocsPanel {
     pub fn new() -> Self {
-        Self { explorer: None, selected_path: None }
+        Self {
+            explorer: None,
+            selected_path: None,
+        }
     }
 
     pub fn set_explorer(&mut self, explorer: Entity<ExplorerPanel>) {

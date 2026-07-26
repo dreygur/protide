@@ -1,8 +1,11 @@
-use gpui::{Context, IntoElement, MouseButton, ParentElement, SharedString, Styled, div, px};
 use super::*;
+use gpui::{Context, IntoElement, MouseButton, ParentElement, SharedString, Styled, div, px};
 
 impl ExplorerPanel {
-    pub(super) fn render_environment_section(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
+    pub(super) fn render_environment_section(
+        &mut self,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
         let theme = theme::current(cx);
         let active_env_name = self
             .env_state
@@ -277,11 +280,18 @@ impl ExplorerPanel {
                                             .cursor_pointer()
                                             .opacity(0.4)
                                             .hover(|s| s.opacity(1.0))
-                                            .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, _, cx| {
-                                                cx.stop_propagation();
-                                                this.open_env_editor_for(i, cx);
-                                            }))
-                                            .child(icon(ICON_EDIT, ICON_SM, theme.colors.text_secondary))
+                                            .on_mouse_down(
+                                                MouseButton::Left,
+                                                cx.listener(move |this, _, _, cx| {
+                                                    cx.stop_propagation();
+                                                    this.open_env_editor_for(i, cx);
+                                                }),
+                                            )
+                                            .child(icon(
+                                                ICON_EDIT,
+                                                ICON_SM,
+                                                theme.colors.text_secondary,
+                                            ))
                                             .tooltip(tooltip_text("Edit environment")),
                                     ),
                             )

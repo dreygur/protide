@@ -3,9 +3,9 @@
 use std::time::Duration;
 
 use gpui::{
-    canvas, deferred, div, prelude::*, px, uniform_list, Bounds, ClipboardItem, Context, Entity,
-    IntoElement, MouseButton, MouseDownEvent, Pixels, Point, Render, ScrollHandle,
-    SharedString, Styled, UniformListScrollHandle, WeakEntity, Window,
+    Bounds, ClipboardItem, Context, Entity, IntoElement, MouseButton, MouseDownEvent, Pixels,
+    Point, Render, ScrollHandle, SharedString, Styled, UniformListScrollHandle, WeakEntity, Window,
+    canvas, deferred, div, prelude::*, px, uniform_list,
 };
 use gpui_component::scroll::ScrollableElement;
 
@@ -17,48 +17,48 @@ pub(super) const ROW_FONT: f32 = 12.5;
 pub(super) const GUTTER_FONT: f32 = 11.0;
 // Header table layout constants (response headers tab)
 pub(super) const HDR_LABEL_ROW_H: f32 = 22.0; // NAME/VALUE column header: py(6)*2 + font 10px
-pub(super) const HDR_ROW_H: f32 = 28.0;       // data row: py(8)*2 + font 12px
-pub(super) const HDR_SPACER_W: f32 = 4.0;     // div().w(px(4.0)) spacer between columns
-pub(super) const HDR_PADDING: f32 = 12.0;     // px(12.0) left padding in value column
-pub(super) const HDR_CHAR_W: f32 = 7.2;       // JetBrains Mono 12px ≈ font_size × 0.6
-pub(super) const JSON_CHAR_W: f32 = 7.5;      // JetBrains Mono 12.5px ≈ font_size × 0.6
+pub(super) const HDR_ROW_H: f32 = 28.0; // data row: py(8)*2 + font 12px
+pub(super) const HDR_SPACER_W: f32 = 4.0; // div().w(px(4.0)) spacer between columns
+pub(super) const HDR_PADDING: f32 = 12.0; // px(12.0) left padding in value column
+pub(super) const HDR_CHAR_W: f32 = 7.2; // JetBrains Mono 12px ≈ font_size × 0.6
+pub(super) const JSON_CHAR_W: f32 = 7.5; // JetBrains Mono 12.5px ≈ font_size × 0.6
 // Strings longer than COLLAPSE_CHARS get a "show more" toggle in wrap mode.
 pub(super) const COLLAPSE_CHARS: usize = 300;
 // Responses with more rows than this fall back to uniform_list (no wrapping).
 pub(super) const WRAP_MODE_MAX_ROWS: usize = 2000;
 
+use crate::components::icons::{
+    ICON_ARROW_DOWN, ICON_CHECK, ICON_CHEVRON_DOWN, ICON_CHEVRON_RIGHT, ICON_CIRCLE_CHECK,
+    ICON_CLOSE, ICON_COPY, ICON_GLOBE, ICON_MD, ICON_SM, icon,
+};
+use crate::components::selectable_text::{
+    SelectionRange, floor_char_boundary, render_selectable_json_value, selectable_text_element,
+    selection_changed,
+};
+use crate::theme;
+use gpui_component::input::{Input, InputState};
 use log::{debug, warn};
 use protide_core::chaining;
 use protide_core::scripting::results::TestResult;
-use crate::theme;
-use crate::components::selectable_text::{
-    selectable_text_element, selection_changed, render_selectable_json_value, SelectionRange,
-    floor_char_boundary,
-};
-use crate::components::icons::{
-    icon, ICON_SM, ICON_MD, ICON_CLOSE, ICON_CHECK, ICON_CIRCLE_CHECK,
-    ICON_ARROW_DOWN, ICON_COPY, ICON_GLOBE, ICON_CHEVRON_DOWN, ICON_CHEVRON_RIGHT,
-};
-use gpui_component::input::{Input, InputState};
 
-pub mod types;
 pub mod json;
-pub mod render_json_row;
-pub mod render_json;
 pub mod render;
-pub mod render_content;
-pub mod render_tabs;
 pub mod render_body;
-pub mod render_html_preview;
-pub mod render_headers;
+pub mod render_content;
 pub mod render_cookies;
-pub mod render_tests;
 pub mod render_extract;
+pub mod render_headers;
+pub mod render_html_preview;
+pub mod render_json;
+pub mod render_json_row;
+pub mod render_tabs;
+pub mod render_tests;
 pub mod render_util;
+pub mod types;
 
-pub use types::*;
+pub use json::{JsonCtxMenu, JsonRow, PrimVal, RowKind};
 pub use types::format_size;
-pub use json::{PrimVal, RowKind, JsonCtxMenu, JsonRow};
+pub use types::*;
 
 /// Response viewer panel
 pub struct ResponsePanel {
@@ -107,10 +107,10 @@ pub struct ResponsePanel {
     /// Read-only editor for displaying extracted value with syntax highlighting
     pub(super) extraction_editor: Entity<InputState>,
     /// Column widths for resizable tables
-    pub(super) resp_header_col1_w: f32,   // response headers: NAME column
-    pub(super) cookie_col1_w: f32,        // cookies: NAME column
-    pub(super) cookie_col3_w: f32,        // cookies: PATH column
-    pub(super) cookie_col4_w: f32,        // cookies: FLAGS column
+    pub(super) resp_header_col1_w: f32, // response headers: NAME column
+    pub(super) cookie_col1_w: f32, // cookies: NAME column
+    pub(super) cookie_col3_w: f32, // cookies: PATH column
+    pub(super) cookie_col4_w: f32, // cookies: FLAGS column
     /// Active column drag: (drag_id, start_x, start_width)
     /// drag_id: 0=resp_header_col1, 1=cookie_col1, 2=cookie_col3, 3=cookie_col4
     pub(super) resp_col_drag: Option<(u8, f32, f32)>,
@@ -134,15 +134,9 @@ pub struct ResponsePanel {
 
 impl ResponsePanel {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let body_viewer = cx.new(|cx| {
-            InputState::new(window, cx).code_editor("")
-        });
-        let jsonpath_input = cx.new(|cx| {
-            InputState::new(window, cx)
-        });
-        let extraction_editor = cx.new(|cx| {
-            InputState::new(window, cx).multi_line(true)
-        });
+        let body_viewer = cx.new(|cx| InputState::new(window, cx).code_editor(""));
+        let jsonpath_input = cx.new(|cx| InputState::new(window, cx));
+        let extraction_editor = cx.new(|cx| InputState::new(window, cx).multi_line(true));
         Self {
             active_tab: 0,
             response: None,
@@ -191,7 +185,9 @@ impl ResponsePanel {
     pub(super) fn hdr_row_at(&self, ey: Pixels) -> Option<usize> {
         let bounds = self.hdr_table_bounds?;
         let rel_y = f32::from(ey) - f32::from(bounds.origin.y) - HDR_LABEL_ROW_H;
-        if rel_y < 0.0 { return None; }
+        if rel_y < 0.0 {
+            return None;
+        }
         let row = (rel_y / HDR_ROW_H) as usize;
         let n = self.response.as_ref()?.headers.len();
         (row < n).then_some(row)
@@ -199,10 +195,13 @@ impl ResponsePanel {
 
     pub(super) fn hdr_val_byte_at(&self, ex: Pixels, row: usize) -> usize {
         let bounds = self.hdr_table_bounds.unwrap_or_default();
-        let val_col_x = f32::from(bounds.origin.x) + self.resp_header_col1_w + HDR_SPACER_W + HDR_PADDING;
+        let val_col_x =
+            f32::from(bounds.origin.x) + self.resp_header_col1_w + HDR_SPACER_W + HDR_PADDING;
         let char_x = (f32::from(ex) - val_col_x).max(0.0);
         let char_idx = (char_x / HDR_CHAR_W) as usize;
-        let val = self.response.as_ref()
+        let val = self
+            .response
+            .as_ref()
             .and_then(|r| r.headers.get(row))
             .map(|(_, v)| v.as_str())
             .unwrap_or("");
@@ -218,12 +217,16 @@ impl ResponsePanel {
 
         // Clear feedback after 1.5 seconds
         cx.spawn(async move |this, cx| {
-            cx.background_executor().timer(std::time::Duration::from_millis(1500)).await;
+            cx.background_executor()
+                .timer(std::time::Duration::from_millis(1500))
+                .await;
             this.update(cx, |this, cx| {
                 this.copy_feedback = None;
                 cx.notify();
-            }).ok();
-        }).detach();
+            })
+            .ok();
+        })
+        .detach();
     }
 
     pub fn set_loading(&mut self, cx: &mut Context<Self>) {
@@ -233,23 +236,39 @@ impl ResponsePanel {
     }
 
     pub fn set_response(&mut self, response: ResponseData, cx: &mut Context<Self>) {
-        debug!("Response: {} {} ({} bytes, {:?})", response.status, response.status_text, response.body.len(), response.time);
-        let content_type = response.headers.iter()
+        debug!(
+            "Response: {} {} ({} bytes, {:?})",
+            response.status,
+            response.status_text,
+            response.body.len(),
+            response.time
+        );
+        let content_type = response
+            .headers
+            .iter()
             .find(|(k, _)| k.eq_ignore_ascii_case("content-type"))
             .map(|(_, v)| v.to_lowercase());
 
         let (body_text, language) = if let Some(ct) = &content_type {
             if ct.contains("application/json") || ct.contains("+json") {
                 if let Ok(json) = serde_json::from_str::<serde_json::Value>(&response.body) {
-                    let formatted = serde_json::to_string_pretty(&json).unwrap_or_else(|_| response.body.clone());
+                    let formatted = serde_json::to_string_pretty(&json)
+                        .unwrap_or_else(|_| response.body.clone());
                     (formatted, "json".to_string())
                 } else {
-                    warn!("JSON parse failed for '{}' response ({} bytes)", ct, response.body.len());
+                    warn!(
+                        "JSON parse failed for '{}' response ({} bytes)",
+                        ct,
+                        response.body.len()
+                    );
                     (response.body.clone(), "json".to_string())
                 }
             } else if ct.contains("text/html") {
                 (response.body.clone(), "html".to_string())
-            } else if ct.contains("application/xml") || ct.contains("text/xml") || ct.contains("+xml") {
+            } else if ct.contains("application/xml")
+                || ct.contains("text/xml")
+                || ct.contains("+xml")
+            {
                 (types::pretty_xml(&response.body), "xml".to_string())
             } else {
                 self.detect_language_from_content(&response.body)
@@ -288,7 +307,8 @@ impl ResponsePanel {
         let trimmed = body.trim();
         if trimmed.starts_with('{') || trimmed.starts_with('[') {
             if let Ok(json) = serde_json::from_str::<serde_json::Value>(body) {
-                let formatted = serde_json::to_string_pretty(&json).unwrap_or_else(|_| body.to_string());
+                let formatted =
+                    serde_json::to_string_pretty(&json).unwrap_or_else(|_| body.to_string());
                 (formatted, "json".to_string())
             } else {
                 (body.to_string(), String::new())
@@ -306,7 +326,14 @@ impl ResponsePanel {
 
     /// Returns (status, status_text, time_ms, size_bytes) for the status bar, if any response received.
     pub fn last_response_summary(&self) -> Option<(u16, &str, u64, usize)> {
-        self.response.as_ref().map(|r| (r.status, r.status_text.as_str(), r.time.as_millis() as u64, r.size))
+        self.response.as_ref().map(|r| {
+            (
+                r.status,
+                r.status_text.as_str(),
+                r.time.as_millis() as u64,
+                r.size,
+            )
+        })
     }
 
     pub fn is_loading(&self) -> bool {
@@ -329,7 +356,6 @@ impl ResponsePanel {
         cx.notify();
     }
 }
-
 
 #[cfg(test)]
 mod tests_gpui;

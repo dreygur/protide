@@ -1,16 +1,21 @@
-use gpui::{ClipboardItem, Context, KeyDownEvent};
 use super::*;
+use gpui::{ClipboardItem, Context, KeyDownEvent};
 
 impl<E: WebSocketExecutor> RequestPanel<E> {
     pub(super) fn handle_edit_key(&mut self, event: &KeyDownEvent, cx: &mut Context<Self>) {
-        let Some(target) = self.active_edit else { return; };
+        let Some(target) = self.active_edit else {
+            return;
+        };
         let key = event.keystroke.key.as_str();
         let ctrl = event.keystroke.modifiers.control;
         let shift = event.keystroke.modifiers.shift;
 
         if ctrl {
             match key {
-                "a" => { self.edit_select_all(cx); return; }
+                "a" => {
+                    self.edit_select_all(cx);
+                    return;
+                }
                 "c" => {
                     if self.edit_has_selection() {
                         cx.write_to_clipboard(ClipboardItem::new_string(self.edit_selected_text()));
@@ -32,8 +37,18 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                     }
                     return;
                 }
-                "z" => { if shift { self.edit_redo(cx); } else { self.edit_undo(cx); } return; }
-                "y" => { self.edit_redo(cx); return; }
+                "z" => {
+                    if shift {
+                        self.edit_redo(cx);
+                    } else {
+                        self.edit_undo(cx);
+                    }
+                    return;
+                }
+                "y" => {
+                    self.edit_redo(cx);
+                    return;
+                }
                 _ => {}
             }
         }
@@ -41,7 +56,10 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
         match key {
             "left" => {
                 if shift {
-                    if self.edit_selection.end > 0 { self.edit_selection.end -= 1; cx.notify(); }
+                    if self.edit_selection.end > 0 {
+                        self.edit_selection.end -= 1;
+                        cx.notify();
+                    }
                 } else if self.edit_has_selection() {
                     let s = self.edit_selection.start.min(self.edit_selection.end);
                     self.edit_move_to(s, cx);
@@ -52,7 +70,10 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             "right" => {
                 let n = self.get_edit_text(target).chars().count();
                 if shift {
-                    if self.edit_selection.end < n { self.edit_selection.end += 1; cx.notify(); }
+                    if self.edit_selection.end < n {
+                        self.edit_selection.end += 1;
+                        cx.notify();
+                    }
                 } else if self.edit_has_selection() {
                     let e = self.edit_selection.start.max(self.edit_selection.end);
                     self.edit_move_to(e, cx);
@@ -61,13 +82,21 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                 }
             }
             "home" => {
-                if shift { self.edit_selection.end = 0; cx.notify(); }
-                else { self.edit_move_to(0, cx); }
+                if shift {
+                    self.edit_selection.end = 0;
+                    cx.notify();
+                } else {
+                    self.edit_move_to(0, cx);
+                }
             }
             "end" => {
                 let n = self.get_edit_text(target).chars().count();
-                if shift { self.edit_selection.end = n; cx.notify(); }
-                else { self.edit_move_to(n, cx); }
+                if shift {
+                    self.edit_selection.end = n;
+                    cx.notify();
+                } else {
+                    self.edit_move_to(n, cx);
+                }
             }
             "backspace" => {
                 if self.edit_has_selection() {
@@ -103,9 +132,15 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                     }
                 }
             }
-            "escape" => { self.stop_editing(cx); }
-            "enter" => { self.move_to_next_field(cx); }
-            "tab" => { self.move_to_next_field(cx); }
+            "escape" => {
+                self.stop_editing(cx);
+            }
+            "enter" => {
+                self.move_to_next_field(cx);
+            }
+            "tab" => {
+                self.move_to_next_field(cx);
+            }
             _ => {
                 if let Some(ch) = &event.keystroke.key_char {
                     self.edit_insert_text(ch, cx);
@@ -115,19 +150,33 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
     }
 
     pub(super) fn move_to_next_field(&mut self, cx: &mut Context<Self>) {
-        let Some(target) = self.active_edit else { return; };
+        let Some(target) = self.active_edit else {
+            return;
+        };
         let next_target = match target {
             EditTarget::HeaderKey(i) => Some(EditTarget::HeaderValue(i)),
             EditTarget::HeaderValue(i) => {
-                if i + 1 < self.headers.len() { Some(EditTarget::HeaderKey(i + 1)) } else { None }
+                if i + 1 < self.headers.len() {
+                    Some(EditTarget::HeaderKey(i + 1))
+                } else {
+                    None
+                }
             }
             EditTarget::ParamKey(i) => Some(EditTarget::ParamValue(i)),
             EditTarget::ParamValue(i) => {
-                if i + 1 < self.params.len() { Some(EditTarget::ParamKey(i + 1)) } else { None }
+                if i + 1 < self.params.len() {
+                    Some(EditTarget::ParamKey(i + 1))
+                } else {
+                    None
+                }
             }
             EditTarget::FormKey(i) => Some(EditTarget::FormValue(i)),
             EditTarget::FormValue(i) => {
-                if i + 1 < self.form_data.len() { Some(EditTarget::FormKey(i + 1)) } else { None }
+                if i + 1 < self.form_data.len() {
+                    Some(EditTarget::FormKey(i + 1))
+                } else {
+                    None
+                }
             }
             _ => None,
         };

@@ -2,7 +2,6 @@
 //!
 //! Tokenizes .http file content into a stream of tokens for the parser.
 
-
 /// Token types for the .http file format
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Token {
@@ -99,7 +98,10 @@ impl<'a> Lexer<'a> {
         }
 
         if self.current_line >= self.lines.len() {
-            return TokenSpan { token: Token::Eof, line: self.current_line + 1 };
+            return TokenSpan {
+                token: Token::Eof,
+                line: self.current_line + 1,
+            };
         }
 
         // Capture the line number for the line about to be consumed, before
@@ -116,7 +118,10 @@ impl<'a> Lexer<'a> {
                 self.current_line -= 1; // Re-process this line
                 return self.next_token();
             }
-            return TokenSpan { token: Token::ScriptLine(line.to_string()), line: line_num };
+            return TokenSpan {
+                token: Token::ScriptLine(line.to_string()),
+                line: line_num,
+            };
         }
 
         let trimmed = line.trim();
@@ -124,16 +129,25 @@ impl<'a> Lexer<'a> {
         // Empty line
         if trimmed.is_empty() {
             if self.in_body {
-                return TokenSpan { token: Token::Body(String::new()), line: line_num };
+                return TokenSpan {
+                    token: Token::Body(String::new()),
+                    line: line_num,
+                };
             }
-            return TokenSpan { token: Token::EmptyLine, line: line_num };
+            return TokenSpan {
+                token: Token::EmptyLine,
+                line: line_num,
+            };
         }
 
         // Request separator
         if trimmed.starts_with("###") {
             self.in_body = false;
             // Title (if any) becomes a comment; separator itself has no text.
-            return TokenSpan { token: Token::RequestSeparator, line: line_num };
+            return TokenSpan {
+                token: Token::RequestSeparator,
+                line: line_num,
+            };
         }
 
         // Annotations and comments - body is always over when we see a # line
@@ -143,15 +157,24 @@ impl<'a> Lexer<'a> {
 
             // Check for annotations
             if comment.starts_with('@') {
-                return TokenSpan { token: self.parse_annotation(comment), line: line_num };
+                return TokenSpan {
+                    token: self.parse_annotation(comment),
+                    line: line_num,
+                };
             }
 
-            return TokenSpan { token: Token::Comment(comment.to_string()), line: line_num };
+            return TokenSpan {
+                token: Token::Comment(comment.to_string()),
+                line: line_num,
+            };
         }
 
         // If we're in body mode, everything is body content
         if self.in_body {
-            return TokenSpan { token: Token::Body(line.to_string()), line: line_num };
+            return TokenSpan {
+                token: Token::Body(line.to_string()),
+                line: line_num,
+            };
         }
 
         // Check for HTTP method at start of line
@@ -161,25 +184,42 @@ impl<'a> Lexer<'a> {
             if is_http_method(&method_upper) {
                 // If there's a URL on the same line, store it as pending token
                 if let Some(url) = parts.get(1).map(|s| s.trim())
-                    && !url.is_empty() {
-                        self.pending_token = Some(TokenSpan { token: Token::Url(url.to_string()), line: line_num });
-                    }
-                return TokenSpan { token: Token::Method(method_upper), line: line_num };
+                    && !url.is_empty()
+                {
+                    self.pending_token = Some(TokenSpan {
+                        token: Token::Url(url.to_string()),
+                        line: line_num,
+                    });
+                }
+                return TokenSpan {
+                    token: Token::Method(method_upper),
+                    line: line_num,
+                };
             }
         }
 
         // Check for header (Key: Value)
         // Headers must not start with { or [ (which would be JSON body)
-        if !trimmed.starts_with('{') && !trimmed.starts_with('[')
-            && let Some(colon_pos) = trimmed.find(':') {
-                let key = trimmed[..colon_pos].trim();
-                let value = trimmed[colon_pos + 1..].trim();
+        if !trimmed.starts_with('{')
+            && !trimmed.starts_with('[')
+            && let Some(colon_pos) = trimmed.find(':')
+        {
+            let key = trimmed[..colon_pos].trim();
+            let value = trimmed[colon_pos + 1..].trim();
 
-                // Headers can't have spaces in the key and must be alphanumeric with dashes
-                if !key.contains(' ') && !key.is_empty() && key.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_') {
-                    return TokenSpan { token: Token::Header(key.to_string(), value.to_string()), line: line_num };
-                }
+            // Headers can't have spaces in the key and must be alphanumeric with dashes
+            if !key.contains(' ')
+                && !key.is_empty()
+                && key
+                    .chars()
+                    .all(|c| c.is_alphanumeric() || c == '-' || c == '_')
+            {
+                return TokenSpan {
+                    token: Token::Header(key.to_string(), value.to_string()),
+                    line: line_num,
+                };
             }
+        }
 
         // If we have a URL-like pattern ({{var}} substitution only matches when not inside JSON)
         if trimmed.starts_with("http://")
@@ -189,12 +229,18 @@ impl<'a> Lexer<'a> {
             || trimmed.starts_with("grpc://")
             || (trimmed.contains("{{") && !trimmed.starts_with('{') && !trimmed.starts_with('['))
         {
-            return TokenSpan { token: Token::Url(trimmed.to_string()), line: line_num };
+            return TokenSpan {
+                token: Token::Url(trimmed.to_string()),
+                line: line_num,
+            };
         }
 
         // Otherwise it's body content
         self.in_body = true;
-        TokenSpan { token: Token::Body(line.to_string()), line: line_num }
+        TokenSpan {
+            token: Token::Body(line.to_string()),
+            line: line_num,
+        }
     }
 
     fn parse_annotation(&mut self, comment: &str) -> Token {
@@ -236,9 +282,18 @@ impl<'a> Lexer<'a> {
 fn is_http_method(s: &str) -> bool {
     matches!(
         s,
-        "GET" | "POST" | "PUT" | "PATCH" | "DELETE"
-        | "HEAD" | "OPTIONS" | "CONNECT" | "TRACE"
-        | "WEBSOCKET" | "WS" | "GRPC"
+        "GET"
+            | "POST"
+            | "PUT"
+            | "PATCH"
+            | "DELETE"
+            | "HEAD"
+            | "OPTIONS"
+            | "CONNECT"
+            | "TRACE"
+            | "WEBSOCKET"
+            | "WS"
+            | "GRPC"
     )
 }
 
@@ -289,8 +344,12 @@ GET https://api.example.com"#;
 
         let mut lexer = Lexer::new(content);
         assert!(matches!(lexer.next_token().token, Token::RequestSeparator));
-        assert!(matches!(lexer.next_token().token, Token::Annotation(k, Some(v)) if k == "name" && v == "my-request"));
-        assert!(matches!(lexer.next_token().token, Token::Annotation(k, Some(v)) if k == "protocol" && v == "graphql"));
+        assert!(
+            matches!(lexer.next_token().token, Token::Annotation(k, Some(v)) if k == "name" && v == "my-request")
+        );
+        assert!(
+            matches!(lexer.next_token().token, Token::Annotation(k, Some(v)) if k == "protocol" && v == "graphql")
+        );
     }
 
     #[test]
@@ -310,7 +369,10 @@ GET https://api.example.com"#;
         assert_eq!(method.line, 4);
         assert!(matches!(method.token, Token::Method(_)));
         let url = lexer.next_token();
-        assert_eq!(url.line, 4, "URL on same line as method must share its line number");
+        assert_eq!(
+            url.line, 4,
+            "URL on same line as method must share its line number"
+        );
         assert!(matches!(url.token, Token::Url(_)));
         let header = lexer.next_token();
         assert_eq!(header.line, 5);

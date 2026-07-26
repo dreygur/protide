@@ -1,12 +1,13 @@
-use gpui::{Context, Window};
 use super::*;
+use gpui::{Context, Window};
 
 impl<E: WebSocketExecutor> RequestPanel<E> {
     pub fn open_import_modal(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.import_modal_open = true;
         self.import_text.clear();
         self.import_error = None;
-        self.import_editor.update(cx, |s, cx| s.set_value("", window, cx));
+        self.import_editor
+            .update(cx, |s, cx| s.set_value("", window, cx));
         cx.notify();
     }
 
@@ -17,8 +18,14 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
         cx.notify();
     }
 
-    pub(super) fn set_import_text(&mut self, text: String, window: &mut Window, cx: &mut Context<Self>) {
-        self.import_editor.update(cx, |s, cx| s.set_value(&text, window, cx));
+    pub(super) fn set_import_text(
+        &mut self,
+        text: String,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.import_editor
+            .update(cx, |s, cx| s.set_value(&text, window, cx));
         self.import_text = text;
         self.import_error = None;
         cx.notify();
@@ -33,7 +40,10 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             move |d| {
                 let d = d
                     .set_title("Import Collection")
-                    .add_filter("All Supported", &["json", "yaml", "yml", "bru", "txt", "curl"])
+                    .add_filter(
+                        "All Supported",
+                        &["json", "yaml", "yml", "bru", "txt", "curl"],
+                    )
                     .add_filter("Postman Collection", &["json"])
                     .add_filter("OpenAPI/Swagger", &["json", "yaml", "yml"])
                     .add_filter("Bruno Collection", &["bru"])
@@ -47,8 +57,12 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             |this, path, window, cx| {
                 last_paths::save_last_dir("import_collection", &path);
                 match std::fs::read_to_string(&path) {
-                    Ok(content) => { this.set_import_text(content, window, cx); }
-                    Err(e) => { this.import_error = Some(format!("Failed to read file: {}", e)); }
+                    Ok(content) => {
+                        this.set_import_text(content, window, cx);
+                    }
+                    Err(e) => {
+                        this.import_error = Some(format!("Failed to read file: {}", e));
+                    }
                 }
                 cx.notify();
             },
@@ -83,9 +97,14 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                     let len = self.url.chars().count();
                     self.url_selection = len..len;
 
-                    self.headers = request.headers
+                    self.headers = request
+                        .headers
                         .into_iter()
-                        .map(|h| KeyValuePair { key: h.key, value: h.value, enabled: h.enabled })
+                        .map(|h| KeyValuePair {
+                            key: h.key,
+                            value: h.value,
+                            enabled: h.enabled,
+                        })
                         .collect();
                     self.headers.push(KeyValuePair::default());
 
@@ -95,7 +114,11 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                         let is_json = self.headers.iter().any(|h| {
                             h.key.eq_ignore_ascii_case("content-type") && h.value.contains("json")
                         });
-                        self.body_type = if is_json { BodyType::Json } else { BodyType::Raw };
+                        self.body_type = if is_json {
+                            BodyType::Json
+                        } else {
+                            BodyType::Raw
+                        };
                     }
 
                     self.import_modal_open = false;
@@ -105,7 +128,9 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                     self.import_error = Some("No request found in import data".to_string());
                 }
             }
-            Err(e) => { self.import_error = Some(e); }
+            Err(e) => {
+                self.import_error = Some(e);
+            }
         }
         cx.notify();
     }

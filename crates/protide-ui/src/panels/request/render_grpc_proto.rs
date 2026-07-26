@@ -1,20 +1,18 @@
 //! gRPC proto tab rendering for RequestPanel
 
+use gpui::{Context, IntoElement, ParentElement, Styled, div, prelude::*, px};
 
-use gpui::{
-    div, prelude::*, px, Context, IntoElement,
-    ParentElement, Styled,
-};
-
+use super::RequestPanel;
 use crate::theme;
 use protide_core::execution::ws::WebSocketExecutor;
-use super::RequestPanel;
 
 impl<E: WebSocketExecutor> RequestPanel<E> {
     pub(super) fn render_grpc_proto_tab(&mut self, cx: &mut Context<Self>) -> gpui::AnyElement {
         let theme = theme::current(cx);
         let has_proto = self.grpc_proto_path.is_some();
-        let proto_path = self.grpc_proto_path.clone()
+        let proto_path = self
+            .grpc_proto_path
+            .clone()
             .map(|p| p.display().to_string())
             .unwrap_or_default();
 
@@ -46,7 +44,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                             .on_click(cx.listener(|this, _, _, cx| {
                                 this.load_proto_file(cx);
                             }))
-                            .child("Load .proto file")
+                            .child("Load .proto file"),
                     )
                     .when(has_proto, |el| {
                         el.child(
@@ -55,7 +53,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                                 .text_size(px(11.0))
                                 .text_color(theme.colors.text_muted)
                                 .overflow_x_hidden()
-                                .child(proto_path)
+                                .child(proto_path),
                         )
                         .child(
                             div()
@@ -66,7 +64,10 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                                 .cursor_pointer()
                                 .text_size(px(11.0))
                                 .text_color(theme.colors.text_muted)
-                                .hover(|s| s.bg(theme.colors.method_delete.opacity(0.1)).text_color(theme.colors.method_delete))
+                                .hover(|s| {
+                                    s.bg(theme.colors.method_delete.opacity(0.1))
+                                        .text_color(theme.colors.method_delete)
+                                })
                                 .on_click(cx.listener(|this, _, _, cx| {
                                     this.grpc_proto_path = None;
                                     this.grpc_proto_content.clear();
@@ -76,9 +77,9 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                                     this.grpc_method = None;
                                     cx.notify();
                                 }))
-                                .child("Clear")
+                                .child("Clear"),
                         )
-                    })
+                    }),
             )
             // Proto content display
             .child(
@@ -91,7 +92,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                         div()
                             .text_size(px(11.0))
                             .text_color(theme.colors.text_muted)
-                            .child("Proto Definition")
+                            .child("Proto Definition"),
                     )
                     .child(
                         div()
@@ -109,7 +110,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                                         .text_size(px(11.0))
                                         .text_color(theme.colors.text_primary)
                                         .font_family("monospace")
-                                        .child(self.grpc_proto_content.clone())
+                                        .child(self.grpc_proto_content.clone()),
                                 )
                             })
                             .when(!has_proto, |el| {
@@ -122,10 +123,10 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                                         .justify_center()
                                         .text_size(px(12.0))
                                         .text_color(theme.colors.text_muted)
-                                        .child("No proto file loaded")
+                                        .child("No proto file loaded"),
                                 )
-                            })
-                    )
+                            }),
+                    ),
             )
             .into_any_element()
     }

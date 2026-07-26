@@ -1,9 +1,13 @@
-use gpui::{Context, Window};
 use super::*;
+use gpui::{Context, Window};
 
 impl<E: WebSocketExecutor> RequestPanel<E> {
     /// Set the explorer panel reference for environment variable substitution
-    pub fn set_explorer_panel(&mut self, explorer_panel: Entity<ExplorerPanel>, cx: &mut Context<Self>) {
+    pub fn set_explorer_panel(
+        &mut self,
+        explorer_panel: Entity<ExplorerPanel>,
+        cx: &mut Context<Self>,
+    ) {
         self.explorer_panel = Some(explorer_panel);
         cx.notify();
     }
@@ -15,7 +19,10 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
     }
 
     pub fn shows_response_panel(&self) -> bool {
-        !matches!(self.request_mode, RequestMode::WebSocket | RequestMode::SocketIo)
+        !matches!(
+            self.request_mode,
+            RequestMode::WebSocket | RequestMode::SocketIo
+        )
     }
 
     /// Get the current request mode label for status bar display

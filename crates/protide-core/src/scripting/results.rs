@@ -24,7 +24,11 @@ impl TestResult {
         }
     }
 
-    pub fn fail(name: impl Into<String>, expected: impl Into<String>, actual: impl Into<String>) -> Self {
+    pub fn fail(
+        name: impl Into<String>,
+        expected: impl Into<String>,
+        actual: impl Into<String>,
+    ) -> Self {
         Self {
             name: name.into(),
             passed: false,

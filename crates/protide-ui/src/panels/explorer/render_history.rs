@@ -1,5 +1,5 @@
-use gpui::{Context, IntoElement, ParentElement, SharedString, Styled, div, px};
 use super::*;
+use gpui::{Context, IntoElement, ParentElement, SharedString, Styled, div, px};
 
 impl ExplorerPanel {
     pub(super) fn render_history_section(&self, cx: &Context<Self>) -> impl IntoElement {
@@ -92,7 +92,11 @@ impl ExplorerPanel {
                                             .flex()
                                             .items_center()
                                             .justify_center()
-                                            .child(icon(ICON_FILE, ICON_MD, theme.colors.text_muted)),
+                                            .child(icon(
+                                                ICON_FILE,
+                                                ICON_MD,
+                                                theme.colors.text_muted,
+                                            )),
                                     )
                                     .child(
                                         div()

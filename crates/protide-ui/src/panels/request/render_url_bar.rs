@@ -1,24 +1,25 @@
 //! URL bar rendering for RequestPanel
 
-
 use gpui::{
-    canvas, div, prelude::*, px, Context, IntoElement, MouseDownEvent, MouseMoveEvent,
-    MouseUpEvent, ParentElement, Styled, Window, KeyDownEvent,
+    Context, IntoElement, KeyDownEvent, MouseDownEvent, MouseMoveEvent, MouseUpEvent,
+    ParentElement, Styled, Window, canvas, div, prelude::*, px,
 };
 
-use crate::theme;
-use crate::components::{render_text_view_with_max_scrolled, toolbar_btn};
-use crate::components::icons::{
-    icon, ICON_SM, ICON_MD,
-    ICON_CHEVRON_DOWN, ICON_CHEVRON_UP,
-    ICON_ARROW_DOWN, ICON_CODE,
-};
-use protide_core::execution::ws::{WebSocketExecutor};
 use super::super::request_types::{RequestMode, SioConnectionState, WsConnectionState};
 use super::RequestPanel;
+use crate::components::icons::{
+    ICON_ARROW_DOWN, ICON_CHEVRON_DOWN, ICON_CHEVRON_UP, ICON_CODE, ICON_MD, ICON_SM, icon,
+};
+use crate::components::{render_text_view_with_max_scrolled, toolbar_btn};
+use crate::theme;
+use protide_core::execution::ws::WebSocketExecutor;
 
 impl<E: WebSocketExecutor> RequestPanel<E> {
-    pub(super) fn render_url_bar(&mut self, window: &Window, cx: &mut Context<Self>) -> impl IntoElement {
+    pub(super) fn render_url_bar(
+        &mut self,
+        window: &Window,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
         let theme = theme::current(cx);
         let method = self.method.clone();
         let method_color = theme.method_color(method.as_str());
@@ -73,18 +74,21 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                                 RequestMode::Grpc => "gRPC",
                                 RequestMode::Trpc => "tRPC",
                                 RequestMode::SocketIo => "Socket.IO",
-                            })
+                            }),
                     )
-                    .child(
-                        div()
-                            .flex()
-                            .items_center()
-                            .child(icon(
-                                if self.mode_dropdown_open { ICON_CHEVRON_UP } else { ICON_CHEVRON_DOWN },
-                                ICON_SM,
-                                if self.mode_dropdown_open { theme.colors.accent } else { theme.colors.text_muted },
-                            ))
-                    )
+                    .child(div().flex().items_center().child(icon(
+                        if self.mode_dropdown_open {
+                            ICON_CHEVRON_UP
+                        } else {
+                            ICON_CHEVRON_DOWN
+                        },
+                        ICON_SM,
+                        if self.mode_dropdown_open {
+                            theme.colors.accent
+                        } else {
+                            theme.colors.text_muted
+                        },
+                    ))),
             )
             // Method selector button (dropdown rendered separately as overlay) - only show for HTTP mode
             .when(self.request_mode == RequestMode::Http, |el| {
@@ -111,12 +115,11 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                             this.toggle_method_dropdown(cx);
                         }))
                         .child(method.as_str().to_string())
-                        .child(
-                            div()
-                                .flex()
-                                .items_center()
-                                .child(icon(ICON_CHEVRON_DOWN, ICON_SM, method_color.opacity(0.7)))
-                        )
+                        .child(div().flex().items_center().child(icon(
+                            ICON_CHEVRON_DOWN,
+                            ICON_SM,
+                            method_color.opacity(0.7),
+                        ))),
                 )
             })
             // URL input with selection support
@@ -179,7 +182,10 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                             },
                             |_, _, _, _| {},
                         )
-                        .absolute().top_0().left_0().size_full()
+                        .absolute()
+                        .top_0()
+                        .left_0()
+                        .size_full()
                     })
                     .child(self.render_url_text(is_url_focused, cx)),
             )
@@ -199,20 +205,22 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
 
                         let (send_label, btn_bg) = match self.request_mode {
                             RequestMode::WebSocket => match self.ws_state {
-                                WsConnectionState::Connected =>
-                                    ("Disconnect", theme.colors.method_delete),
-                                WsConnectionState::Connecting =>
-                                    ("Connecting...", theme.colors.text_muted),
-                                _ =>
-                                    ("Connect", theme.colors.accent),
+                                WsConnectionState::Connected => {
+                                    ("Disconnect", theme.colors.method_delete)
+                                }
+                                WsConnectionState::Connecting => {
+                                    ("Connecting...", theme.colors.text_muted)
+                                }
+                                _ => ("Connect", theme.colors.accent),
                             },
                             RequestMode::SocketIo => match self.sio_state {
-                                SioConnectionState::Connected =>
-                                    ("Disconnect", theme.colors.method_delete),
-                                SioConnectionState::Connecting =>
-                                    ("Connecting...", theme.colors.text_muted),
-                                _ =>
-                                    ("Connect", theme.colors.accent),
+                                SioConnectionState::Connected => {
+                                    ("Disconnect", theme.colors.method_delete)
+                                }
+                                SioConnectionState::Connecting => {
+                                    ("Connecting...", theme.colors.text_muted)
+                                }
+                                _ => ("Connect", theme.colors.accent),
                             },
                             _ => ("Send", theme.colors.accent),
                         };
@@ -234,7 +242,9 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                                     return;
                                 }
                                 match this.request_mode {
-                                    RequestMode::Http | RequestMode::GraphQL => this.send_request(cx),
+                                    RequestMode::Http | RequestMode::GraphQL => {
+                                        this.send_request(cx)
+                                    }
                                     RequestMode::WebSocket => {
                                         if matches!(this.ws_state, WsConnectionState::Connecting) {
                                             return;
@@ -246,7 +256,8 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                                         }
                                     }
                                     RequestMode::SocketIo => {
-                                        if matches!(this.sio_state, SioConnectionState::Connecting) {
+                                        if matches!(this.sio_state, SioConnectionState::Connecting)
+                                        {
                                             return;
                                         }
                                         if matches!(this.sio_state, SioConnectionState::Connected) {
@@ -266,14 +277,14 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                         let is_saved = self.save_feedback;
                         let has_conflict = self.external_change_pending;
                         toolbar_btn("save-button", cx)
-                            .when(is_saved, |el| el
-                                .text_color(theme.colors.status_success)
-                                .border_color(theme.colors.status_success.opacity(0.4))
-                            )
-                            .when(has_conflict && !is_saved, |el| el
-                                .text_color(theme.colors.status_redirect)
-                                .border_color(theme.colors.status_redirect.opacity(0.4))
-                            )
+                            .when(is_saved, |el| {
+                                el.text_color(theme.colors.status_success)
+                                    .border_color(theme.colors.status_success.opacity(0.4))
+                            })
+                            .when(has_conflict && !is_saved, |el| {
+                                el.text_color(theme.colors.status_redirect)
+                                    .border_color(theme.colors.status_redirect.opacity(0.4))
+                            })
                             .on_click(cx.listener(|this, _, _, cx| {
                                 this.save_request(cx);
                             }))
@@ -292,7 +303,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                                 this.generate_code(this.codegen_language, window, cx);
                             }))
                             .child(icon(ICON_CODE, ICON_MD, theme.colors.text_secondary))
-                            .child("Code")
+                            .child("Code"),
                     )
                     // Import button
                     .child(
@@ -301,14 +312,18 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                                 this.open_import_modal(window, cx);
                             }))
                             .child(icon(ICON_ARROW_DOWN, ICON_SM, theme.colors.text_secondary))
-                            .child("Import")
-                    )
+                            .child("Import"),
+                    ),
             )
     }
 
     pub(super) fn render_url_text(&self, is_focused: bool, cx: &Context<Self>) -> gpui::AnyElement {
         let theme = theme::current(cx);
-        let scroll = if is_focused { self.url_scroll_offset } else { 0.0 };
+        let scroll = if is_focused {
+            self.url_scroll_offset
+        } else {
+            0.0
+        };
         render_text_view_with_max_scrolled(
             &self.url,
             &self.url_selection,

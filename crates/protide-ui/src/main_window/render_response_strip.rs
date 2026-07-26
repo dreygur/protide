@@ -1,8 +1,8 @@
-use gpui::{div, px, MouseButton, IntoElement, ParentElement, Styled, prelude::*};
-use crate::theme;
-use crate::components::icons::{icon, ICON_SM, ICON_CHEVRON_DOWN, ICON_CHEVRON_RIGHT};
-use crate::panels::{format_size, truncate_error};
 use super::MainWindow;
+use crate::components::icons::{ICON_CHEVRON_DOWN, ICON_CHEVRON_RIGHT, ICON_SM, icon};
+use crate::panels::{format_size, truncate_error};
+use crate::theme;
+use gpui::{IntoElement, MouseButton, ParentElement, Styled, div, prelude::*, px};
 
 impl MainWindow {
     /// Full-width accordion strip between request and response panels.
@@ -18,7 +18,8 @@ impl MainWindow {
         let (resp_loading, resp_summary, resp_error) = {
             let panel = self.response_panel.read(cx);
             let loading = panel.is_loading();
-            let summary = panel.last_response_summary()
+            let summary = panel
+                .last_response_summary()
                 .map(|(s, st, ms, sz)| (s, st.to_string(), ms, sz));
             let error = panel.last_error().map(truncate_error);
             (loading, summary, error)
@@ -57,19 +58,19 @@ impl MainWindow {
                             .text_size(px(10.0))
                             .font_weight(gpui::FontWeight::BOLD)
                             .text_color(sc)
-                            .child(format!("{} {}", status, st))
+                            .child(format!("{} {}", status, st)),
                     )
                     .child(
                         div()
                             .text_size(px(10.0))
                             .text_color(tc.colors.text_muted)
-                            .child(format!("{}ms", ms))
+                            .child(format!("{}ms", ms)),
                     )
                     .child(
                         div()
                             .text_size(px(10.0))
                             .text_color(tc.colors.text_muted)
-                            .child(format_size(sz))
+                            .child(format_size(sz)),
                     )
                     .into_any_element()
             } else {
@@ -88,7 +89,9 @@ impl MainWindow {
             .gap(px(crate::theme::sizes::CHEVRON_ICON_GAP))
             .bg(theme.colors.bg_secondary)
             // top border when collapsed (no drag strip above), bottom border always (separates from tabs)
-            .when(collapsed, |el| el.border_t_1().border_color(theme.colors.border))
+            .when(collapsed, |el| {
+                el.border_t_1().border_color(theme.colors.border)
+            })
             .border_b_1()
             .border_color(theme.colors.border)
             .cursor_pointer()
@@ -101,7 +104,11 @@ impl MainWindow {
                 }),
             )
             .child(icon(
-                if collapsed { ICON_CHEVRON_RIGHT } else { ICON_CHEVRON_DOWN },
+                if collapsed {
+                    ICON_CHEVRON_RIGHT
+                } else {
+                    ICON_CHEVRON_DOWN
+                },
                 ICON_SM,
                 theme.colors.text_muted,
             ))
@@ -111,7 +118,7 @@ impl MainWindow {
                     .text_size(px(11.0))
                     .font_weight(gpui::FontWeight::MEDIUM)
                     .text_color(theme.colors.text_secondary)
-                    .child("Response")
+                    .child("Response"),
             )
             .child(div().flex_1())
             .child(status_chip)

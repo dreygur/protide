@@ -1,5 +1,5 @@
-use std::collections::{HashMap, HashSet};
 use http_parser::ParseError;
+use std::collections::{HashMap, HashSet};
 use tower_lsp::lsp_types::*;
 
 pub fn compute_diagnostics(content: &str) -> Vec<Diagnostic> {
@@ -48,8 +48,17 @@ fn detect_cycles(requests: &[http_parser::Request]) -> Vec<Diagnostic> {
         .iter()
         .filter_map(|r| {
             r.meta.name.as_deref().map(|n| {
-                let deps = r.meta.depends.iter()
-                    .filter_map(|d| if name_to_line.contains_key(d.as_str()) { Some(d.as_str()) } else { None })
+                let deps = r
+                    .meta
+                    .depends
+                    .iter()
+                    .filter_map(|d| {
+                        if name_to_line.contains_key(d.as_str()) {
+                            Some(d.as_str())
+                        } else {
+                            None
+                        }
+                    })
                     .collect();
                 (n, deps)
             })
@@ -61,7 +70,14 @@ fn detect_cycles(requests: &[http_parser::Request]) -> Vec<Diagnostic> {
 
     for &name in adj.keys() {
         if color.get(name).copied().unwrap_or(0) == 0 {
-            dfs(name, &adj, &mut color, &mut vec![], &name_to_line, &mut diagnostics);
+            dfs(
+                name,
+                &adj,
+                &mut color,
+                &mut vec![],
+                &name_to_line,
+                &mut diagnostics,
+            );
         }
     }
     diagnostics
@@ -107,7 +123,11 @@ fn dfs<'a>(
 fn find_depends_line(content: &str, dep: &str) -> Option<u32> {
     content.lines().enumerate().find_map(|(i, line)| {
         let rest = line.trim_start().strip_prefix("# @depends")?;
-        if rest.trim() == dep { Some(i as u32) } else { None }
+        if rest.trim() == dep {
+            Some(i as u32)
+        } else {
+            None
+        }
     })
 }
 
@@ -153,6 +173,9 @@ mod tests {
 pub fn line_range(line: u32) -> Range {
     Range {
         start: Position { line, character: 0 },
-        end: Position { line, character: u32::MAX },
+        end: Position {
+            line,
+            character: u32::MAX,
+        },
     }
 }

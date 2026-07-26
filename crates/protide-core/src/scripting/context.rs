@@ -1,7 +1,7 @@
 //! Script execution context with request/response data
 
+use super::results::{ModifiedRequest, TestResult};
 use std::collections::HashMap;
-use super::results::{TestResult, ModifiedRequest};
 
 /// Request data accessible in scripts
 #[derive(Debug, Clone, Default)]
@@ -107,7 +107,9 @@ impl ScriptContext {
     /// Remove request header (pre-script only)
     pub fn remove_header(&mut self, name: &str) {
         self.request.headers.remove(name);
-        self.modified_request.headers_to_remove.push(name.to_string());
+        self.modified_request
+            .headers_to_remove
+            .push(name.to_string());
     }
 
     /// Set request body (pre-script only)

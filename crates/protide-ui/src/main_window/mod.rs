@@ -5,8 +5,8 @@ mod drag;
 mod help;
 mod overlays;
 mod render;
-mod render_sidebar;
 mod render_response_strip;
+mod render_sidebar;
 mod statusbar;
 mod sync;
 mod titlebar;
@@ -47,15 +47,17 @@ pub fn register_keybindings(cx: &mut gpui::App) {
 }
 
 use super::panels::presence::{ConnectionStatus, PeerSource, PresenceManager};
-use gpui_component::input::{Input, InputState};
-use super::panels::{ConsoleEntry, ConsolePanel, DocsPanel, ExplorerPanel, MockServerPanel, RequestPanel, ResponsePanel, RunnerPanel};
-use crate::theme;
-use protide_core::sync::{SyncEngine, SyncEvent};
-use crate::components::icons::{
-    ICON_CLOSE, ICON_COPY, ICON_FOLDER, ICON_MAXIMIZE,
-    ICON_MD, ICON_MENU, ICON_MINIMIZE, ICON_MOON, ICON_REFRESH, ICON_SETTINGS, ICON_SM, ICON_SUN,
-    ICON_WINDOW_CLOSE, icon,
+use super::panels::{
+    ConsoleEntry, ConsolePanel, DocsPanel, ExplorerPanel, MockServerPanel, RequestPanel,
+    ResponsePanel, RunnerPanel,
 };
+use crate::components::icons::{
+    ICON_CLOSE, ICON_COPY, ICON_FOLDER, ICON_MAXIMIZE, ICON_MD, ICON_MENU, ICON_MINIMIZE,
+    ICON_MOON, ICON_REFRESH, ICON_SETTINGS, ICON_SM, ICON_SUN, ICON_WINDOW_CLOSE, icon,
+};
+use crate::theme;
+use gpui_component::input::{Input, InputState};
+use protide_core::sync::{SyncEngine, SyncEvent};
 
 /// Main window containing the application layout
 pub struct MainWindow {
@@ -109,7 +111,11 @@ pub struct MainWindow {
 }
 
 impl MainWindow {
-    pub fn build(window: &mut Window, cx: &mut Context<Self>, sync_engine: Option<SyncEngine>) -> Self {
+    pub fn build(
+        window: &mut Window,
+        cx: &mut Context<Self>,
+        sync_engine: Option<SyncEngine>,
+    ) -> Self {
         let main_window_weak: WeakEntity<MainWindow> = cx.entity().downgrade();
         let explorer = cx.new(|cx| ExplorerPanel::new(cx, main_window_weak.clone()));
         let runner_panel = cx.new(RunnerPanel::new);
@@ -151,7 +157,9 @@ impl MainWindow {
 
         let quit_sub = cx.on_app_quit(|this: &mut Self, cx| {
             let state = this.capture_session(cx);
-            async move { crate::session::save_sync(&state); }
+            async move {
+                crate::session::save_sync(&state);
+            }
         });
 
         // `theme::init` runs before any window exists, so on Linux it can read a
@@ -164,12 +172,14 @@ impl MainWindow {
             cx.notify();
         });
 
-        let join_input = cx.new(|cx| {
-            InputState::new(window, cx).placeholder("enter pairing code…")
-        });
+        let join_input =
+            cx.new(|cx| InputState::new(window, cx).placeholder("enter pairing code…"));
 
         let mut presence = PresenceManager::new();
-        if let Some(code) = sync_engine.as_ref().and_then(|e| e.config().pairing_code.as_deref()) {
+        if let Some(code) = sync_engine
+            .as_ref()
+            .and_then(|e| e.config().pairing_code.as_deref())
+        {
             let s = gpui::SharedString::from(code.to_string());
             presence.pairing_code = s.clone();
             presence.generated_code = s;
@@ -181,11 +191,15 @@ impl MainWindow {
                 cx.background_executor()
                     .timer(std::time::Duration::from_millis(1000))
                     .await;
-                if poll_weak.update(cx, |this, cx| this.poll_sync_events(cx)).is_err() {
+                if poll_weak
+                    .update(cx, |this, cx| this.poll_sync_events(cx))
+                    .is_err()
+                {
                     break;
                 }
             }
-        }).detach();
+        })
+        .detach();
 
         Self {
             explorer,
@@ -249,7 +263,13 @@ impl MainWindow {
     }
 
     /// Forward a local workspace file change to the sync engine for P2P broadcast.
-    pub fn broadcast_workspace_file(&mut self, workspace_root: &std::path::Path, file_path: &std::path::Path, content: String, deleted: bool) {
+    pub fn broadcast_workspace_file(
+        &mut self,
+        workspace_root: &std::path::Path,
+        file_path: &std::path::Path,
+        content: String,
+        deleted: bool,
+    ) {
         if let Some(ref mut engine) = self.sync_engine {
             engine.broadcast_workspace_file(workspace_root, file_path, content, deleted);
         }
@@ -267,12 +287,12 @@ impl MainWindow {
 
         if let Some(workspace) = explorer.workspace_path().cloned() {
             let draft = self.request_panel.read(cx).capture_draft(cx);
-            let key   = workspace.to_string_lossy().to_string();
+            let key = workspace.to_string_lossy().to_string();
             let entry = session.workspaces.entry(key).or_default();
-            entry.active_file      = explorer.selected_item().cloned();
-            entry.draft            = Some(draft);
+            entry.active_file = explorer.selected_item().cloned();
+            entry.draft = Some(draft);
             entry.expanded_folders = explorer.collect_expanded();
-            entry.active_env       = explorer.env_state().active().map(|e| e.name.clone());
+            entry.active_env = explorer.env_state().active().map(|e| e.name.clone());
             session.current_workspace = Some(workspace);
         }
 
@@ -301,7 +321,12 @@ impl MainWindow {
         cx.notify();
     }
 
-    pub fn show_modal(&mut self, title: impl Into<String>, message: impl Into<String>, cx: &mut Context<Self>) {
+    pub fn show_modal(
+        &mut self,
+        title: impl Into<String>,
+        message: impl Into<String>,
+        cx: &mut Context<Self>,
+    ) {
         self.pending_alert = Some((title.into(), message.into(), false));
         cx.notify();
     }
@@ -346,8 +371,8 @@ impl MainWindow {
 
 #[cfg(test)]
 mod tests {
-    use gpui::{AppContext as _, TestAppContext};
     use super::{MainWindow, ShowHelp};
+    use gpui::{AppContext as _, TestAppContext};
 
     /// Counter entity used as a lightweight stand-in — does not need Render.
     struct Counter(u32);
@@ -402,7 +427,10 @@ mod tests {
 
         window.read_with(cx, |mw, _| {
             assert!(mw.show_help, "ShowHelp action should open the Help overlay");
-            assert!(!mw.show_runner, "opening Help must close the already-open Test Runner overlay");
+            assert!(
+                !mw.show_runner,
+                "opening Help must close the already-open Test Runner overlay"
+            );
         });
     }
 }

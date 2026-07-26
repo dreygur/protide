@@ -1,14 +1,12 @@
 //! tRPC Playground — middle (params) and right (response) pane rendering
 
-use gpui::{
-    div, prelude::*, px, Context, IntoElement, ParentElement, Styled,
-};
-use gpui_component::input::Input;
-use crate::theme;
-use crate::components::icons::{icon, ICON_SM, ICON_MD, ICON_PLAY, ICON_LOADER, ICON_COPY};
 use super::super::request_types::TrpcProcKind;
-use protide_core::execution::ws::WebSocketExecutor;
 use super::RequestPanel;
+use crate::components::icons::{ICON_COPY, ICON_LOADER, ICON_MD, ICON_PLAY, ICON_SM, icon};
+use crate::theme;
+use gpui::{Context, IntoElement, ParentElement, Styled, div, prelude::*, px};
+use gpui_component::input::Input;
+use protide_core::execution::ws::WebSocketExecutor;
 
 impl<E: WebSocketExecutor> RequestPanel<E> {
     pub(super) fn render_pg_middle(&mut self, cx: &mut Context<Self>) -> gpui::AnyElement {
@@ -22,7 +20,9 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             .min_w(px(200.0))
             // Header with selected procedure badge
             .child({
-                let selected = self.trpc_pg_selected.and_then(|i| self.trpc_pg_procedures.get(i));
+                let selected = self
+                    .trpc_pg_selected
+                    .and_then(|i| self.trpc_pg_procedures.get(i));
                 let theme2 = theme.clone();
                 let badge = selected.map(|p| {
                     let (col, lbl) = match p.kind {
@@ -47,7 +47,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                             .text_size(px(11.0))
                             .font_weight(gpui::FontWeight::SEMIBOLD)
                             .text_color(theme.colors.text_muted)
-                            .child("Parameters")
+                            .child("Parameters"),
                     )
                     .when_some(badge, |el, (col, lbl, name)| {
                         el.child(
@@ -63,25 +63,25 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                                         .text_size(px(10.0))
                                         .font_weight(gpui::FontWeight::EXTRA_BOLD)
                                         .text_color(col)
-                                        .child(lbl)
+                                        .child(lbl),
                                 )
                                 .child(
                                     div()
                                         .text_size(px(11.0))
                                         .font_family("JetBrains Mono")
                                         .text_color(theme.colors.text_secondary)
-                                        .child(name)
-                                )
+                                        .child(name),
+                                ),
                         )
                     })
             })
             // JSON params editor
             .child(
-                div()
-                    .flex_1()
-                    .w_full()
-                    .overflow_hidden()
-                    .child(Input::new(&self.trpc_params_editor).appearance(false).h_full())
+                div().flex_1().w_full().overflow_hidden().child(
+                    Input::new(&self.trpc_params_editor)
+                        .appearance(false)
+                        .h_full(),
+                ),
             )
             // Run bar
             .child(self.render_pg_run_bar(cx))
@@ -116,13 +116,13 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                     .border_1()
                     .when(active, |el| {
                         el.bg(theme.colors.accent.opacity(0.1))
-                          .border_color(theme.colors.accent.opacity(0.4))
-                          .cursor_pointer()
-                          .hover(|s| s.bg(theme.colors.accent.opacity(0.2)))
+                            .border_color(theme.colors.accent.opacity(0.4))
+                            .cursor_pointer()
+                            .hover(|s| s.bg(theme.colors.accent.opacity(0.2)))
                     })
                     .when(!active, |el| {
                         el.bg(theme.colors.bg_tertiary)
-                          .border_color(theme.colors.border)
+                            .border_color(theme.colors.border)
                     })
                     .on_click(cx.listener(|this, _, _, cx| {
                         if this.trpc_pg_selected.is_some() && !this.trpc_pg_loading {
@@ -132,21 +132,33 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                     .child(if loading {
                         icon(ICON_LOADER, ICON_SM, theme.colors.accent)
                     } else {
-                        icon(ICON_PLAY, ICON_SM, if active { theme.colors.accent } else { theme.colors.text_muted })
+                        icon(
+                            ICON_PLAY,
+                            ICON_SM,
+                            if active {
+                                theme.colors.accent
+                            } else {
+                                theme.colors.text_muted
+                            },
+                        )
                     })
                     .child(
                         div()
                             .text_size(px(12.0))
                             .font_weight(gpui::FontWeight::MEDIUM)
-                            .text_color(if active { theme.colors.accent } else { theme.colors.text_muted })
-                            .child(if loading { "Running…" } else { "Run" })
-                    )
+                            .text_color(if active {
+                                theme.colors.accent
+                            } else {
+                                theme.colors.text_muted
+                            })
+                            .child(if loading { "Running…" } else { "Run" }),
+                    ),
             )
             .child(
                 div()
                     .text_size(px(10.0))
                     .text_color(theme.colors.text_muted.opacity(0.6))
-                    .child("tRPC v10")
+                    .child("tRPC v10"),
             )
     }
 
@@ -164,7 +176,11 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             Some(_) => theme.colors.status_server_error,
             None => theme.colors.text_muted,
         };
-        let resp_color = if is_error { theme.colors.status_client_error } else { status_color };
+        let resp_color = if is_error {
+            theme.colors.status_client_error
+        } else {
+            status_color
+        };
 
         div()
             .flex_1()
@@ -189,7 +205,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                             .text_size(px(11.0))
                             .font_weight(gpui::FontWeight::SEMIBOLD)
                             .text_color(theme.colors.text_muted)
-                            .child("Response")
+                            .child("Response"),
                     )
                     .when_some(status.filter(|_| has_result), |el, s| {
                         el.child(
@@ -200,7 +216,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                                 .text_size(px(10.0))
                                 .font_weight(gpui::FontWeight::BOLD)
                                 .text_color(resp_color)
-                                .child(s.to_string())
+                                .child(s.to_string()),
                         )
                     })
                     .when_some(elapsed.filter(|_| has_result), |el, d| {
@@ -208,7 +224,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                             div()
                                 .text_size(px(10.0))
                                 .text_color(theme.colors.text_muted)
-                                .child(format!("{}ms", d.as_millis()))
+                                .child(format!("{}ms", d.as_millis())),
                         )
                     })
                     .when(has_result, |el| {
@@ -228,21 +244,23 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                                 .cursor_pointer()
                                 .hover(|s| s.bg(theme.colors.bg_elevated))
                                 .on_click(cx.listener(|this, _, _, cx| {
-                                    let content = this.trpc_pg_result_viewer.read(cx).value().to_string();
+                                    let content =
+                                        this.trpc_pg_result_viewer.read(cx).value().to_string();
                                     cx.write_to_clipboard(gpui::ClipboardItem::new_string(content));
                                 }))
                                 .child(icon(ICON_COPY, ICON_MD, theme.colors.text_muted))
-                                .child("Copy")
+                                .child("Copy"),
                         )
-                    })
+                    }),
             )
             // Result viewer (read-only syntax-highlighted)
             .child(
-                div()
-                    .flex_1()
-                    .w_full()
-                    .overflow_hidden()
-                    .child(Input::new(&self.trpc_pg_result_viewer).disabled(true).appearance(false).h_full())
+                div().flex_1().w_full().overflow_hidden().child(
+                    Input::new(&self.trpc_pg_result_viewer)
+                        .disabled(true)
+                        .appearance(false)
+                        .h_full(),
+                ),
             )
             .into_any_element()
     }

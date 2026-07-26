@@ -1,5 +1,5 @@
-use tower_lsp::lsp_types::*;
 use crate::symbols::utf16_offset_to_byte_offset;
+use tower_lsp::lsp_types::*;
 
 pub fn complete(content: &str, pos: Position) -> Vec<CompletionItem> {
     let line = content
@@ -54,7 +54,10 @@ fn annotation_completions() -> Vec<CompletionItem> {
             "@protocol",
             "Override protocol (http|graphql|websocket|grpc|trpc|socketio)",
         ),
-        ("@set", "Extract response value to variable: @set var = $.path"),
+        (
+            "@set",
+            "Extract response value to variable: @set var = $.path",
+        ),
         ("@depends", "Declare dependency on named request"),
         ("@proto", "Path to .proto file for gRPC"),
     ]
@@ -102,7 +105,10 @@ fn variable_completions(content: &str) -> Vec<CompletionItem> {
         let t = line.trim_start();
         if let Some(rest) = t.strip_prefix("# @set") {
             let rest = rest.trim();
-            let name = rest.split(|c: char| c.is_whitespace() || c == '=').next().unwrap_or("");
+            let name = rest
+                .split(|c: char| c.is_whitespace() || c == '=')
+                .next()
+                .unwrap_or("");
             if !name.is_empty() && !vars.contains(&name.to_string()) {
                 vars.push(name.to_string());
             }

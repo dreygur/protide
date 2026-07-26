@@ -6,7 +6,7 @@
 //! whether the selection moved to a different character, causing continuous CPU spikes.
 
 use gpui::{
-    div, px, ElementId, Hsla, InteractiveElement, IntoElement, ParentElement, SharedString, Styled,
+    ElementId, Hsla, InteractiveElement, IntoElement, ParentElement, SharedString, Styled, div, px,
 };
 
 /// A selection range spanning multiple rows.
@@ -21,7 +21,12 @@ pub struct SelectionRange {
 
 impl SelectionRange {
     pub fn new(start_row: usize, start_offset: usize, end_row: usize, end_offset: usize) -> Self {
-        Self { start_row, start_offset, end_row, end_offset }
+        Self {
+            start_row,
+            start_offset,
+            end_row,
+            end_offset,
+        }
     }
 
     /// Returns the (start, end) byte offsets for a given row, if the row intersects selection.
@@ -77,7 +82,6 @@ pub(crate) fn floor_char_boundary(text: &str, idx: usize) -> usize {
     i
 }
 
-
 /// Returns `true` when the selection actually changes - use this to gate `cx.notify()`.
 ///
 /// Without this guard, every `MouseMove` triggers a full view re-render even when the
@@ -91,17 +95,12 @@ pub(crate) fn floor_char_boundary(text: &str, idx: usize) -> usize {
 ///     cx.notify();
 /// }
 /// ```
-pub fn selection_changed(
-    old: Option<(usize, usize)>,
-    new_start: usize,
-    new_end: usize,
-) -> bool {
+pub fn selection_changed(old: Option<(usize, usize)>, new_start: usize, new_end: usize) -> bool {
     match old {
         None => new_start != new_end,
         Some((s, e)) => s != new_start || e != new_end,
     }
 }
-
 
 /// Build a selectable text element for use in div-based layouts.
 /// Returns an `AnyElement` with the selection highlight already baked in.
@@ -125,15 +124,18 @@ pub fn selectable_text_element(
         .cursor_text()
         .text_size(px(font_size))
         .font_family(SharedString::from("JetBrains Mono"))
-        .text_color(text_color);  // inherited by all direct SharedString children
+        .text_color(text_color); // inherited by all direct SharedString children
 
     if let Some((start, end)) = selection {
-        let (s, e) = if start <= end { (start, end) } else { (end, start) };
+        let (s, e) = if start <= end {
+            (start, end)
+        } else {
+            (end, start)
+        };
         let s = s.min(text.len());
         let e = e.min(text.len());
         if s < e {
-            base
-                .child(SharedString::from(&text[..s]))
+            base.child(SharedString::from(&text[..s]))
                 .child(div().bg(sel_color).child(SharedString::from(&text[s..e])))
                 .child(SharedString::from(&text[e..]))
                 .into_any_element()
@@ -166,14 +168,13 @@ pub fn render_selectable_json_value(
         .cursor_text()
         .text_size(px(font_size))
         .font_family(SharedString::from("JetBrains Mono"))
-        .text_color(text_color);  // inherited by plain SharedString children
+        .text_color(text_color); // inherited by plain SharedString children
 
     // Only compute offsets when the selection actually touches this row.
     if let Some((s, e)) = sel_range.and_then(|r| r.offsets_for_row(row_index, text)) {
         if s < e {
             // Non-empty selection: split into before / highlight / after.
-            base
-                .child(SharedString::from(&text[..s]))
+            base.child(SharedString::from(&text[..s]))
                 .child(div().bg(sel_color).child(SharedString::from(&text[s..e])))
                 .child(SharedString::from(&text[e..]))
                 .into_any_element()

@@ -1,26 +1,29 @@
 //! Params and Headers tab rendering for RequestPanel
 
+use gpui::{Context, IntoElement, ParentElement, SharedString, Styled, div, prelude::*, px};
 
-use gpui::{
-    div, prelude::*, px, Context, IntoElement,
-    ParentElement, SharedString, Styled,
-};
-
-use crate::theme;
-use protide_core::execution::ws::WebSocketExecutor;
 use super::super::request_types::{EditTarget, KvList};
 use super::RequestPanel;
+use crate::theme;
+use protide_core::execution::ws::WebSocketExecutor;
 
 impl<E: WebSocketExecutor> RequestPanel<E> {
     pub(super) fn render_params_tab(&mut self, cx: &mut Context<Self>) -> gpui::AnyElement {
         let theme = theme::current(cx);
         let active_edit = self.active_edit;
         let edit_selection = self.edit_selection.clone();
-        let enabled_count = self.params.iter().filter(|p| p.enabled && !p.key.is_empty()).count();
+        let enabled_count = self
+            .params
+            .iter()
+            .filter(|p| p.enabled && !p.key.is_empty())
+            .count();
 
-        let params_data: Vec<_> = self.params.iter().enumerate().map(|(i, param)| {
-            (i, param.enabled, param.key.clone(), param.value.clone())
-        }).collect();
+        let params_data: Vec<_> = self
+            .params
+            .iter()
+            .enumerate()
+            .map(|(i, param)| (i, param.enabled, param.key.clone(), param.value.clone()))
+            .collect();
         let dragging_params = self.kv_row_drag.map(|(l, _, _)| l) == Some(KvList::Params);
 
         let mut container = div()
@@ -48,41 +51,59 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                     .gap(px(8.0))
                     .py(px(4.0))
                     .px(px(2.0))
-                    .when(!is_row_editing, |el| el.hover(|s| s.bg(theme.colors.bg_tertiary.opacity(0.3))))
-                    .when(drop_here, |el| el.border_t_2().border_color(theme.colors.accent))
+                    .when(!is_row_editing, |el| {
+                        el.hover(|s| s.bg(theme.colors.bg_tertiary.opacity(0.3)))
+                    })
+                    .when(drop_here, |el| {
+                        el.border_t_2().border_color(theme.colors.accent)
+                    })
                     .child(self.render_kv_row_drag_handle(KvList::Params, i, cx))
                     .child(
-                        self.render_kv_checkbox(format!("param-checkbox-{}", i).into(), is_enabled, cx)
-                            .on_click(cx.listener(move |this, _, _, cx| this.toggle_param(i, cx)))
-                    )
-                    .child(
-                        self.render_kv_input(
-                            format!("param-key-{}", i),
-                            EditTarget::ParamKey(i),
-                            &key,
-                            "Key",
-                            is_editing_key,
-                            if is_editing_key { edit_selection.clone() } else { 0..0 },
-                            px(self.kv_col_key_w),
+                        self.render_kv_checkbox(
+                            format!("param-checkbox-{}", i).into(),
+                            is_enabled,
                             cx,
                         )
+                        .on_click(cx.listener(move |this, _, _, cx| this.toggle_param(i, cx))),
                     )
+                    .child(self.render_kv_input(
+                        format!("param-key-{}", i),
+                        EditTarget::ParamKey(i),
+                        &key,
+                        "Key",
+                        is_editing_key,
+                        if is_editing_key {
+                            edit_selection.clone()
+                        } else {
+                            0..0
+                        },
+                        px(self.kv_col_key_w),
+                        cx,
+                    ))
                     .child(div().w(px(4.0)))
+                    .child(self.render_kv_input_flex(
+                        format!("param-value-{}", i),
+                        EditTarget::ParamValue(i),
+                        &value,
+                        "Value",
+                        is_editing_value,
+                        if is_editing_value {
+                            edit_selection.clone()
+                        } else {
+                            0..0
+                        },
+                        cx,
+                    ))
                     .child(
-                        self.render_kv_input_flex(
-                            format!("param-value-{}", i),
-                            EditTarget::ParamValue(i),
-                            &value,
-                            "Value",
-                            is_editing_value,
-                            if is_editing_value { edit_selection.clone() } else { 0..0 },
+                        self.render_kv_remove_btn(
+                            format!("param-remove-{}", i).into(),
+                            can_remove,
                             cx,
                         )
-                    )
-                    .child(
-                        self.render_kv_remove_btn(format!("param-remove-{}", i).into(), can_remove, cx)
-                            .when(can_remove, |el| el.on_click(cx.listener(move |this, _, _, cx| this.remove_param(i, cx))))
-                    )
+                        .when(can_remove, |el| {
+                            el.on_click(cx.listener(move |this, _, _, cx| this.remove_param(i, cx)))
+                        }),
+                    ),
             );
         }
 
@@ -93,11 +114,18 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
         let theme = theme::current(cx);
         let active_edit = self.active_edit;
         let edit_selection = self.edit_selection.clone();
-        let enabled_count = self.headers.iter().filter(|h| h.enabled && !h.key.is_empty()).count();
+        let enabled_count = self
+            .headers
+            .iter()
+            .filter(|h| h.enabled && !h.key.is_empty())
+            .count();
 
-        let headers_data: Vec<_> = self.headers.iter().enumerate().map(|(i, header)| {
-            (i, header.enabled, header.key.clone(), header.value.clone())
-        }).collect();
+        let headers_data: Vec<_> = self
+            .headers
+            .iter()
+            .enumerate()
+            .map(|(i, header)| (i, header.enabled, header.key.clone(), header.value.clone()))
+            .collect();
         let dragging_headers = self.kv_row_drag.map(|(l, _, _)| l) == Some(KvList::Headers);
 
         let mut container = div()
@@ -107,7 +135,8 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             .gap(px(2.0))
             .track_focus(&self.edit_focus);
 
-        container = container.child(self.render_kv_table_header("HEADER", "VALUE", enabled_count, cx));
+        container =
+            container.child(self.render_kv_table_header("HEADER", "VALUE", enabled_count, cx));
 
         for (i, is_enabled, key, value) in headers_data {
             let can_remove = !key.is_empty() || !value.is_empty();
@@ -125,45 +154,63 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                     .gap(px(8.0))
                     .py(px(4.0))
                     .px(px(2.0))
-                    .when(!is_row_editing, |el| el.hover(|s| s.bg(theme.colors.bg_tertiary.opacity(0.3))))
-                    .when(drop_here, |el| el.border_t_2().border_color(theme.colors.accent))
+                    .when(!is_row_editing, |el| {
+                        el.hover(|s| s.bg(theme.colors.bg_tertiary.opacity(0.3)))
+                    })
+                    .when(drop_here, |el| {
+                        el.border_t_2().border_color(theme.colors.accent)
+                    })
                     .child(self.render_kv_row_drag_handle(KvList::Headers, i, cx))
                     .child(
-                        self.render_kv_checkbox(format!("header-checkbox-{}", i).into(), is_enabled, cx)
-                            .on_click(cx.listener(move |this, _, _, cx| {
-                                this.toggle_header(i, cx);
-                            }))
-                    )
-                    .child(
-                        self.render_kv_input(
-                            format!("header-key-{}", i),
-                            EditTarget::HeaderKey(i),
-                            &key,
-                            "Header name",
-                            is_editing_key,
-                            if is_editing_key { edit_selection.clone() } else { 0..0 },
-                            px(self.kv_col_key_w),
+                        self.render_kv_checkbox(
+                            format!("header-checkbox-{}", i).into(),
+                            is_enabled,
                             cx,
                         )
+                        .on_click(cx.listener(move |this, _, _, cx| {
+                            this.toggle_header(i, cx);
+                        })),
                     )
+                    .child(self.render_kv_input(
+                        format!("header-key-{}", i),
+                        EditTarget::HeaderKey(i),
+                        &key,
+                        "Header name",
+                        is_editing_key,
+                        if is_editing_key {
+                            edit_selection.clone()
+                        } else {
+                            0..0
+                        },
+                        px(self.kv_col_key_w),
+                        cx,
+                    ))
                     .child(div().w(px(4.0)))
+                    .child(self.render_kv_input_flex(
+                        format!("header-value-{}", i),
+                        EditTarget::HeaderValue(i),
+                        &value,
+                        "Value",
+                        is_editing_value,
+                        if is_editing_value {
+                            edit_selection.clone()
+                        } else {
+                            0..0
+                        },
+                        cx,
+                    ))
                     .child(
-                        self.render_kv_input_flex(
-                            format!("header-value-{}", i),
-                            EditTarget::HeaderValue(i),
-                            &value,
-                            "Value",
-                            is_editing_value,
-                            if is_editing_value { edit_selection.clone() } else { 0..0 },
+                        self.render_kv_remove_btn(
+                            format!("header-remove-{}", i).into(),
+                            can_remove,
                             cx,
                         )
-                    )
-                    .child(
-                        self.render_kv_remove_btn(format!("header-remove-{}", i).into(), can_remove, cx)
-                            .when(can_remove, |el| el.on_click(cx.listener(move |this, _, _, cx| {
+                        .when(can_remove, |el| {
+                            el.on_click(cx.listener(move |this, _, _, cx| {
                                 this.remove_header(i, cx);
-                            })))
-                    )
+                            }))
+                        }),
+                    ),
             );
         }
 

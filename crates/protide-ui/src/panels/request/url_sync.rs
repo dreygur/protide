@@ -1,6 +1,6 @@
-use gpui::Context;
-use super::*;
 use super::super::request_utils::{url_decode, url_encode};
+use super::*;
+use gpui::Context;
 
 impl<E: WebSocketExecutor> RequestPanel<E> {
     /// Get the base URL without query string
@@ -26,7 +26,11 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                 let mut parts = pair.splitn(2, '=');
                 let key = url_decode(parts.next().unwrap_or(""));
                 let value = url_decode(parts.next().unwrap_or(""));
-                new_params.push(KeyValuePair { key, value, enabled: true });
+                new_params.push(KeyValuePair {
+                    key,
+                    value,
+                    enabled: true,
+                });
             }
 
             if new_params.is_empty() {

@@ -1,5 +1,8 @@
-use gpui::{Context, IntoElement, MouseButton, MouseDownEvent, ParentElement, Pixels, Point, SharedString, Styled, div, px};
 use super::*;
+use gpui::{
+    Context, IntoElement, MouseButton, MouseDownEvent, ParentElement, Pixels, Point, SharedString,
+    Styled, div, px,
+};
 
 impl ExplorerPanel {
     /// Render a single collection item row (non-recursive)
@@ -169,8 +172,16 @@ impl ExplorerPanel {
         let y = f32::from(position.y) - f32::from(self.panel_bounds.origin.y);
         let panel_w = f32::from(self.panel_bounds.size.width);
         let panel_h = f32::from(self.panel_bounds.size.height);
-        let left = if x + MENU_W > panel_w { px((x - MENU_W).max(0.0)) } else { px(x) };
-        let top  = if y + menu_h > panel_h { px((y - menu_h).max(0.0)) } else { px(y) };
+        let left = if x + MENU_W > panel_w {
+            px((x - MENU_W).max(0.0))
+        } else {
+            px(x)
+        };
+        let top = if y + menu_h > panel_h {
+            px((y - menu_h).max(0.0))
+        } else {
+            px(y)
+        };
 
         div()
             .absolute()
@@ -182,9 +193,12 @@ impl ExplorerPanel {
             .border_color(theme.colors.border)
             .shadow_lg()
             .overflow_hidden()
-            .on_mouse_down(MouseButton::Left, cx.listener(|_, _, _, cx| {
-                cx.stop_propagation();
-            }))
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(|_, _, _, cx| {
+                    cx.stop_propagation();
+                }),
+            )
             .child(
                 div()
                     .flex()
@@ -201,9 +215,12 @@ impl ExplorerPanel {
                                 .gap(px(8.0))
                                 .cursor_pointer()
                                 .hover(|s| s.bg(theme.colors.bg_tertiary))
-                                .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, _, cx| {
-                                    this.run_collection_folder(path_for_run.clone(), cx);
-                                }))
+                                .on_mouse_down(
+                                    MouseButton::Left,
+                                    cx.listener(move |this, _, _, cx| {
+                                        this.run_collection_folder(path_for_run.clone(), cx);
+                                    }),
+                                )
                                 .child(icon(ICON_PLAY, ICON_MD, theme.colors.status_success))
                                 .child(
                                     div()
@@ -223,9 +240,12 @@ impl ExplorerPanel {
                                 .gap(px(8.0))
                                 .cursor_pointer()
                                 .hover(|s| s.bg(theme.colors.bg_tertiary))
-                                .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, _, cx| {
-                                    this.export_openapi_folder(path_for_export.clone(), cx);
-                                }))
+                                .on_mouse_down(
+                                    MouseButton::Left,
+                                    cx.listener(move |this, _, _, cx| {
+                                        this.export_openapi_folder(path_for_export.clone(), cx);
+                                    }),
+                                )
                                 .child(icon(ICON_LINK, ICON_MD, theme.colors.accent))
                                 .child(
                                     div()
@@ -247,10 +267,13 @@ impl ExplorerPanel {
                                 .gap(px(8.0))
                                 .cursor_pointer()
                                 .hover(|s| s.bg(theme.colors.bg_tertiary))
-                                .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, _, cx| {
-                                    this.context_menu = None;
-                                    this.clone_file(path_for_clone.clone(), cx);
-                                }))
+                                .on_mouse_down(
+                                    MouseButton::Left,
+                                    cx.listener(move |this, _, _, cx| {
+                                        this.context_menu = None;
+                                        this.clone_file(path_for_clone.clone(), cx);
+                                    }),
+                                )
                                 .child(icon(ICON_COPY, ICON_MD, theme.colors.text_muted))
                                 .child(
                                     div()
@@ -271,10 +294,13 @@ impl ExplorerPanel {
                             .gap(px(8.0))
                             .cursor_pointer()
                             .hover(|s| s.bg(theme.colors.bg_tertiary))
-                            .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, window, cx| {
-                                this.start_rename_item(path_for_rename.clone(), cx);
-                                this.edit_focus.focus(window, cx);
-                            }))
+                            .on_mouse_down(
+                                MouseButton::Left,
+                                cx.listener(move |this, _, window, cx| {
+                                    this.start_rename_item(path_for_rename.clone(), cx);
+                                    this.edit_focus.focus(window, cx);
+                                }),
+                            )
                             .child(icon(ICON_EDIT, ICON_MD, theme.colors.text_muted))
                             .child(
                                 div()
@@ -294,9 +320,12 @@ impl ExplorerPanel {
                             .gap(px(8.0))
                             .cursor_pointer()
                             .hover(|s| s.bg(theme.colors.status_client_error.opacity(0.1)))
-                            .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, _, cx| {
-                                this.delete_collection_item(path_for_delete.clone(), cx);
-                            }))
+                            .on_mouse_down(
+                                MouseButton::Left,
+                                cx.listener(move |this, _, _, cx| {
+                                    this.delete_collection_item(path_for_delete.clone(), cx);
+                                }),
+                            )
                             .child(icon(ICON_DELETE, ICON_MD, theme.colors.status_client_error))
                             .child(
                                 div()

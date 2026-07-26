@@ -38,7 +38,10 @@ pub fn document_symbols(content: &str) -> Option<DocumentSymbolResponse> {
             let line = req.line as u32;
             let range = Range {
                 start: Position { line, character: 0 },
-                end: Position { line, character: u32::MAX },
+                end: Position {
+                    line,
+                    character: u32::MAX,
+                },
             };
             #[allow(deprecated)]
             DocumentSymbol {
@@ -84,8 +87,14 @@ pub fn prepare_rename_at(content: &str, pos: Position) -> Option<PrepareRenameRe
     let name_end = name_start + old_name.len() as u32;
     Some(PrepareRenameResponse::RangeWithPlaceholder {
         range: Range {
-            start: Position { line: pos.line, character: name_start },
-            end: Position { line: pos.line, character: name_end },
+            start: Position {
+                line: pos.line,
+                character: name_start,
+            },
+            end: Position {
+                line: pos.line,
+                character: name_end,
+            },
         },
         placeholder: old_name.to_string(),
     })
@@ -110,8 +119,14 @@ pub fn rename_symbol(
             let indent = l.len() - t.len();
             edits.push(TextEdit {
                 range: Range {
-                    start: Position { line: i as u32, character: 0 },
-                    end: Position { line: i as u32, character: l.len() as u32 },
+                    start: Position {
+                        line: i as u32,
+                        character: 0,
+                    },
+                    end: Position {
+                        line: i as u32,
+                        character: l.len() as u32,
+                    },
                 },
                 new_text: format!("{}{} {}", &l[..indent], prefix, new_name),
             });
@@ -123,18 +138,26 @@ pub fn rename_symbol(
     }
     let mut changes = HashMap::new();
     changes.insert(uri.clone(), edits);
-    Some(WorkspaceEdit { changes: Some(changes), ..Default::default() })
+    Some(WorkspaceEdit {
+        changes: Some(changes),
+        ..Default::default()
+    })
 }
 
 fn goto_named_request(content: &str, uri: &Url, name: &str) -> Option<GotoDefinitionResponse> {
     let requests = http_parser::parse(content).ok()?;
-    let target = requests.iter().find(|r| r.meta.name.as_deref() == Some(name))?;
+    let target = requests
+        .iter()
+        .find(|r| r.meta.name.as_deref() == Some(name))?;
     let line = target.line as u32;
     Some(GotoDefinitionResponse::Scalar(Location {
         uri: uri.clone(),
         range: Range {
             start: Position { line, character: 0 },
-            end: Position { line, character: u32::MAX },
+            end: Position {
+                line,
+                character: u32::MAX,
+            },
         },
     }))
 }
@@ -143,14 +166,26 @@ fn goto_variable(content: &str, uri: &Url, var_name: &str) -> Option<GotoDefinit
     let line_num = content.lines().enumerate().find_map(|(i, line)| {
         let rest = line.trim_start().strip_prefix("# @set")?;
         let rest = rest.trim_start();
-        let name_end = rest.find(|c: char| c.is_whitespace() || c == '=').unwrap_or(rest.len());
-        if &rest[..name_end] == var_name { Some(i as u32) } else { None }
+        let name_end = rest
+            .find(|c: char| c.is_whitespace() || c == '=')
+            .unwrap_or(rest.len());
+        if &rest[..name_end] == var_name {
+            Some(i as u32)
+        } else {
+            None
+        }
     })?;
     Some(GotoDefinitionResponse::Scalar(Location {
         uri: uri.clone(),
         range: Range {
-            start: Position { line: line_num, character: 0 },
-            end: Position { line: line_num, character: u32::MAX },
+            start: Position {
+                line: line_num,
+                character: 0,
+            },
+            end: Position {
+                line: line_num,
+                character: u32::MAX,
+            },
         },
     }))
 }

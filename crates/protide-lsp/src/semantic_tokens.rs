@@ -90,7 +90,7 @@ fn highlight_inline(
     let mut offset = 0usize;
     while let Some(open) = search.find("{{") {
         if let Some(close) = search[open + 2..].find("}}") {
-            spans.push((( offset + open) as u32, (close + 4) as u32, TOK_PARAMETER));
+            spans.push(((offset + open) as u32, (close + 4) as u32, TOK_PARAMETER));
             let skip = open + close + 4;
             offset += skip;
             search = &search[skip.min(search.len())..];
@@ -113,7 +113,9 @@ fn highlight_inline(
                     .find(|ch: char| !ch.is_ascii_digit())
                     .map(|n| i + n)
                     .unwrap_or(line.len());
-                let next_ok = line.as_bytes().get(end)
+                let next_ok = line
+                    .as_bytes()
+                    .get(end)
                     .map_or(true, |&n| !n.is_ascii_alphanumeric() && n != b'_');
                 if next_ok {
                     spans.push((i as u32, (end - i) as u32, TOK_NUMBER));
@@ -132,7 +134,14 @@ fn highlight_inline(
         if start < *prev_start && *prev_line == ln {
             continue;
         }
-        tokens.push(make_token(ln, *prev_line, start, *prev_start, len, tok_type));
+        tokens.push(make_token(
+            ln,
+            *prev_line,
+            start,
+            *prev_start,
+            len,
+            tok_type,
+        ));
         *prev_line = ln;
         *prev_start = start;
     }
@@ -140,8 +149,15 @@ fn highlight_inline(
 
 pub fn try_request_line(s: &str) -> Option<&str> {
     let methods = [
-        "GET ", "POST ", "PUT ", "PATCH ", "DELETE ", "HEAD ", "OPTIONS ",
-        "WEBSOCKET ", "GRPC ",
+        "GET ",
+        "POST ",
+        "PUT ",
+        "PATCH ",
+        "DELETE ",
+        "HEAD ",
+        "OPTIONS ",
+        "WEBSOCKET ",
+        "GRPC ",
     ];
     for m in &methods {
         if s.starts_with(m) {
@@ -181,17 +197,30 @@ mod tests {
     #[test]
     fn indented_request_line_gets_correct_method_and_url_token_spans() {
         let tokens = tokenize("  GET https://example.com");
-        assert_eq!(tokens.len(), 2, "expected a KEYWORD token and a STRING token");
+        assert_eq!(
+            tokens.len(),
+            2,
+            "expected a KEYWORD token and a STRING token"
+        );
 
         let method = &tokens[0];
-        assert_eq!(method.delta_start, 2, "method token should start after the 2-space indent");
-        assert_eq!(method.length, 3, "method token length should be just 'GET' (3), not indent + 'GET'");
+        assert_eq!(
+            method.delta_start, 2,
+            "method token should start after the 2-space indent"
+        );
+        assert_eq!(
+            method.length, 3,
+            "method token length should be just 'GET' (3), not indent + 'GET'"
+        );
 
         let url = &tokens[1];
         // Same line as the method token, so delta_start is relative to the
         // method token's start (2), not absolute from column 0.
         assert_eq!(url.delta_line, 0);
-        assert_eq!(url.delta_start, 4, "URL token should start right after 'GET ' (3 + 1 space)");
+        assert_eq!(
+            url.delta_start, 4,
+            "URL token should start right after 'GET ' (3 + 1 space)"
+        );
         assert_eq!(url.length, "https://example.com".len() as u32);
     }
 

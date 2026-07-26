@@ -1,12 +1,14 @@
 //! Socket.IO free-function helpers (status bar + event item)
 
-use gpui::{div, prelude::*, px, ParentElement, SharedString, Styled};
+use gpui::{ParentElement, SharedString, Styled, div, prelude::*, px};
 
-use crate::components::icons::{icon, ICON_SM, ICON_MD, ICON_PLAY, ICON_ARROW_LEFT, ICON_ARROW_RIGHT};
-use protide_core::execution::ws::WebSocketExecutor;
-use protide_core::execution::sio::{SioDirection, SioEvent};
 use super::super::request_types::SioConnectionState;
 use super::RequestPanel;
+use crate::components::icons::{
+    ICON_ARROW_LEFT, ICON_ARROW_RIGHT, ICON_MD, ICON_PLAY, ICON_SM, icon,
+};
+use protide_core::execution::sio::{SioDirection, SioEvent};
+use protide_core::execution::ws::WebSocketExecutor;
 
 pub(super) fn render_sio_status_bar<E: WebSocketExecutor>(
     theme: &crate::theme::Theme,
@@ -39,15 +41,19 @@ pub(super) fn render_sio_status_bar<E: WebSocketExecutor>(
                         .child(icon(
                             ICON_PLAY,
                             ICON_MD,
-                            if is_connected { theme.colors.method_get } else { theme.colors.text_muted },
-                        ))
+                            if is_connected {
+                                theme.colors.method_get
+                            } else {
+                                theme.colors.text_muted
+                            },
+                        )),
                 )
                 .child(
                     div()
                         .text_size(px(12.0))
                         .font_weight(gpui::FontWeight::SEMIBOLD)
                         .text_color(theme.colors.text_primary)
-                        .child("Socket.IO")
+                        .child("Socket.IO"),
                 )
                 .child(
                     div()
@@ -72,8 +78,8 @@ pub(super) fn render_sio_status_bar<E: WebSocketExecutor>(
                             SioConnectionState::Connected => "Connected",
                             SioConnectionState::Connecting => "Connecting...",
                             SioConnectionState::Disconnected => "Disconnected",
-                        })
-                )
+                        }),
+                ),
         )
         .child(
             div()
@@ -89,27 +95,42 @@ pub(super) fn render_sio_status_bar<E: WebSocketExecutor>(
                     el.bg(theme.colors.method_get.opacity(0.15))
                         .text_color(theme.colors.method_get)
                 })
-                .when(is_connecting, |el| el.cursor(gpui::CursorStyle::Arrow).opacity(0.5))
+                .when(is_connecting, |el| {
+                    el.cursor(gpui::CursorStyle::Arrow).opacity(0.5)
+                })
                 .hover(|s| s.opacity(0.8))
                 .text_size(px(11.0))
                 .font_weight(gpui::FontWeight::MEDIUM)
                 .on_click(cx.listener(move |this, _, _, cx| {
-                    if is_connecting { return; }
+                    if is_connecting {
+                        return;
+                    }
                     if is_connected {
                         this.disconnect_socketio(cx);
                     } else {
                         this.connect_socketio(cx);
                     }
                 }))
-                .child(if is_connected { "Disconnect" } else { "Connect" })
+                .child(if is_connected {
+                    "Disconnect"
+                } else {
+                    "Connect"
+                }),
         )
 }
 
-pub(super) fn render_sio_event_item(i: usize, event: &SioEvent, theme: &crate::theme::Theme) -> gpui::Stateful<gpui::Div> {
+pub(super) fn render_sio_event_item(
+    i: usize,
+    event: &SioEvent,
+    theme: &crate::theme::Theme,
+) -> gpui::Stateful<gpui::Div> {
     let is_sent = event.direction == SioDirection::Sent;
     let is_ack = event.is_ack;
     let time_str = event.timestamp.format("%H:%M:%S").to_string();
-    let ack_label = event.ack_id.map(|id| format!(" ack#{}", id)).unwrap_or_default();
+    let ack_label = event
+        .ack_id
+        .map(|id| format!(" ack#{}", id))
+        .unwrap_or_default();
 
     div()
         .id(SharedString::from(format!("sio-event-{}", i)))
@@ -145,30 +166,38 @@ pub(super) fn render_sio_event_item(i: usize, event: &SioEvent, theme: &crate::t
                             theme.colors.method_get
                         })
                         .child(icon(
-                            if is_sent { ICON_ARROW_RIGHT } else { ICON_ARROW_LEFT },
+                            if is_sent {
+                                ICON_ARROW_RIGHT
+                            } else {
+                                ICON_ARROW_LEFT
+                            },
                             ICON_SM,
-                            if is_sent { theme.colors.accent } else { theme.colors.method_get },
+                            if is_sent {
+                                theme.colors.accent
+                            } else {
+                                theme.colors.method_get
+                            },
                         ))
-                        .child(format!("{}{}", event.event_name, ack_label))
+                        .child(format!("{}{}", event.event_name, ack_label)),
                 )
                 .child(
                     div()
                         .text_size(px(9.0))
                         .text_color(theme.colors.text_muted)
-                        .child(time_str)
+                        .child(time_str),
                 )
                 .child(
                     div()
                         .text_size(px(9.0))
                         .text_color(theme.colors.text_muted)
-                        .child(format!("ns:{}", event.namespace))
-                )
+                        .child(format!("ns:{}", event.namespace)),
+                ),
         )
         .child(
             div()
                 .text_size(px(11.0))
                 .text_color(theme.colors.text_primary)
                 .font_family("JetBrains Mono")
-                .child(event.payload.clone())
+                .child(event.payload.clone()),
         )
 }

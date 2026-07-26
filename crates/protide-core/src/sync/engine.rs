@@ -24,7 +24,12 @@ impl SyncEngine {
     }
 
     /// Update an existing entry locally
-    pub fn update_local_change(&mut self, id: uuid::Uuid, data_type: DataType, data: String) -> Option<types::CrdtEntry> {
+    pub fn update_local_change(
+        &mut self,
+        id: uuid::Uuid,
+        data_type: DataType,
+        data: String,
+    ) -> Option<types::CrdtEntry> {
         let entry = self.store.update_local(id, data_type, data)?;
 
         if let Some(ref fs) = self.file_sync {
@@ -60,13 +65,20 @@ impl SyncEngine {
     }
 
     /// Broadcast a workspace file change (create/modify/delete) to all P2P peers.
-    pub fn broadcast_workspace_file(&mut self, workspace_root: &std::path::Path, file_path: &std::path::Path, content: String, deleted: bool) {
+    pub fn broadcast_workspace_file(
+        &mut self,
+        workspace_root: &std::path::Path,
+        file_path: &std::path::Path,
+        content: String,
+        deleted: bool,
+    ) {
         let rel = file_path.strip_prefix(workspace_root).unwrap_or(file_path);
         let payload = serde_json::json!({
             "path": rel.to_string_lossy(),
             "content": content,
             "deleted": deleted,
-        }).to_string();
+        })
+        .to_string();
         self.apply_local_change(DataType::WorkspaceFile, payload);
     }
 
@@ -114,7 +126,9 @@ impl SyncEngine {
         // Poll P2P events - two-phase: read all events, then send any PAKE responses
         #[cfg(feature = "p2p-sync")]
         {
-            let p2p_events: Vec<_> = self.p2p_sync.as_ref()
+            let p2p_events: Vec<_> = self
+                .p2p_sync
+                .as_ref()
                 .map(|p| p.poll_events())
                 .unwrap_or_default();
 
@@ -133,9 +147,10 @@ impl SyncEngine {
                     }
                     p2p::P2PEvent::PeerJoined(peer) => {
                         info!("[mDNS] Discovered peer: {}", peer);
-                        events.push(SyncEvent::P2PDiagnostic(
-                            format!("[mDNS] Discovered peer: {}", peer)
-                        ));
+                        events.push(SyncEvent::P2PDiagnostic(format!(
+                            "[mDNS] Discovered peer: {}",
+                            peer
+                        )));
                         events.push(SyncEvent::PeerJoined(peer.to_string()));
                     }
                     p2p::P2PEvent::PeerLeft(peer) => {
@@ -147,11 +162,22 @@ impl SyncEngine {
                     p2p::P2PEvent::LocalAddr(addr) => {
                         events.push(SyncEvent::LocalAddr(addr));
                     }
-                    p2p::P2PEvent::PakeMsg { from, topic, node_name, kind, pake_bytes, confirm } => {
-                        info!("[PAKE] Received '{}' from {} on topic {}", kind, from, topic);
-                        events.push(SyncEvent::P2PDiagnostic(
-                            format!("[PAKE] Received '{}' from {} on {}", kind, from, topic)
-                        ));
+                    p2p::P2PEvent::PakeMsg {
+                        from,
+                        topic,
+                        node_name,
+                        kind,
+                        pake_bytes,
+                        confirm,
+                    } => {
+                        info!(
+                            "[PAKE] Received '{}' from {} on topic {}",
+                            kind, from, topic
+                        );
+                        events.push(SyncEvent::P2PDiagnostic(format!(
+                            "[PAKE] Received '{}' from {} on {}",
+                            kind, from, topic
+                        )));
                         #[cfg(feature = "pake-auth")]
                         {
                             // The topic name is a one-way hash of the pairing code
@@ -161,118 +187,157 @@ impl SyncEngine {
                             // with a known code, so use that instead.
                             let code = self.pake_pending_code.clone();
                             if !code.is_empty() {
-                            match kind.as_str() {
-                                "init" => {
-                                    // We are Alice: generate A-side and finish, but
-                                    // don't trust the handshake yet - SPAKE2's
-                                    // finish() only proves the peer's message was
-                                    // well-formed, not that they used the same
-                                    // code. Send our confirmation blob along with
-                                    // "resp" and wait for Bob's "confirm" before
-                                    // declaring HandshakeComplete.
-                                    if let Ok((msg_a, state_a)) = pake::pake_initiate(&code) {
-                                        match pake::pake_finish(state_a, &pake_bytes) {
-                                            Ok(session_a) => match pake::confirm_blob(&session_a) {
-                                                Ok(confirm_a) => {
-                                                    self.pake_pending_alice = Some(session_a);
-                                                    let resp = p2p::PakeMsgPayload {
-                                                        kind: "resp".to_string(),
-                                                        node_name: self.config.node_name.clone(),
-                                                        pake_bytes: msg_a,
-                                                        confirm: Some(confirm_a),
-                                                    };
-                                                    if let Ok(data) = serde_json::to_vec(&resp) {
-                                                        pake_resps.push((topic, data));
-                                                    }
-                                                }
-                                                Err(e) => {
-                                                    events.push(SyncEvent::HandshakeFailed {
+                                match kind.as_str() {
+                                    "init" => {
+                                        // We are Alice: generate A-side and finish, but
+                                        // don't trust the handshake yet - SPAKE2's
+                                        // finish() only proves the peer's message was
+                                        // well-formed, not that they used the same
+                                        // code. Send our confirmation blob along with
+                                        // "resp" and wait for Bob's "confirm" before
+                                        // declaring HandshakeComplete.
+                                        if let Ok((msg_a, state_a)) = pake::pake_initiate(&code) {
+                                            match pake::pake_finish(state_a, &pake_bytes) {
+                                                Ok(session_a) => {
+                                                    match pake::confirm_blob(&session_a) {
+                                                        Ok(confirm_a) => {
+                                                            self.pake_pending_alice =
+                                                                Some(session_a);
+                                                            let resp = p2p::PakeMsgPayload {
+                                                                kind: "resp".to_string(),
+                                                                node_name: self
+                                                                    .config
+                                                                    .node_name
+                                                                    .clone(),
+                                                                pake_bytes: msg_a,
+                                                                confirm: Some(confirm_a),
+                                                            };
+                                                            if let Ok(data) =
+                                                                serde_json::to_vec(&resp)
+                                                            {
+                                                                pake_resps.push((topic, data));
+                                                            }
+                                                        }
+                                                        Err(e) => {
+                                                            events.push(SyncEvent::HandshakeFailed {
                                                         reason: format!("Failed to build confirmation: {}", e),
                                                     });
-                                                }
-                                            },
-                                            Err(_) => {
-                                                info!("[PAKE] Handshake mismatch on 'init' from peer {}", from);
-                                                events.push(SyncEvent::HandshakeFailed {
-                                                    reason: "PAKE mismatch".to_string(),
-                                                });
-                                            }
-                                        }
-                                    }
-                                }
-                                "resp" => {
-                                    // We are Bob: finish with Alice's message, then
-                                    // verify her confirmation blob before trusting
-                                    // the handshake. Only once that verifies do we
-                                    // declare HandshakeComplete and send our own
-                                    // confirmation back so Alice can too.
-                                    if let Some(state_b) = self.pake_pending.take() {
-                                        match pake::pake_finish(state_b, &pake_bytes) {
-                                            Ok(session_b) => {
-                                                let confirmed = confirm.as_deref()
-                                                    .map(|blob| pake::verify_confirm(&session_b, blob))
-                                                    .unwrap_or(false);
-                                                if confirmed {
-                                                    info!("[PAKE] Handshake complete (resp) with peer {}", from);
-                                                    events.push(SyncEvent::HandshakeComplete {
-                                                        peer_id: from.to_string(),
-                                                        peer_name: node_name,
-                                                    });
-                                                    if let Ok(confirm_b) = pake::confirm_blob(&session_b) {
-                                                        let ack = p2p::PakeMsgPayload {
-                                                            kind: "confirm".to_string(),
-                                                            node_name: self.config.node_name.clone(),
-                                                            pake_bytes: Vec::new(),
-                                                            confirm: Some(confirm_b),
-                                                        };
-                                                        if let Ok(data) = serde_json::to_vec(&ack) {
-                                                            pake_resps.push((topic, data));
                                                         }
                                                     }
-                                                } else {
-                                                    info!("[PAKE] Handshake mismatch on 'resp' from peer {}", from);
+                                                }
+                                                Err(_) => {
+                                                    info!(
+                                                        "[PAKE] Handshake mismatch on 'init' from peer {}",
+                                                        from
+                                                    );
                                                     events.push(SyncEvent::HandshakeFailed {
                                                         reason: "PAKE mismatch".to_string(),
                                                     });
                                                 }
                                             }
-                                            Err(_) => {
-                                                info!("[PAKE] Handshake mismatch on 'resp' from peer {}", from);
+                                        }
+                                    }
+                                    "resp" => {
+                                        // We are Bob: finish with Alice's message, then
+                                        // verify her confirmation blob before trusting
+                                        // the handshake. Only once that verifies do we
+                                        // declare HandshakeComplete and send our own
+                                        // confirmation back so Alice can too.
+                                        if let Some(state_b) = self.pake_pending.take() {
+                                            match pake::pake_finish(state_b, &pake_bytes) {
+                                                Ok(session_b) => {
+                                                    let confirmed = confirm
+                                                        .as_deref()
+                                                        .map(|blob| {
+                                                            pake::verify_confirm(&session_b, blob)
+                                                        })
+                                                        .unwrap_or(false);
+                                                    if confirmed {
+                                                        info!(
+                                                            "[PAKE] Handshake complete (resp) with peer {}",
+                                                            from
+                                                        );
+                                                        events.push(SyncEvent::HandshakeComplete {
+                                                            peer_id: from.to_string(),
+                                                            peer_name: node_name,
+                                                        });
+                                                        if let Ok(confirm_b) =
+                                                            pake::confirm_blob(&session_b)
+                                                        {
+                                                            let ack = p2p::PakeMsgPayload {
+                                                                kind: "confirm".to_string(),
+                                                                node_name: self
+                                                                    .config
+                                                                    .node_name
+                                                                    .clone(),
+                                                                pake_bytes: Vec::new(),
+                                                                confirm: Some(confirm_b),
+                                                            };
+                                                            if let Ok(data) =
+                                                                serde_json::to_vec(&ack)
+                                                            {
+                                                                pake_resps.push((topic, data));
+                                                            }
+                                                        }
+                                                    } else {
+                                                        info!(
+                                                            "[PAKE] Handshake mismatch on 'resp' from peer {}",
+                                                            from
+                                                        );
+                                                        events.push(SyncEvent::HandshakeFailed {
+                                                            reason: "PAKE mismatch".to_string(),
+                                                        });
+                                                    }
+                                                }
+                                                Err(_) => {
+                                                    info!(
+                                                        "[PAKE] Handshake mismatch on 'resp' from peer {}",
+                                                        from
+                                                    );
+                                                    events.push(SyncEvent::HandshakeFailed {
+                                                        reason: "PAKE mismatch".to_string(),
+                                                    });
+                                                }
+                                            }
+                                        }
+                                    }
+                                    "confirm" => {
+                                        // We are Alice: Bob has (claimed to have)
+                                        // proven he derived the same key as us.
+                                        if let Some(session_a) = self.pake_pending_alice.take() {
+                                            let confirmed = confirm
+                                                .as_deref()
+                                                .map(|blob| pake::verify_confirm(&session_a, blob))
+                                                .unwrap_or(false);
+                                            if confirmed {
+                                                info!(
+                                                    "[PAKE] Handshake complete (confirm) with peer {}",
+                                                    from
+                                                );
+                                                events.push(SyncEvent::HandshakeComplete {
+                                                    peer_id: from.to_string(),
+                                                    peer_name: node_name,
+                                                });
+                                            } else {
+                                                info!(
+                                                    "[PAKE] Handshake mismatch on 'confirm' from peer {}",
+                                                    from
+                                                );
                                                 events.push(SyncEvent::HandshakeFailed {
                                                     reason: "PAKE mismatch".to_string(),
                                                 });
                                             }
                                         }
                                     }
+                                    _ => {}
                                 }
-                                "confirm" => {
-                                    // We are Alice: Bob has (claimed to have)
-                                    // proven he derived the same key as us.
-                                    if let Some(session_a) = self.pake_pending_alice.take() {
-                                        let confirmed = confirm.as_deref()
-                                            .map(|blob| pake::verify_confirm(&session_a, blob))
-                                            .unwrap_or(false);
-                                        if confirmed {
-                                            info!("[PAKE] Handshake complete (confirm) with peer {}", from);
-                                            events.push(SyncEvent::HandshakeComplete {
-                                                peer_id: from.to_string(),
-                                                peer_name: node_name,
-                                            });
-                                        } else {
-                                            info!("[PAKE] Handshake mismatch on 'confirm' from peer {}", from);
-                                            events.push(SyncEvent::HandshakeFailed {
-                                                reason: "PAKE mismatch".to_string(),
-                                            });
-                                        }
-                                    }
-                                }
-                                _ => {}
-                            }
                             }
                         }
                         // Without pake-auth, handshake messages are silently ignored
                         #[cfg(not(feature = "pake-auth"))]
-                        { let _ = (from, topic, node_name, kind, pake_bytes, confirm); }
+                        {
+                            let _ = (from, topic, node_name, kind, pake_bytes, confirm);
+                        }
                     }
                 }
             }
@@ -334,9 +399,11 @@ impl SyncEngine {
                 let data = serde_json::to_vec(&payload)
                     .map_err(|e| format!("Serialisation error: {}", e))?;
                 p2p.publish_on_pake_topic(code, data);
-                info!("[PAKE] Init packet published on a hashed PAKE topic (code not sent over the wire)");
+                info!(
+                    "[PAKE] Init packet published on a hashed PAKE topic (code not sent over the wire)"
+                );
                 let _ = self.event_tx.send(SyncEvent::P2PDiagnostic(
-                    "[PAKE] Initiation packet sent".to_string()
+                    "[PAKE] Initiation packet sent".to_string(),
                 ));
             }
         }

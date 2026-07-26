@@ -1,11 +1,16 @@
-use gpui::{Context, FontWeight, IntoElement, ParentElement, SharedString, Styled, div, px, prelude::*};
 use super::*;
+use gpui::{
+    Context, FontWeight, IntoElement, ParentElement, SharedString, Styled, div, prelude::*, px,
+};
 
 impl MainWindow {
     pub(super) fn render_codegen_panel(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = theme::current(cx);
         let panel = self.request_panel.read(cx);
-        let editor = gpui_component::input::Input::new(&panel.codegen_editor).disabled(true).appearance(false).h_full();
+        let editor = gpui_component::input::Input::new(&panel.codegen_editor)
+            .disabled(true)
+            .appearance(false)
+            .h_full();
         let current_lang = panel.codegen_language;
         let width = self.codegen_panel_width;
 
@@ -61,8 +66,9 @@ impl MainWindow {
                                     })
                                 })
                                 .on_click(cx.listener(move |this, _, window, cx| {
-                                    this.request_panel
-                                        .update(cx, |panel, cx| panel.generate_code(lang, window, cx));
+                                    this.request_panel.update(cx, |panel, cx| {
+                                        panel.generate_code(lang, window, cx)
+                                    });
                                 }))
                                 .child(label)
                         }),

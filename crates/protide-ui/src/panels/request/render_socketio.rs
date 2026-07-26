@@ -1,18 +1,18 @@
 //! Socket.IO events tab rendering for RequestPanel
 
-use gpui::{
-    div, prelude::*, px, Context, IntoElement,
-    ParentElement, Styled,
-};
+use gpui::{Context, IntoElement, ParentElement, Styled, div, prelude::*, px};
 
-use crate::theme;
-use protide_core::execution::ws::WebSocketExecutor;
 use super::super::request_types::{EditTarget, SioConnectionState};
 use super::RequestPanel;
-use super::render_socketio_helpers::{render_sio_status_bar, render_sio_event_item};
+use super::render_socketio_helpers::{render_sio_event_item, render_sio_status_bar};
+use crate::theme;
+use protide_core::execution::ws::WebSocketExecutor;
 
 impl<E: WebSocketExecutor> RequestPanel<E> {
-    pub(super) fn render_socketio_events_tab(&mut self, cx: &mut Context<Self>) -> gpui::AnyElement {
+    pub(super) fn render_socketio_events_tab(
+        &mut self,
+        cx: &mut Context<Self>,
+    ) -> gpui::AnyElement {
         let theme = theme::current(cx);
         let sio_state = self.sio_state;
         let is_connected = sio_state == SioConnectionState::Connected;
@@ -39,7 +39,13 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             .gap(px(8.0))
             .track_focus(&self.edit_focus)
             // Status bar
-            .child(render_sio_status_bar(&theme, sio_state, is_connected, is_connecting, cx))
+            .child(render_sio_status_bar(
+                &theme,
+                sio_state,
+                is_connected,
+                is_connecting,
+                cx,
+            ))
             // Namespace + event name row
             .child(
                 div()
@@ -56,7 +62,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                                     .text_size(px(10.0))
                                     .font_weight(gpui::FontWeight::SEMIBOLD)
                                     .text_color(theme.colors.text_muted)
-                                    .child("NAMESPACE")
+                                    .child("NAMESPACE"),
                             )
                             .child(self.render_kv_input_flex(
                                 "sio-namespace-input".to_string(),
@@ -66,7 +72,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                                 ns_editing,
                                 if ns_editing { edit_sel.clone() } else { 0..0 },
                                 cx,
-                            ))
+                            )),
                     )
                     .child(
                         div()
@@ -79,7 +85,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                                     .text_size(px(10.0))
                                     .font_weight(gpui::FontWeight::SEMIBOLD)
                                     .text_color(theme.colors.text_muted)
-                                    .child("EVENT NAME")
+                                    .child("EVENT NAME"),
                             )
                             .child(self.render_kv_input_flex(
                                 "sio-event-name-input".to_string(),
@@ -89,11 +95,18 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                                 name_editing,
                                 if name_editing { edit_sel.clone() } else { 0..0 },
                                 cx,
-                            ))
-                    )
+                            )),
+                    ),
             )
             // Rooms row
-            .child(self.render_socketio_rooms(room_name, room_editing, if room_editing { edit_sel } else { 0..0 }, &active_rooms, is_connected, cx))
+            .child(self.render_socketio_rooms(
+                room_name,
+                room_editing,
+                if room_editing { edit_sel } else { 0..0 },
+                &active_rooms,
+                is_connected,
+                cx,
+            ))
             // Event history
             .child(
                 div()
@@ -109,22 +122,21 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                     .flex()
                     .flex_col()
                     .when(messages.is_empty(), |el| {
-                        el.items_center()
-                            .justify_center()
-                            .child(
-                                div()
-                                    .text_size(px(12.0))
-                                    .text_color(theme.colors.text_muted)
-                                    .child("No events yet. Connect to start.")
-                            )
+                        el.items_center().justify_center().child(
+                            div()
+                                .text_size(px(12.0))
+                                .text_color(theme.colors.text_muted)
+                                .child("No events yet. Connect to start."),
+                        )
                     })
                     .when(!messages.is_empty(), |el| {
-                        el.p(px(8.0))
-                            .gap(px(4.0))
-                            .children(messages.iter().enumerate().map(|(i, event)| {
-                                render_sio_event_item(i, event, &theme)
-                            }))
-                    })
+                        el.p(px(8.0)).gap(px(4.0)).children(
+                            messages
+                                .iter()
+                                .enumerate()
+                                .map(|(i, event)| render_sio_event_item(i, event, &theme)),
+                        )
+                    }),
             )
             // Emit composer
             .child(self.render_socketio_compose(want_ack, is_connected, cx))
@@ -141,27 +153,31 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
         let theme = theme::current(cx);
-        div().flex().flex_col().gap(px(4.0))
-            .child(div().text_size(px(10.0)).font_weight(gpui::FontWeight::SEMIBOLD)
-                .text_color(theme.colors.text_muted).child("ROOMS"))
+        div()
+            .flex()
+            .flex_col()
+            .gap(px(4.0))
+            .child(
+                div()
+                    .text_size(px(10.0))
+                    .font_weight(gpui::FontWeight::SEMIBOLD)
+                    .text_color(theme.colors.text_muted)
+                    .child("ROOMS"),
+            )
             .child(
                 div()
                     .flex()
                     .gap(px(6.0))
                     .items_center()
-                    .child(
-                        div()
-                            .flex_1()
-                            .child(self.render_kv_input_flex(
-                                "sio-room-name-input".to_string(),
-                                EditTarget::SioRoomName,
-                                &room_name,
-                                "room-name",
-                                room_editing,
-                                room_sel,
-                                cx,
-                            ))
-                    )
+                    .child(div().flex_1().child(self.render_kv_input_flex(
+                        "sio-room-name-input".to_string(),
+                        EditTarget::SioRoomName,
+                        &room_name,
+                        "room-name",
+                        room_editing,
+                        room_sel,
+                        cx,
+                    )))
                     .child(
                         div()
                             .id("sio-join-btn")
@@ -181,10 +197,12 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                                     .cursor(gpui::CursorStyle::Arrow)
                             })
                             .on_click(cx.listener(move |this, _, _, cx| {
-                                if is_connected { this.join_socketio_room(cx); }
+                                if is_connected {
+                                    this.join_socketio_room(cx);
+                                }
                             }))
-                            .child("Join")
-                    )
+                            .child("Join"),
+                    ),
             )
             .when(!active_rooms.is_empty(), |el| {
                 el.child(
@@ -205,11 +223,14 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                                     div()
                                         .text_size(px(11.0))
                                         .text_color(theme.colors.accent)
-                                        .child(room.clone())
+                                        .child(room.clone()),
                                 )
                                 .child(
                                     div()
-                                        .id(gpui::SharedString::from(format!("leave-room-{}", room)))
+                                        .id(gpui::SharedString::from(format!(
+                                            "leave-room-{}",
+                                            room
+                                        )))
                                         .text_size(px(10.0))
                                         .text_color(theme.colors.text_muted)
                                         .cursor_pointer()
@@ -217,14 +238,19 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                                         .on_click(cx.listener(move |this, _, _, cx| {
                                             this.leave_socketio_room(r.clone(), cx);
                                         }))
-                                        .child("✕")
+                                        .child("✕"),
                                 )
-                        }))
+                        })),
                 )
             })
     }
 
-    fn render_socketio_compose(&mut self, want_ack: bool, is_connected: bool, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render_socketio_compose(
+        &mut self,
+        want_ack: bool,
+        is_connected: bool,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
         let theme = theme::current(cx);
         div()
             .flex()
@@ -240,7 +266,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                             .text_size(px(10.0))
                             .font_weight(gpui::FontWeight::SEMIBOLD)
                             .text_color(theme.colors.text_muted)
-                            .child("PAYLOAD (JSON)")
+                            .child("PAYLOAD (JSON)"),
                     )
                     .child(
                         div()
@@ -270,20 +296,22 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                                     .flex()
                                     .items_center()
                                     .justify_center()
-                                    .when(want_ack, |el| el.child(
-                                        div()
-                                            .text_size(px(9.0))
-                                            .text_color(theme.colors.bg_primary)
-                                            .child("✓")
-                                    ))
+                                    .when(want_ack, |el| {
+                                        el.child(
+                                            div()
+                                                .text_size(px(9.0))
+                                                .text_color(theme.colors.bg_primary)
+                                                .child("✓"),
+                                        )
+                                    }),
                             )
                             .child(
                                 div()
                                     .text_size(px(10.0))
                                     .text_color(theme.colors.text_muted)
-                                    .child("Request ACK")
-                            )
-                    )
+                                    .child("Request ACK"),
+                            ),
+                    ),
             )
             .child(
                 div()
@@ -296,7 +324,11 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                             .border_1()
                             .border_color(theme.colors.border)
                             .overflow_hidden()
-                            .child(gpui_component::input::Input::new(&self.sio_payload_editor).appearance(false).h_full())
+                            .child(
+                                gpui_component::input::Input::new(&self.sio_payload_editor)
+                                    .appearance(false)
+                                    .h_full(),
+                            ),
                     )
                     .child(
                         div()
@@ -324,8 +356,8 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                                     this.emit_socketio_event(cx);
                                 }
                             }))
-                            .child("Emit")
-                    )
+                            .child("Emit"),
+                    ),
             )
     }
 }

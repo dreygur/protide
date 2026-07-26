@@ -1,10 +1,15 @@
-use gpui::{ClipboardItem, Context, Window};
-use super::*;
 use super::super::request_utils::{base64_encode, url_encode};
+use super::*;
+use gpui::{ClipboardItem, Context, Window};
 
 impl<E: WebSocketExecutor> RequestPanel<E> {
     /// Generate code for current request using selected language
-    pub fn generate_code(&mut self, language: CodegenLanguage, window: &mut Window, cx: &mut Context<Self>) {
+    pub fn generate_code(
+        &mut self,
+        language: CodegenLanguage,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         let mut headers: Vec<(String, String)> = self
             .headers
             .iter()
@@ -14,14 +19,22 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
 
         match self.auth_type {
             AuthType::Bearer if !self.bearer_token.is_empty() => {
-                headers.push(("Authorization".to_string(), format!("Bearer {}", self.bearer_token)));
+                headers.push((
+                    "Authorization".to_string(),
+                    format!("Bearer {}", self.bearer_token),
+                ));
             }
-            AuthType::Basic if !self.basic_username.is_empty() || !self.basic_password.is_empty() => {
+            AuthType::Basic
+                if !self.basic_username.is_empty() || !self.basic_password.is_empty() =>
+            {
                 let credentials = format!("{}:{}", self.basic_username, self.basic_password);
                 let encoded = base64_encode(credentials.as_bytes());
                 headers.push(("Authorization".to_string(), format!("Basic {}", encoded)));
             }
-            AuthType::ApiKey if !self.api_key_name.is_empty() && self.api_key_location == ApiKeyLocation::Header => {
+            AuthType::ApiKey
+                if !self.api_key_name.is_empty()
+                    && self.api_key_location == ApiKeyLocation::Header =>
+            {
                 headers.push((self.api_key_name.clone(), self.api_key_value.clone()));
             }
             _ => {}
@@ -65,11 +78,11 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
         self.codegen_language = language;
         self.codegen_content = Some(code.clone());
         let editor_lang = match language {
-            CodegenLanguage::Curl       => "sh",
-            CodegenLanguage::Python     => "python",
+            CodegenLanguage::Curl => "sh",
+            CodegenLanguage::Python => "python",
             CodegenLanguage::JavaScript => "javascript",
-            CodegenLanguage::Go         => "go",
-            CodegenLanguage::Rust       => "rust",
+            CodegenLanguage::Go => "go",
+            CodegenLanguage::Rust => "rust",
         };
         self.codegen_editor.update(cx, |s, cx| {
             s.set_value(&code, window, cx);

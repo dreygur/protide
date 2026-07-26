@@ -1,5 +1,5 @@
-use gpui::Context;
 use super::*;
+use gpui::Context;
 
 impl ExplorerPanel {
     /// Toggle collections section expanded/collapsed

@@ -11,10 +11,15 @@ pub fn generate_rust(request: &CodegenRequest) -> String {
         "async fn main() -> Result<(), reqwest::Error> {".to_string(),
     ];
 
-    let has_body = request.body.as_ref().map(|b| !b.trim().is_empty()).unwrap_or(false);
-    let is_json = request.headers.iter().any(|(k, v)| {
-        k.eq_ignore_ascii_case("content-type") && v.contains("application/json")
-    });
+    let has_body = request
+        .body
+        .as_ref()
+        .map(|b| !b.trim().is_empty())
+        .unwrap_or(false);
+    let is_json = request
+        .headers
+        .iter()
+        .any(|(k, v)| k.eq_ignore_ascii_case("content-type") && v.contains("application/json"));
 
     // Build the request
     lines.push("    let client = reqwest::Client::new();".to_string());
@@ -37,15 +42,14 @@ pub fn generate_rust(request: &CodegenRequest) -> String {
     }
 
     // Add body
-    if has_body
-        && let Some(body) = &request.body {
-            if is_json {
-                // Try to format as serde_json
-                lines.push(format!("        .body(\"{}\")", escape_rust_string(body)));
-            } else {
-                lines.push(format!("        .body(\"{}\")", escape_rust_string(body)));
-            }
+    if has_body && let Some(body) = &request.body {
+        if is_json {
+            // Try to format as serde_json
+            lines.push(format!("        .body(\"{}\")", escape_rust_string(body)));
+        } else {
+            lines.push(format!("        .body(\"{}\")", escape_rust_string(body)));
         }
+    }
 
     lines.push("        .send()".to_string());
     lines.push("        .await?;".to_string());
@@ -85,7 +89,10 @@ mod tests {
     #[test]
     fn test_post_with_body() {
         let request = CodegenRequest::new("POST", "https://api.example.com/users")
-            .with_headers(vec![("Content-Type".to_string(), "application/json".to_string())])
+            .with_headers(vec![(
+                "Content-Type".to_string(),
+                "application/json".to_string(),
+            )])
             .with_body(Some(r#"{"name": "John"}"#.to_string()));
         let code = generate_rust(&request);
         assert!(code.contains("client.post("));
@@ -95,10 +102,10 @@ mod tests {
 
     #[test]
     fn test_with_headers() {
-        let request = CodegenRequest::new("GET", "https://api.example.com")
-            .with_headers(vec![
-                ("Authorization".to_string(), "Bearer token".to_string()),
-            ]);
+        let request = CodegenRequest::new("GET", "https://api.example.com").with_headers(vec![(
+            "Authorization".to_string(),
+            "Bearer token".to_string(),
+        )]);
         let code = generate_rust(&request);
         assert!(code.contains(".header(\"Authorization\", \"Bearer token\")"));
     }
@@ -107,12 +114,12 @@ mod tests {
     fn test_url_injection_is_escaped() {
         // A malicious URL containing an unescaped double quote could break
         // out of the Rust string literal and inject arbitrary Rust code.
-        let request = CodegenRequest::new(
-            "GET",
-            "https://example.com/\"); std::process::exit(1); (\"",
-        );
+        let request =
+            CodegenRequest::new("GET", "https://example.com/\"); std::process::exit(1); (\"");
         let code = generate_rust(&request);
-        assert!(!code.contains("client.get(\"https://example.com/\"); std::process::exit(1); (\"\")"));
+        assert!(
+            !code.contains("client.get(\"https://example.com/\"); std::process::exit(1); (\"\")")
+        );
         assert!(code.contains("\\\""));
     }
 

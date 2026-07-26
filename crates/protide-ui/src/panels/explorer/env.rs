@@ -1,5 +1,5 @@
-use gpui::{Context, Window};
 use super::*;
+use gpui::{Context, Window};
 
 impl ExplorerPanel {
     pub(super) fn toggle_env_dropdown(&mut self, cx: &mut Context<Self>) {
@@ -121,17 +121,28 @@ impl ExplorerPanel {
         }
     }
 
-    pub(super) fn set_edit_text(&mut self, target: EnvEditTarget, text: String, cx: &mut Context<Self>) {
+    pub(super) fn set_edit_text(
+        &mut self,
+        target: EnvEditTarget,
+        text: String,
+        cx: &mut Context<Self>,
+    ) {
         match target {
             EnvEditTarget::VarKey(i) => {
-                let entry = self.env_state.active()
-                    .and_then(|env| env.variables.iter().nth(i).map(|(k, v)| (k.clone(), v.clone())));
+                let entry = self.env_state.active().and_then(|env| {
+                    env.variables
+                        .iter()
+                        .nth(i)
+                        .map(|(k, v)| (k.clone(), v.clone()))
+                });
                 if let Some((old_key, value)) = entry {
                     // Refuse to rename a variable's key onto an existing *different*
                     // key - that would silently destroy the other variable via the
                     // shift_remove + insert below.
                     let collides = text != old_key
-                        && self.env_state.active()
+                        && self
+                            .env_state
+                            .active()
                             .map(|env| env.variables.contains_key(&text))
                             .unwrap_or(false);
                     if collides {
@@ -156,9 +167,10 @@ impl ExplorerPanel {
             }
             EnvEditTarget::VarValue(i) => {
                 if let Some(env) = self.env_state.active_mut()
-                    && let Some(key) = env.variables.keys().nth(i).cloned() {
-                        env.variables.insert(key, text);
-                    }
+                    && let Some(key) = env.variables.keys().nth(i).cloned()
+                {
+                    env.variables.insert(key, text);
+                }
             }
             EnvEditTarget::NewEnvName => {
                 self.new_env_name = text;
@@ -203,7 +215,11 @@ impl ExplorerPanel {
     pub(super) fn update_env_scroll(&mut self, target: EnvEditTarget) {
         let char_width = 11.0 * 0.6;
         let padding = 6.0 * 2.0;
-        let container_width = self.edit_input_widths.get(&target).copied().unwrap_or(200.0);
+        let container_width = self
+            .edit_input_widths
+            .get(&target)
+            .copied()
+            .unwrap_or(200.0);
         let visible_width = (container_width - padding).max(40.0);
         let cursor_pos = self.edit_selection.end;
         let cursor_px = cursor_pos as f32 * char_width;
@@ -219,7 +235,12 @@ impl ExplorerPanel {
         }
     }
 
-    pub(super) fn insert_text(&mut self, target: EnvEditTarget, text: &str, cx: &mut Context<Self>) {
+    pub(super) fn insert_text(
+        &mut self,
+        target: EnvEditTarget,
+        text: &str,
+        cx: &mut Context<Self>,
+    ) {
         self.save_edit_state();
         let mut current = self.get_edit_text(target);
 
@@ -263,5 +284,4 @@ impl ExplorerPanel {
             0
         }
     }
-
 }

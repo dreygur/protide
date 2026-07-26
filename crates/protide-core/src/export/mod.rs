@@ -69,7 +69,10 @@ fn markdown_to_html(md: &str) -> String {
                 in_code_block = false;
             } else {
                 let lang = line.trim_start_matches('`').trim();
-                html.push_str(&format!("<pre><code class=\"language-{}\">", escape_html(lang)));
+                html.push_str(&format!(
+                    "<pre><code class=\"language-{}\">",
+                    escape_html(lang)
+                ));
                 in_code_block = true;
             }
             i += 1;
@@ -94,20 +97,37 @@ fn markdown_to_html(md: &str) -> String {
             for (ri, row) in rows.iter().enumerate() {
                 // Separator row: all cells are dashes/colons
                 let cells: Vec<&str> = row.trim_matches('|').split('|').collect();
-                if cells.iter().all(|c| c.trim().chars().all(|ch| ch == '-' || ch == ':' || ch == ' ')) {
+                if cells.iter().all(|c| {
+                    c.trim()
+                        .chars()
+                        .all(|ch| ch == '-' || ch == ':' || ch == ' ')
+                }) {
                     continue;
                 }
                 let tag = if ri == 0 { "th" } else { "td" };
-                if ri == 0 { html.push_str("<thead>\n"); }
-                else if first_data { html.push_str("<tbody>\n"); first_data = false; }
+                if ri == 0 {
+                    html.push_str("<thead>\n");
+                } else if first_data {
+                    html.push_str("<tbody>\n");
+                    first_data = false;
+                }
                 html.push_str("<tr>");
                 for cell in &cells {
-                    html.push_str(&format!("<{}>{}</{}>", tag, inline_format(cell.trim()), tag));
+                    html.push_str(&format!(
+                        "<{}>{}</{}>",
+                        tag,
+                        inline_format(cell.trim()),
+                        tag
+                    ));
                 }
                 html.push_str("</tr>\n");
-                if ri == 0 { html.push_str("</thead>\n"); }
+                if ri == 0 {
+                    html.push_str("</thead>\n");
+                }
             }
-            if !first_data { html.push_str("</tbody>\n"); }
+            if !first_data {
+                html.push_str("</tbody>\n");
+            }
             html.push_str("</table>\n");
             continue;
         }
@@ -151,18 +171,30 @@ fn inline_format(s: &str) -> String {
     let mut in_bold = false;
     while let Some(c) = chars.next() {
         if c == '`' {
-            if in_code { out.push_str("</code>"); } else { out.push_str("<code>"); }
+            if in_code {
+                out.push_str("</code>");
+            } else {
+                out.push_str("<code>");
+            }
             in_code = !in_code;
         } else if c == '*' && chars.peek() == Some(&'*') {
             chars.next();
-            if in_bold { out.push_str("</strong>"); } else { out.push_str("<strong>"); }
+            if in_bold {
+                out.push_str("</strong>");
+            } else {
+                out.push_str("<strong>");
+            }
             in_bold = !in_bold;
         } else {
             out.push(c);
         }
     }
     // close any unclosed tags
-    if in_code { out.push_str("</code>"); }
-    if in_bold { out.push_str("</strong>"); }
+    if in_code {
+        out.push_str("</code>");
+    }
+    if in_bold {
+        out.push_str("</strong>");
+    }
     out
 }

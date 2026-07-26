@@ -132,9 +132,10 @@ impl Response {
     pub fn pretty_body(&self) -> String {
         if self.is_json()
             && let Ok(value) = serde_json::from_str::<serde_json::Value>(&self.body)
-                && let Ok(pretty) = serde_json::to_string_pretty(&value) {
-                    return pretty;
-                }
+            && let Ok(pretty) = serde_json::to_string_pretty(&value)
+        {
+            return pretty;
+        }
         self.body.clone()
     }
 
@@ -159,4 +160,3 @@ impl Response {
         }
     }
 }
-

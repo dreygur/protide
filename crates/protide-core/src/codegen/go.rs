@@ -13,7 +13,11 @@ pub fn generate_go(request: &CodegenRequest) -> String {
         "    \"net/http\"".to_string(),
     ];
 
-    let has_body = request.body.as_ref().map(|b| !b.trim().is_empty()).unwrap_or(false);
+    let has_body = request
+        .body
+        .as_ref()
+        .map(|b| !b.trim().is_empty())
+        .unwrap_or(false);
     if has_body {
         lines.push("    \"strings\"".to_string());
     }
@@ -25,7 +29,10 @@ pub fn generate_go(request: &CodegenRequest) -> String {
     // Create request body
     if has_body {
         if let Some(body) = &request.body {
-            lines.push(format!("    body := strings.NewReader(\"{}\")", escape_go_string(body)));
+            lines.push(format!(
+                "    body := strings.NewReader(\"{}\")",
+                escape_go_string(body)
+            ));
             lines.push(String::new());
             lines.push(format!(
                 "    req, err := http.NewRequest(\"{}\", \"{}\", body)",
@@ -102,7 +109,10 @@ mod tests {
     #[test]
     fn test_post_with_body() {
         let request = CodegenRequest::new("POST", "https://api.example.com/users")
-            .with_headers(vec![("Content-Type".to_string(), "application/json".to_string())])
+            .with_headers(vec![(
+                "Content-Type".to_string(),
+                "application/json".to_string(),
+            )])
             .with_body(Some(r#"{"name": "John"}"#.to_string()));
         let code = generate_go(&request);
         assert!(code.contains("strings.NewReader"));
@@ -135,6 +145,10 @@ mod tests {
             "value".to_string(),
         )]);
         let code = generate_go(&request);
-        assert!(!code.contains("req.Header.Set(\"X-Evil\")\n    req.Header.Set(\"X-Injected\", \"value\")"));
+        assert!(
+            !code.contains(
+                "req.Header.Set(\"X-Evil\")\n    req.Header.Set(\"X-Injected\", \"value\")"
+            )
+        );
     }
 }

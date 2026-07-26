@@ -5,7 +5,7 @@ mod grpc_streaming;
 
 use grpc_encoding::{grpc_decode_message, grpc_encode_message};
 pub use grpc_streaming::{
-    execute_bidi_streaming, execute_client_streaming, execute_server_streaming, StreamingResult,
+    StreamingResult, execute_bidi_streaming, execute_client_streaming, execute_server_streaming,
 };
 
 use prost::Message;
@@ -36,8 +36,7 @@ pub struct GrpcService {
 /// Uses protox to compile the file without requiring system protoc.
 pub fn parse_proto_file(path: &Path) -> Result<DescriptorPool, String> {
     let dir = path.parent().unwrap_or(Path::new("."));
-    let fds = protox::compile([path], [dir])
-        .map_err(|e| format!("Proto compile error: {}", e))?;
+    let fds = protox::compile([path], [dir]).map_err(|e| format!("Proto compile error: {}", e))?;
     DescriptorPool::from_file_descriptor_set(fds)
         .map_err(|e| format!("Descriptor pool error: {}", e))
 }

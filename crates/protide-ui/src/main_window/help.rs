@@ -1,5 +1,7 @@
-use gpui::{Context, FontWeight, IntoElement, MouseButton, ParentElement, Styled, div, px, prelude::*};
 use super::*;
+use gpui::{
+    Context, FontWeight, IntoElement, MouseButton, ParentElement, Styled, div, prelude::*, px,
+};
 
 impl MainWindow {
     pub(super) fn render_help_overlay(&self, cx: &Context<Self>) -> impl IntoElement {

@@ -19,24 +19,23 @@ impl ResponsePanel {
                         .flex_col()
                         .items_center()
                         .gap(px(8.0))
-                        .child(
-                            div()
-                                .flex()
-                                .items_center()
-                                .child(icon(ICON_CHECK, ICON_MD, theme.colors.text_muted.opacity(0.5)))
-                        )
+                        .child(div().flex().items_center().child(icon(
+                            ICON_CHECK,
+                            ICON_MD,
+                            theme.colors.text_muted.opacity(0.5),
+                        )))
                         .child(
                             div()
                                 .text_size(px(12.0))
                                 .text_color(theme.colors.text_muted)
-                                .child("No tests have been run yet")
+                                .child("No tests have been run yet"),
                         )
                         .child(
                             div()
                                 .text_size(px(11.0))
                                 .text_color(theme.colors.text_muted.opacity(0.7))
-                                .child("Add tests in the Scripts tab and send a request")
-                        )
+                                .child("Add tests in the Scripts tab and send a request"),
+                        ),
                 )
                 .into_any_element();
         }
@@ -61,19 +60,18 @@ impl ResponsePanel {
                             .flex()
                             .items_center()
                             .gap(px(6.0))
-                            .child(
-                                div()
-                                    .flex()
-                                    .items_center()
-                                    .child(icon(ICON_CHECK, ICON_SM, theme.colors.status_success))
-                            )
+                            .child(div().flex().items_center().child(icon(
+                                ICON_CHECK,
+                                ICON_SM,
+                                theme.colors.status_success,
+                            )))
                             .child(
                                 div()
                                     .text_size(px(12.0))
                                     .font_weight(gpui::FontWeight::MEDIUM)
                                     .text_color(theme.colors.status_success)
-                                    .child(format!("{} passed", passed_count))
-                            )
+                                    .child(format!("{} passed", passed_count)),
+                            ),
                     )
                     .when(failed_count > 0, |el| {
                         el.child(
@@ -84,21 +82,20 @@ impl ResponsePanel {
                                 .flex()
                                 .items_center()
                                 .gap(px(6.0))
-                                .child(
-                                    div()
-                                        .flex()
-                                        .items_center()
-                                        .child(icon(ICON_CLOSE, ICON_SM, theme.colors.status_client_error))
-                                )
+                                .child(div().flex().items_center().child(icon(
+                                    ICON_CLOSE,
+                                    ICON_SM,
+                                    theme.colors.status_client_error,
+                                )))
                                 .child(
                                     div()
                                         .text_size(px(12.0))
                                         .font_weight(gpui::FontWeight::MEDIUM)
                                         .text_color(theme.colors.status_client_error)
-                                        .child(format!("{} failed", failed_count))
-                                )
+                                        .child(format!("{} failed", failed_count)),
+                                ),
                         )
-                    })
+                    }),
             )
             // Test results list
             .child(
@@ -121,7 +118,7 @@ impl ResponsePanel {
                             .gap(px(10.0))
                             .when(!is_last, |el| {
                                 el.border_b_1()
-                                  .border_color(theme.colors.border.opacity(0.5))
+                                    .border_color(theme.colors.border.opacity(0.5))
                             })
                             // Status icon
                             .child(
@@ -131,13 +128,19 @@ impl ResponsePanel {
                                     .items_center()
                                     .justify_center()
                                     .when(result.passed, |el| {
-                                        el.bg(theme.colors.status_success.opacity(0.15))
-                                          .child(icon(ICON_CHECK, ICON_SM, theme.colors.status_success))
+                                        el.bg(theme.colors.status_success.opacity(0.15)).child(
+                                            icon(ICON_CHECK, ICON_SM, theme.colors.status_success),
+                                        )
                                     })
                                     .when(!result.passed, |el| {
-                                        el.bg(theme.colors.status_client_error.opacity(0.15))
-                                          .child(icon(ICON_CLOSE, ICON_SM, theme.colors.status_client_error))
-                                    })
+                                        el.bg(theme.colors.status_client_error.opacity(0.15)).child(
+                                            icon(
+                                                ICON_CLOSE,
+                                                ICON_SM,
+                                                theme.colors.status_client_error,
+                                            ),
+                                        )
+                                    }),
                             )
                             // Test name
                             .child(
@@ -150,7 +153,7 @@ impl ResponsePanel {
                                         div()
                                             .text_size(px(12.0))
                                             .text_color(theme.colors.text_primary)
-                                            .child(result.name.clone())
+                                            .child(result.name.clone()),
                                     )
                                     .when(!result.passed && !result.expected.is_empty(), |el| {
                                         el.child(
@@ -162,18 +165,24 @@ impl ResponsePanel {
                                                     div()
                                                         .text_size(px(10.0))
                                                         .text_color(theme.colors.text_muted)
-                                                        .child(format!("Expected: {}", result.expected))
+                                                        .child(format!(
+                                                            "Expected: {}",
+                                                            result.expected
+                                                        )),
                                                 )
                                                 .child(
                                                     div()
                                                         .text_size(px(10.0))
                                                         .text_color(theme.colors.text_muted)
-                                                        .child(format!("Actual: {}", result.actual))
-                                                )
+                                                        .child(format!(
+                                                            "Actual: {}",
+                                                            result.actual
+                                                        )),
+                                                ),
                                         )
-                                    })
+                                    }),
                             )
-                    }))
+                    })),
             )
             .into_any_element()
     }

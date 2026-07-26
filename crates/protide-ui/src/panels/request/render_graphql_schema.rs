@@ -1,22 +1,15 @@
 //! GraphQL schema tab rendering for RequestPanel
 
+use gpui::{Context, IntoElement, ParentElement, SharedString, Styled, div, prelude::*, px};
 
-use gpui::{
-    div, prelude::*, px, Context, IntoElement,
-    ParentElement, SharedString, Styled,
-};
-
-use crate::theme;
-use crate::components::icons::{
-    icon, ICON_SM, ICON_MD,
-    ICON_FILE,
-};
-use protide_core::execution::ws::WebSocketExecutor;
 use super::{GraphqlSchemaState, RequestPanel};
+use crate::components::icons::{ICON_FILE, ICON_MD, ICON_SM, icon};
+use crate::theme;
+use protide_core::execution::ws::WebSocketExecutor;
 
 impl<E: WebSocketExecutor> RequestPanel<E> {
     pub(super) fn render_graphql_schema_tab(&mut self, cx: &mut Context<Self>) -> gpui::AnyElement {
-        use crate::components::icons::{ICON_REFRESH, ICON_SEARCH, ICON_LOADER};
+        use crate::components::icons::{ICON_LOADER, ICON_REFRESH, ICON_SEARCH};
         let theme = theme::current(cx);
         let schema = self.graphql_schema.clone();
         let search = self.graphql_schema_search.clone();
@@ -49,7 +42,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                             .text_size(px(12.0))
                             .text_color(theme.colors.accent)
                             .child("Refresh Schema"),
-                    )
+                    ),
             )
             .child(
                 div()
@@ -73,7 +66,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                             .text_size(px(12.0))
                             .text_color(theme.colors.text_secondary)
                             .child("Import File"),
-                    )
+                    ),
             );
 
         let body: gpui::AnyElement = match &schema {
@@ -106,7 +99,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                                 .text_size(px(11.0))
                                 .text_color(theme.colors.text_muted.opacity(0.7))
                                 .child("or \"Import File\" to load a .graphql / .json schema."),
-                        )
+                        ),
                 )
                 .into_any_element(),
 
@@ -152,7 +145,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                                     .text_size(px(11.0))
                                     .text_color(theme.colors.text_muted)
                                     .child(SharedString::from(msg)),
-                            )
+                            ),
                     )
                     .into_any_element()
             }
@@ -162,7 +155,9 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                 let search_lower = search.to_lowercase();
                 let filtered: Vec<_> = types
                     .iter()
-                    .filter(|t| search_lower.is_empty() || t.name.to_lowercase().contains(&search_lower))
+                    .filter(|t| {
+                        search_lower.is_empty() || t.name.to_lowercase().contains(&search_lower)
+                    })
                     .cloned()
                     .collect();
 
@@ -198,8 +193,8 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                                         SharedString::from("Filter types…")
                                     } else {
                                         SharedString::from(search.clone())
-                                    })
-                            )
+                                    }),
+                            ),
                     )
                     .child(
                         div()
@@ -210,7 +205,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                                 "{} type{}",
                                 filtered.len(),
                                 if filtered.len() == 1 { "" } else { "s" }
-                            )))
+                            ))),
                     )
                     .child(
                         div()
@@ -222,12 +217,12 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                             .overflow_scroll()
                             .children(filtered.iter().enumerate().map(|(i, t)| {
                                 let kind_color = match t.kind.as_str() {
-                                    "OBJECT"    => theme.colors.method_post,
+                                    "OBJECT" => theme.colors.method_post,
                                     "INTERFACE" => theme.colors.accent,
-                                    "ENUM"      => theme.colors.method_patch,
+                                    "ENUM" => theme.colors.method_patch,
                                     "INPUT_OBJECT" | "INPUT" => theme.colors.method_put,
-                                    "SCALAR"    => theme.colors.text_muted,
-                                    _           => theme.colors.text_secondary,
+                                    "SCALAR" => theme.colors.text_muted,
+                                    _ => theme.colors.text_secondary,
                                 };
                                 div()
                                     .id(SharedString::from(format!("gql-type-{}", i)))
@@ -249,16 +244,16 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                                             .text_size(px(9.0))
                                             .font_weight(gpui::FontWeight::BOLD)
                                             .text_color(kind_color)
-                                            .child(SharedString::from(t.kind.clone()))
+                                            .child(SharedString::from(t.kind.clone())),
                                     )
                                     .child(
                                         div()
                                             .flex_1()
                                             .text_size(px(12.0))
                                             .text_color(theme.colors.text_primary)
-                                            .child(SharedString::from(t.name.clone()))
+                                            .child(SharedString::from(t.name.clone())),
                                     )
-                            }))
+                            })),
                     )
                     .into_any_element()
             }

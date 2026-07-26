@@ -1,5 +1,5 @@
-use gpui::{Context, IntoElement, MouseButton, ParentElement, Styled, div, px, prelude::*};
 use super::*;
+use gpui::{Context, IntoElement, MouseButton, ParentElement, Styled, div, prelude::*, px};
 
 impl MainWindow {
     pub(super) fn render_collapsed_sidebar(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
@@ -96,7 +96,11 @@ impl MainWindow {
             })
     }
 
-    pub(super) fn render_drag_overlay(&mut self, is_col_drag: bool, cx: &mut Context<Self>) -> impl IntoElement {
+    pub(super) fn render_drag_overlay(
+        &mut self,
+        is_col_drag: bool,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
         div()
             .id("resize-drag-overlay")
             .absolute()
@@ -106,8 +110,8 @@ impl MainWindow {
             .h_full()
             .when(is_col_drag, |el| el.cursor_col_resize())
             .when(!is_col_drag, |el| el.cursor_row_resize())
-            .on_mouse_move(cx.listener(
-                |this, event: &gpui::MouseMoveEvent, _window, cx| {
+            .on_mouse_move(
+                cx.listener(|this, event: &gpui::MouseMoveEvent, _window, cx| {
                     let mouse_x = f32::from(event.position.x);
                     let mouse_y = f32::from(event.position.y);
                     if let Some((start_x, start_w)) = this.drag_sidebar {
@@ -119,11 +123,13 @@ impl MainWindow {
                         cx.notify();
                     }
                     if let Some((start_x, start_w)) = this.drag_mock_server {
-                        this.mock_server_width = (start_w - (mouse_x - start_x)).clamp(200.0, 700.0);
+                        this.mock_server_width =
+                            (start_w - (mouse_x - start_x)).clamp(200.0, 700.0);
                         cx.notify();
                     }
                     if let Some((start_x, start_w)) = this.drag_codegen {
-                        this.codegen_panel_width = (start_w - (mouse_x - start_x)).clamp(250.0, 800.0);
+                        this.codegen_panel_width =
+                            (start_w - (mouse_x - start_x)).clamp(250.0, 800.0);
                         cx.notify();
                     }
                     if let Some((start_x, start_w)) = this.drag_docs {
@@ -134,8 +140,8 @@ impl MainWindow {
                         this.console_height = (start_h - (mouse_y - start_y)).clamp(80.0, 500.0);
                         cx.notify();
                     }
-                },
-            ))
+                }),
+            )
             .on_mouse_up(
                 MouseButton::Left,
                 cx.listener(|this, _, _window, cx| {
@@ -159,5 +165,4 @@ impl MainWindow {
                 }),
             )
     }
-
 }

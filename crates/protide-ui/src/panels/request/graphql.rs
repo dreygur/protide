@@ -1,5 +1,5 @@
-use gpui::Context;
 use super::*;
+use gpui::Context;
 
 impl<E: WebSocketExecutor> RequestPanel<E> {
     /// Fetch the GraphQL schema via an introspection query to `self.url`.
@@ -9,18 +9,24 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
         } else {
             self.url.clone()
         };
-        if url.is_empty() { return; }
+        if url.is_empty() {
+            return;
+        }
 
         self.graphql_schema = GraphqlSchemaState::Loading;
         cx.notify();
 
         let (tx, rx) = std::sync::mpsc::channel();
-        std::thread::spawn(move || { let _ = tx.send(run_graphql_introspection(&url)); });
+        std::thread::spawn(move || {
+            let _ = tx.send(run_graphql_introspection(&url));
+        });
 
         cx.spawn(async move |this, cx| {
-            let result = cx.background_executor()
+            let result = cx
+                .background_executor()
                 .spawn(async move {
-                    rx.recv().unwrap_or_else(|_| GraphqlSchemaState::Error("thread join error".into()))
+                    rx.recv()
+                        .unwrap_or_else(|_| GraphqlSchemaState::Error("thread join error".into()))
                 })
                 .await;
             let _ = cx.update(|cx| {
@@ -29,7 +35,8 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                     cx.notify();
                 });
             });
-        }).detach();
+        })
+        .detach();
     }
 
     /// Import a GraphQL schema from a local .graphql or .json file.
@@ -41,7 +48,8 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                 .await;
             if let Some(file) = picked {
                 let path = file.path().to_path_buf();
-                let result = cx.background_executor()
+                let result = cx
+                    .background_executor()
                     .spawn(async move { parse_schema_file(&path) })
                     .await;
                 let _ = cx.update(|cx| {
@@ -51,7 +59,8 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                     });
                 });
             }
-        }).detach();
+        })
+        .detach();
     }
 }
 
@@ -85,7 +94,9 @@ pub(super) fn run_graphql_introspection(url: &str) -> GraphqlSchemaState {
 }
 
 pub(super) fn extract_schema_types(json: &serde_json::Value) -> GraphqlSchemaState {
-    let types = json.pointer("/data/__schema/types").and_then(|v| v.as_array());
+    let types = json
+        .pointer("/data/__schema/types")
+        .and_then(|v| v.as_array());
     match types {
         None => GraphqlSchemaState::Error("Unexpected introspection response shape".into()),
         Some(arr) => {
@@ -93,10 +104,16 @@ pub(super) fn extract_schema_types(json: &serde_json::Value) -> GraphqlSchemaSta
                 .iter()
                 .filter_map(|t| {
                     let name = t.get("name")?.as_str()?.to_string();
-                    if name.starts_with("__") { return None; }
+                    if name.starts_with("__") {
+                        return None;
+                    }
                     Some(GqlSchemaType {
                         name,
-                        kind: t.get("kind").and_then(|k| k.as_str()).unwrap_or("").to_string(),
+                        kind: t
+                            .get("kind")
+                            .and_then(|k| k.as_str())
+                            .unwrap_or("")
+                            .to_string(),
                     })
                 })
                 .collect();
@@ -119,7 +136,14 @@ pub(super) fn parse_schema_file(path: &std::path::Path) -> GraphqlSchemaState {
         .lines()
         .filter_map(|line| {
             let t = line.trim();
-            for prefix in &["type ", "interface ", "enum ", "union ", "input ", "scalar "] {
+            for prefix in &[
+                "type ",
+                "interface ",
+                "enum ",
+                "union ",
+                "input ",
+                "scalar ",
+            ] {
                 if t.starts_with(prefix) {
                     let rest = t[prefix.len()..].split_whitespace().next()?;
                     let name = rest.trim_end_matches('{').to_string();

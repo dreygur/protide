@@ -1,22 +1,23 @@
 //! WebSocket messages tab rendering for RequestPanel
 
-
 use gpui::{
-    div, prelude::*, px, Context, IntoElement, MouseDownEvent, MouseMoveEvent,
-    ParentElement, SharedString, Styled,
+    Context, IntoElement, MouseDownEvent, MouseMoveEvent, ParentElement, SharedString, Styled, div,
+    prelude::*, px,
 };
 
-use crate::theme;
-use crate::components::icons::{
-    icon, ICON_SM, ICON_MD,
-    ICON_PLAY, ICON_ARROW_LEFT, ICON_ARROW_RIGHT,
-};
-use protide_core::execution::ws::{WsDirection, WebSocketExecutor};
 use super::super::request_types::WsConnectionState;
 use super::RequestPanel;
+use crate::components::icons::{
+    ICON_ARROW_LEFT, ICON_ARROW_RIGHT, ICON_MD, ICON_PLAY, ICON_SM, icon,
+};
+use crate::theme;
+use protide_core::execution::ws::{WebSocketExecutor, WsDirection};
 
 impl<E: WebSocketExecutor> RequestPanel<E> {
-    pub(super) fn render_websocket_messages_tab(&mut self, cx: &mut Context<Self>) -> gpui::AnyElement {
+    pub(super) fn render_websocket_messages_tab(
+        &mut self,
+        cx: &mut Context<Self>,
+    ) -> gpui::AnyElement {
         let theme = theme::current(cx);
         let ws_state = self.ws_state;
         let is_connected = ws_state == WsConnectionState::Connected;
@@ -25,18 +26,38 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
         let is_dragging = self.ws_compose_drag.is_some();
 
         let (badge_label, badge_fg, badge_bg) = match ws_state {
-            WsConnectionState::Connected =>
-                ("CONNECTED", theme.colors.method_get, theme.colors.method_get.opacity(0.12)),
-            WsConnectionState::Connecting =>
-                ("CONNECTING", theme.colors.accent, theme.colors.accent.opacity(0.12)),
-            WsConnectionState::Error =>
-                ("ERROR", theme.colors.error, theme.colors.error.opacity(0.12)),
-            WsConnectionState::Disconnected =>
-                ("DISCONNECTED", theme.colors.text_muted, theme.colors.text_muted.opacity(0.12)),
+            WsConnectionState::Connected => (
+                "CONNECTED",
+                theme.colors.method_get,
+                theme.colors.method_get.opacity(0.12),
+            ),
+            WsConnectionState::Connecting => (
+                "CONNECTING",
+                theme.colors.accent,
+                theme.colors.accent.opacity(0.12),
+            ),
+            WsConnectionState::Error => (
+                "ERROR",
+                theme.colors.error,
+                theme.colors.error.opacity(0.12),
+            ),
+            WsConnectionState::Disconnected => (
+                "DISCONNECTED",
+                theme.colors.text_muted,
+                theme.colors.text_muted.opacity(0.12),
+            ),
         };
 
-        let send_bg = if is_connected { theme.colors.accent } else { theme.colors.text_muted.opacity(0.15) };
-        let send_fg = if is_connected { theme.colors.bg_primary } else { theme.colors.text_muted };
+        let send_bg = if is_connected {
+            theme.colors.accent
+        } else {
+            theme.colors.text_muted.opacity(0.15)
+        };
+        let send_fg = if is_connected {
+            theme.colors.bg_primary
+        } else {
+            theme.colors.text_muted
+        };
         let ws_scroll = self.ws_scroll.clone();
 
         div()
@@ -52,11 +73,14 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                     cx.notify();
                 }
             }))
-            .on_mouse_up(gpui::MouseButton::Left, cx.listener(|this, _, _, cx| {
-                if this.ws_compose_drag.take().is_some() {
-                    cx.notify();
-                }
-            }))
+            .on_mouse_up(
+                gpui::MouseButton::Left,
+                cx.listener(|this, _, _, cx| {
+                    if this.ws_compose_drag.take().is_some() {
+                        cx.notify();
+                    }
+                }),
+            )
             // Connection status row
             .child(
                 div()
@@ -80,15 +104,19 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                             .child(icon(
                                 ICON_PLAY,
                                 ICON_MD,
-                                if is_connected { theme.colors.method_get } else { theme.colors.text_muted },
-                            ))
+                                if is_connected {
+                                    theme.colors.method_get
+                                } else {
+                                    theme.colors.text_muted
+                                },
+                            )),
                     )
                     .child(
                         div()
                             .text_size(px(12.0))
                             .font_weight(gpui::FontWeight::SEMIBOLD)
                             .text_color(theme.colors.text_primary)
-                            .child("WebSocket")
+                            .child("WebSocket"),
                     )
                     .child(
                         div()
@@ -100,8 +128,8 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                             .text_size(px(9.0))
                             .font_weight(gpui::FontWeight::BOLD)
                             .text_color(badge_fg)
-                            .child(badge_label)
-                    )
+                            .child(badge_label),
+                    ),
             )
             // Message history
             .child(
@@ -118,14 +146,12 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                     .flex()
                     .flex_col()
                     .when(messages.is_empty(), |el| {
-                        el.items_center()
-                            .justify_center()
-                            .child(
-                                div()
-                                    .text_size(px(12.0))
-                                    .text_color(theme.colors.text_muted)
-                                    .child("No messages yet. Connect to start.")
-                            )
+                        el.items_center().justify_center().child(
+                            div()
+                                .text_size(px(12.0))
+                                .text_color(theme.colors.text_muted)
+                                .child("No messages yet. Connect to start."),
+                        )
                     })
                     .when(!messages.is_empty(), |el| {
                         el.p(px(8.0))
@@ -163,28 +189,40 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                                                         theme.colors.method_get
                                                     })
                                                     .child(icon(
-                                                        if is_sent { ICON_ARROW_RIGHT } else { ICON_ARROW_LEFT },
+                                                        if is_sent {
+                                                            ICON_ARROW_RIGHT
+                                                        } else {
+                                                            ICON_ARROW_LEFT
+                                                        },
                                                         ICON_SM,
-                                                        if is_sent { theme.colors.accent } else { theme.colors.method_get },
+                                                        if is_sent {
+                                                            theme.colors.accent
+                                                        } else {
+                                                            theme.colors.method_get
+                                                        },
                                                     ))
-                                                    .child(if is_sent { "Sent" } else { "Received" })
+                                                    .child(if is_sent {
+                                                        "Sent"
+                                                    } else {
+                                                        "Received"
+                                                    }),
                                             )
                                             .child(
                                                 div()
                                                     .text_size(px(9.0))
                                                     .text_color(theme.colors.text_muted)
-                                                    .child(time_str)
-                                            )
+                                                    .child(time_str),
+                                            ),
                                     )
                                     .child(
                                         div()
                                             .text_size(px(11.0))
                                             .text_color(theme.colors.text_primary)
                                             .font_family("JetBrains Mono")
-                                            .child(msg.content.clone())
+                                            .child(msg.content.clone()),
                                     )
                             }))
-                    })
+                    }),
             )
             // Compose resize drag handle
             .child(
@@ -197,17 +235,17 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                     .border_color(theme.colors.border)
                     .cursor_row_resize()
                     .when(is_dragging, |el| el.bg(theme.colors.accent.opacity(0.3)))
-                    .when(!is_dragging, |el| el.hover(|s| s.bg(theme.colors.accent.opacity(0.25))))
+                    .when(!is_dragging, |el| {
+                        el.hover(|s| s.bg(theme.colors.accent.opacity(0.25)))
+                    })
                     .on_mouse_down(
                         gpui::MouseButton::Left,
                         cx.listener(|this, event: &MouseDownEvent, _, cx| {
-                            this.ws_compose_drag = Some((
-                                f32::from(event.position.y),
-                                this.ws_compose_h,
-                            ));
+                            this.ws_compose_drag =
+                                Some((f32::from(event.position.y), this.ws_compose_h));
                             cx.notify();
                         }),
-                    )
+                    ),
             )
             // Compose area
             .child(
@@ -226,7 +264,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                             .text_size(px(10.0))
                             .font_weight(gpui::FontWeight::SEMIBOLD)
                             .text_color(theme.colors.text_muted)
-                            .child("MESSAGE")
+                            .child("MESSAGE"),
                     )
                     .child(
                         div()
@@ -235,38 +273,37 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                             .border_1()
                             .border_color(theme.colors.border)
                             .overflow_hidden()
-                            .child(gpui_component::input::Input::new(&self.ws_message_editor).appearance(false).h_full())
+                            .child(
+                                gpui_component::input::Input::new(&self.ws_message_editor)
+                                    .appearance(false)
+                                    .h_full(),
+                            ),
                     )
                     .child(
-                        div()
-                            .w_full()
-                            .flex()
-                            .justify_end()
-                            .child(
-                                div()
-                                    .id("ws-send-btn")
-                                    .h(px(28.0))
-                                    .px(px(16.0))
-                                    .flex()
-                                    .items_center()
-                                    .justify_center()
-                                    .text_size(px(12.0))
-                                    .font_weight(gpui::FontWeight::SEMIBOLD)
-                                    .bg(send_bg)
-                                    .text_color(send_fg)
-                                    .when(is_connected, |el| {
-                                        el.cursor_pointer()
-                                            .hover(|s| s.opacity(0.85))
-                                    })
-                                    .when(!is_connected, |el| el.cursor(gpui::CursorStyle::Arrow))
-                                    .on_click(cx.listener(move |this, _, _, cx| {
-                                        if is_connected {
-                                            this.send_websocket_message(cx);
-                                        }
-                                    }))
-                                    .child("Send")
-                            )
-                    )
+                        div().w_full().flex().justify_end().child(
+                            div()
+                                .id("ws-send-btn")
+                                .h(px(28.0))
+                                .px(px(16.0))
+                                .flex()
+                                .items_center()
+                                .justify_center()
+                                .text_size(px(12.0))
+                                .font_weight(gpui::FontWeight::SEMIBOLD)
+                                .bg(send_bg)
+                                .text_color(send_fg)
+                                .when(is_connected, |el| {
+                                    el.cursor_pointer().hover(|s| s.opacity(0.85))
+                                })
+                                .when(!is_connected, |el| el.cursor(gpui::CursorStyle::Arrow))
+                                .on_click(cx.listener(move |this, _, _, cx| {
+                                    if is_connected {
+                                        this.send_websocket_message(cx);
+                                    }
+                                }))
+                                .child("Send"),
+                        ),
+                    ),
             )
             .into_any_element()
     }

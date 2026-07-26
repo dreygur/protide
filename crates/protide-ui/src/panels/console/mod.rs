@@ -3,11 +3,11 @@
 mod entry;
 pub use entry::*;
 
-mod rows;
 mod render;
+mod rows;
 
-use std::collections::VecDeque;
 use gpui::{Context, FocusHandle, ScrollHandle};
+use std::collections::VecDeque;
 
 pub(crate) const MAX_ENTRIES: usize = 500;
 

@@ -1,6 +1,9 @@
-use gpui::{App, Context, IntoElement, MouseButton, ParentElement, Render, Styled, Window, deferred, div, px, prelude::*};
-use gpui_component::WindowExt;
 use super::*;
+use gpui::{
+    App, Context, IntoElement, MouseButton, ParentElement, Render, Styled, Window, deferred, div,
+    prelude::*, px,
+};
+use gpui_component::WindowExt;
 
 impl Render for MainWindow {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
@@ -17,7 +20,9 @@ impl Render for MainWindow {
                             .description(msg.clone())
                             .on_ok(move |_, _, cx| {
                                 sw.update(cx, |win, cx| {
-                                    win.explorer.update(cx, |panel, cx| panel.execute_delete(p.clone(), cx));
+                                    win.explorer.update(cx, |panel, cx| {
+                                        panel.execute_delete(p.clone(), cx)
+                                    });
                                 })
                                 .ok();
                                 true
@@ -33,11 +38,15 @@ impl Render for MainWindow {
         let theme = theme::current(cx);
         let show_response = self.request_panel.read(cx).shows_response_panel();
         let show_codegen = self.request_panel.read(cx).codegen_content.is_some();
-        let import_modal: Option<gpui::AnyElement> = if self.request_panel.read(cx).import_modal_open {
-            Some(self.request_panel.update(cx, |p, cx| p.render_import_modal(cx)))
-        } else {
-            None
-        };
+        let import_modal: Option<gpui::AnyElement> =
+            if self.request_panel.read(cx).import_modal_open {
+                Some(
+                    self.request_panel
+                        .update(cx, |p, cx| p.render_import_modal(cx)),
+                )
+            } else {
+                None
+            };
         let is_dragging = self.drag_sidebar.is_some()
             || self.drag_response.is_some()
             || self.drag_mock_server.is_some()

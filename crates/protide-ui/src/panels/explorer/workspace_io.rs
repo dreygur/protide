@@ -1,6 +1,6 @@
-use gpui::Context;
+use super::util::{request_to_http_content, sanitize_filename};
 use super::*;
-use super::util::{sanitize_filename, request_to_http_content};
+use gpui::Context;
 
 impl ExplorerPanel {
     pub fn import_collection(&mut self, cx: &mut Context<Self>) {
@@ -10,7 +10,10 @@ impl ExplorerPanel {
             |d| {
                 let d = d
                     .set_title("Import Collection")
-                    .add_filter("All Supported", &["json", "yaml", "yml", "bru", "txt", "curl"])
+                    .add_filter(
+                        "All Supported",
+                        &["json", "yaml", "yml", "bru", "txt", "curl"],
+                    )
                     .add_filter("Postman Collection", &["json"])
                     .add_filter("OpenAPI/Swagger", &["json", "yaml", "yml"])
                     .add_filter("Bruno Collection", &["bru"])
@@ -25,7 +28,9 @@ impl ExplorerPanel {
                 if let Ok(content) = fs::read_to_string(&file_path) {
                     match protide_core::import::import(&content) {
                         Ok(result) => {
-                            let output_dir = this.workspace_path.clone()
+                            let output_dir = this
+                                .workspace_path
+                                .clone()
                                 .or_else(|| file_path.parent().map(|p| p.to_path_buf()))
                                 .unwrap_or_else(|| PathBuf::from("."));
                             let collection_dir = if let Some(name) = &result.name {
@@ -37,21 +42,27 @@ impl ExplorerPanel {
                             };
                             let mut created = 0;
                             for (i, request) in result.requests.iter().enumerate() {
-                                let filename = request.meta.name.as_ref()
+                                let filename = request
+                                    .meta
+                                    .name
+                                    .as_ref()
                                     .map(|n| sanitize_filename(n))
                                     .unwrap_or_else(|| format!("request-{}", created + 1));
-                                let parent = if let Some(Some(folder)) = result.request_folders.get(i) {
-                                    let sub = collection_dir.join(sanitize_filename(folder));
-                                    let _ = fs::create_dir_all(&sub);
-                                    sub
-                                } else {
-                                    collection_dir.clone()
-                                };
+                                let parent =
+                                    if let Some(Some(folder)) = result.request_folders.get(i) {
+                                        let sub = collection_dir.join(sanitize_filename(folder));
+                                        let _ = fs::create_dir_all(&sub);
+                                        sub
+                                    } else {
+                                        collection_dir.clone()
+                                    };
                                 let filepath = parent.join(format!("{}.http", filename));
                                 match request_to_http_content(request) {
                                     Ok(c) => match fs::write(&filepath, &c) {
                                         Ok(_) => created += 1,
-                                        Err(e) => warn!("Failed to write {}: {}", filepath.display(), e),
+                                        Err(e) => {
+                                            warn!("Failed to write {}: {}", filepath.display(), e)
+                                        }
                                     },
                                     Err(e) => warn!("Failed to convert '{}': {}", filename, e),
                                 }
@@ -64,10 +75,16 @@ impl ExplorerPanel {
                             info!("Imported {} request(s)", created);
                             let mut msg = format!("Imported {} request(s).", created);
                             if !result.warnings.is_empty() {
-                                msg.push_str(&format!("\n\n{} warning(s):\n{}", result.warnings.len(), result.warnings.join("\n")));
+                                msg.push_str(&format!(
+                                    "\n\n{} warning(s):\n{}",
+                                    result.warnings.len(),
+                                    result.warnings.join("\n")
+                                ));
                             }
                             if let Some(win) = this.main_window.upgrade() {
-                                win.update(cx, |win, cx| win.show_modal("Import Complete", &msg, cx));
+                                win.update(cx, |win, cx| {
+                                    win.show_modal("Import Complete", &msg, cx)
+                                });
                             }
                         }
                         Err(e) => {
@@ -84,9 +101,15 @@ impl ExplorerPanel {
     }
 
     pub(super) fn run_collection_folder(&mut self, path: PathBuf, cx: &mut Context<Self>) {
-        let env_vars: std::collections::HashMap<String, String> = self.env_state
+        let env_vars: std::collections::HashMap<String, String> = self
+            .env_state
             .active()
-            .map(|e| e.variables.iter().map(|(k, v)| (k.clone(), v.clone())).collect())
+            .map(|e| {
+                e.variables
+                    .iter()
+                    .map(|(k, v)| (k.clone(), v.clone()))
+                    .collect()
+            })
             .unwrap_or_default();
         if let Some(win) = self.main_window.upgrade() {
             self.context_menu = None;
@@ -111,7 +134,10 @@ impl ExplorerPanel {
                     Ok(content) => match std::fs::write(&save_path, &content) {
                         Ok(_) => {
                             info!("Exported OpenAPI to: {}", save_path.display());
-                            ("Export Complete", format!("OpenAPI spec saved to {}", save_path.display()))
+                            (
+                                "Export Complete",
+                                format!("OpenAPI spec saved to {}", save_path.display()),
+                            )
                         }
                         Err(e) => ("Export Failed", format!("Failed to write file: {}", e)),
                     },
@@ -125,7 +151,9 @@ impl ExplorerPanel {
     }
 
     pub fn export_docs(&mut self, cx: &mut Context<Self>) {
-        let Some(workspace) = self.workspace_path.clone() else { return; };
+        let Some(workspace) = self.workspace_path.clone() else {
+            return;
+        };
         file_dialog::prompt(
             cx,
             Pick::Save,
@@ -137,12 +165,20 @@ impl ExplorerPanel {
             },
             move |this, save_path, cx| {
                 let is_html = save_path.extension().and_then(|e| e.to_str()) == Some("html");
-                let format = if is_html { protide_core::export::ExportFormat::Html } else { protide_core::export::ExportFormat::Markdown };
-                let (title, msg) = match protide_core::export::export_collection(&workspace, format) {
+                let format = if is_html {
+                    protide_core::export::ExportFormat::Html
+                } else {
+                    protide_core::export::ExportFormat::Markdown
+                };
+                let (title, msg) = match protide_core::export::export_collection(&workspace, format)
+                {
                     Ok(content) => match std::fs::write(&save_path, &content) {
                         Ok(_) => {
                             info!("Exported docs to: {}", save_path.display());
-                            ("Export Complete", format!("Documentation saved to {}", save_path.display()))
+                            (
+                                "Export Complete",
+                                format!("Documentation saved to {}", save_path.display()),
+                            )
                         }
                         Err(e) => ("Export Failed", format!("Failed to write file: {}", e)),
                     },

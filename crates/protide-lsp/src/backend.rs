@@ -66,21 +66,23 @@ impl LanguageServer for HttpLsp {
                     ..Default::default()
                 }),
                 semantic_tokens_provider: Some(
-                    SemanticTokensServerCapabilities::SemanticTokensOptions(SemanticTokensOptions {
-                        legend: SemanticTokensLegend {
-                            token_types: vec![
-                                SemanticTokenType::KEYWORD,
-                                SemanticTokenType::STRING,
-                                SemanticTokenType::PROPERTY,
-                                SemanticTokenType::PARAMETER,
-                                SemanticTokenType::COMMENT,
-                                SemanticTokenType::NUMBER,
-                            ],
-                            token_modifiers: vec![SemanticTokenModifier::READONLY],
+                    SemanticTokensServerCapabilities::SemanticTokensOptions(
+                        SemanticTokensOptions {
+                            legend: SemanticTokensLegend {
+                                token_types: vec![
+                                    SemanticTokenType::KEYWORD,
+                                    SemanticTokenType::STRING,
+                                    SemanticTokenType::PROPERTY,
+                                    SemanticTokenType::PARAMETER,
+                                    SemanticTokenType::COMMENT,
+                                    SemanticTokenType::NUMBER,
+                                ],
+                                token_modifiers: vec![SemanticTokenModifier::READONLY],
+                            },
+                            full: Some(SemanticTokensFullOptions::Bool(true)),
+                            ..Default::default()
                         },
-                        full: Some(SemanticTokensFullOptions::Bool(true)),
-                        ..Default::default()
-                    }),
+                    ),
                 ),
                 document_symbol_provider: Some(OneOf::Left(true)),
                 definition_provider: Some(OneOf::Left(true)),
@@ -121,7 +123,10 @@ impl LanguageServer for HttpLsp {
     async fn did_change(&self, params: DidChangeTextDocumentParams) {
         if let Some(change) = params.content_changes.into_iter().last() {
             let uri = params.text_document.uri;
-            self.docs.write().await.insert(uri.clone(), change.text.clone());
+            self.docs
+                .write()
+                .await
+                .insert(uri.clone(), change.text.clone());
             self.publish_diags(uri, &change.text).await;
         }
     }
@@ -129,7 +134,9 @@ impl LanguageServer for HttpLsp {
     async fn did_close(&self, params: DidCloseTextDocumentParams) {
         let uri = &params.text_document.uri;
         self.docs.write().await.remove(uri);
-        self.client.publish_diagnostics(uri.clone(), vec![], None).await;
+        self.client
+            .publish_diagnostics(uri.clone(), vec![], None)
+            .await;
     }
 
     async fn hover(&self, params: HoverParams) -> Result<Option<Hover>> {
@@ -212,10 +219,18 @@ impl LanguageServer for HttpLsp {
         &self,
         params: WorkspaceSymbolParams,
     ) -> Result<Option<Vec<SymbolInformation>>> {
-        let Some(root) = self.root_uri.get() else { return Ok(None) };
-        let Ok(root_path) = root.to_file_path() else { return Ok(None) };
+        let Some(root) = self.root_uri.get() else {
+            return Ok(None);
+        };
+        let Ok(root_path) = root.to_file_path() else {
+            return Ok(None);
+        };
         let symbols = workspace_symbols(&root_path, &params.query);
-        Ok(if symbols.is_empty() { None } else { Some(symbols) })
+        Ok(if symbols.is_empty() {
+            None
+        } else {
+            Some(symbols)
+        })
     }
 
     async fn prepare_rename(
@@ -240,23 +255,21 @@ impl LanguageServer for HttpLsp {
         Ok(rename_symbol(&content, uri, pos, &params.new_name))
     }
 
-    async fn code_action(
-        &self,
-        params: CodeActionParams,
-    ) -> Result<Option<CodeActionResponse>> {
+    async fn code_action(&self, params: CodeActionParams) -> Result<Option<CodeActionResponse>> {
         let uri = &params.text_document.uri;
         let content = match self.get_content(uri).await {
             Some(c) => c,
             None => return Ok(None),
         };
         let actions = code_actions(&content, uri, params.range);
-        Ok(if actions.is_empty() { None } else { Some(actions) })
+        Ok(if actions.is_empty() {
+            None
+        } else {
+            Some(actions)
+        })
     }
 
-    async fn formatting(
-        &self,
-        params: DocumentFormattingParams,
-    ) -> Result<Option<Vec<TextEdit>>> {
+    async fn formatting(&self, params: DocumentFormattingParams) -> Result<Option<Vec<TextEdit>>> {
         let uri = &params.text_document.uri;
         let content = match self.get_content(uri).await {
             Some(c) => c,
@@ -266,10 +279,7 @@ impl LanguageServer for HttpLsp {
         Ok(if edits.is_empty() { None } else { Some(edits) })
     }
 
-    async fn inlay_hint(
-        &self,
-        params: InlayHintParams,
-    ) -> Result<Option<Vec<InlayHint>>> {
+    async fn inlay_hint(&self, params: InlayHintParams) -> Result<Option<Vec<InlayHint>>> {
         let uri = &params.text_document.uri;
         let content = match self.get_content(uri).await {
             Some(c) => c,

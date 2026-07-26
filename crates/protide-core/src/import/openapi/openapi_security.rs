@@ -15,13 +15,11 @@ pub(super) enum SecuritySchemeInfo {
 pub(super) fn parse_security_scheme(def: &Value) -> Option<SecuritySchemeInfo> {
     let scheme_type = def.get("type").and_then(|v| v.as_str()).unwrap_or("");
     match scheme_type {
-        "http" => {
-            match def.get("scheme").and_then(|v| v.as_str()).unwrap_or("") {
-                "bearer" => Some(SecuritySchemeInfo::BearerHttp),
-                "basic" => Some(SecuritySchemeInfo::BasicHttp),
-                _ => None,
-            }
-        }
+        "http" => match def.get("scheme").and_then(|v| v.as_str()).unwrap_or("") {
+            "bearer" => Some(SecuritySchemeInfo::BearerHttp),
+            "basic" => Some(SecuritySchemeInfo::BasicHttp),
+            _ => None,
+        },
         "apiKey" => {
             let name = def.get("name").and_then(|v| v.as_str())?.to_string();
             match def.get("in").and_then(|v| v.as_str()).unwrap_or("") {
@@ -85,13 +83,20 @@ pub(super) fn apply_security(
                 if let Some(info) = schemes.get(scheme_name) {
                     match info {
                         SecuritySchemeInfo::BearerHttp | SecuritySchemeInfo::OAuth2 => {
-                            if !headers.iter().any(|h| h.key.eq_ignore_ascii_case("Authorization")) {
+                            if !headers
+                                .iter()
+                                .any(|h| h.key.eq_ignore_ascii_case("Authorization"))
+                            {
                                 headers.push(KeyValue::new("Authorization", "Bearer {{token}}"));
                             }
                         }
                         SecuritySchemeInfo::BasicHttp => {
-                            if !headers.iter().any(|h| h.key.eq_ignore_ascii_case("Authorization")) {
-                                headers.push(KeyValue::new("Authorization", "Basic {{credentials}}"));
+                            if !headers
+                                .iter()
+                                .any(|h| h.key.eq_ignore_ascii_case("Authorization"))
+                            {
+                                headers
+                                    .push(KeyValue::new("Authorization", "Basic {{credentials}}"));
                             }
                         }
                         SecuritySchemeInfo::ApiKeyHeader(name) => {

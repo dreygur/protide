@@ -67,7 +67,10 @@ pub(super) fn get_example_value(param: &Value, root: &Value) -> String {
             return example.to_string();
         }
 
-        let schema_type = resolved.get("type").and_then(|v| v.as_str()).unwrap_or("string");
+        let schema_type = resolved
+            .get("type")
+            .and_then(|v| v.as_str())
+            .unwrap_or("string");
         return match schema_type {
             "integer" | "number" => "0".to_string(),
             "boolean" => "true".to_string(),
@@ -85,8 +88,15 @@ pub(super) fn get_example_value(param: &Value, root: &Value) -> String {
 /// Node[] }`) don't recurse forever and stack-overflow. When a `$ref`
 /// already on the path is encountered, recursion stops for that branch and a
 /// minimal placeholder is returned instead.
-fn generate_schema_example(schema: &Value, root: &Value, visited: &mut HashSet<String>) -> Option<String> {
-    let ref_name = schema.get("$ref").and_then(|v| v.as_str()).map(|s| s.to_string());
+fn generate_schema_example(
+    schema: &Value,
+    root: &Value,
+    visited: &mut HashSet<String>,
+) -> Option<String> {
+    let ref_name = schema
+        .get("$ref")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
     let schema = if let Some(r) = &ref_name {
         resolve_ref(root, r).unwrap_or(schema)
     } else {
@@ -94,11 +104,12 @@ fn generate_schema_example(schema: &Value, root: &Value, visited: &mut HashSet<S
     };
 
     if let Some(r) = &ref_name
-        && !visited.insert(r.clone()) {
-            // Cycle detected: this $ref is already being resolved further up
-            // the recursion path. Stop here instead of recursing again.
-            return Some("{}".to_string());
-        }
+        && !visited.insert(r.clone())
+    {
+        // Cycle detected: this $ref is already being resolved further up
+        // the recursion path. Stop here instead of recursing again.
+        return Some("{}".to_string());
+    }
 
     let result = generate_schema_example_inner(schema, root, visited);
 
@@ -109,7 +120,11 @@ fn generate_schema_example(schema: &Value, root: &Value, visited: &mut HashSet<S
     result
 }
 
-fn generate_schema_example_inner(schema: &Value, root: &Value, visited: &mut HashSet<String>) -> Option<String> {
+fn generate_schema_example_inner(
+    schema: &Value,
+    root: &Value,
+    visited: &mut HashSet<String>,
+) -> Option<String> {
     // allOf: merge properties from all sub-schemas
     if let Some(all_of) = schema.get("allOf").and_then(|v| v.as_array()) {
         let mut merged = serde_json::Map::new();
@@ -171,7 +186,10 @@ fn generate_schema_example_inner(schema: &Value, root: &Value, visited: &mut Has
 /// Generate an example `Value` for a single property schema. See
 /// [`generate_schema_example`] for the cycle-detection contract of `visited`.
 fn generate_property_example(schema: &Value, root: &Value, visited: &mut HashSet<String>) -> Value {
-    let ref_name = schema.get("$ref").and_then(|v| v.as_str()).map(|s| s.to_string());
+    let ref_name = schema
+        .get("$ref")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
     let schema = if let Some(r) = &ref_name {
         resolve_ref(root, r).unwrap_or(schema)
     } else {
@@ -179,10 +197,11 @@ fn generate_property_example(schema: &Value, root: &Value, visited: &mut HashSet
     };
 
     if let Some(r) = &ref_name
-        && !visited.insert(r.clone()) {
-            // Cycle detected: stop recursing for this branch.
-            return Value::Object(serde_json::Map::new());
-        }
+        && !visited.insert(r.clone())
+    {
+        // Cycle detected: stop recursing for this branch.
+        return Value::Object(serde_json::Map::new());
+    }
 
     let result = generate_property_example_inner(schema, root, visited);
 
@@ -193,12 +212,19 @@ fn generate_property_example(schema: &Value, root: &Value, visited: &mut HashSet
     result
 }
 
-fn generate_property_example_inner(schema: &Value, root: &Value, visited: &mut HashSet<String>) -> Value {
+fn generate_property_example_inner(
+    schema: &Value,
+    root: &Value,
+    visited: &mut HashSet<String>,
+) -> Value {
     if let Some(example) = schema.get("example") {
         return example.clone();
     }
 
-    let schema_type = schema.get("type").and_then(|v| v.as_str()).unwrap_or("string");
+    let schema_type = schema
+        .get("type")
+        .and_then(|v| v.as_str())
+        .unwrap_or("string");
 
     match schema_type {
         "string" => match schema.get("format").and_then(|v| v.as_str()) {
@@ -210,7 +236,9 @@ fn generate_property_example_inner(schema: &Value, root: &Value, visited: &mut H
             _ => Value::String("string".to_string()),
         },
         "integer" => Value::Number(0.into()),
-        "number" => serde_json::Number::from_f64(0.0).map(Value::Number).unwrap_or(Value::Null),
+        "number" => serde_json::Number::from_f64(0.0)
+            .map(Value::Number)
+            .unwrap_or(Value::Null),
         "boolean" => Value::Bool(true),
         "array" => {
             if let Some(items) = schema.get("items") {

@@ -1,6 +1,8 @@
-use gpui::{Context, IntoElement, MouseButton, ParentElement, Render, Styled, Window, div, px, prelude::*};
-use super::{RunnerPanel, RowStatus};
+use super::{RowStatus, RunnerPanel};
 use crate::theme;
+use gpui::{
+    Context, IntoElement, MouseButton, ParentElement, Render, Styled, Window, div, prelude::*, px,
+};
 
 impl Render for RunnerPanel {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
@@ -49,16 +51,23 @@ impl Render for RunnerPanel {
                                 .bg(theme.colors.status_client_error.opacity(0.1))
                                 .cursor_pointer()
                                 .hover(|s| s.opacity(0.75))
-                                .on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| {
-                                    this.stop(cx);
-                                }))
+                                .on_mouse_down(
+                                    MouseButton::Left,
+                                    cx.listener(|this, _, _, cx| {
+                                        this.stop(cx);
+                                    }),
+                                )
                                 .child("Stop"),
                         )
                     }),
             )
             // Progress bar
             .when(total > 0, |el| {
-                let pct = if total > 0 { (current + 1) as f32 / total as f32 } else { 0.0 };
+                let pct = if total > 0 {
+                    (current + 1) as f32 / total as f32
+                } else {
+                    0.0
+                };
                 el.child(
                     div()
                         .w_full()
@@ -85,10 +94,10 @@ impl Render for RunnerPanel {
                     .gap_px()
                     .children(rows.iter().map(|row| {
                         let (icon, color) = match &row.status {
-                            RowStatus::Pending  => ("·", theme.colors.text_muted),
-                            RowStatus::Running  => ("▶", theme.colors.accent),
-                            RowStatus::Passed   => ("✓", theme.colors.status_success),
-                            RowStatus::Failed(_)=> ("✗", theme.colors.status_client_error),
+                            RowStatus::Pending => ("·", theme.colors.text_muted),
+                            RowStatus::Running => ("▶", theme.colors.accent),
+                            RowStatus::Passed => ("✓", theme.colors.status_success),
+                            RowStatus::Failed(_) => ("✗", theme.colors.status_client_error),
                         };
                         let error = if let RowStatus::Failed(e) = &row.status {
                             Some(e.clone())
@@ -109,11 +118,7 @@ impl Render for RunnerPanel {
                                     .items_center()
                                     .gap_2()
                                     .child(
-                                        div()
-                                            .w(px(14.0))
-                                            .text_xs()
-                                            .text_color(color)
-                                            .child(icon),
+                                        div().w(px(14.0)).text_xs().text_color(color).child(icon),
                                     )
                                     .child(
                                         div()

@@ -24,7 +24,9 @@ pub fn inlay_hints(content: &str, range: Range) -> Vec<InlayHint> {
 fn collect_set_vars(content: &str) -> HashMap<String, String> {
     let mut map = HashMap::new();
     for line in content.lines() {
-        let Some(rest) = line.trim_start().strip_prefix("# @set") else { continue };
+        let Some(rest) = line.trim_start().strip_prefix("# @set") else {
+            continue;
+        };
         let rest = rest.trim_start();
         let Some(eq) = rest.find('=') else { continue };
         let name = rest[..eq].trim().to_string();
@@ -49,13 +51,18 @@ fn scan_line_vars(
         search = &search[open + 2..];
         offset += open + 2;
 
-        let Some(close) = search.find("}}") else { break };
+        let Some(close) = search.find("}}") else {
+            break;
+        };
         let var_name = &search[..close];
 
         if let Some(expr) = set_vars.get(var_name) {
             let char_pos = (offset + close + 2) as u32;
             hints.push(InlayHint {
-                position: Position { line: line_num, character: char_pos },
+                position: Position {
+                    line: line_num,
+                    character: char_pos,
+                },
                 label: InlayHintLabel::String(format!("= {expr}")),
                 kind: Some(InlayHintKind::PARAMETER),
                 text_edits: None,

@@ -1,6 +1,6 @@
-use gpui::Context;
-use super::*;
 use super::super::request_utils::{base64_encode, url_encode};
+use super::*;
+use gpui::Context;
 
 impl<E: WebSocketExecutor> RequestPanel<E> {
     /// Save the current request to a .http file
@@ -20,12 +20,16 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                 self.save_feedback = true;
                 cx.notify();
                 cx.spawn(async move |this, cx| {
-                    cx.background_executor().timer(std::time::Duration::from_millis(1500)).await;
+                    cx.background_executor()
+                        .timer(std::time::Duration::from_millis(1500))
+                        .await;
                     this.update(cx, |this, cx| {
                         this.save_feedback = false;
                         cx.notify();
-                    }).ok();
-                }).detach();
+                    })
+                    .ok();
+                })
+                .detach();
             }
             return;
         }
@@ -34,7 +38,9 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
         let default_name = if self.url.is_empty() {
             "new-request.http".to_string()
         } else {
-            let name = self.url.split('/')
+            let name = self
+                .url
+                .split('/')
                 .filter(|s| !s.is_empty() && !s.contains("://") && !s.contains('.'))
                 .last()
                 .unwrap_or("request");
@@ -76,7 +82,11 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
     pub(super) fn generate_http_content(&self, cx: &Context<Self>) -> String {
         let mut lines = Vec::new();
 
-        let name = if self.url.is_empty() { "New Request" } else { &self.url };
+        let name = if self.url.is_empty() {
+            "New Request"
+        } else {
+            &self.url
+        };
         lines.push(format!("### {}", name));
         lines.push(String::new());
 
@@ -88,7 +98,11 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             lines.push(format!("# @proto {}", proto_path.display()));
         }
 
-        let method = if self.request_mode == RequestMode::GraphQL { "POST" } else { self.method.as_str() };
+        let method = if self.request_mode == RequestMode::GraphQL {
+            "POST"
+        } else {
+            self.method.as_str()
+        };
         lines.push(format!("{} {}", method, self.url));
 
         // Disabled headers are written as `# Key: Value` comment lines so the
@@ -163,15 +177,23 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                 }
             }
             if !self.graphql_operation_name.trim().is_empty() {
-                obj.insert("operationName".to_string(), serde_json::Value::String(self.graphql_operation_name.clone()));
+                obj.insert(
+                    "operationName".to_string(),
+                    serde_json::Value::String(self.graphql_operation_name.clone()),
+                );
             }
-            return serde_json::to_string_pretty(&serde_json::Value::Object(obj)).unwrap_or_default();
+            return serde_json::to_string_pretty(&serde_json::Value::Object(obj))
+                .unwrap_or_default();
         }
 
         if self.request_mode == RequestMode::Http && self.body_type == BodyType::Form {
-            let has_files = self.form_data.iter()
+            let has_files = self
+                .form_data
+                .iter()
                 .any(|f| f.enabled && f.field_type == FormFieldType::File && f.file_path.is_some());
-            let encoded_fields = self.form_data.iter()
+            let encoded_fields = self
+                .form_data
+                .iter()
                 .filter(|f| f.enabled && !f.key.is_empty() && f.field_type != FormFieldType::File)
                 .map(|f| format!("{}={}", url_encode(&f.key), url_encode(&f.value)))
                 .collect::<Vec<_>>()
@@ -190,7 +212,9 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
         }
 
         if self.request_mode == RequestMode::Http && self.body_type == BodyType::Binary {
-            return self.binary_file_path.as_ref()
+            return self
+                .binary_file_path
+                .as_ref()
                 .and_then(|p| std::fs::read(p).ok())
                 .map(|bytes| String::from_utf8_lossy(&bytes).into_owned())
                 .unwrap_or_default();

@@ -1,5 +1,8 @@
-use gpui::{App, Context, FontWeight, IntoElement, MouseButton, ParentElement, Styled, div, img, px, prelude::*};
 use super::*;
+use gpui::{
+    App, Context, FontWeight, IntoElement, MouseButton, ParentElement, Styled, div, img,
+    prelude::*, px,
+};
 
 impl MainWindow {
     pub(super) fn render_title_bar(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
@@ -42,28 +45,39 @@ impl MainWindow {
             )
             .child({
                 let open = self.open_menu;
-                let menus: &[(u8, &str)] = &[(0, "Protide"), (1, "Request"), (2, "View"), (3, "Help")];
+                let menus: &[(u8, &str)] =
+                    &[(0, "Protide"), (1, "Request"), (2, "View"), (3, "Help")];
                 div()
-                    .flex().items_center().h_full()
+                    .flex()
+                    .items_center()
+                    .h_full()
                     .children(menus.iter().map(|&(id, label)| {
                         let is_open = open == Some(id);
                         div()
                             .id(("menu-btn", id as usize))
-                            .h_full().px(px(10.0))
-                            .flex().items_center()
+                            .h_full()
+                            .px(px(10.0))
+                            .flex()
+                            .items_center()
                             .cursor_pointer()
                             .text_size(px(12.0))
-                            .when(is_open, |el| el
-                                .bg(theme.colors.bg_tertiary)
-                                .text_color(theme.colors.text_primary)
-                            )
-                            .when(!is_open, |el| el
-                                .text_color(theme.colors.text_secondary)
-                                .hover(|s| s.bg(theme.colors.bg_elevated).text_color(theme.colors.text_primary))
-                            )
+                            .when(is_open, |el| {
+                                el.bg(theme.colors.bg_tertiary)
+                                    .text_color(theme.colors.text_primary)
+                            })
+                            .when(!is_open, |el| {
+                                el.text_color(theme.colors.text_secondary).hover(|s| {
+                                    s.bg(theme.colors.bg_elevated)
+                                        .text_color(theme.colors.text_primary)
+                                })
+                            })
                             .child(label)
                             .on_click(cx.listener(move |this, _, _, cx| {
-                                let new_menu = if this.open_menu == Some(id) { None } else { Some(id) };
+                                let new_menu = if this.open_menu == Some(id) {
+                                    None
+                                } else {
+                                    Some(id)
+                                };
                                 this.close_all_overlays();
                                 this.open_menu = new_menu;
                                 cx.notify();
@@ -80,7 +94,7 @@ impl MainWindow {
                         this.presence.show_pairing = opening;
                         cx.notify();
                     }))
-                    .child(self.presence.render_presence_bar(&theme))
+                    .child(self.presence.render_presence_bar(&theme)),
             )
             .child(div().flex_1().h_full().on_mouse_down(
                 MouseButton::Left,
@@ -143,8 +157,12 @@ impl MainWindow {
                         cx.notify();
                     }))
                     .child(match theme.mode {
-                        theme::ThemeMode::Light => icon(ICON_SUN, 12.0, theme.colors.text_secondary).into_any_element(),
-                        theme::ThemeMode::Dark => icon(ICON_MOON, 12.0, theme.colors.text_secondary).into_any_element(),
+                        theme::ThemeMode::Light => {
+                            icon(ICON_SUN, 12.0, theme.colors.text_secondary).into_any_element()
+                        }
+                        theme::ThemeMode::Dark => {
+                            icon(ICON_MOON, 12.0, theme.colors.text_secondary).into_any_element()
+                        }
                         // No "system/auto" icon in the bundled Lucide set - use a distinct
                         // glyph so this state is visually distinguishable from Light/Dark
                         // even when System currently resolves to the same colors as Dark.
@@ -156,61 +174,65 @@ impl MainWindow {
                             .into_any_element(),
                     }),
             )
-            .when(!is_macos, |el| el.child(
-                div()
-                    .flex()
-                    .items_center()
-                    .h_full()
-                    .border_l_1()
-                    .border_color(theme.colors.border)
-                    .child(
-                        div()
-                            .id("btn-minimize")
-                            .w(px(36.0))
-                            .h_full()
-                            .flex()
-                            .items_center()
-                            .justify_center()
-                            .cursor_pointer()
-                            .text_color(theme.colors.text_secondary)
-                            .hover(|s| s.bg(theme.colors.bg_elevated))
-                            .on_click(|_, window, _cx: &mut App| {
-                                window.minimize_window();
-                            })
-                            .child(icon(ICON_MINIMIZE, 12.0, theme.colors.text_secondary)),
-                    )
-                    .child(
-                        div()
-                            .id("btn-maximize")
-                            .w(px(36.0))
-                            .h_full()
-                            .flex()
-                            .items_center()
-                            .justify_center()
-                            .cursor_pointer()
-                            .text_color(theme.colors.text_secondary)
-                            .hover(|s| s.bg(theme.colors.bg_elevated))
-                            .on_click(|_, window, _cx: &mut App| {
-                                window.zoom_window();
-                            })
-                            .child(icon(ICON_MAXIMIZE, 12.0, theme.colors.text_secondary)),
-                    )
-                    .child(
-                        div()
-                            .id("btn-close")
-                            .w(px(36.0))
-                            .h_full()
-                            .flex()
-                            .items_center()
-                            .justify_center()
-                            .cursor_pointer()
-                            .text_color(theme.colors.text_secondary)
-                            .hover(|s| s.bg(theme.colors.error).text_color(theme.colors.bg_primary))
-                            .on_click(|_, _window, cx: &mut App| {
-                                cx.quit();
-                            })
-                            .child(icon(ICON_WINDOW_CLOSE, 12.0, theme.colors.text_secondary)),
-                    ),
-            ))
+            .when(!is_macos, |el| {
+                el.child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .h_full()
+                        .border_l_1()
+                        .border_color(theme.colors.border)
+                        .child(
+                            div()
+                                .id("btn-minimize")
+                                .w(px(36.0))
+                                .h_full()
+                                .flex()
+                                .items_center()
+                                .justify_center()
+                                .cursor_pointer()
+                                .text_color(theme.colors.text_secondary)
+                                .hover(|s| s.bg(theme.colors.bg_elevated))
+                                .on_click(|_, window, _cx: &mut App| {
+                                    window.minimize_window();
+                                })
+                                .child(icon(ICON_MINIMIZE, 12.0, theme.colors.text_secondary)),
+                        )
+                        .child(
+                            div()
+                                .id("btn-maximize")
+                                .w(px(36.0))
+                                .h_full()
+                                .flex()
+                                .items_center()
+                                .justify_center()
+                                .cursor_pointer()
+                                .text_color(theme.colors.text_secondary)
+                                .hover(|s| s.bg(theme.colors.bg_elevated))
+                                .on_click(|_, window, _cx: &mut App| {
+                                    window.zoom_window();
+                                })
+                                .child(icon(ICON_MAXIMIZE, 12.0, theme.colors.text_secondary)),
+                        )
+                        .child(
+                            div()
+                                .id("btn-close")
+                                .w(px(36.0))
+                                .h_full()
+                                .flex()
+                                .items_center()
+                                .justify_center()
+                                .cursor_pointer()
+                                .text_color(theme.colors.text_secondary)
+                                .hover(|s| {
+                                    s.bg(theme.colors.error).text_color(theme.colors.bg_primary)
+                                })
+                                .on_click(|_, _window, cx: &mut App| {
+                                    cx.quit();
+                                })
+                                .child(icon(ICON_WINDOW_CLOSE, 12.0, theme.colors.text_secondary)),
+                        ),
+                )
+            })
     }
 }

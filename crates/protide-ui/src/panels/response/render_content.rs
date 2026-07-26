@@ -15,15 +15,14 @@ impl ResponsePanel {
                 .child(
                     div()
                         .size(px(32.0))
-
                         .border_3()
-                        .border_color(theme.colors.accent.opacity(0.4))
+                        .border_color(theme.colors.accent.opacity(0.4)),
                 )
                 .child(
                     div()
                         .text_size(px(13.0))
                         .text_color(theme.colors.text_muted)
-                        .child("Sending request...")
+                        .child("Sending request..."),
                 )
                 .into_any_element();
         }
@@ -39,7 +38,6 @@ impl ResponsePanel {
                 .child(
                     div()
                         .size(px(48.0))
-
                         .bg(theme.colors.status_client_error.opacity(0.1))
                         .flex()
                         .items_center()
@@ -48,22 +46,22 @@ impl ResponsePanel {
                             div()
                                 .text_size(px(24.0))
                                 .text_color(theme.colors.status_client_error)
-                                .child("!")
-                        )
+                                .child("!"),
+                        ),
                 )
                 .child(
                     div()
                         .text_size(px(14.0))
                         .font_weight(gpui::FontWeight::MEDIUM)
                         .text_color(theme.colors.text_primary)
-                        .child("Request Failed")
+                        .child("Request Failed"),
                 )
                 .child(
                     div()
                         .max_w(px(400.0))
                         .text_size(px(12.0))
                         .text_color(theme.colors.text_muted)
-                        .child(error.clone())
+                        .child(error.clone()),
                 )
                 .into_any_element();
         }
@@ -141,25 +139,22 @@ impl ResponsePanel {
                                 .items_center()
                                 .gap(px(4.0))
                                 // Animated-style arrows
-                                .child(
-                                    div()
-                                        .flex()
-                                        .items_center()
-                                        .child(icon(ICON_ARROW_DOWN, ICON_SM, theme.colors.text_muted.opacity(0.4)))
-                                )
-                                .child(
-                                    div()
-                                        .flex()
-                                        .items_center()
-                                        .child(icon(ICON_ARROW_DOWN, ICON_MD, theme.colors.text_muted.opacity(0.6)))
-                                )
-                                .child(
-                                    div()
-                                        .flex()
-                                        .items_center()
-                                        .child(icon(ICON_ARROW_DOWN, ICON_MD, theme.colors.text_muted))
-                                )
-                        )
+                                .child(div().flex().items_center().child(icon(
+                                    ICON_ARROW_DOWN,
+                                    ICON_SM,
+                                    theme.colors.text_muted.opacity(0.4),
+                                )))
+                                .child(div().flex().items_center().child(icon(
+                                    ICON_ARROW_DOWN,
+                                    ICON_MD,
+                                    theme.colors.text_muted.opacity(0.6),
+                                )))
+                                .child(div().flex().items_center().child(icon(
+                                    ICON_ARROW_DOWN,
+                                    ICON_MD,
+                                    theme.colors.text_muted,
+                                ))),
+                        ),
                 )
                 // Title
                 .child(
@@ -167,14 +162,14 @@ impl ResponsePanel {
                         .text_size(px(15.0))
                         .font_weight(gpui::FontWeight::SEMIBOLD)
                         .text_color(theme.colors.text_primary)
-                        .child("Ready to receive")
+                        .child("Ready to receive"),
                 )
                 // Description
                 .child(
                     div()
                         .text_size(px(12.0))
                         .text_color(theme.colors.text_muted)
-                        .child("Send a request to see the response here")
+                        .child("Send a request to see the response here"),
                 )
                 // Keyboard shortcut hint
                 .child(
@@ -187,7 +182,7 @@ impl ResponsePanel {
                             div()
                                 .text_size(px(11.0))
                                 .text_color(theme.colors.text_muted.opacity(0.7))
-                                .child("Press")
+                                .child("Press"),
                         )
                         .child(
                             div()
@@ -204,7 +199,7 @@ impl ResponsePanel {
                                         .text_size(px(10.0))
                                         .font_weight(gpui::FontWeight::MEDIUM)
                                         .text_color(theme.colors.text_secondary)
-                                        .child("⌘")
+                                        .child("⌘"),
                                 )
                                 .child(
                                     div()
@@ -216,15 +211,15 @@ impl ResponsePanel {
                                         .text_size(px(10.0))
                                         .font_weight(gpui::FontWeight::MEDIUM)
                                         .text_color(theme.colors.text_secondary)
-                                        .child("↵")
-                                )
+                                        .child("↵"),
+                                ),
                         )
                         .child(
                             div()
                                 .text_size(px(11.0))
                                 .text_color(theme.colors.text_muted.opacity(0.7))
-                                .child("to send")
-                        )
+                                .child("to send"),
+                        ),
                 )
                 .into_any_element()
         }

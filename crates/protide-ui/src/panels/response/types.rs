@@ -72,11 +72,20 @@ impl ParsedCookie {
                 cookie.secure = true;
             } else if lower == "httponly" {
                 cookie.http_only = true;
-            } else if let Some(val) = part.strip_prefix("Path=").or_else(|| part.strip_prefix("path=")) {
+            } else if let Some(val) = part
+                .strip_prefix("Path=")
+                .or_else(|| part.strip_prefix("path="))
+            {
                 cookie.path = Some(val.to_string());
-            } else if let Some(val) = part.strip_prefix("Domain=").or_else(|| part.strip_prefix("domain=")) {
+            } else if let Some(val) = part
+                .strip_prefix("Domain=")
+                .or_else(|| part.strip_prefix("domain="))
+            {
                 cookie.domain = Some(val.to_string());
-            } else if let Some(val) = part.strip_prefix("Expires=").or_else(|| part.strip_prefix("expires=")) {
+            } else if let Some(val) = part
+                .strip_prefix("Expires=")
+                .or_else(|| part.strip_prefix("expires="))
+            {
                 cookie.expires = Some(val.to_string());
             }
         }
@@ -118,7 +127,11 @@ pub fn format_size(bytes: usize) -> String {
 #[allow(dead_code)]
 pub(crate) fn truncate_error(error: &str) -> String {
     if error.chars().count() > 40 {
-        let end = error.char_indices().nth(37).map(|(i, _)| i).unwrap_or(error.len());
+        let end = error
+            .char_indices()
+            .nth(37)
+            .map(|(i, _)| i)
+            .unwrap_or(error.len());
         format!("{}...", &error[..end])
     } else {
         error.to_string()
@@ -133,35 +146,92 @@ pub(super) fn pretty_xml(src: &str) -> String {
     while i < b.len() {
         if b[i] != b'<' {
             let s = i;
-            while i < b.len() && b[i] != b'<' { i += 1; }
+            while i < b.len() && b[i] != b'<' {
+                i += 1;
+            }
             let t = src[s..i].trim();
-            if !t.is_empty() { if !out.is_empty() { out.push('\n'); } for _ in 0..depth { out.push_str("  "); } out.push_str(t); }
+            if !t.is_empty() {
+                if !out.is_empty() {
+                    out.push('\n');
+                }
+                for _ in 0..depth {
+                    out.push_str("  ");
+                }
+                out.push_str(t);
+            }
             continue;
         }
-        let s = i; i += 1;
-        if i + 2 < b.len() && b[i] == b'!' && b[i+1] == b'-' && b[i+2] == b'-' {
-            if let Some(r) = src[i..].find("-->") { i += r + 3; } else { i = b.len(); }
-        } else if i + 8 <= b.len() && &src[i..i+8] == "![CDATA[" {
-            if let Some(r) = src[i..].find("]]>") { i += r + 3; } else { i = b.len(); }
+        let s = i;
+        i += 1;
+        if i + 2 < b.len() && b[i] == b'!' && b[i + 1] == b'-' && b[i + 2] == b'-' {
+            if let Some(r) = src[i..].find("-->") {
+                i += r + 3;
+            } else {
+                i = b.len();
+            }
+        } else if i + 8 <= b.len() && &src[i..i + 8] == "![CDATA[" {
+            if let Some(r) = src[i..].find("]]>") {
+                i += r + 3;
+            } else {
+                i = b.len();
+            }
         } else {
             let closing = i < b.len() && b[i] == b'/';
-            while i < b.len() { match b[i] {
-                b'"' => { i += 1; while i < b.len() && b[i] != b'"' { i += 1; } if i < b.len() { i += 1; } }
-                b'\'' => { i += 1; while i < b.len() && b[i] != b'\'' { i += 1; } if i < b.len() { i += 1; } }
-                b'>' => { i += 1; break; }
-                _ => { i += 1; }
-            }}
+            while i < b.len() {
+                match b[i] {
+                    b'"' => {
+                        i += 1;
+                        while i < b.len() && b[i] != b'"' {
+                            i += 1;
+                        }
+                        if i < b.len() {
+                            i += 1;
+                        }
+                    }
+                    b'\'' => {
+                        i += 1;
+                        while i < b.len() && b[i] != b'\'' {
+                            i += 1;
+                        }
+                        if i < b.len() {
+                            i += 1;
+                        }
+                    }
+                    b'>' => {
+                        i += 1;
+                        break;
+                    }
+                    _ => {
+                        i += 1;
+                    }
+                }
+            }
             let tag = &src[s..i];
             let self_closing = tag.trim_end_matches('>').trim_end().ends_with('/')
-                || tag.starts_with("<?") || (tag.starts_with("<!") && !tag.starts_with("<!--"));
-            if closing { depth = depth.saturating_sub(1); }
-            if !out.is_empty() { out.push('\n'); }
-            for _ in 0..depth { out.push_str("  "); } out.push_str(tag);
-            if !closing && !self_closing { depth += 1; }
+                || tag.starts_with("<?")
+                || (tag.starts_with("<!") && !tag.starts_with("<!--"));
+            if closing {
+                depth = depth.saturating_sub(1);
+            }
+            if !out.is_empty() {
+                out.push('\n');
+            }
+            for _ in 0..depth {
+                out.push_str("  ");
+            }
+            out.push_str(tag);
+            if !closing && !self_closing {
+                depth += 1;
+            }
             continue;
         }
-        if !out.is_empty() { out.push('\n'); }
-        for _ in 0..depth { out.push_str("  "); } out.push_str(&src[s..i]);
+        if !out.is_empty() {
+            out.push('\n');
+        }
+        for _ in 0..depth {
+            out.push_str("  ");
+        }
+        out.push_str(&src[s..i]);
     }
     out
 }

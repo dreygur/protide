@@ -107,7 +107,9 @@ mod tests {
                 ("Content-Type".to_string(), "application/json".to_string()),
                 ("Authorization".to_string(), "Bearer token123".to_string()),
             ])
-            .with_body(Some(r#"{"name": "John", "email": "john@example.com"}"#.to_string()))
+            .with_body(Some(
+                r#"{"name": "John", "email": "john@example.com"}"#.to_string(),
+            ))
     }
 
     #[test]
@@ -133,7 +135,11 @@ mod tests {
         let request = sample_request();
         for lang in Language::all() {
             let code = generate(&request, *lang);
-            assert!(!code.is_empty(), "{} should generate non-empty code", lang.name());
+            assert!(
+                !code.is_empty(),
+                "{} should generate non-empty code",
+                lang.name()
+            );
         }
     }
 }

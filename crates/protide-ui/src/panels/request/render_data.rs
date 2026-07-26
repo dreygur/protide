@@ -1,10 +1,10 @@
-use std::collections::HashMap;
-use gpui::{Context, IntoElement, MouseButton, ParentElement, Styled, div, px, prelude::*};
-use protide_core::execution::ws::WebSocketExecutor;
-use crate::theme;
-use crate::panels::request_types::DataRunRow;
-use crate::panels::file_dialog::{self, Pick};
 use super::RequestPanel;
+use crate::panels::file_dialog::{self, Pick};
+use crate::panels::request_types::DataRunRow;
+use crate::theme;
+use gpui::{Context, IntoElement, MouseButton, ParentElement, Styled, div, prelude::*, px};
+use protide_core::execution::ws::WebSocketExecutor;
+use std::collections::HashMap;
 
 impl<E: WebSocketExecutor> RequestPanel<E> {
     pub(super) fn render_data_tab(&mut self, cx: &mut Context<Self>) -> gpui::AnyElement {
@@ -42,9 +42,12 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                             .text_color(theme.colors.text_primary)
                             .cursor_pointer()
                             .hover(|s| s.bg(theme.colors.border))
-                            .on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| {
-                                this.pick_csv_file(cx);
-                            }))
+                            .on_mouse_down(
+                                MouseButton::Left,
+                                cx.listener(|this, _, _, cx| {
+                                    this.pick_csv_file(cx);
+                                }),
+                            )
                             .child("Browse CSV"),
                     )
                     .child(
@@ -78,12 +81,19 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                     .text_xs()
                     .cursor_pointer()
                     .hover(|s| s.opacity(0.85))
-                    .on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| {
-                        if !this.data_running {
-                            this.run_with_csv(cx);
-                        }
-                    }))
-                    .child(if running { "Running…" } else { "Run with CSV" }),
+                    .on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(|this, _, _, cx| {
+                            if !this.data_running {
+                                this.run_with_csv(cx);
+                            }
+                        }),
+                    )
+                    .child(if running {
+                        "Running…"
+                    } else {
+                        "Run with CSV"
+                    }),
             )
             // Results table
             .when(!results.is_empty(), |el| {
@@ -99,12 +109,31 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                                 .h(px(22.0))
                                 .px_1()
                                 .bg(theme.colors.bg_tertiary)
-                                .child(div().w(px(40.0)).text_xs().text_color(theme.colors.text_muted).child("Row"))
-                                .child(div().w(px(60.0)).text_xs().text_color(theme.colors.text_muted).child("Status"))
-                                .child(div().flex_1().text_xs().text_color(theme.colors.text_muted).child("Result")),
+                                .child(
+                                    div()
+                                        .w(px(40.0))
+                                        .text_xs()
+                                        .text_color(theme.colors.text_muted)
+                                        .child("Row"),
+                                )
+                                .child(
+                                    div()
+                                        .w(px(60.0))
+                                        .text_xs()
+                                        .text_color(theme.colors.text_muted)
+                                        .child("Status"),
+                                )
+                                .child(
+                                    div()
+                                        .flex_1()
+                                        .text_xs()
+                                        .text_color(theme.colors.text_muted)
+                                        .child("Result"),
+                                ),
                         )
                         .children(results.iter().map(|row| {
-                            let status_txt = row.status
+                            let status_txt = row
+                                .status
                                 .map(|s| s.to_string())
                                 .unwrap_or_else(|| "-".to_string());
                             let result_txt = if row.passed {
@@ -124,9 +153,27 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                                 .items_center()
                                 .h(px(22.0))
                                 .px_1()
-                                .child(div().w(px(40.0)).text_xs().text_color(theme.colors.text_muted).child(format!("{row_num}")))
-                                .child(div().w(px(60.0)).text_xs().text_color(theme.colors.text_secondary).child(status_txt))
-                                .child(div().flex_1().text_xs().text_color(result_color).child(result_txt))
+                                .child(
+                                    div()
+                                        .w(px(40.0))
+                                        .text_xs()
+                                        .text_color(theme.colors.text_muted)
+                                        .child(format!("{row_num}")),
+                                )
+                                .child(
+                                    div()
+                                        .w(px(60.0))
+                                        .text_xs()
+                                        .text_color(theme.colors.text_secondary)
+                                        .child(status_txt),
+                                )
+                                .child(
+                                    div()
+                                        .flex_1()
+                                        .text_xs()
+                                        .text_color(result_color)
+                                        .child(result_txt),
+                                )
                         })),
                 )
             })
@@ -147,7 +194,9 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
     }
 
     pub(super) fn run_with_csv(&mut self, cx: &mut Context<Self>) {
-        let Some(csv_path) = self.csv_path.clone() else { return; };
+        let Some(csv_path) = self.csv_path.clone() else {
+            return;
+        };
         let csv_content = match std::fs::read_to_string(&csv_path) {
             Ok(s) => s,
             Err(e) => {
@@ -156,11 +205,19 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             }
         };
 
-        let env_state = self.explorer_panel.as_ref()
+        let env_state = self
+            .explorer_panel
+            .as_ref()
             .map(|p| p.read(cx).env_state().clone());
-        let env_vars: HashMap<String, String> = env_state.as_ref()
+        let env_vars: HashMap<String, String> = env_state
+            .as_ref()
             .and_then(|e| e.active())
-            .map(|env| env.variables.iter().map(|(k, v)| (k.clone(), v.clone())).collect())
+            .map(|env| {
+                env.variables
+                    .iter()
+                    .map(|(k, v)| (k.clone(), v.clone()))
+                    .collect()
+            })
             .unwrap_or_default();
 
         let request = self.build_http_request_model(cx);
@@ -169,11 +226,16 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
         self.data_running = true;
         cx.notify();
 
-        let (tx, rx) = async_channel::unbounded::<protide_core::collection_runner::data_driven::DataDrivenProgress>();
+        let (tx, rx) = async_channel::unbounded::<
+            protide_core::collection_runner::data_driven::DataDrivenProgress,
+        >();
 
         std::thread::spawn(move || {
             let _ = protide_core::collection_runner::data_driven::run_data_driven(
-                &request, &csv_content, env_vars, tx,
+                &request,
+                &csv_content,
+                env_vars,
+                tx,
             );
         });
 
@@ -181,8 +243,8 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             while let Ok(event) = rx.recv().await {
                 use protide_core::collection_runner::data_driven::DataDrivenProgress;
                 let done = matches!(event, DataDrivenProgress::Done);
-                panel.update(cx, |this, cx| {
-                    match event {
+                panel
+                    .update(cx, |this, cx| match event {
                         DataDrivenProgress::Starting { .. } => {}
                         DataDrivenProgress::Completed { result, .. } => {
                             let row = DataRunRow {
@@ -198,11 +260,14 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                             this.data_running = false;
                             cx.notify();
                         }
-                    }
-                }).ok();
-                if done { break; }
+                    })
+                    .ok();
+                if done {
+                    break;
+                }
             }
-        }).detach();
+        })
+        .detach();
     }
 
     pub(super) fn build_http_request_model(&self, cx: &gpui::App) -> http_parser::Request {
@@ -211,9 +276,15 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
         let post = self.post_script_editor.read(cx).value().to_string();
         let tests = self.tests_editor.read(cx).value().to_string();
 
-        let headers: Vec<http_parser::KeyValue> = self.headers.iter()
+        let headers: Vec<http_parser::KeyValue> = self
+            .headers
+            .iter()
             .filter(|h| !h.key.is_empty())
-            .map(|h| http_parser::KeyValue { key: h.key.clone(), value: h.value.clone(), enabled: h.enabled })
+            .map(|h| http_parser::KeyValue {
+                key: h.key.clone(),
+                value: h.value.clone(),
+                enabled: h.enabled,
+            })
             .collect();
 
         http_parser::Request {
@@ -222,7 +293,11 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                 .unwrap_or(http_parser::HttpMethod::Get),
             url: self.url.clone(),
             headers,
-            body: if body_content.is_empty() { None } else { Some(body_content) },
+            body: if body_content.is_empty() {
+                None
+            } else {
+                Some(body_content)
+            },
             scripts: http_parser::Scripts {
                 pre_script: if pre.is_empty() { None } else { Some(pre) },
                 post_script: if post.is_empty() { None } else { Some(post) },

@@ -1,18 +1,21 @@
 //! Dropdown overlay rendering for RequestPanel
 
-
 use gpui::{
-    div, prelude::*, px, Context, IntoElement, KeyDownEvent,
-    ParentElement, SharedString, Styled, Window,
+    Context, IntoElement, KeyDownEvent, ParentElement, SharedString, Styled, Window, div,
+    prelude::*, px,
 };
 
-use crate::theme;
-use protide_core::execution::ws::WebSocketExecutor;
 use super::super::request_types::{GrpcStreamingType, HttpMethod, RequestMode};
 use super::RequestPanel;
+use crate::theme;
+use protide_core::execution::ws::WebSocketExecutor;
 
 impl<E: WebSocketExecutor> RequestPanel<E> {
-    pub(super) fn render_method_dropdown_overlay(&mut self, window: &Window, cx: &mut Context<Self>) -> impl IntoElement {
+    pub(super) fn render_method_dropdown_overlay(
+        &mut self,
+        window: &Window,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
         let theme = theme::current(cx);
 
         div()
@@ -26,10 +29,13 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             .border_1()
             .border_color(theme.colors.border)
             .shadow_lg()
-            .on_mouse_down(gpui::MouseButton::Left, cx.listener(|this, _, _, cx| {
-                this.skip_blur = true;
-                cx.stop_propagation();
-            }))
+            .on_mouse_down(
+                gpui::MouseButton::Left,
+                cx.listener(|this, _, _, cx| {
+                    this.skip_blur = true;
+                    cx.stop_propagation();
+                }),
+            )
             .children(HttpMethod::all().iter().map(|m| {
                 let m = m.clone();
                 let method_color = theme.method_color(m.as_str());
@@ -57,7 +63,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                             .text_size(px(12.0))
                             .font_weight(gpui::FontWeight::BOLD)
                             .text_color(method_color)
-                            .child(m.as_str().to_string())
+                            .child(m.as_str().to_string()),
                     )
                     .on_click(cx.listener(move |this, _, _, cx| {
                         this.select_method(m.clone(), cx);
@@ -70,7 +76,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                     .mx(px(4.0))
                     .mt(px(4.0))
                     .border_t_1()
-                    .border_color(theme.colors.border)
+                    .border_color(theme.colors.border),
             )
             .child(
                 div()
@@ -89,11 +95,14 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                     .flex()
                     .items_center()
                     .track_focus(&self.custom_method_focus)
-                    .on_mouse_down(gpui::MouseButton::Left, cx.listener(|this, _, window, cx| {
-                        this.skip_blur = true;
-                        window.focus(&this.custom_method_focus, cx);
-                        cx.stop_propagation();
-                    }))
+                    .on_mouse_down(
+                        gpui::MouseButton::Left,
+                        cx.listener(|this, _, window, cx| {
+                            this.skip_blur = true;
+                            window.focus(&this.custom_method_focus, cx);
+                            cx.stop_propagation();
+                        }),
+                    )
                     .on_key_down(cx.listener(|this, event: &KeyDownEvent, _, cx| {
                         let key = event.keystroke.key.as_str();
                         match key {
@@ -114,7 +123,10 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                                 this.custom_method_input.pop();
                                 cx.notify();
                             }
-                            k if k.len() == 1 && !event.keystroke.modifiers.control && !event.keystroke.modifiers.platform => {
+                            k if k.len() == 1
+                                && !event.keystroke.modifiers.control
+                                && !event.keystroke.modifiers.platform =>
+                            {
                                 this.custom_method_input.push_str(&k.to_uppercase());
                                 cx.notify();
                             }
@@ -134,12 +146,15 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                                 "Custom method...".to_string()
                             } else {
                                 self.custom_method_input.clone()
-                            })
-                    )
+                            }),
+                    ),
             )
     }
 
-    pub(super) fn render_mode_dropdown_overlay(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
+    pub(super) fn render_mode_dropdown_overlay(
+        &mut self,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
         let theme = theme::current(cx);
 
         const MODES: &[(RequestMode, &str)] = &[
@@ -162,10 +177,13 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             .border_1()
             .border_color(theme.colors.border)
             .shadow_lg()
-            .on_mouse_down(gpui::MouseButton::Left, cx.listener(|this, _, _, cx| {
-                this.skip_blur = true;
-                cx.stop_propagation();
-            }))
+            .on_mouse_down(
+                gpui::MouseButton::Left,
+                cx.listener(|this, _, _, cx| {
+                    this.skip_blur = true;
+                    cx.stop_propagation();
+                }),
+            )
             .children(MODES.iter().map(|(mode, label)| {
                 let is_selected = *mode == self.request_mode;
 
@@ -181,11 +199,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                     .cursor_pointer()
                     .when(is_selected, |el| {
                         el.bg(theme.colors.accent.opacity(0.1))
-                            .child(
-                                div()
-                                    .size(px(6.0))
-                                    .bg(theme.colors.accent)
-                            )
+                            .child(div().size(px(6.0)).bg(theme.colors.accent))
                     })
                     .when(!is_selected, |el| {
                         el.hover(|s| s.bg(theme.colors.bg_tertiary))
@@ -200,7 +214,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                             } else {
                                 theme.colors.text_secondary
                             })
-                            .child(*label)
+                            .child(*label),
                     )
                     .on_click(cx.listener(move |this, _, _, cx| {
                         this.set_request_mode(*mode, cx);
@@ -210,7 +224,10 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             }))
     }
 
-    pub(super) fn render_grpc_service_dropdown_overlay(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
+    pub(super) fn render_grpc_service_dropdown_overlay(
+        &mut self,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
         let theme = theme::current(cx);
         let services = self.grpc_services.clone();
         let selected = self.grpc_service.clone();
@@ -228,10 +245,13 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             .border_1()
             .border_color(theme.colors.border)
             .shadow_lg()
-            .on_mouse_down(gpui::MouseButton::Left, cx.listener(|this, _, _, cx| {
-                this.skip_blur = true;
-                cx.stop_propagation();
-            }))
+            .on_mouse_down(
+                gpui::MouseButton::Left,
+                cx.listener(|this, _, _, cx| {
+                    this.skip_blur = true;
+                    cx.stop_propagation();
+                }),
+            )
             .children(services.into_iter().map(|svc| {
                 let is_selected = Some(&svc) == selected.as_ref();
                 let svc_click = svc.clone();
@@ -246,9 +266,15 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                     .py(px(8.0))
                     .cursor_pointer()
                     .when(is_selected, |el| el.bg(theme.colors.accent.opacity(0.1)))
-                    .when(!is_selected, |el| el.hover(|s| s.bg(theme.colors.bg_tertiary)))
+                    .when(!is_selected, |el| {
+                        el.hover(|s| s.bg(theme.colors.bg_tertiary))
+                    })
                     .text_size(px(12.0))
-                    .text_color(if is_selected { theme.colors.text_primary } else { theme.colors.text_secondary })
+                    .text_color(if is_selected {
+                        theme.colors.text_primary
+                    } else {
+                        theme.colors.text_secondary
+                    })
                     .child(svc)
                     .on_click(cx.listener(move |this, _, _, cx| {
                         this.select_grpc_service(svc_click.clone(), cx);
@@ -256,10 +282,19 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             }))
     }
 
-    pub(super) fn render_grpc_method_dropdown_overlay(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
+    pub(super) fn render_grpc_method_dropdown_overlay(
+        &mut self,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
         let theme = theme::current(cx);
-        let prefix = self.grpc_service.clone().map(|s| format!("{}/", s)).unwrap_or_default();
-        let methods: Vec<_> = self.grpc_methods.iter()
+        let prefix = self
+            .grpc_service
+            .clone()
+            .map(|s| format!("{}/", s))
+            .unwrap_or_default();
+        let methods: Vec<_> = self
+            .grpc_methods
+            .iter()
             .filter(|m| m.full_name.starts_with(&prefix))
             .cloned()
             .collect();
@@ -278,13 +313,24 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             .border_1()
             .border_color(theme.colors.border)
             .shadow_lg()
-            .on_mouse_down(gpui::MouseButton::Left, cx.listener(|this, _, _, cx| {
-                this.skip_blur = true;
-                cx.stop_propagation();
-            }))
+            .on_mouse_down(
+                gpui::MouseButton::Left,
+                cx.listener(|this, _, _, cx| {
+                    this.skip_blur = true;
+                    cx.stop_propagation();
+                }),
+            )
             .children(methods.into_iter().map(|m| {
-                let is_selected = selected.as_ref().map(|s| s.full_name == m.full_name).unwrap_or(false);
-                let short_name = m.full_name.rsplit('/').next().unwrap_or(&m.full_name).to_string();
+                let is_selected = selected
+                    .as_ref()
+                    .map(|s| s.full_name == m.full_name)
+                    .unwrap_or(false);
+                let short_name = m
+                    .full_name
+                    .rsplit('/')
+                    .next()
+                    .unwrap_or(&m.full_name)
+                    .to_string();
                 let m_click = m.clone();
                 div()
                     .id(SharedString::from(format!("grpc-method-{}", m.full_name)))
@@ -301,12 +347,18 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                     .gap(px(8.0))
                     .cursor_pointer()
                     .when(is_selected, |el| el.bg(theme.colors.accent.opacity(0.1)))
-                    .when(!is_selected, |el| el.hover(|s| s.bg(theme.colors.bg_tertiary)))
+                    .when(!is_selected, |el| {
+                        el.hover(|s| s.bg(theme.colors.bg_tertiary))
+                    })
                     .child(
                         div()
                             .text_size(px(12.0))
-                            .text_color(if is_selected { theme.colors.text_primary } else { theme.colors.text_secondary })
-                            .child(short_name)
+                            .text_color(if is_selected {
+                                theme.colors.text_primary
+                            } else {
+                                theme.colors.text_secondary
+                            })
+                            .child(short_name),
                     )
                     .when(m.streaming_type != GrpcStreamingType::Unary, |el| {
                         el.child(
@@ -316,7 +368,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                                 .bg(theme.colors.protocol_grpc.opacity(0.15))
                                 .text_size(px(9.0))
                                 .text_color(theme.colors.protocol_grpc)
-                                .child(m.streaming_type.label())
+                                .child(m.streaming_type.label()),
                         )
                     })
                     .on_click(cx.listener(move |this, _, _, cx| {

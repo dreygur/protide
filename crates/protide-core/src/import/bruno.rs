@@ -1,7 +1,7 @@
 //! Bruno (.bru) file format import
 
-use http_parser::{HttpMethod, KeyValue, Protocol, Request, Scripts};
 use super::ImportResult;
+use http_parser::{HttpMethod, KeyValue, Protocol, Request, Scripts};
 use serde_json;
 
 pub fn parse_bruno(content: &str) -> Result<ImportResult, String> {
@@ -50,7 +50,11 @@ pub fn parse_bruno(content: &str) -> Result<ImportResult, String> {
                     if let Some((k, v)) = split_kv(line) {
                         let enabled = !k.starts_with('~');
                         let key = k.trim_start_matches('~').to_string();
-                        headers.push(KeyValue { key, value: v, enabled });
+                        headers.push(KeyValue {
+                            key,
+                            value: v,
+                            enabled,
+                        });
                     }
                 }
             }
@@ -59,7 +63,11 @@ pub fn parse_bruno(content: &str) -> Result<ImportResult, String> {
                     if let Some((k, v)) = split_kv(line) {
                         let enabled = !k.starts_with('~');
                         let key = k.trim_start_matches('~').to_string();
-                        query_params.push(KeyValue { key, value: v, enabled });
+                        query_params.push(KeyValue {
+                            key,
+                            value: v,
+                            enabled,
+                        });
                     }
                 }
             }
@@ -114,9 +122,17 @@ pub fn parse_bruno(content: &str) -> Result<ImportResult, String> {
                 }
                 if !key_name.is_empty() {
                     if placement == "query" {
-                        query_params.push(KeyValue { key: key_name, value: key_value, enabled: true });
+                        query_params.push(KeyValue {
+                            key: key_name,
+                            value: key_value,
+                            enabled: true,
+                        });
                     } else {
-                        headers.push(KeyValue { key: key_name, value: key_value, enabled: true });
+                        headers.push(KeyValue {
+                            key: key_name,
+                            value: key_value,
+                            enabled: true,
+                        });
                     }
                 }
             }
@@ -150,9 +166,7 @@ pub fn parse_bruno(content: &str) -> Result<ImportResult, String> {
                     .filter_map(|l| split_kv(l))
                     .filter(|(k, _)| !k.starts_with('~'))
                     .map(|(k, v)| {
-                        format!("{}={}",
-                            urlencoding::encode(&k),
-                            urlencoding::encode(&v))
+                        format!("{}={}", urlencoding::encode(&k), urlencoding::encode(&v))
                     })
                     .collect();
                 body = pairs.join("&");
@@ -194,15 +208,27 @@ pub fn parse_bruno(content: &str) -> Result<ImportResult, String> {
         let qs: String = query_params
             .iter()
             .filter(|kv| kv.enabled)
-            .map(|kv| format!("{}={}", urlencoding::encode(&kv.key), urlencoding::encode(&kv.value)))
+            .map(|kv| {
+                format!(
+                    "{}={}",
+                    urlencoding::encode(&kv.key),
+                    urlencoding::encode(&kv.value)
+                )
+            })
             .collect::<Vec<_>>()
             .join("&");
-        if url.contains('?') { format!("{}&{}", url, qs) } else { format!("{}?{}", url, qs) }
+        if url.contains('?') {
+            format!("{}&{}", url, qs)
+        } else {
+            format!("{}?{}", url, qs)
+        }
     };
 
     let http_method = HttpMethod::from_str(&method).unwrap_or(HttpMethod::Get);
     let mut request = Request::new(http_method, final_url);
-    if !name.is_empty() { request.meta.name = Some(name); }
+    if !name.is_empty() {
+        request.meta.name = Some(name);
+    }
     request.meta.protocol = protocol;
     request.headers = headers;
     request.body = if body.is_empty() { None } else { Some(body) };
@@ -219,9 +245,15 @@ fn count_unquoted_braces(line: &str) -> (i32, i32) {
     let mut chars = line.chars().peekable();
     while let Some(c) = chars.next() {
         match c {
-            '\\' if quote.is_some() => { chars.next(); }
+            '\\' if quote.is_some() => {
+                chars.next();
+            }
             '\'' | '"' | '`' => {
-                if quote == Some(c) { quote = None; } else if quote.is_none() { quote = Some(c); }
+                if quote == Some(c) {
+                    quote = None;
+                } else if quote.is_none() {
+                    quote = Some(c);
+                }
             }
             '{' if quote.is_none() => opens += 1,
             '}' if quote.is_none() => closes += 1,
@@ -244,7 +276,8 @@ fn parse_blocks(content: &str) -> Vec<(String, Vec<String>)> {
             // Block opener: "blockname {" (Bruno identifiers never contain spaces other than before `{`)
             if let Some(block_name) = trimmed.strip_suffix('{').map(|s| s.trim().to_string())
                 && !block_name.is_empty()
-                && !block_name.contains(' ')  // guard against JS lines like "if (x) {"
+                && !block_name.contains(' ')
+            // guard against JS lines like "if (x) {"
             {
                 current_name = Some(block_name);
                 current_lines.clear();
@@ -380,7 +413,11 @@ tests {
     fn test_bearer_auth() {
         let result = parse_bruno(SAMPLE_AUTH).unwrap();
         let req = &result.requests[0];
-        let auth = req.headers.iter().find(|h| h.key == "Authorization").unwrap();
+        let auth = req
+            .headers
+            .iter()
+            .find(|h| h.key == "Authorization")
+            .unwrap();
         assert_eq!(auth.value, "Bearer mytoken123");
         assert!(req.body.is_some());
     }
@@ -392,7 +429,13 @@ tests {
         assert!(req.scripts.pre_script.is_some());
         assert!(req.scripts.post_script.is_some());
         assert!(req.scripts.tests.is_some());
-        assert!(req.scripts.pre_script.as_ref().unwrap().contains("bru.setVar"));
+        assert!(
+            req.scripts
+                .pre_script
+                .as_ref()
+                .unwrap()
+                .contains("bru.setVar")
+        );
     }
 
     #[test]
@@ -418,8 +461,14 @@ auth:apikey {
 "#;
         let result = parse_bruno(bru).unwrap();
         let req = &result.requests[0];
-        assert!(req.url.contains("api_key=secret123"), "query param missing from URL");
-        assert!(!req.headers.iter().any(|h| h.key == "api_key"), "apikey must not be in headers");
+        assert!(
+            req.url.contains("api_key=secret123"),
+            "query param missing from URL"
+        );
+        assert!(
+            !req.headers.iter().any(|h| h.key == "api_key"),
+            "apikey must not be in headers"
+        );
     }
 
     #[test]
@@ -476,7 +525,16 @@ body:multipart-form {
 "#;
         let result = parse_bruno(bru).unwrap();
         let req = &result.requests[0];
-        assert!(req.headers.iter().any(|h| h.key == "Content-Type" && h.value == "multipart/form-data"));
-        assert!(req.body.as_ref().map(|b| b.contains("name=John")).unwrap_or(false));
+        assert!(
+            req.headers
+                .iter()
+                .any(|h| h.key == "Content-Type" && h.value == "multipart/form-data")
+        );
+        assert!(
+            req.body
+                .as_ref()
+                .map(|b| b.contains("name=John"))
+                .unwrap_or(false)
+        );
     }
 }

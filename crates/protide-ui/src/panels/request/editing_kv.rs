@@ -1,6 +1,6 @@
-use gpui::Context;
-use super::*;
 use super::super::request_types::KvList;
+use super::*;
+use gpui::Context;
 
 impl<E: WebSocketExecutor> RequestPanel<E> {
     pub(super) fn toggle_header(&mut self, index: usize, cx: &mut Context<Self>) {
@@ -131,7 +131,8 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             move |this, path, cx| {
                 last_paths::save_last_dir("form_file", &path);
                 if let Some(field) = this.form_data.get_mut(index) {
-                    field.value = path.file_name()
+                    field.value = path
+                        .file_name()
                         .and_then(|n| n.to_str())
                         .unwrap_or("file")
                         .to_string();
@@ -163,7 +164,13 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
         }
     }
 
-    pub(super) fn reorder_kv(&mut self, list: KvList, from: usize, to: usize, cx: &mut Context<Self>) {
+    pub(super) fn reorder_kv(
+        &mut self,
+        list: KvList,
+        from: usize,
+        to: usize,
+        cx: &mut Context<Self>,
+    ) {
         let vec = match list {
             KvList::Params => &mut self.params,
             KvList::Headers => &mut self.headers,

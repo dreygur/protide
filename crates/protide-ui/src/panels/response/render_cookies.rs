@@ -1,7 +1,11 @@
 use super::*;
 
 impl ResponsePanel {
-    pub(super) fn render_cookies_tab(&self, response: &ResponseData, cx: &Context<Self>) -> gpui::AnyElement {
+    pub(super) fn render_cookies_tab(
+        &self,
+        response: &ResponseData,
+        cx: &Context<Self>,
+    ) -> gpui::AnyElement {
         let theme = theme::current(cx);
 
         // Parse cookies from Set-Cookie headers
@@ -26,18 +30,17 @@ impl ResponsePanel {
                         .flex_col()
                         .items_center()
                         .gap(px(8.0))
-                        .child(
-                            div()
-                                .flex()
-                                .items_center()
-                                .child(icon(ICON_GLOBE, ICON_MD, theme.colors.text_muted.opacity(0.5)))
-                        )
+                        .child(div().flex().items_center().child(icon(
+                            ICON_GLOBE,
+                            ICON_MD,
+                            theme.colors.text_muted.opacity(0.5),
+                        )))
                         .child(
                             div()
                                 .text_size(px(12.0))
                                 .text_color(theme.colors.text_muted)
-                                .child("No cookies in response")
-                        )
+                                .child("No cookies in response"),
+                        ),
                 )
                 .into_any_element();
         }
@@ -55,21 +58,17 @@ impl ResponsePanel {
                     .justify_between()
                     .pb(px(12.0))
                     .child(
-                        div()
-                            .flex()
-                            .items_center()
-                            .gap(px(8.0))
-                            .child(
-                                div()
-                                    .px(px(8.0))
-                                    .py(px(4.0))
-                                    .bg(theme.colors.accent.opacity(0.12))
-                                    .text_size(px(11.0))
-                                    .font_weight(gpui::FontWeight::MEDIUM)
-                                    .text_color(theme.colors.accent)
-                                    .child(format!("{} cookies", cookie_count))
-                            )
-                    )
+                        div().flex().items_center().gap(px(8.0)).child(
+                            div()
+                                .px(px(8.0))
+                                .py(px(4.0))
+                                .bg(theme.colors.accent.opacity(0.12))
+                                .text_size(px(11.0))
+                                .font_weight(gpui::FontWeight::MEDIUM)
+                                .text_color(theme.colors.accent)
+                                .child(format!("{} cookies", cookie_count)),
+                        ),
+                    ),
             )
             // Cookie table
             .child(
@@ -97,7 +96,7 @@ impl ResponsePanel {
                                     .text_size(px(10.0))
                                     .font_weight(gpui::FontWeight::SEMIBOLD)
                                     .text_color(theme.colors.text_muted)
-                                    .child("NAME")
+                                    .child("NAME"),
                             )
                             .child(self.render_col_drag_handle(1, cx))
                             .child(
@@ -108,7 +107,7 @@ impl ResponsePanel {
                                     .text_size(px(10.0))
                                     .font_weight(gpui::FontWeight::SEMIBOLD)
                                     .text_color(theme.colors.text_muted)
-                                    .child("VALUE")
+                                    .child("VALUE"),
                             )
                             .child(self.render_col_drag_handle(2, cx))
                             .child(
@@ -120,7 +119,7 @@ impl ResponsePanel {
                                     .text_size(px(10.0))
                                     .font_weight(gpui::FontWeight::SEMIBOLD)
                                     .text_color(theme.colors.text_muted)
-                                    .child("PATH")
+                                    .child("PATH"),
                             )
                             .child(self.render_col_drag_handle(3, cx))
                             .child(
@@ -132,15 +131,19 @@ impl ResponsePanel {
                                     .text_size(px(10.0))
                                     .font_weight(gpui::FontWeight::SEMIBOLD)
                                     .text_color(theme.colors.text_muted)
-                                    .child("FLAGS")
-                            )
+                                    .child("FLAGS"),
+                            ),
                     )
                     // Cookie rows
                     .children(cookies.into_iter().enumerate().map(|(i, cookie)| {
                         let has_border = i > 0;
                         let mut flags = Vec::new();
-                        if cookie.secure { flags.push("Secure"); }
-                        if cookie.http_only { flags.push("HttpOnly"); }
+                        if cookie.secure {
+                            flags.push("Secure");
+                        }
+                        if cookie.http_only {
+                            flags.push("HttpOnly");
+                        }
                         let flags_str = flags.join(", ");
                         let col1 = self.cookie_col1_w;
                         let col3 = self.cookie_col3_w;
@@ -149,42 +152,67 @@ impl ResponsePanel {
                         div()
                             .w_full()
                             .flex()
-                            .when(has_border, |el| el.border_t_1().border_color(theme.colors.border.opacity(0.5)))
+                            .when(has_border, |el| {
+                                el.border_t_1()
+                                    .border_color(theme.colors.border.opacity(0.5))
+                            })
                             .hover(|s| s.bg(theme.colors.bg_secondary.opacity(0.3)))
                             .child(
                                 div()
-                                    .w(px(col1)).min_w(px(60.0))
-                                    .px(px(12.0)).py(px(8.0))
-                                    .text_size(px(12.0)).font_weight(gpui::FontWeight::MEDIUM)
-                                    .text_color(theme.colors.accent).overflow_hidden()
-                                    .child(cookie.name)
+                                    .w(px(col1))
+                                    .min_w(px(60.0))
+                                    .px(px(12.0))
+                                    .py(px(8.0))
+                                    .text_size(px(12.0))
+                                    .font_weight(gpui::FontWeight::MEDIUM)
+                                    .text_color(theme.colors.accent)
+                                    .overflow_hidden()
+                                    .child(cookie.name),
                             )
                             .child(div().w(px(4.0)))
                             .child(
                                 div()
-                                    .flex_1().px(px(12.0)).py(px(8.0))
-                                    .text_size(px(12.0)).font_family("JetBrains Mono")
-                                    .text_color(theme.colors.text_primary).overflow_hidden()
-                                    .child(cookie.value)
+                                    .flex_1()
+                                    .px(px(12.0))
+                                    .py(px(8.0))
+                                    .text_size(px(12.0))
+                                    .font_family("JetBrains Mono")
+                                    .text_color(theme.colors.text_primary)
+                                    .overflow_hidden()
+                                    .child(cookie.value),
                             )
                             .child(div().w(px(4.0)))
                             .child(
                                 div()
-                                    .w(px(col3)).min_w(px(60.0))
-                                    .px(px(12.0)).py(px(8.0))
-                                    .text_size(px(11.0)).text_color(theme.colors.text_muted).overflow_hidden()
-                                    .child(cookie.path.unwrap_or_else(|| "/".to_string()))
+                                    .w(px(col3))
+                                    .min_w(px(60.0))
+                                    .px(px(12.0))
+                                    .py(px(8.0))
+                                    .text_size(px(11.0))
+                                    .text_color(theme.colors.text_muted)
+                                    .overflow_hidden()
+                                    .child(cookie.path.unwrap_or_else(|| "/".to_string())),
                             )
                             .child(div().w(px(4.0)))
                             .child(
                                 div()
-                                    .w(px(col4)).min_w(px(60.0))
-                                    .px(px(12.0)).py(px(8.0))
+                                    .w(px(col4))
+                                    .min_w(px(60.0))
+                                    .px(px(12.0))
+                                    .py(px(8.0))
                                     .text_size(px(10.0))
-                                    .text_color(if flags_str.is_empty() { theme.colors.text_muted.opacity(0.5) } else { theme.colors.status_success })
-                                    .child(if flags_str.is_empty() { "-".to_string() } else { flags_str })
+                                    .text_color(if flags_str.is_empty() {
+                                        theme.colors.text_muted.opacity(0.5)
+                                    } else {
+                                        theme.colors.status_success
+                                    })
+                                    .child(if flags_str.is_empty() {
+                                        "-".to_string()
+                                    } else {
+                                        flags_str
+                                    }),
                             )
-                    }))
+                    })),
             )
             .into_any_element()
     }

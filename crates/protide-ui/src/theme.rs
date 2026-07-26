@@ -9,7 +9,7 @@
 //! - Opacity levels
 //! - Focus indicators
 
-use gpui::{App, Pixels, rgb, Hsla};
+use gpui::{App, Hsla, Pixels, rgb};
 
 /// Color palette for the application
 #[derive(Clone)]
@@ -80,10 +80,10 @@ impl Colors {
     pub fn dark() -> Self {
         Self {
             // Backgrounds - Zed-style ultra-dark IDE palette
-            bg_primary: rgb(0x0d0d0f).into(),    // app bg
-            bg_secondary: rgb(0x111113).into(),  // sidebar bg
-            bg_tertiary: rgb(0x131315).into(),   // panel bg (request/response)
-            bg_elevated: rgb(0x1b1b1e).into(),   // input/elevated bg
+            bg_primary: rgb(0x0d0d0f).into(),   // app bg
+            bg_secondary: rgb(0x111113).into(), // sidebar bg
+            bg_tertiary: rgb(0x131315).into(),  // panel bg (request/response)
+            bg_elevated: rgb(0x1b1b1e).into(),  // input/elevated bg
 
             // Text
             text_primary: rgb(0xe4e4ed).into(),
@@ -99,12 +99,12 @@ impl Colors {
             accent_hover: rgb(0x6ee7a0).into(),
 
             // HTTP Methods - design spec colors
-            method_get: rgb(0x4ade80).into(),    // green
-            method_post: rgb(0x60a5fa).into(),   // blue
-            method_put: rgb(0xfbbf24).into(),    // yellow
-            method_patch: rgb(0xfb923c).into(),  // orange
-            method_delete: rgb(0xf87171).into(), // red
-            method_head: rgb(0xa78bfa).into(),   // purple
+            method_get: rgb(0x4ade80).into(),     // green
+            method_post: rgb(0x60a5fa).into(),    // blue
+            method_put: rgb(0xfbbf24).into(),     // yellow
+            method_patch: rgb(0xfb923c).into(),   // orange
+            method_delete: rgb(0xf87171).into(),  // red
+            method_head: rgb(0xa78bfa).into(),    // purple
             method_options: rgb(0x94a3b8).into(), // slate
 
             // Protocol colors
@@ -125,20 +125,40 @@ impl Colors {
             info: rgb(0x60a5fa).into(),
 
             // Interactive states (white overlays for dark theme)
-            hover_overlay: Hsla { h: 0.0, s: 0.0, l: 1.0, a: 0.035 },
-            active_overlay: Hsla { h: 0.0, s: 0.0, l: 1.0, a: 0.055 },
-            selected_bg: Hsla { h: 0.0, s: 0.0, l: 1.0, a: 0.055 },
+            hover_overlay: Hsla {
+                h: 0.0,
+                s: 0.0,
+                l: 1.0,
+                a: 0.035,
+            },
+            active_overlay: Hsla {
+                h: 0.0,
+                s: 0.0,
+                l: 1.0,
+                a: 0.055,
+            },
+            selected_bg: Hsla {
+                h: 0.0,
+                s: 0.0,
+                l: 1.0,
+                a: 0.055,
+            },
 
             // Focus indicator
             focus_ring: rgb(0x4ade80).into(),
             focus_ring_error: rgb(0xf87171).into(),
 
             // Collaboration / sync
-            team_accent: rgb(0x4ade80).into(),       // green, matches accent
-            sync_active: rgb(0x22c55e).into(),       // brighter green for active state
+            team_accent: rgb(0x4ade80).into(), // green, matches accent
+            sync_active: rgb(0x22c55e).into(), // brighter green for active state
 
             // Modal backdrop
-            overlay: Hsla { h: 0.0, s: 0.0, l: 0.0, a: 0.5 },
+            overlay: Hsla {
+                h: 0.0,
+                s: 0.0,
+                l: 0.0,
+                a: 0.5,
+            },
         }
     }
 
@@ -190,20 +210,40 @@ impl Colors {
             info: rgb(0x007acc).into(),
 
             // Interactive states (black overlays for light theme)
-            hover_overlay: Hsla { h: 0.0, s: 0.0, l: 0.0, a: 0.04 },
-            active_overlay: Hsla { h: 0.0, s: 0.0, l: 0.0, a: 0.08 },
-            selected_bg: Hsla { h: 203.0 / 360.0, s: 1.0, l: 0.4, a: 0.15 },
+            hover_overlay: Hsla {
+                h: 0.0,
+                s: 0.0,
+                l: 0.0,
+                a: 0.04,
+            },
+            active_overlay: Hsla {
+                h: 0.0,
+                s: 0.0,
+                l: 0.0,
+                a: 0.08,
+            },
+            selected_bg: Hsla {
+                h: 203.0 / 360.0,
+                s: 1.0,
+                l: 0.4,
+                a: 0.15,
+            },
 
             // Focus indicator
             focus_ring: rgb(0x007acc).into(),
             focus_ring_error: rgb(0xc62828).into(),
 
             // Collaboration / sync
-            team_accent: rgb(0x007acc).into(),       // blue, matches accent
-            sync_active: rgb(0x008000).into(),       // darker green for active
+            team_accent: rgb(0x007acc).into(), // blue, matches accent
+            sync_active: rgb(0x008000).into(), // darker green for active
 
             // Modal backdrop
-            overlay: Hsla { h: 0.0, s: 0.0, l: 0.0, a: 0.4 },
+            overlay: Hsla {
+                h: 0.0,
+                s: 0.0,
+                l: 0.0,
+                a: 0.4,
+            },
         }
     }
 }
@@ -331,13 +371,13 @@ impl Theme {
 /// Use these constants for consistent spacing throughout the UI
 #[derive(Clone, Copy)]
 pub struct Spacing {
-    pub xs: Pixels,      // 4px - tight spacing
-    pub sm: Pixels,      // 8px - small spacing
-    pub md: Pixels,      // 12px - medium spacing
-    pub base: Pixels,    // 16px - standard spacing
-    pub lg: Pixels,      // 24px - large spacing
-    pub xl: Pixels,      // 32px - extra large spacing
-    pub xxl: Pixels,     // 48px - extra extra large spacing
+    pub xs: Pixels,   // 4px - tight spacing
+    pub sm: Pixels,   // 8px - small spacing
+    pub md: Pixels,   // 12px - medium spacing
+    pub base: Pixels, // 16px - standard spacing
+    pub lg: Pixels,   // 24px - large spacing
+    pub xl: Pixels,   // 32px - extra large spacing
+    pub xxl: Pixels,  // 48px - extra extra large spacing
 }
 
 impl Spacing {
@@ -364,12 +404,12 @@ impl Default for Spacing {
 /// Typography scale for consistent text sizing
 #[derive(Clone, Copy)]
 pub struct Typography {
-    pub xs: Pixels,      // 10px - tiny text
-    pub sm: Pixels,      // 12px - small text
-    pub base: Pixels,    // 13px - body text
-    pub md: Pixels,      // 14px - medium text
-    pub lg: Pixels,      // 15px - large text
-    pub xl: Pixels,      // 16px - extra large text
+    pub xs: Pixels,   // 10px - tiny text
+    pub sm: Pixels,   // 12px - small text
+    pub base: Pixels, // 13px - body text
+    pub md: Pixels,   // 14px - medium text
+    pub lg: Pixels,   // 15px - large text
+    pub xl: Pixels,   // 16px - extra large text
 }
 
 impl Typography {
@@ -395,13 +435,13 @@ impl Default for Typography {
 /// Raw dimension constants - use these in components that lack `cx`.
 /// All interactive components of the same tier should share these values.
 pub mod sizes {
-    pub const INPUT_XS: f32 = 24.0;     // inline / extra-small input
-    pub const INPUT_SM: f32 = 28.0;     // compact input, small button, compact row
-    pub const INPUT_MD: f32 = 32.0;     // standard input, medium button, standard row
-    pub const INPUT_LG: f32 = 36.0;     // large input, large button
+    pub const INPUT_XS: f32 = 24.0; // inline / extra-small input
+    pub const INPUT_SM: f32 = 28.0; // compact input, small button, compact row
+    pub const INPUT_MD: f32 = 32.0; // standard input, medium button, standard row
+    pub const INPUT_LG: f32 = 36.0; // large input, large button
     pub const PANEL_HEADER: f32 = 32.0; // section / collapsible headers
-    pub const TOOLBAR: f32 = 40.0;      // toolbars, tab bars, nav bars
-    pub const URL_BAR: f32 = 64.0;      // primary URL bar
+    pub const TOOLBAR: f32 = 40.0; // toolbars, tab bars, nav bars
+    pub const URL_BAR: f32 = 64.0; // primary URL bar
     /// Gap between the expand/collapse chevron and the item icon in tree rows.
     pub const CHEVRON_ICON_GAP: f32 = 4.0;
     /// Gap between an icon and its adjacent label/badge in tree rows.
@@ -412,19 +452,19 @@ pub mod sizes {
 /// Pixel-typed component dimensions for use via `theme.sizes.*`.
 #[derive(Clone, Copy)]
 pub struct ComponentSizes {
-    pub input_xs: Pixels,       // 24px - inline / extra-small input
-    pub input_sm: Pixels,       // 28px - compact input / small button / compact row
-    pub input_md: Pixels,       // 32px - standard input / medium button / standard row
-    pub input_lg: Pixels,       // 36px - large input / large button
-    pub panel_header: Pixels,   // 32px - section / collapsible headers
-    pub toolbar: Pixels,        // 40px - toolbars, tab bars, nav bars
-    pub url_bar: Pixels,        // 64px - primary URL bar
+    pub input_xs: Pixels,     // 24px - inline / extra-small input
+    pub input_sm: Pixels,     // 28px - compact input / small button / compact row
+    pub input_md: Pixels,     // 32px - standard input / medium button / standard row
+    pub input_lg: Pixels,     // 36px - large input / large button
+    pub panel_header: Pixels, // 32px - section / collapsible headers
+    pub toolbar: Pixels,      // 40px - toolbars, tab bars, nav bars
+    pub url_bar: Pixels,      // 64px - primary URL bar
 }
 
 impl ComponentSizes {
     pub fn new() -> Self {
-        use gpui::px;
         use crate::theme::sizes;
+        use gpui::px;
         Self {
             input_xs: px(sizes::INPUT_XS),
             input_sm: px(sizes::INPUT_SM),
@@ -446,10 +486,10 @@ impl Default for ComponentSizes {
 /// Border radius scale for consistent rounded corners
 #[derive(Clone, Copy)]
 pub struct BorderRadius {
-    pub sm: Pixels,      // 4px - subtle rounding
-    pub md: Pixels,      // 6px - standard rounding
-    pub lg: Pixels,      // 8px - pronounced rounding
-    pub xl: Pixels,      // 12px - large rounding
+    pub sm: Pixels, // 4px - subtle rounding
+    pub md: Pixels, // 6px - standard rounding
+    pub lg: Pixels, // 8px - pronounced rounding
+    pub xl: Pixels, // 12px - large rounding
 }
 
 impl BorderRadius {
@@ -473,11 +513,11 @@ impl Default for BorderRadius {
 /// Standard opacity levels for consistency
 #[derive(Clone, Copy)]
 pub struct Opacity {
-    pub disabled: f32,          // 0.4 - disabled elements
-    pub muted: f32,             // 0.6 - muted text
-    pub hover: f32,             // 0.08 - hover overlay
-    pub pressed: f32,           // 0.12 - pressed/active overlay
-    pub selected: f32,          // 0.2 - selected background
+    pub disabled: f32, // 0.4 - disabled elements
+    pub muted: f32,    // 0.6 - muted text
+    pub hover: f32,    // 0.08 - hover overlay
+    pub pressed: f32,  // 0.12 - pressed/active overlay
+    pub selected: f32, // 0.2 - selected background
 }
 
 impl Opacity {

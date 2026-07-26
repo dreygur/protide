@@ -57,17 +57,28 @@ pub fn workspace_goto_depends(root: &Path, dep_name: &str) -> Option<GotoDefinit
     collect_http_files(root, &mut files, 8);
 
     for file in files {
-        let Ok(content) = std::fs::read_to_string(&file) else { continue };
-        let Ok(requests) = http_parser::parse(&content) else { continue };
-        let target = requests.iter().find(|r| r.meta.name.as_deref() == Some(dep_name));
+        let Ok(content) = std::fs::read_to_string(&file) else {
+            continue;
+        };
+        let Ok(requests) = http_parser::parse(&content) else {
+            continue;
+        };
+        let target = requests
+            .iter()
+            .find(|r| r.meta.name.as_deref() == Some(dep_name));
         if let Some(req) = target {
-            let Ok(uri) = Url::from_file_path(&file) else { continue };
+            let Ok(uri) = Url::from_file_path(&file) else {
+                continue;
+            };
             let line = req.line as u32;
             return Some(GotoDefinitionResponse::Scalar(Location {
                 uri,
                 range: Range {
                     start: Position { line, character: 0 },
-                    end: Position { line, character: u32::MAX },
+                    end: Position {
+                        line,
+                        character: u32::MAX,
+                    },
                 },
             }));
         }
@@ -88,7 +99,9 @@ fn collect_http_files(dir: &Path, out: &mut Vec<std::path::PathBuf>, depth: usiz
             let skip = path
                 .file_name()
                 .and_then(|n| n.to_str())
-                .map_or(false, |n| n.starts_with('.') || n == "target" || n == "node_modules");
+                .map_or(false, |n| {
+                    n.starts_with('.') || n == "target" || n == "node_modules"
+                });
             if !skip {
                 collect_http_files(&path, out, depth - 1);
             }

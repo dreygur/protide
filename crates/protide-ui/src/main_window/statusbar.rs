@@ -1,5 +1,7 @@
-use gpui::{Context, FontWeight, IntoElement, ParentElement, SharedString, Styled, div, px, prelude::*};
 use super::*;
+use gpui::{
+    Context, FontWeight, IntoElement, ParentElement, SharedString, Styled, div, prelude::*, px,
+};
 
 impl MainWindow {
     pub(super) fn render_status_bar(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
@@ -141,7 +143,7 @@ impl MainWindow {
                             } else {
                                 theme.colors.text_muted
                             })
-                            .child("Console")
+                            .child("Console"),
                     )
                     .when(count > 0, |el| {
                         el.child(
@@ -151,7 +153,7 @@ impl MainWindow {
                                 .bg(theme.colors.accent.opacity(0.15))
                                 .text_size(px(9.0))
                                 .text_color(theme.colors.accent)
-                                .child(SharedString::from(format!("{}", count)))
+                                .child(SharedString::from(format!("{}", count))),
                         )
                     })
             })

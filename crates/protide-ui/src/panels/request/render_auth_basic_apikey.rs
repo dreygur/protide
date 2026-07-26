@@ -2,19 +2,13 @@
 
 use std::ops::Range;
 
-use gpui::{
-    div, prelude::*, px, Context, IntoElement,
-    ParentElement, Styled,
-};
+use gpui::{Context, IntoElement, ParentElement, Styled, div, prelude::*, px};
 
-use crate::theme;
-use crate::components::icons::{
-    icon, ICON_MD,
-    ICON_USER, ICON_KEY,
-};
-use protide_core::execution::ws::WebSocketExecutor;
 use super::super::request_types::{ApiKeyLocation, EditTarget};
 use super::RequestPanel;
+use crate::components::icons::{ICON_KEY, ICON_MD, ICON_USER, icon};
+use crate::theme;
+use protide_core::execution::ws::WebSocketExecutor;
 
 impl<E: WebSocketExecutor> RequestPanel<E> {
     pub(super) fn render_basic_content(
@@ -50,7 +44,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                             .flex()
                             .items_center()
                             .justify_center()
-                            .child(icon(ICON_USER, ICON_MD, theme.colors.accent))
+                            .child(icon(ICON_USER, ICON_MD, theme.colors.accent)),
                     )
                     .child(
                         div()
@@ -61,15 +55,15 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                                     .text_size(px(12.0))
                                     .font_weight(gpui::FontWeight::MEDIUM)
                                     .text_color(theme.colors.text_primary)
-                                    .child("Basic Authentication")
+                                    .child("Basic Authentication"),
                             )
                             .child(
                                 div()
                                     .text_size(px(10.0))
                                     .text_color(theme.colors.text_muted)
-                                    .child("Authorization: Basic <base64>")
-                            )
-                    )
+                                    .child("Authorization: Basic <base64>"),
+                            ),
+                    ),
             )
             .child(
                 div()
@@ -86,19 +80,21 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                                     .text_size(px(11.0))
                                     .font_weight(gpui::FontWeight::MEDIUM)
                                     .text_color(theme.colors.text_secondary)
-                                    .child("USERNAME")
+                                    .child("USERNAME"),
                             )
-                            .child(
-                                self.render_auth_input(
-                                    "basic-username",
-                                    EditTarget::BasicUsername,
-                                    &username,
-                                    "Enter username...",
-                                    is_editing_user,
-                                    if is_editing_user { edit_selection.clone() } else { 0..0 },
-                                    cx,
-                                )
-                            )
+                            .child(self.render_auth_input(
+                                "basic-username",
+                                EditTarget::BasicUsername,
+                                &username,
+                                "Enter username...",
+                                is_editing_user,
+                                if is_editing_user {
+                                    edit_selection.clone()
+                                } else {
+                                    0..0
+                                },
+                                cx,
+                            )),
                     )
                     .child(
                         div()
@@ -111,20 +107,22 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                                     .text_size(px(11.0))
                                     .font_weight(gpui::FontWeight::MEDIUM)
                                     .text_color(theme.colors.text_secondary)
-                                    .child("PASSWORD")
+                                    .child("PASSWORD"),
                             )
-                            .child(
-                                self.render_auth_input_masked(
-                                    "basic-password",
-                                    EditTarget::BasicPassword,
-                                    &password,
-                                    "Enter password...",
-                                    is_editing_pass,
-                                    if is_editing_pass { edit_selection } else { 0..0 },
-                                    cx,
-                                )
-                            )
-                    )
+                            .child(self.render_auth_input_masked(
+                                "basic-password",
+                                EditTarget::BasicPassword,
+                                &password,
+                                "Enter password...",
+                                is_editing_pass,
+                                if is_editing_pass {
+                                    edit_selection
+                                } else {
+                                    0..0
+                                },
+                                cx,
+                            )),
+                    ),
             )
             .into_any_element()
     }
@@ -167,19 +165,21 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                                     .text_size(px(11.0))
                                     .font_weight(gpui::FontWeight::MEDIUM)
                                     .text_color(theme.colors.text_secondary)
-                                    .child("KEY NAME")
+                                    .child("KEY NAME"),
                             )
-                            .child(
-                                self.render_auth_input(
-                                    "api-key-name",
-                                    EditTarget::ApiKeyName,
-                                    &key_name,
-                                    "e.g., X-API-Key",
-                                    is_editing_name,
-                                    if is_editing_name { edit_selection.clone() } else { 0..0 },
-                                    cx,
-                                )
-                            )
+                            .child(self.render_auth_input(
+                                "api-key-name",
+                                EditTarget::ApiKeyName,
+                                &key_name,
+                                "e.g., X-API-Key",
+                                is_editing_name,
+                                if is_editing_name {
+                                    edit_selection.clone()
+                                } else {
+                                    0..0
+                                },
+                                cx,
+                            )),
                     )
                     .child(
                         div()
@@ -192,20 +192,22 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                                     .text_size(px(11.0))
                                     .font_weight(gpui::FontWeight::MEDIUM)
                                     .text_color(theme.colors.text_secondary)
-                                    .child("VALUE")
+                                    .child("VALUE"),
                             )
-                            .child(
-                                self.render_auth_input_masked(
-                                    "api-key-value",
-                                    EditTarget::ApiKeyValue,
-                                    &key_value,
-                                    "Enter API key...",
-                                    is_editing_value,
-                                    if is_editing_value { edit_selection } else { 0..0 },
-                                    cx,
-                                )
-                            )
-                    )
+                            .child(self.render_auth_input_masked(
+                                "api-key-value",
+                                EditTarget::ApiKeyValue,
+                                &key_value,
+                                "Enter API key...",
+                                is_editing_value,
+                                if is_editing_value {
+                                    edit_selection
+                                } else {
+                                    0..0
+                                },
+                                cx,
+                            )),
+                    ),
             )
             .child(render_apikey_location_selector(&theme, location, cx))
             .into_any_element()
@@ -224,7 +226,7 @@ fn render_api_key_header(theme: &crate::theme::Theme, location: ApiKeyLocation) 
                 .flex()
                 .items_center()
                 .justify_center()
-                .child(icon(ICON_KEY, ICON_MD, theme.colors.accent))
+                .child(icon(ICON_KEY, ICON_MD, theme.colors.accent)),
         )
         .child(
             div()
@@ -235,7 +237,7 @@ fn render_api_key_header(theme: &crate::theme::Theme, location: ApiKeyLocation) 
                         .text_size(px(12.0))
                         .font_weight(gpui::FontWeight::MEDIUM)
                         .text_color(theme.colors.text_primary)
-                        .child("API Key")
+                        .child("API Key"),
                 )
                 .child(
                     div()
@@ -246,8 +248,8 @@ fn render_api_key_header(theme: &crate::theme::Theme, location: ApiKeyLocation) 
                         })
                         .when(location == ApiKeyLocation::QueryParam, |el| {
                             el.child("Sent as query parameter")
-                        })
-                )
+                        }),
+                ),
         )
 }
 
@@ -265,7 +267,7 @@ fn render_apikey_location_selector<E: WebSocketExecutor>(
                 .text_size(px(11.0))
                 .font_weight(gpui::FontWeight::MEDIUM)
                 .text_color(theme.colors.text_secondary)
-                .child("ADD TO")
+                .child("ADD TO"),
         )
         .child(
             div()
@@ -299,7 +301,7 @@ fn render_apikey_location_selector<E: WebSocketExecutor>(
                                 this.toggle_api_key_location(cx);
                             }
                         }))
-                        .child("Header")
+                        .child("Header"),
                 )
                 .child(
                     div()
@@ -326,7 +328,7 @@ fn render_apikey_location_selector<E: WebSocketExecutor>(
                                 this.toggle_api_key_location(cx);
                             }
                         }))
-                        .child("Query Param")
-                )
+                        .child("Query Param"),
+                ),
         )
 }

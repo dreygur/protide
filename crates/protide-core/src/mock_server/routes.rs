@@ -177,7 +177,11 @@ impl MockRoute {
     }
 
     /// Create a proxy route that forwards requests to `target_url`.
-    pub fn proxy(method: HttpMethod, path: impl Into<String>, target_url: impl Into<String>) -> Self {
+    pub fn proxy(
+        method: HttpMethod,
+        path: impl Into<String>,
+        target_url: impl Into<String>,
+    ) -> Self {
         let path = path.into();
         let target = target_url.into();
         Self {
@@ -336,12 +340,13 @@ mod tests {
 
     #[test]
     fn test_response_builder() {
-        let response = MockResponse::ok(r#"{"id": 1}"#)
-            .json()
-            .with_delay(100);
+        let response = MockResponse::ok(r#"{"id": 1}"#).json().with_delay(100);
 
         assert_eq!(response.status, 200);
-        assert_eq!(response.headers.get("Content-Type"), Some(&"application/json".to_string()));
+        assert_eq!(
+            response.headers.get("Content-Type"),
+            Some(&"application/json".to_string())
+        );
         assert_eq!(response.delay_ms, 100);
     }
 }

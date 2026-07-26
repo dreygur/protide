@@ -2,19 +2,13 @@
 
 use std::ops::Range;
 
-use gpui::{
-    div, px, Context, IntoElement,
-    ParentElement, Styled,
-};
+use gpui::{Context, IntoElement, ParentElement, Styled, div, px};
 
-use crate::theme;
-use crate::components::icons::{
-    icon, ICON_SM, ICON_MD,
-    ICON_FORM, ICON_CIRCLE_X,
-};
-use protide_core::execution::ws::WebSocketExecutor;
 use super::super::request_types::{AuthType, EditTarget};
 use super::RequestPanel;
+use crate::components::icons::{ICON_CIRCLE_X, ICON_FORM, ICON_MD, ICON_SM, icon};
+use crate::theme;
+use protide_core::execution::ws::WebSocketExecutor;
 
 impl<E: WebSocketExecutor> RequestPanel<E> {
     pub(super) fn render_auth_content(
@@ -64,7 +58,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                             .flex()
                             .items_center()
                             .justify_center()
-                            .child(icon(ICON_FORM, ICON_MD, theme.colors.accent))
+                            .child(icon(ICON_FORM, ICON_MD, theme.colors.accent)),
                     )
                     .child(
                         div()
@@ -75,15 +69,15 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                                     .text_size(px(12.0))
                                     .font_weight(gpui::FontWeight::MEDIUM)
                                     .text_color(theme.colors.text_primary)
-                                    .child("Bearer Token")
+                                    .child("Bearer Token"),
                             )
                             .child(
                                 div()
                                     .text_size(px(10.0))
                                     .text_color(theme.colors.text_muted)
-                                    .child("Authorization: Bearer <token>")
-                            )
-                    )
+                                    .child("Authorization: Bearer <token>"),
+                            ),
+                    ),
             )
             .child(
                 div()
@@ -95,19 +89,17 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                             .text_size(px(11.0))
                             .font_weight(gpui::FontWeight::MEDIUM)
                             .text_color(theme.colors.text_secondary)
-                            .child("TOKEN")
+                            .child("TOKEN"),
                     )
-                    .child(
-                        self.render_auth_input(
-                            "bearer-token",
-                            EditTarget::BearerToken,
-                            &token,
-                            "Enter bearer token...",
-                            is_editing,
-                            if is_editing { edit_selection } else { 0..0 },
-                            cx,
-                        )
-                    )
+                    .child(self.render_auth_input(
+                        "bearer-token",
+                        EditTarget::BearerToken,
+                        &token,
+                        "Enter bearer token...",
+                        is_editing,
+                        if is_editing { edit_selection } else { 0..0 },
+                        cx,
+                    )),
             )
             .into_any_element()
     }
@@ -132,7 +124,7 @@ fn render_auth_none(theme: &crate::theme::Theme) -> gpui::Div {
                 .justify_center()
                 .text_size(px(16.0))
                 .text_color(theme.colors.text_muted)
-                .child(icon(ICON_CIRCLE_X, ICON_SM, theme.colors.text_muted))
+                .child(icon(ICON_CIRCLE_X, ICON_SM, theme.colors.text_muted)),
         )
         .child(
             div()
@@ -145,13 +137,13 @@ fn render_auth_none(theme: &crate::theme::Theme) -> gpui::Div {
                         .text_size(px(12.0))
                         .font_weight(gpui::FontWeight::MEDIUM)
                         .text_color(theme.colors.text_secondary)
-                        .child("No Authentication")
+                        .child("No Authentication"),
                 )
                 .child(
                     div()
                         .text_size(px(11.0))
                         .text_color(theme.colors.text_muted)
-                        .child("Request will be sent without auth headers")
-                )
+                        .child("Request will be sent without auth headers"),
+                ),
         )
 }

@@ -18,7 +18,11 @@ pub(super) fn parse_path_item(
     result: &mut ImportResult,
 ) {
     let methods = ["get", "post", "put", "patch", "delete", "head", "options"];
-    let path_params = item.get("parameters").and_then(|v| v.as_array()).cloned().unwrap_or_default();
+    let path_params = item
+        .get("parameters")
+        .and_then(|v| v.as_array())
+        .cloned()
+        .unwrap_or_default();
 
     for method_str in methods {
         if let Some(operation) = item.get(method_str) {

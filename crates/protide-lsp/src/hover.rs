@@ -1,5 +1,5 @@
-use tower_lsp::lsp_types::*;
 use crate::symbols::var_at_cursor;
+use tower_lsp::lsp_types::*;
 
 pub fn hover_at(content: &str, pos: Position) -> Option<Hover> {
     let line = content.lines().nth(pos.line as usize).unwrap_or("");
@@ -62,7 +62,11 @@ fn find_set_expr<'a>(content: &'a str, var_name: &str) -> Option<&'a str> {
         let rest = line.trim_start().strip_prefix("# @set")?;
         let rest = rest.trim_start();
         let eq = rest.find('=')?;
-        if rest[..eq].trim() == var_name { Some(rest[eq + 1..].trim()) } else { None }
+        if rest[..eq].trim() == var_name {
+            Some(rest[eq + 1..].trim())
+        } else {
+            None
+        }
     })
 }
 

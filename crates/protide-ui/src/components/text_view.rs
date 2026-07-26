@@ -1,4 +1,4 @@
-use gpui::{div, font, prelude::*, px, Hsla, StyledText, TextRun};
+use gpui::{Hsla, StyledText, TextRun, div, font, prelude::*, px};
 
 /// Check if character is a word character (alphanumeric or underscore)
 pub fn is_word_char(c: char) -> bool {
@@ -61,7 +61,18 @@ pub fn render_text_view_with_max(
     max_chars: Option<usize>,
     selection_bg: Hsla,
 ) -> gpui::AnyElement {
-    render_text_view_with_max_scrolled(text, selection, is_focused, font_size, text_color, placeholder, placeholder_color, max_chars, selection_bg, 0.0)
+    render_text_view_with_max_scrolled(
+        text,
+        selection,
+        is_focused,
+        font_size,
+        text_color,
+        placeholder,
+        placeholder_color,
+        max_chars,
+        selection_bg,
+        0.0,
+    )
 }
 
 pub fn render_text_view_with_max_scrolled(
@@ -114,16 +125,17 @@ pub fn render_text_view_multiline(
 
     if text.is_empty() {
         if let Some(ph) = placeholder
-            && !is_focused {
-                return div()
-                    .flex()
-                    .items_center()
-                    .text_size(px(font_size))
-                    .font_family("JetBrains Mono")
-                    .text_color(placeholder_color)
-                    .child(ph.to_string())
-                    .into_any_element();
-            }
+            && !is_focused
+        {
+            return div()
+                .flex()
+                .items_center()
+                .text_size(px(font_size))
+                .font_family("JetBrains Mono")
+                .text_color(placeholder_color)
+                .child(ph.to_string())
+                .into_any_element();
+        }
         // Empty but focused - show cursor
         return div()
             .flex()
@@ -132,12 +144,7 @@ pub fn render_text_view_multiline(
             .font_family("JetBrains Mono")
             .text_color(text_color)
             .when(is_focused, |el| {
-                el.child(
-                    div()
-                        .w(px(1.0))
-                        .h(px(font_size + 2.0))
-                        .bg(text_color),
-                )
+                el.child(div().w(px(1.0)).h(px(font_size + 2.0)).bg(text_color))
             })
             .into_any_element();
     }
@@ -196,7 +203,7 @@ pub fn render_text_view_multiline(
                             .bottom_0()
                             .left(px(sel_x))
                             .w(px(sel_width))
-                            .bg(selection_bg)
+                            .bg(selection_bg),
                     )
                 })
                 // Cursor (absolute positioned, centered vertically)
@@ -207,20 +214,18 @@ pub fn render_text_view_multiline(
                         .bottom_1()
                         .left(px(cursor_pos as f32 * char_width))
                         .w(px(2.0))
-                        .bg(text_color)
+                        .bg(text_color),
                 )
-                .child(
-                    div()
-                        .text_size(px(font_size))
-                        .child(StyledText::new(text.to_string()).with_runs(vec![TextRun {
-                            len: text.len(),
-                            font: font("JetBrains Mono"),
-                            color: text_color,
-                            background_color: None,
-                            underline: None,
-                            strikethrough: None,
-                        }]))
-                )
+                .child(div().text_size(px(font_size)).child(
+                    StyledText::new(text.to_string()).with_runs(vec![TextRun {
+                        len: text.len(),
+                        font: font("JetBrains Mono"),
+                        color: text_color,
+                        background_color: None,
+                        underline: None,
+                        strikethrough: None,
+                    }]),
+                ))
                 .into_any_element();
         }
     };
@@ -263,9 +268,15 @@ pub fn render_text_view_multiline(
             let sel_intersects = has_sel && sel_start < line_end && sel_end > line_start;
 
             // Calculate local positions
-            let local_sel_start = sel_start.saturating_sub(line_start).min(line_text.chars().count());
-            let local_sel_end = sel_end.saturating_sub(line_start).min(line_text.chars().count());
-            let local_cursor = cursor_pos.saturating_sub(line_start).min(line_text.chars().count());
+            let local_sel_start = sel_start
+                .saturating_sub(line_start)
+                .min(line_text.chars().count());
+            let local_sel_end = sel_end
+                .saturating_sub(line_start)
+                .min(line_text.chars().count());
+            let local_cursor = cursor_pos
+                .saturating_sub(line_start)
+                .min(line_text.chars().count());
 
             div()
                 .h(px(line_height))
@@ -283,34 +294,40 @@ pub fn render_text_view_multiline(
                             .bottom_0()
                             .left(px(sel_x))
                             .w(px(sel_width.max(2.0)))
-                            .bg(selection_bg)
+                            .bg(selection_bg),
                     )
                 })
                 // Cursor (absolute positioned)
-                .when(cursor_on_line || (sel_intersects && sel_end >= line_start && sel_end <= line_end), |el| {
-                    let cursor_x = if cursor_on_line { local_cursor } else { local_sel_end };
-                    el.child(
-                        div()
-                            .absolute()
-                            .top(px(2.0))
-                            .left(px(cursor_x as f32 * char_width))
-                            .w(px(2.0))
-                            .h(px(font_size + 2.0))
-                            .bg(text_color)
-                    )
-                })
-                .child(
-                    div()
-                        .text_size(px(font_size))
-                        .child(StyledText::new(line_text.clone()).with_runs(vec![TextRun {
-                            len: line_text.len(),
-                            font: font("JetBrains Mono"),
-                            color: text_color,
-                            background_color: None,
-                            underline: None,
-                            strikethrough: None,
-                        }]))
+                .when(
+                    cursor_on_line
+                        || (sel_intersects && sel_end >= line_start && sel_end <= line_end),
+                    |el| {
+                        let cursor_x = if cursor_on_line {
+                            local_cursor
+                        } else {
+                            local_sel_end
+                        };
+                        el.child(
+                            div()
+                                .absolute()
+                                .top(px(2.0))
+                                .left(px(cursor_x as f32 * char_width))
+                                .w(px(2.0))
+                                .h(px(font_size + 2.0))
+                                .bg(text_color),
+                        )
+                    },
                 )
+                .child(div().text_size(px(font_size)).child(
+                    StyledText::new(line_text.clone()).with_runs(vec![TextRun {
+                        len: line_text.len(),
+                        font: font("JetBrains Mono"),
+                        color: text_color,
+                        background_color: None,
+                        underline: None,
+                        strikethrough: None,
+                    }]),
+                ))
         }))
         .into_any_element()
 }

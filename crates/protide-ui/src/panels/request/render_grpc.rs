@@ -1,15 +1,11 @@
 //! gRPC message and metadata tab rendering for RequestPanel
 
+use gpui::{Context, IntoElement, ParentElement, SharedString, Styled, div, prelude::*, px};
 
-use gpui::{
-    div, prelude::*, px, Context, IntoElement,
-    ParentElement, SharedString, Styled,
-};
-
-use crate::theme;
-use protide_core::execution::ws::WebSocketExecutor;
 use super::super::request_types::{EditTarget, GrpcStreamingType, KvList};
 use super::RequestPanel;
+use crate::theme;
+use protide_core::execution::ws::WebSocketExecutor;
 
 impl<E: WebSocketExecutor> RequestPanel<E> {
     pub(super) fn render_grpc_message_tab(&mut self, cx: &mut Context<Self>) -> gpui::AnyElement {
@@ -41,7 +37,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                                 div()
                                     .text_size(px(11.0))
                                     .text_color(theme.colors.text_muted)
-                                    .child("Service")
+                                    .child("Service"),
                             )
                             .child(
                                 div()
@@ -52,21 +48,32 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                                     .px(px(12.0))
                                     .bg(theme.colors.bg_secondary)
                                     .border_1()
-                                    .border_color(if self.grpc_service_picker_open { theme.colors.accent } else { theme.colors.border })
+                                    .border_color(if self.grpc_service_picker_open {
+                                        theme.colors.accent
+                                    } else {
+                                        theme.colors.border
+                                    })
                                     .flex()
                                     .items_center()
                                     .cursor_pointer()
-                                    .when(!self.grpc_service_picker_open, |el| el.hover(|s| s.border_color(theme.colors.border_focused)))
+                                    .when(!self.grpc_service_picker_open, |el| {
+                                        el.hover(|s| s.border_color(theme.colors.border_focused))
+                                    })
                                     .text_size(px(12.0))
-                                    .text_color(if has_service { theme.colors.text_primary } else { theme.colors.text_muted })
+                                    .text_color(if has_service {
+                                        theme.colors.text_primary
+                                    } else {
+                                        theme.colors.text_muted
+                                    })
                                     .on_click(cx.listener(|this, _, _, cx| {
                                         this.toggle_grpc_service_picker(cx);
                                     }))
                                     .child(
-                                        self.grpc_service.clone()
-                                            .unwrap_or_else(|| "Select service...".to_string())
-                                    )
-                            )
+                                        self.grpc_service
+                                            .clone()
+                                            .unwrap_or_else(|| "Select service...".to_string()),
+                                    ),
+                            ),
                     )
                     .child(
                         div()
@@ -78,7 +85,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                                 div()
                                     .text_size(px(11.0))
                                     .text_color(theme.colors.text_muted)
-                                    .child("Method")
+                                    .child("Method"),
                             )
                             .child(
                                 div()
@@ -89,14 +96,24 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                                     .px(px(12.0))
                                     .bg(theme.colors.bg_secondary)
                                     .border_1()
-                                    .border_color(if self.grpc_method_picker_open { theme.colors.accent } else { theme.colors.border })
+                                    .border_color(if self.grpc_method_picker_open {
+                                        theme.colors.accent
+                                    } else {
+                                        theme.colors.border
+                                    })
                                     .flex()
                                     .items_center()
                                     .gap(px(8.0))
                                     .when(has_service, |el| el.cursor_pointer())
-                                    .when(has_service && !self.grpc_method_picker_open, |el| el.hover(|s| s.border_color(theme.colors.border_focused)))
+                                    .when(has_service && !self.grpc_method_picker_open, |el| {
+                                        el.hover(|s| s.border_color(theme.colors.border_focused))
+                                    })
                                     .text_size(px(12.0))
-                                    .text_color(if has_method { theme.colors.text_primary } else { theme.colors.text_muted })
+                                    .text_color(if has_method {
+                                        theme.colors.text_primary
+                                    } else {
+                                        theme.colors.text_muted
+                                    })
                                     .on_click(cx.listener(|this, _, _, cx| {
                                         this.toggle_grpc_method_picker(cx);
                                     }))
@@ -104,27 +121,34 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                                         self.grpc_method
                                             .as_ref()
                                             .map(|m| m.full_name.clone())
-                                            .unwrap_or_else(|| "Select method...".to_string())
+                                            .unwrap_or_else(|| "Select method...".to_string()),
                                     )
-                                    .when(self.grpc_method.as_ref().map(|m| m.streaming_type != GrpcStreamingType::Unary).unwrap_or(false), |el| {
-                                        el.child(
-                                            div()
-                                                .id("grpc-streaming-badge")
-                                                .px(px(6.0))
-                                                .py(px(2.0))
-                                                .bg(theme.colors.protocol_grpc.opacity(0.15))
-                                                .text_size(px(9.0))
-                                                .font_weight(gpui::FontWeight::MEDIUM)
-                                                .text_color(theme.colors.protocol_grpc)
-                                                .child(
-                                                    self.grpc_method.as_ref()
-                                                        .map(|m| m.streaming_type.label())
-                                                        .unwrap_or("")
-                                                )
-                                        )
-                                    })
-                            )
-                    )
+                                    .when(
+                                        self.grpc_method
+                                            .as_ref()
+                                            .map(|m| m.streaming_type != GrpcStreamingType::Unary)
+                                            .unwrap_or(false),
+                                        |el| {
+                                            el.child(
+                                                div()
+                                                    .id("grpc-streaming-badge")
+                                                    .px(px(6.0))
+                                                    .py(px(2.0))
+                                                    .bg(theme.colors.protocol_grpc.opacity(0.15))
+                                                    .text_size(px(9.0))
+                                                    .font_weight(gpui::FontWeight::MEDIUM)
+                                                    .text_color(theme.colors.protocol_grpc)
+                                                    .child(
+                                                        self.grpc_method
+                                                            .as_ref()
+                                                            .map(|m| m.streaming_type.label())
+                                                            .unwrap_or(""),
+                                                    ),
+                                            )
+                                        },
+                                    ),
+                            ),
+                    ),
             )
             // Message editor
             .child(
@@ -137,7 +161,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                         div()
                             .text_size(px(11.0))
                             .text_color(theme.colors.text_muted)
-                            .child("Request Message (JSON)")
+                            .child("Request Message (JSON)"),
                     )
                     .child(
                         div()
@@ -145,8 +169,12 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                             .border_1()
                             .border_color(theme.colors.border)
                             .overflow_hidden()
-                            .child(gpui_component::input::Input::new(&self.grpc_message_editor).appearance(false).h_full())
-                    )
+                            .child(
+                                gpui_component::input::Input::new(&self.grpc_message_editor)
+                                    .appearance(false)
+                                    .h_full(),
+                            ),
+                    ),
             )
             .when(self.grpc_proto_path.is_none(), |el| {
                 el.child(
@@ -157,7 +185,9 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                         .bg(theme.colors.accent.opacity(0.1))
                         .text_size(px(11.0))
                         .text_color(theme.colors.text_muted)
-                        .child("Load a .proto file in the Proto tab to select services and methods")
+                        .child(
+                            "Load a .proto file in the Proto tab to select services and methods",
+                        ),
                 )
             })
             .into_any_element()
@@ -168,11 +198,18 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
         let meta_len = self.grpc_metadata.len();
         let active_edit = self.active_edit;
         let edit_selection = self.edit_selection.clone();
-        let enabled_count = self.grpc_metadata.iter().filter(|m| m.enabled && !m.key.is_empty()).count();
+        let enabled_count = self
+            .grpc_metadata
+            .iter()
+            .filter(|m| m.enabled && !m.key.is_empty())
+            .count();
 
-        let meta_data: Vec<_> = self.grpc_metadata.iter().enumerate().map(|(i, m)| {
-            (i, m.enabled, m.key.clone(), m.value.clone())
-        }).collect();
+        let meta_data: Vec<_> = self
+            .grpc_metadata
+            .iter()
+            .enumerate()
+            .map(|(i, m)| (i, m.enabled, m.key.clone(), m.value.clone()))
+            .collect();
         let dragging_grpc = self.kv_row_drag.map(|(l, _, _)| l) == Some(KvList::GrpcMeta);
 
         let mut container = div()
@@ -200,53 +237,73 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                     .gap(px(8.0))
                     .py(px(4.0))
                     .px(px(2.0))
-                    .when(!is_row_editing, |el| el.hover(|s| s.bg(theme.colors.bg_tertiary.opacity(0.3))))
-                    .when(drop_here, |el| el.border_t_2().border_color(theme.colors.accent))
+                    .when(!is_row_editing, |el| {
+                        el.hover(|s| s.bg(theme.colors.bg_tertiary.opacity(0.3)))
+                    })
+                    .when(drop_here, |el| {
+                        el.border_t_2().border_color(theme.colors.accent)
+                    })
                     .child(self.render_kv_row_drag_handle(KvList::GrpcMeta, i, cx))
                     .child(
-                        self.render_kv_checkbox(format!("grpc-meta-cb-{}", i).into(), is_enabled, cx)
-                            .on_click(cx.listener(move |this, _, _, cx| {
-                                this.toggle_grpc_meta(i, cx);
-                            }))
-                    )
-                    .child(
-                        self.render_kv_input(
-                            format!("grpc-meta-key-{}", i),
-                            EditTarget::GrpcMetaKey(i),
-                            &key,
-                            "metadata-key",
-                            is_editing_key,
-                            if is_editing_key { edit_selection.clone() } else { 0..0 },
-                            px(self.kv_col_key_w),
+                        self.render_kv_checkbox(
+                            format!("grpc-meta-cb-{}", i).into(),
+                            is_enabled,
                             cx,
                         )
+                        .on_click(cx.listener(move |this, _, _, cx| {
+                            this.toggle_grpc_meta(i, cx);
+                        })),
                     )
+                    .child(self.render_kv_input(
+                        format!("grpc-meta-key-{}", i),
+                        EditTarget::GrpcMetaKey(i),
+                        &key,
+                        "metadata-key",
+                        is_editing_key,
+                        if is_editing_key {
+                            edit_selection.clone()
+                        } else {
+                            0..0
+                        },
+                        px(self.kv_col_key_w),
+                        cx,
+                    ))
                     .child(div().w(px(4.0)))
+                    .child(self.render_kv_input_flex(
+                        format!("grpc-meta-val-{}", i),
+                        EditTarget::GrpcMetaValue(i),
+                        &value,
+                        "value",
+                        is_editing_value,
+                        if is_editing_value {
+                            edit_selection.clone()
+                        } else {
+                            0..0
+                        },
+                        cx,
+                    ))
                     .child(
-                        self.render_kv_input_flex(
-                            format!("grpc-meta-val-{}", i),
-                            EditTarget::GrpcMetaValue(i),
-                            &value,
-                            "value",
-                            is_editing_value,
-                            if is_editing_value { edit_selection.clone() } else { 0..0 },
+                        self.render_kv_remove_btn(
+                            format!("grpc-meta-del-{}", i).into(),
+                            can_remove,
                             cx,
                         )
-                    )
-                    .child(
-                        self.render_kv_remove_btn(format!("grpc-meta-del-{}", i).into(), can_remove, cx)
-                            .when(can_remove, |el| el.on_click(cx.listener(move |this, _, _, cx| {
+                        .when(can_remove, |el| {
+                            el.on_click(cx.listener(move |this, _, _, cx| {
                                 this.remove_grpc_meta(i, cx);
-                            })))
-                    )
+                            }))
+                        }),
+                    ),
             );
         }
 
         container = container.child(
             div().w_full().pt(px(8.0)).child(
                 self.render_kv_add_btn("add-grpc-meta-btn", "+ Add Metadata", cx)
-                    .on_click(cx.listener(|this, _, _, cx| { this.add_grpc_meta(cx); }))
-            )
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.add_grpc_meta(cx);
+                    })),
+            ),
         );
 
         container.into_any_element()

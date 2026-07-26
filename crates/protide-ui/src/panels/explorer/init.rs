@@ -1,5 +1,5 @@
-use gpui::{Context, Entity};
 use super::*;
+use gpui::{Context, Entity};
 
 impl ExplorerPanel {
     pub fn new(cx: &mut Context<Self>, main_window: WeakEntity<MainWindow>) -> Self {
@@ -66,27 +66,30 @@ impl ExplorerPanel {
 
         // Re-select active environment
         if let Some(ref env_name) = entry.active_env
-            && let Some(idx) = self.env_state
+            && let Some(idx) = self
+                .env_state
                 .environments
                 .iter()
                 .position(|e| &e.name == env_name)
-            {
-                self.env_state.set_active(Some(idx));
-            }
+        {
+            self.env_state.set_active(Some(idx));
+        }
 
         // Re-open the last active file
         if let Some(ref file) = entry.active_file
-            && file.exists() {
-                self.selected_item = Some(file.clone());
-                if let Some(ref draft) = entry.draft
-                    && let Some(ref rp) = self.request_panel {
-                        let draft = draft.clone();
-                        let file = file.clone();
-                        rp.update(cx, |panel, cx| {
-                            panel.restore_from_draft(&draft, cx);
-                            panel.current_file = Some(file);
-                        });
-                    }
+            && file.exists()
+        {
+            self.selected_item = Some(file.clone());
+            if let Some(ref draft) = entry.draft
+                && let Some(ref rp) = self.request_panel
+            {
+                let draft = draft.clone();
+                let file = file.clone();
+                rp.update(cx, |panel, cx| {
+                    panel.restore_from_draft(&draft, cx);
+                    panel.current_file = Some(file);
+                });
             }
+        }
     }
 }

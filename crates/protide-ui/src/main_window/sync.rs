@@ -1,9 +1,15 @@
-use gpui::{Context, Window};
 use super::*;
+use gpui::{Context, Window};
 
 impl MainWindow {
     pub(super) fn connect_peer(&mut self, cx: &mut Context<Self>) {
-        let code = self.join_input.read(cx).value().to_string().trim().to_string();
+        let code = self
+            .join_input
+            .read(cx)
+            .value()
+            .to_string()
+            .trim()
+            .to_string();
         if code.is_empty() {
             return;
         }
@@ -15,7 +21,10 @@ impl MainWindow {
             match engine.initiate_handshake(&code) {
                 Ok(()) => {
                     self.console_panel.update(cx, |panel, cx| {
-                        panel.log(ConsoleEntry::team(format!("Handshaking with code: {}", code)), cx);
+                        panel.log(
+                            ConsoleEntry::team(format!("Handshaking with code: {}", code)),
+                            cx,
+                        );
                     });
                 }
                 Err(e) => {
@@ -40,7 +49,9 @@ impl MainWindow {
     }
 
     pub(super) fn poll_sync_events(&mut self, cx: &mut Context<Self>) {
-        let Some(ref mut engine) = self.sync_engine else { return };
+        let Some(ref mut engine) = self.sync_engine else {
+            return;
+        };
 
         let events = engine.tick();
         let channel_events = engine.drain_events();
@@ -53,10 +64,14 @@ impl MainWindow {
             match evt {
                 SyncEvent::PeerJoined(peer_id) => {
                     let display_name = format!("Peer-{}", &peer_id[..peer_id.len().min(8)]);
-                    self.presence.upsert_peer(peer_id.clone(), display_name, PeerSource::P2P);
+                    self.presence
+                        .upsert_peer(peer_id.clone(), display_name, PeerSource::P2P);
                     self.console_panel.update(cx, |panel, cx| {
                         panel.log(
-                            ConsoleEntry::team(format!("Peer joined: {}", &peer_id[..peer_id.len().min(8)])),
+                            ConsoleEntry::team(format!(
+                                "Peer joined: {}",
+                                &peer_id[..peer_id.len().min(8)]
+                            )),
                             cx,
                         );
                     });
@@ -66,7 +81,10 @@ impl MainWindow {
                     self.presence.remove_peer(&peer_id);
                     self.console_panel.update(cx, |panel, cx| {
                         panel.log(
-                            ConsoleEntry::team(format!("Peer left: {}", &peer_id[..peer_id.len().min(8)])),
+                            ConsoleEntry::team(format!(
+                                "Peer left: {}",
+                                &peer_id[..peer_id.len().min(8)]
+                            )),
                             cx,
                         );
                     });
@@ -88,14 +106,20 @@ impl MainWindow {
                         } else {
                             format!("{} {}", method, url)
                         };
-                        panel.log(ConsoleEntry::team(format!("[{}] {}", activity.node_name, msg)), cx);
+                        panel.log(
+                            ConsoleEntry::team(format!("[{}] {}", activity.node_name, msg)),
+                            cx,
+                        );
                     });
                     changed = true;
                 }
                 SyncEvent::BackendStatus { backend, ready } => {
                     let status = if ready { "online" } else { "offline" };
                     self.console_panel.update(cx, |panel, cx| {
-                        panel.log(ConsoleEntry::team(format!("{:?} sync {}", backend, status)), cx);
+                        panel.log(
+                            ConsoleEntry::team(format!("{:?} sync {}", backend, status)),
+                            cx,
+                        );
                     });
                 }
                 SyncEvent::SyncError(err) => {
@@ -105,12 +129,17 @@ impl MainWindow {
                 }
                 SyncEvent::EntryReceived(entry) => {
                     use protide_core::sync::DataType;
-                    if entry.data_type == DataType::Collection || entry.data_type == DataType::Request {
+                    if entry.data_type == DataType::Collection
+                        || entry.data_type == DataType::Request
+                    {
                         should_refresh_collections = true;
                     }
                     self.console_panel.update(cx, |panel, cx| {
                         panel.log(
-                            ConsoleEntry::team(format!("[sync] entry received: {:?}", entry.data_type)),
+                            ConsoleEntry::team(format!(
+                                "[sync] entry received: {:?}",
+                                entry.data_type
+                            )),
                             cx,
                         );
                     });
@@ -118,9 +147,13 @@ impl MainWindow {
                 }
                 SyncEvent::HandshakeComplete { peer_id, peer_name } => {
                     self.handshake_started = None;
-                    self.presence.set_connected(peer_id.clone(), peer_name.clone());
+                    self.presence
+                        .set_connected(peer_id.clone(), peer_name.clone());
                     self.console_panel.update(cx, |panel, cx| {
-                        panel.log(ConsoleEntry::team(format!("Connected to {}", peer_name)), cx);
+                        panel.log(
+                            ConsoleEntry::team(format!("Connected to {}", peer_name)),
+                            cx,
+                        );
                     });
                     changed = true;
                 }
@@ -129,7 +162,10 @@ impl MainWindow {
                     self.presence.connection_status = ConnectionStatus::Error(reason.clone());
                     self.presence.handshake_tick = false;
                     self.console_panel.update(cx, |panel, cx| {
-                        panel.log(ConsoleEntry::system(format!("[PAKE] Handshake failed: {}", reason)), cx);
+                        panel.log(
+                            ConsoleEntry::system(format!("[PAKE] Handshake failed: {}", reason)),
+                            cx,
+                        );
                     });
                     changed = true;
                 }
@@ -140,10 +176,17 @@ impl MainWindow {
                 }
                 SyncEvent::LocalAddr(addr) => {
                     self.console_panel.update(cx, |panel, cx| {
-                        panel.log(ConsoleEntry::system(format!("[P2P] Listening on: {}", addr)), cx);
+                        panel.log(
+                            ConsoleEntry::system(format!("[P2P] Listening on: {}", addr)),
+                            cx,
+                        );
                     });
                 }
-                SyncEvent::FileReceived { relative_path, content, deleted } => {
+                SyncEvent::FileReceived {
+                    relative_path,
+                    content,
+                    deleted,
+                } => {
                     let workspace = self.explorer.read(cx).workspace_path().cloned();
                     if let Some(workspace) = workspace {
                         let full_path = workspace.join(&relative_path);
@@ -160,7 +203,10 @@ impl MainWindow {
                         }
                         self.console_panel.update(cx, |panel, cx| {
                             let action = if deleted { "deleted" } else { "synced" };
-                            panel.log(ConsoleEntry::team(format!("[sync] {} {}", action, relative_path)), cx);
+                            panel.log(
+                                ConsoleEntry::team(format!("[sync] {} {}", action, relative_path)),
+                                cx,
+                            );
                         });
                         should_refresh_collections = true;
                         changed = true;
@@ -170,23 +216,25 @@ impl MainWindow {
         }
 
         if should_refresh_collections {
-            self.explorer.update(cx, |exp, cx| exp.refresh_collections(cx));
+            self.explorer
+                .update(cx, |exp, cx| exp.refresh_collections(cx));
         }
 
         if self.presence.connection_status == ConnectionStatus::Handshaking {
             if let Some(started) = self.handshake_started
-                && started.elapsed() > std::time::Duration::from_secs(10) {
-                    self.handshake_started = None;
-                    self.presence.connection_status =
-                        ConnectionStatus::Error("Peer Not Found".to_string());
-                    self.presence.handshake_tick = false;
-                    self.console_panel.update(cx, |panel, cx| {
-                        panel.log(
-                            ConsoleEntry::system("[PAKE] Handshake timed out: Peer Not Found"),
-                            cx,
-                        );
-                    });
-                }
+                && started.elapsed() > std::time::Duration::from_secs(10)
+            {
+                self.handshake_started = None;
+                self.presence.connection_status =
+                    ConnectionStatus::Error("Peer Not Found".to_string());
+                self.presence.handshake_tick = false;
+                self.console_panel.update(cx, |panel, cx| {
+                    panel.log(
+                        ConsoleEntry::system("[PAKE] Handshake timed out: Peer Not Found"),
+                        cx,
+                    );
+                });
+            }
             self.presence.tick_handshake();
             changed = true;
         }

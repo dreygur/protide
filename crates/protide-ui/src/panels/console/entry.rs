@@ -102,7 +102,12 @@ impl ConsoleEntry {
 
     /// Full error detail string suitable for clipboard copy.
     pub fn error_details(&self) -> String {
-        let mut out = format!("[{}] {} {}", self.timestamp.format("%H:%M:%S"), self.method, self.url);
+        let mut out = format!(
+            "[{}] {} {}",
+            self.timestamp.format("%H:%M:%S"),
+            self.method,
+            self.url
+        );
         if self.status > 0 {
             out.push_str(&format!("\nStatus: {}", self.status));
         }
@@ -124,7 +129,10 @@ mod tests {
     fn extraction_error_entry_is_flagged_as_an_error() {
         let entry = ConsoleEntry::extraction_error("@set token: $.items[10].id did not match");
         assert_eq!(entry.level, LogLevel::Error);
-        assert!(entry.is_error(), "extraction_error entries must surface as errors, not blend in as info");
+        assert!(
+            entry.is_error(),
+            "extraction_error entries must surface as errors, not blend in as info"
+        );
         assert!(entry.url.contains("did not match"));
     }
 }

@@ -25,7 +25,12 @@ pub(super) fn encode_sio_connect(namespace: &str) -> String {
 }
 
 /// Encode a Socket.IO EVENT packet (type 2).
-pub(super) fn encode_sio_event(namespace: &str, event_name: &str, payload: &str, ack_id: Option<u32>) -> String {
+pub(super) fn encode_sio_event(
+    namespace: &str,
+    event_name: &str,
+    payload: &str,
+    ack_id: Option<u32>,
+) -> String {
     let escaped_name = event_name.replace('\\', "\\\\").replace('"', "\\\"");
     let data = format!("[\"{}\",{}]", escaped_name, payload);
     let ack_str = ack_id.map(|id| id.to_string()).unwrap_or_default();
@@ -59,9 +64,14 @@ pub(super) fn parse_sio_header(raw: &str) -> Option<(u8, String, Option<u32>, &s
     };
 
     // Optional ack id: leading digits before the first non-digit (e.g. '[')
-    let digit_end = after_ns.find(|c: char| !c.is_ascii_digit()).unwrap_or(after_ns.len());
+    let digit_end = after_ns
+        .find(|c: char| !c.is_ascii_digit())
+        .unwrap_or(after_ns.len());
     let (ack_id, data) = if digit_end > 0 && !after_ns.starts_with('[') {
-        (after_ns[..digit_end].parse::<u32>().ok(), &after_ns[digit_end..])
+        (
+            after_ns[..digit_end].parse::<u32>().ok(),
+            &after_ns[digit_end..],
+        )
     } else {
         (None, after_ns)
     };

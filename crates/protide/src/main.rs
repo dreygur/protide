@@ -1,16 +1,15 @@
-use std::borrow::Cow;
-use std::sync::Arc;
 use anyhow::Result;
-use gpui::{AssetSource, Menu, MenuItem, SharedString, WindowOptions, size, px, AppContext as _};
+use gpui::{AppContext as _, AssetSource, Menu, MenuItem, SharedString, WindowOptions, px, size};
 use gpui_component::Root;
 use gpui_component_assets::Assets;
-use protide_ui::{
-    MainWindow, register_keybindings,
-    SendRequest, SaveRequest, ToggleSidebar, ToggleMockServer,
-    ShowHelp, ShowAbout, Quit,
-};
+use protide_core::sync::{SyncConfig, SyncEngine};
 use protide_ui::panels::RequestHistory;
-use protide_core::sync::{SyncEngine, SyncConfig};
+use protide_ui::{
+    MainWindow, Quit, SaveRequest, SendRequest, ShowAbout, ShowHelp, ToggleMockServer,
+    ToggleSidebar, register_keybindings,
+};
+use std::borrow::Cow;
+use std::sync::Arc;
 
 const APP_ICON_PNG: &[u8] = include_bytes!("../assets/protide-logo.png");
 
@@ -80,10 +79,18 @@ fn main() -> Result<()> {
 
             cx.text_system()
                 .add_fonts(vec![
-                    std::borrow::Cow::Borrowed(include_bytes!("../assets/fonts/JetBrainsMono-Regular.ttf").as_slice()),
-                    std::borrow::Cow::Borrowed(include_bytes!("../assets/fonts/JetBrainsMono-Bold.ttf").as_slice()),
-                    std::borrow::Cow::Borrowed(include_bytes!("../assets/fonts/JetBrainsMono-Italic.ttf").as_slice()),
-                    std::borrow::Cow::Borrowed(include_bytes!("../assets/fonts/JetBrainsMono-BoldItalic.ttf").as_slice()),
+                    std::borrow::Cow::Borrowed(
+                        include_bytes!("../assets/fonts/JetBrainsMono-Regular.ttf").as_slice(),
+                    ),
+                    std::borrow::Cow::Borrowed(
+                        include_bytes!("../assets/fonts/JetBrainsMono-Bold.ttf").as_slice(),
+                    ),
+                    std::borrow::Cow::Borrowed(
+                        include_bytes!("../assets/fonts/JetBrainsMono-Italic.ttf").as_slice(),
+                    ),
+                    std::borrow::Cow::Borrowed(
+                        include_bytes!("../assets/fonts/JetBrainsMono-BoldItalic.ttf").as_slice(),
+                    ),
                 ])
                 .expect("Failed to load JetBrains Mono fonts");
 
@@ -104,9 +111,7 @@ fn main() -> Result<()> {
                     MenuItem::action("Toggle Sidebar", ToggleSidebar),
                     MenuItem::action("Toggle Mock Server", ToggleMockServer),
                 ]),
-                Menu::new("Help").items([
-                    MenuItem::action("Keyboard Shortcuts", ShowHelp),
-                ]),
+                Menu::new("Help").items([MenuItem::action("Keyboard Shortcuts", ShowHelp)]),
             ]);
 
             cx.set_global(RequestHistory::new());

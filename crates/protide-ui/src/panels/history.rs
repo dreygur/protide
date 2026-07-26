@@ -74,7 +74,13 @@ impl RequestHistory {
     }
 
     /// Add a new entry to history
-    pub fn add(&mut self, method: String, url: String, headers: Vec<(String, String)>, body: Option<String>) -> u64 {
+    pub fn add(
+        &mut self,
+        method: String,
+        url: String,
+        headers: Vec<(String, String)>,
+        body: Option<String>,
+    ) -> u64 {
         let id = self.next_id;
         self.next_id += 1;
 
@@ -147,7 +153,8 @@ mod tests {
 
     #[test]
     fn test_history_entry_display_url_long_truncated() {
-        let long_url = "https://api.example.com/very/long/path/that/exceeds/the/maximum/display/length";
+        let long_url =
+            "https://api.example.com/very/long/path/that/exceeds/the/maximum/display/length";
         let entry = HistoryEntry::new(1, "GET".to_string(), long_url.to_string(), vec![], None);
         let display = entry.display_url();
         assert!(display.len() <= 40);
@@ -187,9 +194,24 @@ mod tests {
     #[test]
     fn test_request_history_add_multiple() {
         let mut history = RequestHistory::new();
-        let id1 = history.add("GET".to_string(), "https://example.com/1".to_string(), vec![], None);
-        let id2 = history.add("POST".to_string(), "https://example.com/2".to_string(), vec![], None);
-        let id3 = history.add("PUT".to_string(), "https://example.com/3".to_string(), vec![], None);
+        let id1 = history.add(
+            "GET".to_string(),
+            "https://example.com/1".to_string(),
+            vec![],
+            None,
+        );
+        let id2 = history.add(
+            "POST".to_string(),
+            "https://example.com/2".to_string(),
+            vec![],
+            None,
+        );
+        let id3 = history.add(
+            "PUT".to_string(),
+            "https://example.com/3".to_string(),
+            vec![],
+            None,
+        );
 
         assert_eq!(id1, 0);
         assert_eq!(id2, 1);
@@ -204,7 +226,12 @@ mod tests {
     #[test]
     fn test_request_history_get() {
         let mut history = RequestHistory::new();
-        let id = history.add("GET".to_string(), "https://example.com".to_string(), vec![], None);
+        let id = history.add(
+            "GET".to_string(),
+            "https://example.com".to_string(),
+            vec![],
+            None,
+        );
 
         let entry = history.get(id);
         assert!(entry.is_some());
@@ -217,7 +244,12 @@ mod tests {
     #[test]
     fn test_request_history_update_response() {
         let mut history = RequestHistory::new();
-        let id = history.add("GET".to_string(), "https://example.com".to_string(), vec![], None);
+        let id = history.add(
+            "GET".to_string(),
+            "https://example.com".to_string(),
+            vec![],
+            None,
+        );
 
         history.update_response(id, 200, Duration::from_millis(150));
 
@@ -243,6 +275,10 @@ mod tests {
         // Should be capped at MAX_HISTORY_ENTRIES
         assert_eq!(history.entries().len(), MAX_HISTORY_ENTRIES);
         // Most recent should be last added
-        assert!(history.entries()[0].url.ends_with(&format!("{}", MAX_HISTORY_ENTRIES + 9)));
+        assert!(
+            history.entries()[0]
+                .url
+                .ends_with(&format!("{}", MAX_HISTORY_ENTRIES + 9))
+        );
     }
 }

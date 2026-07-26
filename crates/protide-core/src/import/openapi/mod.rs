@@ -17,11 +17,9 @@ use openapi_security::extract_security_schemes;
 /// Parse an OpenAPI/Swagger specification
 pub fn parse_openapi(input: &str) -> Result<ImportResult, String> {
     let root: Value = if input.trim().starts_with('{') {
-        serde_json::from_str(input)
-            .map_err(|e| format!("Failed to parse OpenAPI JSON: {}", e))?
+        serde_json::from_str(input).map_err(|e| format!("Failed to parse OpenAPI JSON: {}", e))?
     } else {
-        serde_yaml::from_str(input)
-            .map_err(|e| format!("Failed to parse OpenAPI YAML: {}", e))?
+        serde_yaml::from_str(input).map_err(|e| format!("Failed to parse OpenAPI YAML: {}", e))?
     };
 
     let spec: OpenApiSpec = serde_json::from_value(root.clone())
@@ -35,16 +33,24 @@ pub fn parse_openapi(input: &str) -> Result<ImportResult, String> {
 
     let base_url = get_base_url(&spec);
     let security_schemes = extract_security_schemes(&root);
-    let global_consumes: Vec<String> = root.get("consumes")
+    let global_consumes: Vec<String> = root
+        .get("consumes")
         .and_then(|v| v.as_array())
-        .map(|arr| arr.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                .collect()
+        })
         .unwrap_or_default();
-    let global_security = root.get("security")
+    let global_security = root
+        .get("security")
         .and_then(|v| v.as_array())
-        .map(|arr| arr.iter()
-            .filter_map(|s| s.as_object())
-            .filter_map(|obj| obj.keys().next().cloned())
-            .collect::<Vec<_>>())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|s| s.as_object())
+                .filter_map(|obj| obj.keys().next().cloned())
+                .collect::<Vec<_>>()
+        })
         .unwrap_or_default();
 
     if let Some(paths) = &spec.paths {
@@ -68,11 +74,14 @@ pub fn parse_openapi(input: &str) -> Result<ImportResult, String> {
 fn get_base_url(spec: &OpenApiSpec) -> String {
     if let Some(servers) = &spec.servers
         && let Some(first) = servers.first()
-            && let Some(url) = &first.url {
-                return url.clone();
-            }
+        && let Some(url) = &first.url
+    {
+        return url.clone();
+    }
 
-    let scheme = spec.schemes.as_ref()
+    let scheme = spec
+        .schemes
+        .as_ref()
         .and_then(|s| s.first())
         .cloned()
         .unwrap_or_else(|| "https".to_string());
@@ -200,7 +209,12 @@ mod tests {
         let result = parse_openapi(json).unwrap();
         assert_eq!(result.requests.len(), 1);
         assert!(result.requests[0].body.is_some());
-        assert!(result.requests[0].headers.iter().any(|h| h.key == "Content-Type" && h.value == "application/json"));
+        assert!(
+            result.requests[0]
+                .headers
+                .iter()
+                .any(|h| h.key == "Content-Type" && h.value == "application/json")
+        );
     }
 
     #[test]
@@ -217,7 +231,10 @@ mod tests {
         }"#;
 
         let result = parse_openapi(json).unwrap();
-        assert_eq!(result.requests[0].url, "https://api.example.com/users/{{id}}/posts/{{postId}}");
+        assert_eq!(
+            result.requests[0].url,
+            "https://api.example.com/users/{{id}}/posts/{{postId}}"
+        );
     }
 
     #[test]
@@ -279,10 +296,20 @@ mod tests {
         }"##;
 
         let result = parse_openapi(json).unwrap();
-        let body = result.requests[0].body.as_ref().expect("body must exist for $ref schema");
-        let parsed: serde_json::Value = serde_json::from_str(body).expect("body must be valid JSON");
-        assert!(parsed.get("id").is_some(), "id property missing from generated body");
-        assert!(parsed.get("name").is_some(), "name property missing from generated body");
+        let body = result.requests[0]
+            .body
+            .as_ref()
+            .expect("body must exist for $ref schema");
+        let parsed: serde_json::Value =
+            serde_json::from_str(body).expect("body must be valid JSON");
+        assert!(
+            parsed.get("id").is_some(),
+            "id property missing from generated body"
+        );
+        assert!(
+            parsed.get("name").is_some(),
+            "name property missing from generated body"
+        );
     }
 
     #[test]
@@ -342,8 +369,18 @@ mod tests {
         let result = parse_openapi(json).unwrap();
         assert_eq!(result.requests.len(), 3);
         assert_eq!(result.request_folders.len(), 3);
-        assert!(result.request_folders.iter().any(|f| f.as_deref() == Some("users")));
-        assert!(result.request_folders.iter().any(|f| f.as_deref() == Some("posts")));
+        assert!(
+            result
+                .request_folders
+                .iter()
+                .any(|f| f.as_deref() == Some("users"))
+        );
+        assert!(
+            result
+                .request_folders
+                .iter()
+                .any(|f| f.as_deref() == Some("posts"))
+        );
     }
 
     #[test]
@@ -370,7 +407,10 @@ mod tests {
 
         let result = parse_openapi(json).unwrap();
         assert!(
-            result.requests[0].headers.iter().any(|h| h.key == "Authorization" && h.value.starts_with("Bearer")),
+            result.requests[0]
+                .headers
+                .iter()
+                .any(|h| h.key == "Authorization" && h.value.starts_with("Bearer")),
             "Bearer auth header missing"
         );
     }
@@ -418,9 +458,16 @@ mod tests {
         }"##;
 
         let result = parse_openapi(json).unwrap();
-        let body = result.requests[0].body.as_ref().expect("allOf body must exist");
-        let parsed: serde_json::Value = serde_json::from_str(body).expect("body must be valid JSON");
+        let body = result.requests[0]
+            .body
+            .as_ref()
+            .expect("allOf body must exist");
+        let parsed: serde_json::Value =
+            serde_json::from_str(body).expect("body must be valid JSON");
         assert!(parsed.get("id").is_some(), "id from allOf Base missing");
-        assert!(parsed.get("name").is_some(), "name from allOf inline missing");
+        assert!(
+            parsed.get("name").is_some(),
+            "name from allOf inline missing"
+        );
     }
 }

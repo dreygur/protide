@@ -51,14 +51,20 @@ impl ResponsePanel {
             .left_0()
             .w_full()
             .h_full()
-            .on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| {
-                this.json_context_menu = None;
-                cx.notify();
-            }))
-            .on_mouse_down(MouseButton::Right, cx.listener(|this, _, _, cx| {
-                this.json_context_menu = None;
-                cx.notify();
-            }))
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(|this, _, _, cx| {
+                    this.json_context_menu = None;
+                    cx.notify();
+                }),
+            )
+            .on_mouse_down(
+                MouseButton::Right,
+                cx.listener(|this, _, _, cx| {
+                    this.json_context_menu = None;
+                    cx.notify();
+                }),
+            )
             .child({
                 let hover_bg = theme.colors.bg_tertiary;
                 let mut menu_box = div()
@@ -83,7 +89,9 @@ impl ResponsePanel {
                             .cursor_pointer()
                             .hover(move |s| s.bg(hover_bg))
                             .on_click(move |_, _, cx| {
-                                cx.write_to_clipboard(gpui::ClipboardItem::new_string(value.clone()));
+                                cx.write_to_clipboard(gpui::ClipboardItem::new_string(
+                                    value.clone(),
+                                ));
                             })
                             .child(label_s),
                     );
@@ -93,7 +101,11 @@ impl ResponsePanel {
             .into_any_element()
     }
 
-    pub(super) fn render_col_drag_handle(&self, drag_id: u8, cx: &Context<Self>) -> impl IntoElement {
+    pub(super) fn render_col_drag_handle(
+        &self,
+        drag_id: u8,
+        cx: &Context<Self>,
+    ) -> impl IntoElement {
         let theme = theme::current(cx);
         let col_w = match drag_id {
             0 => self.resp_header_col1_w,
@@ -109,9 +121,12 @@ impl ResponsePanel {
             .cursor_col_resize()
             .bg(theme.colors.border.opacity(0.3))
             .hover(|s| s.bg(theme.colors.accent.opacity(0.5)))
-            .on_mouse_down(MouseButton::Left, cx.listener(move |this, event: &gpui::MouseDownEvent, _, cx| {
-                this.resp_col_drag = Some((drag_id, f32::from(event.position.x), col_w));
-                cx.notify();
-            }))
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(move |this, event: &gpui::MouseDownEvent, _, cx| {
+                    this.resp_col_drag = Some((drag_id, f32::from(event.position.x), col_w));
+                    cx.notify();
+                }),
+            )
     }
 }

@@ -25,9 +25,10 @@ pub fn generate_curl(request: &CodegenRequest) -> String {
 
     // Body
     if let Some(body) = &request.body
-        && !body.trim().is_empty() {
-            parts.push(format!("-d '{}'", escape_single_quotes(body)));
-        }
+        && !body.trim().is_empty()
+    {
+        parts.push(format!("-d '{}'", escape_single_quotes(body)));
+    }
 
     parts.join(" \\\n  ")
 }
@@ -52,7 +53,10 @@ mod tests {
     #[test]
     fn test_post_with_body() {
         let request = CodegenRequest::new("POST", "https://api.example.com/users")
-            .with_headers(vec![("Content-Type".to_string(), "application/json".to_string())])
+            .with_headers(vec![(
+                "Content-Type".to_string(),
+                "application/json".to_string(),
+            )])
             .with_body(Some(r#"{"name": "John"}"#.to_string()));
         let code = generate_curl(&request);
         // Method is now quoted+escaped like everything else (see the
@@ -75,10 +79,7 @@ mod tests {
     fn test_url_injection_is_escaped() {
         // A malicious URL containing a single quote could break out of the
         // quoted argument and inject arbitrary shell commands.
-        let request = CodegenRequest::new(
-            "GET",
-            "https://example.com/'; rm -rf ~; echo '",
-        );
+        let request = CodegenRequest::new("GET", "https://example.com/'; rm -rf ~; echo '");
         let code = generate_curl(&request);
         // Note: correctly-escaped output for this payload necessarily
         // *contains* the substring "'; rm -rf ~; echo '" as an artifact of

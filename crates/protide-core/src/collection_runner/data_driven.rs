@@ -1,11 +1,11 @@
 //! Data-driven testing - run a single request once per CSV row.
 
-use std::collections::HashMap;
 use async_channel::Sender;
 use http_parser::Request;
+use std::collections::HashMap;
 
-use crate::execution::{self, ExecutionResult};
 use super::build_execution_request;
+use crate::execution::{self, ExecutionResult};
 
 /// Progress event for data-driven runs.
 #[derive(Debug, Clone)]
@@ -13,7 +13,10 @@ pub enum DataDrivenProgress {
     /// Starting row (0-indexed).
     Starting { row: usize, total: usize },
     /// Row completed.
-    Completed { row: usize, result: DataDrivenResult },
+    Completed {
+        row: usize,
+        result: DataDrivenResult,
+    },
     /// All rows done.
     Done,
 }
@@ -40,7 +43,10 @@ pub fn run_data_driven(
     let total = rows.len();
 
     for (row_idx, row_env) in rows.into_iter().enumerate() {
-        let _ = tx.send_blocking(DataDrivenProgress::Starting { row: row_idx, total });
+        let _ = tx.send_blocking(DataDrivenProgress::Starting {
+            row: row_idx,
+            total,
+        });
 
         let mut env = base_env.clone();
         env.extend(row_env.clone());
@@ -52,7 +58,11 @@ pub fn run_data_driven(
 
         let _ = tx.send_blocking(DataDrivenProgress::Completed {
             row: row_idx,
-            result: DataDrivenResult { row: row_idx, env_snapshot: row_env, result },
+            result: DataDrivenResult {
+                row: row_idx,
+                env_snapshot: row_env,
+                result,
+            },
         });
     }
 
@@ -79,7 +89,8 @@ fn parse_csv(content: &str) -> Result<Vec<HashMap<String, String>>, String> {
     let mut rows = Vec::new();
     for record in reader.records() {
         let record = record.map_err(|e| format!("CSV row error: {}", e))?;
-        let row: HashMap<String, String> = headers.iter()
+        let row: HashMap<String, String> = headers
+            .iter()
             .zip(record.iter())
             .map(|(k, v)| (k.clone(), v.trim().to_string()))
             .collect();

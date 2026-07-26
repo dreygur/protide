@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use uuid::Uuid;
 
-use super::types::{timestamp_now, CrdtEntry, DataType, NodeId};
+use super::types::{CrdtEntry, DataType, NodeId, timestamp_now};
 
 /// In-memory CRDT store - holds the current state merged from all peers
 #[derive(Debug, Clone)]
@@ -21,11 +21,7 @@ impl CrdtStore {
     }
 
     /// Apply a local change, producing a CRDT entry ready for sync
-    pub fn apply_local(
-        &mut self,
-        data_type: DataType,
-        data: String,
-    ) -> CrdtEntry {
+    pub fn apply_local(&mut self, data_type: DataType, data: String) -> CrdtEntry {
         let entry = CrdtEntry::new(data_type, data, &self.node_id);
         self.entries.insert(entry.id, entry.clone());
         entry
@@ -60,7 +56,10 @@ impl CrdtStore {
     /// Forces a higher timestamp than existing to ensure tombstone wins.
     pub fn delete_local(&mut self, id: Uuid) -> Option<CrdtEntry> {
         let (timestamp, data_type) = match self.entries.get(&id) {
-            Some(existing) => (std::cmp::max(timestamp_now(), existing.timestamp.saturating_add(1)), existing.data_type),
+            Some(existing) => (
+                std::cmp::max(timestamp_now(), existing.timestamp.saturating_add(1)),
+                existing.data_type,
+            ),
             None => (timestamp_now(), DataType::Request),
         };
         let tombstone = CrdtEntry {
@@ -133,8 +132,7 @@ impl CrdtStore {
 
     /// Deserialize and merge a full snapshot from JSON bytes
     pub fn deserialize_snapshot(&mut self, bytes: &[u8]) -> Result<usize, String> {
-        let entries: Vec<CrdtEntry> =
-            serde_json::from_slice(bytes).map_err(|e| e.to_string())?;
+        let entries: Vec<CrdtEntry> = serde_json::from_slice(bytes).map_err(|e| e.to_string())?;
         let mut count = 0;
         for entry in entries {
             if let MergeResult::Accepted(_) = self.merge_remote(entry) {
@@ -184,7 +182,10 @@ mod tests {
             version: 1,
         };
 
-        assert_eq!(store_a.merge_remote(entry_b.clone()), MergeResult::Accepted(entry_b.clone()));
+        assert_eq!(
+            store_a.merge_remote(entry_b.clone()),
+            MergeResult::Accepted(entry_b.clone())
+        );
         assert_eq!(store_a.get(&id).unwrap().data, "from_b");
     }
 
@@ -264,7 +265,8 @@ mod tests {
 
         // The local user now edits that same entry (e.g. tweaks the URL).
         // This must not panic or wrap; the entry just saturates at u64::MAX.
-        let updated = store.update_local(id, DataType::Request, "user edit".into())
+        let updated = store
+            .update_local(id, DataType::Request, "user edit".into())
             .expect("entry should still exist");
         assert_eq!(updated.timestamp, u64::MAX);
         assert_eq!(updated.data, "user edit");

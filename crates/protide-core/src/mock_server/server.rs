@@ -1,5 +1,5 @@
-use std::sync::{Arc, Mutex, RwLock};
 use super::routes::{HttpMethod, MockResponse, MockRoute};
+use std::sync::{Arc, Mutex, RwLock};
 
 /// Header used to count proxy hops so that a proxy/record-mode target which
 /// points back at this server (directly or transitively) can't recurse forever.
@@ -60,7 +60,10 @@ pub(super) fn create_router(
             .iter()
             .filter_map(|(k, v)| {
                 let key = k.as_str().to_lowercase();
-                if matches!(key.as_str(), "host" | "connection" | "transfer-encoding" | PROXY_HOP_HEADER) {
+                if matches!(
+                    key.as_str(),
+                    "host" | "connection" | "transfer-encoding" | PROXY_HOP_HEADER
+                ) {
                     return None;
                 }
                 Some((k.to_string(), v.to_str().unwrap_or("").to_string()))
@@ -70,7 +73,10 @@ pub(super) fn create_router(
         let body_bytes = match axum::body::to_bytes(req.into_body(), 16 * 1024 * 1024).await {
             Ok(b) => b,
             Err(e) => {
-                log::warn!("Mock server: rejecting request - failed to read request body (body may exceed 16 MB limit): {}", e);
+                log::warn!(
+                    "Mock server: rejecting request - failed to read request body (body may exceed 16 MB limit): {}",
+                    e
+                );
                 return (
                     StatusCode::PAYLOAD_TOO_LARGE,
                     "Request body exceeds the 16 MB limit or could not be read",
@@ -81,7 +87,10 @@ pub(super) fn create_router(
 
         let matched = {
             let routes_guard = state.routes.read().unwrap_or_else(|e| e.into_inner());
-            routes_guard.iter().find(|r| r.matches(&method, &path)).cloned()
+            routes_guard
+                .iter()
+                .find(|r| r.matches(&method, &path))
+                .cloned()
         };
 
         let recording = state.record_mode.load(Ordering::Relaxed);
@@ -97,7 +106,8 @@ pub(super) fn create_router(
                 }
                 let full_url = build_proxy_url(target, &path, &query);
                 req_headers.push((PROXY_HOP_HEADER.to_string(), (hop_count + 1).to_string()));
-                let resp = proxy_request(&method, &full_url, req_headers, body_bytes.to_vec()).await;
+                let resp =
+                    proxy_request(&method, &full_url, req_headers, body_bytes.to_vec()).await;
                 let status = resp.status().as_u16();
                 let body_clone = axum::body::to_bytes(resp.into_body(), 16 * 1024 * 1024)
                     .await
@@ -113,14 +123,21 @@ pub(super) fn create_router(
                     "OPTIONS" => HttpMethod::Options,
                     _ => HttpMethod::Any,
                 };
-                let new_route = MockRoute::new(method_enum, &path, MockResponse::new(status, body_str.clone()));
+                let new_route = MockRoute::new(
+                    method_enum,
+                    &path,
+                    MockResponse::new(status, body_str.clone()),
+                );
                 if let Ok(mut recorded) = state.recorded_routes.lock() {
                     recorded.push(new_route);
                 }
                 let mut builder = axum::http::Response::builder().status(status);
                 builder = builder.header("Content-Type", "application/json");
                 return builder.body(Body::from(body_str)).unwrap_or_else(|_| {
-                    axum::http::Response::builder().status(502).body(Body::from("Record proxy error")).expect("infallible response builder")
+                    axum::http::Response::builder()
+                        .status(502)
+                        .body(Body::from("Record proxy error"))
+                        .expect("infallible response builder")
                 });
             }
         }
@@ -150,15 +167,26 @@ pub(super) fn create_router(
             for (key, value) in &response.headers {
                 builder = builder.header(key, value);
             }
-            return builder.body(Body::from(response.body.clone()))
-                .unwrap_or_else(|_| axum::http::Response::builder().status(500).body(Body::from("invalid mock route headers")).expect("infallible response builder"))
+            return builder
+                .body(Body::from(response.body.clone()))
+                .unwrap_or_else(|_| {
+                    axum::http::Response::builder()
+                        .status(500)
+                        .body(Body::from("invalid mock route headers"))
+                        .expect("infallible response builder")
+                })
                 .into_response();
         }
 
         (StatusCode::NOT_FOUND, "No matching mock route").into_response()
     }
 
-    let state = Arc::new(RouterState { routes, record_mode, record_target, recorded_routes });
+    let state = Arc::new(RouterState {
+        routes,
+        record_mode,
+        record_target,
+        recorded_routes,
+    });
     axum::Router::new()
         .route("/{*path}", any(handler))
         .route("/", any(handler))
@@ -178,8 +206,7 @@ pub(super) async fn proxy_request(
         .build()
         .unwrap_or_default();
 
-    let req_method = reqwest::Method::from_bytes(method.as_bytes())
-        .unwrap_or(reqwest::Method::GET);
+    let req_method = reqwest::Method::from_bytes(method.as_bytes()).unwrap_or(reqwest::Method::GET);
 
     let mut req = client.request(req_method, url).body(body);
     for (k, v) in &headers {
@@ -196,14 +223,12 @@ pub(super) async fn proxy_request(
                 }
             }
             let body_bytes = resp.bytes().await.unwrap_or_default();
-            builder
-                .body(Body::from(body_bytes))
-                .unwrap_or_else(|_| {
-                    axum::http::Response::builder()
-                        .status(502)
-                        .body(Body::from("Proxy response build error"))
-                        .expect("infallible response builder")
-                })
+            builder.body(Body::from(body_bytes)).unwrap_or_else(|_| {
+                axum::http::Response::builder()
+                    .status(502)
+                    .body(Body::from("Proxy response build error"))
+                    .expect("infallible response builder")
+            })
         }
         Err(e) => axum::http::Response::builder()
             .status(StatusCode::BAD_GATEWAY)

@@ -1,11 +1,15 @@
-use crate::theme;
 use crate::components::icons::{ICON_MD, ICON_SM, icon};
+use crate::theme;
 use gpui::prelude::*;
 use gpui::{App, AppContext, Div, ElementId, SharedString, Stateful, Window, div, px, white};
 
 /// 22px icon-only button. Icon is dim white normally, full white on hover.
 /// Caller adds .on_click() and optionally .tooltip().
-pub fn icon_btn(id: impl Into<ElementId>, icon_src: &'static str, cx: &impl AppContext) -> Stateful<Div> {
+pub fn icon_btn(
+    id: impl Into<ElementId>,
+    icon_src: &'static str,
+    cx: &impl AppContext,
+) -> Stateful<Div> {
     let theme = theme::current(cx);
     div()
         .id(id.into())
@@ -23,7 +27,7 @@ pub fn icon_btn(id: impl Into<ElementId>, icon_src: &'static str, cx: &impl AppC
                 .justify_center()
                 .opacity(0.45)
                 .hover(|s| s.opacity(1.0))
-                .child(icon(icon_src, ICON_MD, white()))
+                .child(icon(icon_src, ICON_MD, white())),
         )
 }
 
@@ -51,7 +55,7 @@ pub fn ghost_action_btn(
                 .justify_center()
                 .opacity(0.45)
                 .hover(|s| s.opacity(1.0))
-                .child(icon(icon_src, ICON_SM, white()))
+                .child(icon(icon_src, ICON_SM, white())),
         )
 }
 
@@ -97,7 +101,9 @@ impl gpui::Render for TooltipText {
 }
 
 /// Returns a tooltip builder closure for use with `.tooltip(tooltip_text("..."))`.
-pub fn tooltip_text(text: impl Into<SharedString>) -> impl Fn(&mut Window, &mut App) -> gpui::AnyView {
+pub fn tooltip_text(
+    text: impl Into<SharedString>,
+) -> impl Fn(&mut Window, &mut App) -> gpui::AnyView {
     let text: SharedString = text.into();
     move |_window, cx| cx.new(|_| TooltipText(text.clone())).into()
 }

@@ -53,7 +53,7 @@ impl ResponsePanel {
                                     } else {
                                         theme.colors.text_secondary
                                     })
-                                    .child(*tab)
+                                    .child(*tab),
                             )
                             .when(show_badge, |el| {
                                 el.child(
@@ -79,20 +79,15 @@ impl ResponsePanel {
                                         } else {
                                             theme.colors.text_muted
                                         })
-                                        .child(format!("{}/{}", passed_count, test_count))
+                                        .child(format!("{}/{}", passed_count, test_count)),
                                 )
                             })
                             .on_click(cx.listener(move |this, _, _, cx| {
                                 this.set_tab(i, cx);
-                            }))
+                            })),
                     )
                     .when(i < tabs.len() - 1, |el| {
-                        el.child(
-                            div()
-                                .h(px(16.0))
-                                .w(px(1.0))
-                                .bg(theme.colors.border)
-                        )
+                        el.child(div().h(px(16.0)).w(px(1.0)).bg(theme.colors.border))
                     })
             }))
     }

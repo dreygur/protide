@@ -1,83 +1,84 @@
 //! Request editor panel – URL input, method selector, headers/params/body, auth.
 
 mod render;
-mod render_trpc_playground;
-mod render_trpc_pg_sidebar;
-mod render_trpc_pg_io;
-mod render_url_bar;
-mod render_dropdowns;
-mod render_tab_router;
-mod render_http;
-mod render_body_form;
-mod render_body;
-mod render_kv;
 mod render_auth;
-mod render_auth_content;
 mod render_auth_basic_apikey;
-mod render_scripts;
+mod render_auth_content;
+mod render_body;
+mod render_body_form;
+mod render_data;
+mod render_dropdowns;
 mod render_graphql_query;
 mod render_graphql_schema;
-mod render_websocket;
 mod render_grpc;
 mod render_grpc_proto;
+mod render_http;
 mod render_import;
+mod render_kv;
+mod render_scripts;
+mod render_settings;
 mod render_socketio;
 mod render_socketio_helpers;
-mod render_data;
-mod render_settings;
+mod render_tab_router;
+mod render_trpc_pg_io;
+mod render_trpc_pg_sidebar;
+mod render_trpc_playground;
+mod render_url_bar;
+mod render_websocket;
 
-mod init;
-mod state;
 mod body;
-mod draft_save;
+mod codegen;
 mod draft_load;
-mod url_sync;
+mod draft_save;
+mod editing_keys;
 mod editing_kv;
 mod editing_text;
-mod editing_keys;
 mod editing_url;
-mod save;
-mod codegen;
-mod import;
-mod graphql;
 mod execution_auth;
-mod execution_http;
-mod execution_ws;
-mod execution_sio;
 mod execution_grpc;
+mod execution_http;
+mod execution_sio;
 mod execution_trpc;
+mod execution_ws;
+mod graphql;
+mod import;
+mod init;
+mod save;
+mod state;
+mod url_sync;
 
 #[cfg(test)]
 mod tests;
 #[cfg(test)]
 mod tests_gpui;
 
-use std::ops::Range;
-use std::marker::PhantomData;
-use gpui::{
-    prelude::*, Context, Entity, FocusHandle, ScrollHandle, Subscription, Window,
-};
-use gpui_component::input::InputState;
-use protide_core::execution::{ExecutionBody, ExecutionMode, ExecutionRequest, FormPart, FormPartValue};
-use protide_core::execution::ws::{
-    TungsteniteExecutor, WebSocketExecutor, WsCommand, WsConnectionParams, WsDirection, WsEvent,
-    WsMessage, WsRingBuffer,
-};
-use protide_core::execution::sio::{
-    SocketIoExecutor, TungsteniteSocketIoExecutor, SioCommand, SioConnectionParams, SioUiEvent, SioRingBuffer,
-};
 use super::console::{ConsoleEntry, ConsoleEntrySource, ConsolePanel, LogLevel};
 use super::explorer::ExplorerPanel;
 use super::file_dialog::{self, Pick};
 use super::request_types::{
-    ApiKeyLocation, AuthType, BodyType, EditTarget, FormField, FormFieldType,
-    GrpcMethodInfo, GrpcStreamingType, HttpMethod, KeyValuePair, KvList, PendingEditor, RequestMode,
+    ApiKeyLocation, AuthType, BodyType, EditTarget, FormField, FormFieldType, GrpcMethodInfo,
+    GrpcStreamingType, HttpMethod, KeyValuePair, KvList, PendingEditor, RequestMode,
     SioConnectionState, TrpcPlaygroundProc, TrpcProcKind, WsConnectionState,
 };
 use super::response::{ResponseData, ResponsePanel};
-use protide_core::codegen::Language as CodegenLanguage;
-use http_parser::VariableExtraction;
 use crate::last_paths;
+use gpui::{Context, Entity, FocusHandle, ScrollHandle, Subscription, Window, prelude::*};
+use gpui_component::input::InputState;
+use http_parser::VariableExtraction;
+use protide_core::codegen::Language as CodegenLanguage;
+use protide_core::execution::sio::{
+    SioCommand, SioConnectionParams, SioRingBuffer, SioUiEvent, SocketIoExecutor,
+    TungsteniteSocketIoExecutor,
+};
+use protide_core::execution::ws::{
+    TungsteniteExecutor, WebSocketExecutor, WsCommand, WsConnectionParams, WsDirection, WsEvent,
+    WsMessage, WsRingBuffer,
+};
+use protide_core::execution::{
+    ExecutionBody, ExecutionMode, ExecutionRequest, FormPart, FormPartValue,
+};
+use std::marker::PhantomData;
+use std::ops::Range;
 
 /// Summary of a single type from a GraphQL schema introspection response.
 #[derive(Clone, Debug)]
@@ -97,7 +98,10 @@ pub enum GraphqlSchemaState {
 }
 
 fn char_to_byte_offset(text: &str, char_idx: usize) -> usize {
-    text.char_indices().nth(char_idx).map(|(b, _)| b).unwrap_or(text.len())
+    text.char_indices()
+        .nth(char_idx)
+        .map(|(b, _)| b)
+        .unwrap_or(text.len())
 }
 
 /// Request editor panel.

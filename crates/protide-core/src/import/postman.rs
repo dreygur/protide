@@ -51,9 +51,15 @@ fn parse_items(items: &[PostmanItem], result: &mut ImportResult, path: &[String]
 }
 
 /// Parse a single Postman request
-fn parse_request(item: &PostmanItem, request: &PostmanRequest, path: &[String]) -> Result<Request, String> {
+fn parse_request(
+    item: &PostmanItem,
+    request: &PostmanRequest,
+    path: &[String],
+) -> Result<Request, String> {
     // Get method
-    let method = request.method.as_ref()
+    let method = request
+        .method
+        .as_ref()
         .and_then(|m| HttpMethod::from_str(m))
         .unwrap_or(HttpMethod::Get);
 
@@ -73,9 +79,12 @@ fn parse_request(item: &PostmanItem, request: &PostmanRequest, path: &[String]) 
     };
 
     // Parse headers
-    let headers: Vec<KeyValue> = request.header.as_ref()
+    let headers: Vec<KeyValue> = request
+        .header
+        .as_ref()
         .map(|headers| {
-            headers.iter()
+            headers
+                .iter()
                 .map(|h| {
                     let mut kv = KeyValue::new(
                         h.key.clone().unwrap_or_default(),
@@ -89,47 +98,44 @@ fn parse_request(item: &PostmanItem, request: &PostmanRequest, path: &[String]) 
         .unwrap_or_default();
 
     // Parse body
-    let body = request.body.as_ref().and_then(|b| {
-        match b.mode.as_deref() {
-            Some("raw") => b.raw.clone(),
-            Some("urlencoded") => {
-                b.urlencoded.as_ref().map(|params| {
-                    params.iter()
-                        .filter(|p| !p.disabled.unwrap_or(false))
-                        .map(|p| {
-                            format!("{}={}",
-                                urlencoding::encode(p.key.as_deref().unwrap_or("")),
-                                urlencoding::encode(p.value.as_deref().unwrap_or("")),
-                            )
-                        })
-                        .collect::<Vec<_>>()
-                        .join("&")
+    let body = request.body.as_ref().and_then(|b| match b.mode.as_deref() {
+        Some("raw") => b.raw.clone(),
+        Some("urlencoded") => b.urlencoded.as_ref().map(|params| {
+            params
+                .iter()
+                .filter(|p| !p.disabled.unwrap_or(false))
+                .map(|p| {
+                    format!(
+                        "{}={}",
+                        urlencoding::encode(p.key.as_deref().unwrap_or("")),
+                        urlencoding::encode(p.value.as_deref().unwrap_or("")),
+                    )
                 })
-            }
-            Some("formdata") => {
-                b.formdata.as_ref().map(|params| {
-                    params.iter()
-                        .filter(|p| !p.disabled.unwrap_or(false))
-                        .map(|p| {
-                            format!("{}={}",
-                                urlencoding::encode(p.key.as_deref().unwrap_or("")),
-                                urlencoding::encode(p.value.as_deref().unwrap_or("")),
-                            )
-                        })
-                        .collect::<Vec<_>>()
-                        .join("&")
+                .collect::<Vec<_>>()
+                .join("&")
+        }),
+        Some("formdata") => b.formdata.as_ref().map(|params| {
+            params
+                .iter()
+                .filter(|p| !p.disabled.unwrap_or(false))
+                .map(|p| {
+                    format!(
+                        "{}={}",
+                        urlencoding::encode(p.key.as_deref().unwrap_or("")),
+                        urlencoding::encode(p.value.as_deref().unwrap_or("")),
+                    )
                 })
-            }
-            Some("graphql") => {
-                b.graphql.as_ref().map(|g| {
-                    serde_json::json!({
-                        "query": g.query,
-                        "variables": g.variables
-                    }).to_string()
-                })
-            }
-            _ => None,
-        }
+                .collect::<Vec<_>>()
+                .join("&")
+        }),
+        Some("graphql") => b.graphql.as_ref().map(|g| {
+            serde_json::json!({
+                "query": g.query,
+                "variables": g.variables
+            })
+            .to_string()
+        }),
+        _ => None,
     });
 
     // Parse scripts
@@ -140,14 +146,16 @@ fn parse_request(item: &PostmanItem, request: &PostmanRequest, path: &[String]) 
         for event in events {
             if event.listen.as_deref() == Some("prerequest") {
                 if let Some(script) = &event.script
-                    && let Some(exec) = &script.exec {
-                        scripts.pre_script = Some(exec.join("\n"));
-                    }
+                    && let Some(exec) = &script.exec
+                {
+                    scripts.pre_script = Some(exec.join("\n"));
+                }
             } else if event.listen.as_deref() == Some("test")
                 && let Some(script) = &event.script
-                    && let Some(exec) = &script.exec {
-                        scripts.tests = Some(exec.join("\n"));
-                    }
+                && let Some(exec) = &script.exec
+            {
+                scripts.tests = Some(exec.join("\n"));
+            }
         }
     }
 
@@ -340,6 +348,9 @@ mod tests {
 
         let result = parse_postman(json).unwrap();
         assert_eq!(result.requests.len(), 1);
-        assert_eq!(result.requests[0].meta.name, Some("Users/Get User".to_string()));
+        assert_eq!(
+            result.requests[0].meta.name,
+            Some("Users/Get User".to_string())
+        );
     }
 }

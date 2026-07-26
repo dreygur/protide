@@ -112,7 +112,10 @@ mod tests {
         let mut env = Environment::new("test");
         env.set("base_url", "https://api.example.com");
         env.set("token", "abc123");
-        assert_eq!(env.substitute("{{base_url}}/users"), "https://api.example.com/users");
+        assert_eq!(
+            env.substitute("{{base_url}}/users"),
+            "https://api.example.com/users"
+        );
         assert_eq!(env.substitute("Bearer {{token}}"), "Bearer abc123");
         assert_eq!(env.substitute("no vars here"), "no vars here");
     }
@@ -151,7 +154,10 @@ mod tests {
     fn test_substitute_handles_unclosed_braces() {
         let mut env = Environment::new("test");
         env.set("foo", "bar");
-        assert_eq!(env.substitute("prefix {{foo}} mid {{unterminated"), "prefix bar mid {{unterminated");
+        assert_eq!(
+            env.substitute("prefix {{foo}} mid {{unterminated"),
+            "prefix bar mid {{unterminated"
+        );
     }
 }
 

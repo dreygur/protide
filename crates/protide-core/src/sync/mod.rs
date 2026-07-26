@@ -18,8 +18,8 @@
 pub mod crdt;
 pub mod file_sync;
 pub mod live_probe;
-pub mod pake;
 pub mod p2p;
+pub mod pake;
 pub mod types;
 
 mod engine;
@@ -134,7 +134,10 @@ impl SyncEngine {
                     });
                 }
                 Err(e) => {
-                    let _ = event_tx.send(SyncEvent::SyncError(format!("File sync init failed: {}", e)));
+                    let _ = event_tx.send(SyncEvent::SyncError(format!(
+                        "File sync init failed: {}",
+                        e
+                    )));
                 }
             }
         }
@@ -154,7 +157,10 @@ impl SyncEngine {
                     });
                 }
                 Err(e) => {
-                    let _ = event_tx.send(SyncEvent::SyncError(format!("Live probe init failed: {}", e)));
+                    let _ = event_tx.send(SyncEvent::SyncError(format!(
+                        "Live probe init failed: {}",
+                        e
+                    )));
                 }
             }
         }
@@ -227,10 +233,8 @@ mod tests {
         let config = SyncConfig::default();
         let mut engine = SyncEngine::new(config);
 
-        let entry = engine.apply_local_change(
-            DataType::Request,
-            r#"{"url":"https://test.com"}"#.into(),
-        );
+        let entry =
+            engine.apply_local_change(DataType::Request, r#"{"url":"https://test.com"}"#.into());
 
         assert_eq!(engine.store.len(), 1);
         assert_eq!(entry.data_type, DataType::Request);
@@ -241,10 +245,8 @@ mod tests {
         let config = SyncConfig::default();
         let mut engine = SyncEngine::new(config);
 
-        let entry = engine.apply_local_change(
-            DataType::Request,
-            r#"{"url":"https://test.com"}"#.into(),
-        );
+        let entry =
+            engine.apply_local_change(DataType::Request, r#"{"url":"https://test.com"}"#.into());
 
         // Update
         let updated = engine.update_local_change(

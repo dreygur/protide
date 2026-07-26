@@ -1,18 +1,11 @@
 //! Import modal rendering for RequestPanel
 
+use gpui::{Context, IntoElement, ParentElement, Styled, div, prelude::*, px};
 
-use gpui::{
-    div, prelude::*, px, Context, IntoElement,
-    ParentElement, Styled,
-};
-
-use crate::theme;
-use crate::components::icons::{
-    icon, ICON_SM, ICON_MD,
-    ICON_CLOSE, ICON_FOLDER,
-};
-use protide_core::execution::ws::WebSocketExecutor;
 use super::RequestPanel;
+use crate::components::icons::{ICON_CLOSE, ICON_FOLDER, ICON_MD, ICON_SM, icon};
+use crate::theme;
+use protide_core::execution::ws::WebSocketExecutor;
 
 impl<E: WebSocketExecutor> RequestPanel<E> {
     pub fn render_import_modal(&mut self, cx: &mut Context<Self>) -> gpui::AnyElement {
@@ -40,9 +33,12 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                     .shadow_lg()
                     .flex()
                     .flex_col()
-                    .on_mouse_down(gpui::MouseButton::Left, cx.listener(|_, _, _, cx| {
-                        cx.stop_propagation();
-                    }))
+                    .on_mouse_down(
+                        gpui::MouseButton::Left,
+                        cx.listener(|_, _, _, cx| {
+                            cx.stop_propagation();
+                        }),
+                    )
                     .on_click(cx.listener(|_, _, _, cx| {
                         cx.stop_propagation();
                     }))
@@ -61,7 +57,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                                     .text_size(px(14.0))
                                     .font_weight(gpui::FontWeight::SEMIBOLD)
                                     .text_color(theme.colors.text_primary)
-                                    .child("Import Request")
+                                    .child("Import Request"),
                             )
                             .child(
                                 div()
@@ -77,8 +73,8 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                                     .on_click(cx.listener(|this, _, _, cx| {
                                         this.close_import_modal(cx);
                                     }))
-                                    .child(icon(ICON_CLOSE, ICON_SM, theme.colors.text_muted))
-                            )
+                                    .child(icon(ICON_CLOSE, ICON_SM, theme.colors.text_muted)),
+                            ),
                     )
                     // Content
                     .child(
@@ -97,7 +93,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                                         div()
                                             .text_size(px(12.0))
                                             .text_color(theme.colors.text_secondary)
-                                            .child("Paste cURL command or Postman collection:")
+                                            .child("Paste cURL command or Postman collection:"),
                                     )
                                     .child(
                                         div()
@@ -116,9 +112,13 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                                             .on_click(cx.listener(|this, _, window, cx| {
                                                 this.browse_import_file(window, cx);
                                             }))
-                                            .child(icon(ICON_FOLDER, ICON_MD, theme.colors.text_secondary))
-                                            .child("Browse...")
-                                    )
+                                            .child(icon(
+                                                ICON_FOLDER,
+                                                ICON_MD,
+                                                theme.colors.text_secondary,
+                                            ))
+                                            .child("Browse..."),
+                                    ),
                             )
                             .child(
                                 div()
@@ -128,7 +128,11 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                                     .border_1()
                                     .border_color(theme.colors.border)
                                     .overflow_hidden()
-                                    .child(gpui_component::input::Input::new(&self.import_editor).appearance(false).h_full())
+                                    .child(
+                                        gpui_component::input::Input::new(&self.import_editor)
+                                            .appearance(false)
+                                            .h_full(),
+                                    ),
                             )
                             .when(import_error.is_some(), |el| {
                                 el.child(
@@ -140,9 +144,9 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                                         .border_color(theme.colors.status_client_error.opacity(0.3))
                                         .text_size(px(12.0))
                                         .text_color(theme.colors.status_client_error)
-                                        .child(import_error.unwrap_or_default())
+                                        .child(import_error.unwrap_or_default()),
                                 )
-                            })
+                            }),
                     )
                     // Footer
                     .child(
@@ -169,7 +173,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                                     .on_click(cx.listener(|this, _, window, cx| {
                                         this.set_import_text(String::new(), window, cx);
                                     }))
-                                    .child("Clear")
+                                    .child("Clear"),
                             )
                             .child(
                                 div()
@@ -185,9 +189,9 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                                     .on_click(cx.listener(|this, _, _, cx| {
                                         this.execute_import(cx);
                                     }))
-                                    .child("Import")
-                            )
-                    )
+                                    .child("Import"),
+                            ),
+                    ),
             )
             .into_any_element()
     }

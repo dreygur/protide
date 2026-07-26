@@ -37,7 +37,7 @@ mod parser;
 
 pub use ast::*;
 pub use lexer::Lexer;
-pub use parser::{Parser, ParseError};
+pub use parser::{ParseError, Parser};
 
 /// Parse a .http file content into a list of requests
 pub fn parse(content: &str) -> Result<Vec<Request>, ParseError> {

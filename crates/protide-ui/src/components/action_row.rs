@@ -5,8 +5,8 @@
 /// handlers, so they never intercept scroll events.  Only `on_click` on the
 /// action buttons calls `cx.stop_propagation()` to block the row click.
 use gpui::{
-    AnyElement, App, ClickEvent, ElementId, Hsla, IntoElement, MouseButton,
-    MouseDownEvent, ParentElement, Pixels, SharedString, Window, div, prelude::*, px,
+    AnyElement, App, ClickEvent, ElementId, Hsla, IntoElement, MouseButton, MouseDownEvent,
+    ParentElement, Pixels, SharedString, Window, div, prelude::*, px,
 };
 
 use crate::theme;

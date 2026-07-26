@@ -1,8 +1,11 @@
-use std::collections::HashMap;
-use std::path::PathBuf;
-use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
 use gpui::Context;
 use protide_core::collection_runner::{RunConfig, RunProgress};
+use std::collections::HashMap;
+use std::path::PathBuf;
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, Ordering},
+};
 
 pub mod render;
 
@@ -72,8 +75,8 @@ impl RunnerPanel {
                     break;
                 }
                 let done = matches!(event, RunProgress::Done);
-                panel.update(cx, |this, cx| {
-                    match event {
+                panel
+                    .update(cx, |this, cx| match event {
                         RunProgress::Starting { index, total, name } => {
                             this.total = total;
                             this.current = index;
@@ -83,7 +86,10 @@ impl RunnerPanel {
                                     status: RowStatus::Pending,
                                 });
                             }
-                            this.rows[index] = RunnerRow { name, status: RowStatus::Running };
+                            this.rows[index] = RunnerRow {
+                                name,
+                                status: RowStatus::Running,
+                            };
                             cx.notify();
                         }
                         RunProgress::Completed { index, result } => {
@@ -99,11 +105,14 @@ impl RunnerPanel {
                             this.running = false;
                             cx.notify();
                         }
-                    }
-                }).ok();
-                if done { break; }
+                    })
+                    .ok();
+                if done {
+                    break;
+                }
             }
-        }).detach();
+        })
+        .detach();
     }
 
     pub fn stop(&mut self, cx: &mut Context<Self>) {
@@ -113,10 +122,16 @@ impl RunnerPanel {
     }
 
     pub fn passed(&self) -> usize {
-        self.rows.iter().filter(|r| r.status == RowStatus::Passed).count()
+        self.rows
+            .iter()
+            .filter(|r| r.status == RowStatus::Passed)
+            .count()
     }
 
     pub fn failed(&self) -> usize {
-        self.rows.iter().filter(|r| matches!(r.status, RowStatus::Failed(_))).count()
+        self.rows
+            .iter()
+            .filter(|r| matches!(r.status, RowStatus::Failed(_)))
+            .count()
     }
 }

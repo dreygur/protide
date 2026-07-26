@@ -4,9 +4,9 @@ pub(super) use super::expect_js::setup_expect_js;
 
 use rquickjs::{Ctx, Function, Object, Value};
 
+use super::ScriptType;
 use crate::scripting::context::{RequestData, ResponseData};
 use crate::scripting::results::ScriptError;
-use super::ScriptType;
 
 /// Set up global storage object for collecting results.
 pub(super) fn setup_storage(ctx: &Ctx<'_>) -> Result<(), ScriptError> {

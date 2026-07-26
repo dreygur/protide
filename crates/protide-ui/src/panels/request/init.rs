@@ -2,64 +2,101 @@ use super::*;
 use gpui_component::input::InputState;
 
 impl<E: WebSocketExecutor> RequestPanel<E> {
-    pub fn new(window: &mut Window, cx: &mut Context<Self>, response_panel: Entity<ResponsePanel>) -> Self {
+    pub fn new(
+        window: &mut Window,
+        cx: &mut Context<Self>,
+        response_panel: Entity<ResponsePanel>,
+    ) -> Self {
         let url = "https://httpbin.org/post".to_string();
         let url_len = url.len();
         let initial_body = "{\n  \"name\": \"Protide\",\n  \"version\": \"0.1.0\"\n}";
         let body_editor = cx.new(|cx| {
-            InputState::new(window, cx).multi_line(true).code_editor("json").line_number(true).default_value(initial_body)
+            InputState::new(window, cx)
+                .multi_line(true)
+                .code_editor("json")
+                .line_number(true)
+                .default_value(initial_body)
         });
         let pre_script_editor = cx.new(|cx| {
-            InputState::new(window, cx).multi_line(true).code_editor("javascript").line_number(true)
+            InputState::new(window, cx)
+                .multi_line(true)
+                .code_editor("javascript")
+                .line_number(true)
         });
         let post_script_editor = cx.new(|cx| {
-            InputState::new(window, cx).multi_line(true).code_editor("javascript").line_number(true)
+            InputState::new(window, cx)
+                .multi_line(true)
+                .code_editor("javascript")
+                .line_number(true)
         });
         let tests_editor = cx.new(|cx| {
-            InputState::new(window, cx).multi_line(true).code_editor("javascript").line_number(true)
+            InputState::new(window, cx)
+                .multi_line(true)
+                .code_editor("javascript")
+                .line_number(true)
         });
         let graphql_query_editor = cx.new(|cx| {
-            InputState::new(window, cx).multi_line(true).code_editor("graphql").line_number(true).default_value("query {\n  \n}")
+            InputState::new(window, cx)
+                .multi_line(true)
+                .code_editor("graphql")
+                .line_number(true)
+                .default_value("query {\n  \n}")
         });
         let graphql_variables_editor = cx.new(|cx| {
-            InputState::new(window, cx).multi_line(true).code_editor("json").line_number(true).default_value("{}")
+            InputState::new(window, cx)
+                .multi_line(true)
+                .code_editor("json")
+                .line_number(true)
+                .default_value("{}")
         });
         let ws_message_editor = cx.new(|cx| {
-            InputState::new(window, cx).multi_line(true).code_editor("json").line_number(true).default_value("{\"type\": \"hello\"}")
+            InputState::new(window, cx)
+                .multi_line(true)
+                .code_editor("json")
+                .line_number(true)
+                .default_value("{\"type\": \"hello\"}")
         });
         let grpc_message_editor = cx.new(|cx| {
-            InputState::new(window, cx).multi_line(true).code_editor("json").line_number(true).default_value("{}")
+            InputState::new(window, cx)
+                .multi_line(true)
+                .code_editor("json")
+                .line_number(true)
+                .default_value("{}")
         });
         let trpc_params_editor = cx.new(|cx| {
-            InputState::new(window, cx).multi_line(true).code_editor("json").line_number(true).default_value("{}")
+            InputState::new(window, cx)
+                .multi_line(true)
+                .code_editor("json")
+                .line_number(true)
+                .default_value("{}")
         });
-        let trpc_pg_search_input = cx.new(|cx| {
-            InputState::new(window, cx).placeholder("Search procedures...")
-        });
+        let trpc_pg_search_input =
+            cx.new(|cx| InputState::new(window, cx).placeholder("Search procedures..."));
         let trpc_pg_result_viewer = cx.new(|cx| {
-            InputState::new(window, cx).multi_line(true).code_editor("json").line_number(true)
+            InputState::new(window, cx)
+                .multi_line(true)
+                .code_editor("json")
+                .line_number(true)
         });
-        let trpc_pg_add_input = cx.new(|cx| {
-            InputState::new(window, cx).placeholder("router.name")
-        });
-        let trpc_pg_import_url_input = cx.new(|cx| {
-            InputState::new(window, cx).placeholder("https://api.example.com/trpc")
-        });
-        let trpc_pg_edit_input = cx.new(|cx| {
-            InputState::new(window, cx).placeholder("router.name")
-        });
-        let trpc_pg_group_edit_input = cx.new(|cx| {
-            InputState::new(window, cx).placeholder("router")
-        });
+        let trpc_pg_add_input = cx.new(|cx| InputState::new(window, cx).placeholder("router.name"));
+        let trpc_pg_import_url_input =
+            cx.new(|cx| InputState::new(window, cx).placeholder("https://api.example.com/trpc"));
+        let trpc_pg_edit_input =
+            cx.new(|cx| InputState::new(window, cx).placeholder("router.name"));
+        let trpc_pg_group_edit_input =
+            cx.new(|cx| InputState::new(window, cx).placeholder("router"));
         let sio_payload_editor = cx.new(|cx| {
-            InputState::new(window, cx).multi_line(true).code_editor("json").default_value("{}")
+            InputState::new(window, cx)
+                .multi_line(true)
+                .code_editor("json")
+                .default_value("{}")
         });
         let codegen_editor = cx.new(|cx| {
-            InputState::new(window, cx).code_editor("sh").line_number(true)
+            InputState::new(window, cx)
+                .code_editor("sh")
+                .line_number(true)
         });
-        let import_editor = cx.new(|cx| {
-            InputState::new(window, cx).multi_line(true)
-        });
+        let import_editor = cx.new(|cx| InputState::new(window, cx).multi_line(true));
         Self {
             active_tab: 0,
             method: HttpMethod::Post,
@@ -207,7 +244,9 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             data_results: Vec::new(),
             data_running: false,
             timeout_input: cx.new(|cx| {
-                InputState::new(window, cx).default_value("30").placeholder("30")
+                InputState::new(window, cx)
+                    .default_value("30")
+                    .placeholder("30")
             }),
             verify_ssl: true,
             impersonate_browser: false,

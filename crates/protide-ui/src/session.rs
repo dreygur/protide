@@ -1,9 +1,9 @@
 //! Session persistence - saves and restores workspace state across app restarts.
 //! File: ~/.config/protide/session.json
 
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
-use serde::{Deserialize, Serialize};
 
 /// Top-level session saved to disk.
 #[derive(Serialize, Deserialize, Default, Clone)]

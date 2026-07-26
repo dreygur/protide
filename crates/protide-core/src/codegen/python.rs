@@ -23,10 +23,15 @@ pub fn generate_python(request: &CodegenRequest) -> String {
     }
 
     // Body
-    let has_body = request.body.as_ref().map(|b| !b.trim().is_empty()).unwrap_or(false);
-    let is_json = request.headers.iter().any(|(k, v)| {
-        k.eq_ignore_ascii_case("content-type") && v.contains("application/json")
-    });
+    let has_body = request
+        .body
+        .as_ref()
+        .map(|b| !b.trim().is_empty())
+        .unwrap_or(false);
+    let is_json = request
+        .headers
+        .iter()
+        .any(|(k, v)| k.eq_ignore_ascii_case("content-type") && v.contains("application/json"));
 
     if has_body {
         if is_json {
@@ -125,7 +130,10 @@ mod tests {
     #[test]
     fn test_post_with_json() {
         let request = CodegenRequest::new("POST", "https://api.example.com/users")
-            .with_headers(vec![("Content-Type".to_string(), "application/json".to_string())])
+            .with_headers(vec![(
+                "Content-Type".to_string(),
+                "application/json".to_string(),
+            )])
             .with_body(Some(r#"{"name": "John", "active": true}"#.to_string()));
         let code = generate_python(&request);
         assert!(code.contains("requests.request(\"POST\", url"));
@@ -138,10 +146,15 @@ mod tests {
     fn test_url_injection_is_escaped() {
         // A malicious URL containing an unescaped quote could break out of
         // the Python string literal and inject arbitrary code.
-        let request = CodegenRequest::new("GET", "https://example.com/\"; import os; os.system(\"rm -rf ~\"); \"");
+        let request = CodegenRequest::new(
+            "GET",
+            "https://example.com/\"; import os; os.system(\"rm -rf ~\"); \"",
+        );
         let code = generate_python(&request);
         assert!(!code.contains("url = \"https://example.com/\"; import os"));
-        assert!(code.contains("url = \"https://example.com/\\\"; import os; os.system(\\\"rm -rf ~\\\"); \\\"\""));
+        assert!(code.contains(
+            "url = \"https://example.com/\\\"; import os; os.system(\\\"rm -rf ~\\\"); \\\"\""
+        ));
     }
 
     #[test]

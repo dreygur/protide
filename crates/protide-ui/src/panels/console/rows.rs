@@ -1,6 +1,6 @@
 use super::*;
 
-use gpui::{div, prelude::*, px, ClipboardItem, MouseButton, SharedString};
+use gpui::{ClipboardItem, MouseButton, SharedString, div, prelude::*, px};
 
 pub(super) fn render_entry_row(
     i: usize,
@@ -10,7 +10,7 @@ pub(super) fn render_entry_row(
     cx: &mut gpui::Context<ConsolePanel>,
 ) -> impl gpui::IntoElement + use<> {
     let status = entry.status;
-    let is_ws  = entry.protocol == "WebSocket" || entry.protocol == "Socket.IO";
+    let is_ws = entry.protocol == "WebSocket" || entry.protocol == "Socket.IO";
     let is_team = entry.source == ConsoleEntrySource::Team;
 
     let row_color = if is_team {
@@ -19,7 +19,7 @@ pub(super) fn render_entry_row(
         match entry.level {
             LogLevel::Error => theme.colors.error,
             LogLevel::Debug => theme.colors.info,
-            LogLevel::Info  => {
+            LogLevel::Info => {
                 if entry.error.is_some() || status >= 500 {
                     theme.colors.error
                 } else if status >= 400 {
@@ -41,7 +41,7 @@ pub(super) fn render_entry_row(
         match entry.level {
             LogLevel::Error => theme.colors.error,
             LogLevel::Debug => theme.colors.info,
-            LogLevel::Info  => theme.colors.success.opacity(0.0),
+            LogLevel::Info => theme.colors.success.opacity(0.0),
         }
     };
 
@@ -67,13 +67,7 @@ pub(super) fn render_entry_row(
                 cx.notify();
             }),
         )
-        .child(
-            div()
-                .w(px(3.0))
-                .h(px(24.0))
-                .flex_shrink_0()
-                .bg(level_bar)
-        )
+        .child(div().w(px(3.0)).h(px(24.0)).flex_shrink_0().bg(level_bar))
         .child(
             div()
                 .w(px(56.0))
@@ -81,8 +75,8 @@ pub(super) fn render_entry_row(
                 .text_size(px(10.0))
                 .text_color(theme.colors.text_muted)
                 .child(SharedString::from(
-                    entry.timestamp.format("%H:%M:%S").to_string()
-                ))
+                    entry.timestamp.format("%H:%M:%S").to_string(),
+                )),
         );
 
     if is_team {
@@ -96,7 +90,7 @@ pub(super) fn render_entry_row(
                     .text_size(px(9.0))
                     .font_weight(gpui::FontWeight::BOLD)
                     .text_color(theme.colors.team_accent)
-                    .child("TEAM")
+                    .child("TEAM"),
             )
             .child(
                 div()
@@ -108,9 +102,12 @@ pub(super) fn render_entry_row(
                     .text_color(theme.colors.text_primary)
                     .whitespace_nowrap()
                     .cursor_text()
-                    .when(url_sel == Some(i), |el| el.bg(theme.colors.accent.opacity(0.15)))
+                    .when(url_sel == Some(i), |el| {
+                        el.bg(theme.colors.accent.opacity(0.15))
+                    })
                     .child(SharedString::from(entry.url.clone()))
-                    .on_mouse_down(MouseButton::Left,
+                    .on_mouse_down(
+                        MouseButton::Left,
                         cx.listener(move |this, event: &gpui::MouseDownEvent, _, cx| {
                             cx.stop_propagation();
                             if event.click_count >= 2 {
@@ -119,11 +116,15 @@ pub(super) fn render_entry_row(
                                     cx.write_to_clipboard(ClipboardItem::new_string(e.url.clone()));
                                 }
                             } else {
-                                this.url_sel_entry = if this.url_sel_entry == Some(i) { None } else { Some(i) };
+                                this.url_sel_entry = if this.url_sel_entry == Some(i) {
+                                    None
+                                } else {
+                                    Some(i)
+                                };
                             }
                             cx.notify();
-                        })
-                    )
+                        }),
+                    ),
             )
             .child(div().w(px(108.0)).flex_shrink_0())
     } else {
@@ -138,7 +139,7 @@ pub(super) fn render_entry_row(
                         .text_size(px(9.0))
                         .font_weight(gpui::FontWeight::BOLD)
                         .text_color(theme.colors.info)
-                        .child("DBG")
+                        .child("DBG"),
                 )
             })
             .child(
@@ -153,7 +154,7 @@ pub(super) fn render_entry_row(
                     .text_size(px(9.0))
                     .font_weight(gpui::FontWeight::BOLD)
                     .text_color(theme.colors.accent)
-                    .child(SharedString::from(entry.protocol.clone()))
+                    .child(SharedString::from(entry.protocol.clone())),
             )
             .when(!is_ws, |el| {
                 el.child(
@@ -163,7 +164,7 @@ pub(super) fn render_entry_row(
                         .text_size(px(10.0))
                         .font_weight(gpui::FontWeight::BOLD)
                         .text_color(method_color)
-                        .child(SharedString::from(entry.method.clone()))
+                        .child(SharedString::from(entry.method.clone())),
                 )
             })
             .child(
@@ -176,9 +177,12 @@ pub(super) fn render_entry_row(
                     .text_color(theme.colors.text_primary)
                     .whitespace_nowrap()
                     .cursor_text()
-                    .when(url_sel == Some(i), |el| el.bg(theme.colors.accent.opacity(0.15)))
+                    .when(url_sel == Some(i), |el| {
+                        el.bg(theme.colors.accent.opacity(0.15))
+                    })
                     .child(SharedString::from(entry.url.clone()))
-                    .on_mouse_down(MouseButton::Left,
+                    .on_mouse_down(
+                        MouseButton::Left,
                         cx.listener(move |this, event: &gpui::MouseDownEvent, _, cx| {
                             cx.stop_propagation();
                             if event.click_count >= 2 {
@@ -187,11 +191,15 @@ pub(super) fn render_entry_row(
                                     cx.write_to_clipboard(ClipboardItem::new_string(e.url.clone()));
                                 }
                             } else {
-                                this.url_sel_entry = if this.url_sel_entry == Some(i) { None } else { Some(i) };
+                                this.url_sel_entry = if this.url_sel_entry == Some(i) {
+                                    None
+                                } else {
+                                    Some(i)
+                                };
                             }
                             cx.notify();
-                        })
-                    )
+                        }),
+                    ),
             )
             .when(has_hint, |el| {
                 el.child(
@@ -206,7 +214,7 @@ pub(super) fn render_entry_row(
                         .text_size(px(9.0))
                         .font_weight(gpui::FontWeight::BOLD)
                         .text_color(theme.colors.warning)
-                        .child("?")
+                        .child("?"),
                 )
             })
             .child(
@@ -222,7 +230,7 @@ pub(super) fn render_entry_row(
                         "-".to_string()
                     } else {
                         status.to_string()
-                    }))
+                    })),
             )
             .child(
                 div()
@@ -235,7 +243,7 @@ pub(super) fn render_entry_row(
                         format!("{}ms", entry.duration_ms)
                     } else {
                         String::new()
-                    }))
+                    })),
             )
     }
 }

@@ -1,8 +1,11 @@
-use gpui::{Context, IntoElement, ParentElement, Styled, div, px, white};
 use super::*;
+use gpui::{Context, IntoElement, ParentElement, Styled, div, px, white};
 
 impl ExplorerPanel {
-    pub(super) fn render_collections_section(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
+    pub(super) fn render_collections_section(
+        &mut self,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
         let theme = theme::current(cx);
         let has_collections = !self.collection_items.is_empty();
         let collections_expanded = self.collections_expanded;
@@ -140,8 +143,10 @@ impl ExplorerPanel {
                                 .items_center()
                                 .justify_center()
                                 .opacity(0.45)
-                                .hover(|s| s.opacity(1.0).text_color(theme.colors.status_client_error))
-                                .child(icon(ICON_CLOSE, ICON_MD, white()))
+                                .hover(|s| {
+                                    s.opacity(1.0).text_color(theme.colors.status_client_error)
+                                })
+                                .child(icon(ICON_CLOSE, ICON_MD, white())),
                         ),
                 )
             })
@@ -172,14 +177,11 @@ impl ExplorerPanel {
                         .flex_col()
                         .px(px(4.0))
                         .pt(px(4.0))
-                        .children(
-                            flattened_items
-                                .into_iter()
-                                .enumerate()
-                                .map(|(idx, (item, depth))| {
-                                    self.render_collection_item_row(item, depth, idx, cx)
-                                }),
-                        ),
+                        .children(flattened_items.into_iter().enumerate().map(
+                            |(idx, (item, depth))| {
+                                self.render_collection_item_row(item, depth, idx, cx)
+                            },
+                        )),
                 ),
         )
     }

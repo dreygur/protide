@@ -44,7 +44,7 @@ pub enum FormFieldType {
 #[derive(Clone, Default)]
 pub struct FormField {
     pub key: String,
-    pub value: String,           // Text value or display name for file
+    pub value: String, // Text value or display name for file
     pub field_type: FormFieldType,
     pub file_path: Option<PathBuf>, // Path to file when field_type is File
     pub enabled: bool,
@@ -233,7 +233,10 @@ pub enum TrpcProcKind {
 
 impl TrpcProcKind {
     pub fn prefix(self) -> &'static str {
-        match self { TrpcProcKind::Query => "query", TrpcProcKind::Mutation => "mutation" }
+        match self {
+            TrpcProcKind::Query => "query",
+            TrpcProcKind::Mutation => "mutation",
+        }
     }
 }
 
@@ -261,4 +264,3 @@ impl TrpcPlaygroundProc {
         format!("{}.{}", self.kind.prefix(), self.name)
     }
 }
-

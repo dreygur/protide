@@ -20,7 +20,11 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
 
         self.headers = headers
             .into_iter()
-            .map(|(key, value)| KeyValuePair { key, value, enabled: true })
+            .map(|(key, value)| KeyValuePair {
+                key,
+                value,
+                enabled: true,
+            })
             .collect();
         self.headers.push(KeyValuePair::default());
 
@@ -53,9 +57,15 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
         self.method_dropdown_open = false;
         self.variable_extractions.clear();
 
-        self.headers = req.headers.iter()
+        self.headers = req
+            .headers
+            .iter()
             .filter(|h| h.enabled)
-            .map(|h| KeyValuePair { key: h.key.clone(), value: h.value.clone(), enabled: true })
+            .map(|h| KeyValuePair {
+                key: h.key.clone(),
+                value: h.value.clone(),
+                enabled: true,
+            })
             .collect();
         self.headers.push(KeyValuePair::default());
 
@@ -101,7 +111,11 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                 // Extract scheme://host[:port] - everything up to the 3rd '/' (or whole URL if no path)
                 let server = {
                     let parts: Vec<&str> = req.url.splitn(4, '/').collect();
-                    if parts.len() >= 3 { parts[..3].join("/") } else { req.url.clone() }
+                    if parts.len() >= 3 {
+                        parts[..3].join("/")
+                    } else {
+                        req.url.clone()
+                    }
                 };
                 self.url = server;
                 let len = self.url.chars().count();

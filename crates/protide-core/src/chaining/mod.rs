@@ -21,10 +21,7 @@ pub struct ExtractionResult {
 }
 
 /// Extract variables from a JSON response body
-pub fn extract_variables(
-    body: &str,
-    extractions: &[VariableExtraction],
-) -> Vec<ExtractionResult> {
+pub fn extract_variables(body: &str, extractions: &[VariableExtraction]) -> Vec<ExtractionResult> {
     let mut results = Vec::new();
 
     // Try to parse body as JSON
@@ -113,11 +110,9 @@ fn value_to_string(value: &Value) -> String {
 
 /// Extract a value using a JSONPath expression (convenience function)
 pub fn extract_jsonpath(body: &str, jsonpath: &str) -> Result<String, String> {
-    let json: Value = serde_json::from_str(body)
-        .map_err(|e| format!("Invalid JSON: {}", e))?;
+    let json: Value = serde_json::from_str(body).map_err(|e| format!("Invalid JSON: {}", e))?;
 
-    let path = JsonPath::try_from(jsonpath)
-        .map_err(|e| format!("Invalid JSONPath: {}", e))?;
+    let path = JsonPath::try_from(jsonpath).map_err(|e| format!("Invalid JSONPath: {}", e))?;
 
     let found = path.find_slice(&json);
 
@@ -295,7 +290,10 @@ mod tests {
     #[test]
     fn test_patterns() {
         assert_eq!(patterns::field("id"), "$.id");
-        assert_eq!(patterns::nested(&["data", "user", "name"]), "$.data.user.name");
+        assert_eq!(
+            patterns::nested(&["data", "user", "name"]),
+            "$.data.user.name"
+        );
         assert_eq!(patterns::first(), "$[0]");
         assert_eq!(patterns::index(5), "$[5]");
         assert_eq!(patterns::first_field("id"), "$[0].id");

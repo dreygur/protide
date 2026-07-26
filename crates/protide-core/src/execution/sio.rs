@@ -67,7 +67,10 @@ pub struct SioRingBuffer {
 
 impl SioRingBuffer {
     pub fn new(cap: usize) -> Self {
-        Self { buf: VecDeque::with_capacity(cap), cap }
+        Self {
+            buf: VecDeque::with_capacity(cap),
+            cap,
+        }
     }
 
     pub fn push(&mut self, event: SioEvent) {
@@ -77,15 +80,27 @@ impl SioRingBuffer {
         self.buf.push_back(event);
     }
 
-    pub fn clear(&mut self) { self.buf.clear(); }
-    pub fn is_empty(&self) -> bool { self.buf.is_empty() }
-    pub fn len(&self) -> usize { self.buf.len() }
-    pub fn iter(&self) -> impl Iterator<Item = &SioEvent> { self.buf.iter() }
-    pub fn capacity(&self) -> usize { self.cap }
+    pub fn clear(&mut self) {
+        self.buf.clear();
+    }
+    pub fn is_empty(&self) -> bool {
+        self.buf.is_empty()
+    }
+    pub fn len(&self) -> usize {
+        self.buf.len()
+    }
+    pub fn iter(&self) -> impl Iterator<Item = &SioEvent> {
+        self.buf.iter()
+    }
+    pub fn capacity(&self) -> usize {
+        self.cap
+    }
 }
 
 impl Default for SioRingBuffer {
-    fn default() -> Self { Self::new(1_000) }
+    fn default() -> Self {
+        Self::new(1_000)
+    }
 }
 
 // ── Executor trait ────────────────────────────────────────────────────────────
@@ -109,9 +124,10 @@ impl SocketIoExecutor for TungsteniteSocketIoExecutor {
             let rt = match tokio::runtime::Runtime::new() {
                 Ok(rt) => rt,
                 Err(e) => {
-                    let _ = event_tx.send(SioUiEvent::Error(
-                        format!("Failed to start Socket.IO runtime: {}", e),
-                    ));
+                    let _ = event_tx.send(SioUiEvent::Error(format!(
+                        "Failed to start Socket.IO runtime: {}",
+                        e
+                    )));
                     return;
                 }
             };
@@ -180,13 +196,20 @@ async fn run_connection(
         return;
     }
 
-    let _ = event_tx.send(SioUiEvent::Connected { namespace: params.namespace.clone() });
+    let _ = event_tx.send(SioUiEvent::Connected {
+        namespace: params.namespace.clone(),
+    });
 
     // ── Main event loop ───────────────────────────────────────────────────────
     loop {
         // Outgoing commands
         match cmd_rx.try_recv() {
-            Ok(SioCommand::Emit { namespace: ns, event_name, payload, ack_id }) => {
+            Ok(SioCommand::Emit {
+                namespace: ns,
+                event_name,
+                payload,
+                ack_id,
+            }) => {
                 let sio = encode_sio_event(&ns, &event_name, &payload, ack_id);
                 let eio = format!("4{}", sio);
                 if write.send(Message::Text(eio.into())).await.is_err() {
@@ -208,10 +231,7 @@ async fn run_connection(
         }
 
         // Incoming (50 ms poll, same cadence as WS)
-        let poll = tokio::time::timeout(
-            std::time::Duration::from_millis(50),
-            read.next(),
-        ).await;
+        let poll = tokio::time::timeout(std::time::Duration::from_millis(50), read.next()).await;
 
         match poll {
             Ok(Some(Ok(Message::Text(text)))) => {
@@ -242,7 +262,10 @@ async fn run_connection(
                             let _ = event_tx.send(SioUiEvent::Event(SioEvent {
                                 direction: SioDirection::Received,
                                 namespace: ns,
-                                event_name: match ack_id { Some(id) => format!("ack#{}", id), None => "ack".to_string() },
+                                event_name: match ack_id {
+                                    Some(id) => format!("ack#{}", id),
+                                    None => "ack".to_string(),
+                                },
                                 payload: data.to_string(),
                                 ack_id,
                                 is_ack: true,
@@ -276,8 +299,10 @@ async fn await_sio_connect_ack<W, R>(
     event_tx: &mpsc::Sender<SioUiEvent>,
 ) -> bool
 where
-    W: futures_util::Sink<tokio_tungstenite::tungstenite::Message, Error = tokio_tungstenite::tungstenite::Error>
-        + Unpin,
+    W: futures_util::Sink<
+            tokio_tungstenite::tungstenite::Message,
+            Error = tokio_tungstenite::tungstenite::Error,
+        > + Unpin,
     R: futures_util::Stream<
             Item = Result<
                 tokio_tungstenite::tungstenite::Message,
@@ -305,7 +330,9 @@ where
                         return false;
                     }
                     _ => {
-                        let _ = event_tx.send(SioUiEvent::Error("Unexpected SIO packet during connect".into()));
+                        let _ = event_tx.send(SioUiEvent::Error(
+                            "Unexpected SIO packet during connect".into(),
+                        ));
                         return false;
                     }
                 },
@@ -313,12 +340,15 @@ where
                 Some(('2', probe)) => {
                     pings_handled += 1;
                     if pings_handled > 5 {
-                        let _ = event_tx.send(SioUiEvent::Error("Too many EIO pings during connect".into()));
+                        let _ = event_tx.send(SioUiEvent::Error(
+                            "Too many EIO pings during connect".into(),
+                        ));
                         return false;
                     }
                     let pong = format!("3{}", probe);
                     if write.send(Message::Text(pong.into())).await.is_err() {
-                        let _ = event_tx.send(SioUiEvent::Error("Write error during connect".into()));
+                        let _ =
+                            event_tx.send(SioUiEvent::Error("Write error during connect".into()));
                         return false;
                     }
                     // Re-send SIO CONNECT in case the server expects it after the ping
@@ -326,7 +356,9 @@ where
                     let _ = write.send(Message::Text(connect_pkt.into())).await;
                 }
                 _ => {
-                    let _ = event_tx.send(SioUiEvent::Error("Unexpected EIO packet during connect".into()));
+                    let _ = event_tx.send(SioUiEvent::Error(
+                        "Unexpected EIO packet during connect".into(),
+                    ));
                     return false;
                 }
             },

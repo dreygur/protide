@@ -1,6 +1,6 @@
-use gpui::{ClipboardItem, Context, KeyDownEvent, MouseDownEvent, MouseMoveEvent, MouseUpEvent};
 use super::*;
-use crate::components::{find_word_start, find_word_end};
+use crate::components::{find_word_end, find_word_start};
+use gpui::{ClipboardItem, Context, KeyDownEvent, MouseDownEvent, MouseMoveEvent, MouseUpEvent};
 
 impl<E: WebSocketExecutor> RequestPanel<E> {
     pub(super) fn cursor(&self) -> usize {
@@ -62,7 +62,8 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
     }
 
     pub(super) fn save_url_state(&mut self) {
-        self.url_undo_stack.push_back((self.url.clone(), self.url_selection.clone()));
+        self.url_undo_stack
+            .push_back((self.url.clone(), self.url_selection.clone()));
         if self.url_undo_stack.len() > 100 {
             self.url_undo_stack.pop_front();
         }
@@ -71,7 +72,8 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
 
     pub(super) fn url_undo(&mut self, cx: &mut Context<Self>) {
         if let Some((text, selection)) = self.url_undo_stack.pop_back() {
-            self.url_redo_stack.push_back((self.url.clone(), self.url_selection.clone()));
+            self.url_redo_stack
+                .push_back((self.url.clone(), self.url_selection.clone()));
             self.url = text;
             self.url_selection = selection;
             self.sync_params_from_url(cx);
@@ -81,7 +83,8 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
 
     pub(super) fn url_redo(&mut self, cx: &mut Context<Self>) {
         if let Some((text, selection)) = self.url_redo_stack.pop_back() {
-            self.url_undo_stack.push_back((self.url.clone(), self.url_selection.clone()));
+            self.url_undo_stack
+                .push_back((self.url.clone(), self.url_selection.clone()));
             self.url = text;
             self.url_selection = selection;
             self.sync_params_from_url(cx);
@@ -103,7 +106,11 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
 
     pub(super) fn index_for_x(&self, x: f32) -> usize {
         let char_width: f32 = 7.8;
-        if x <= 0.0 { 0 } else { ((x / char_width) as usize).min(self.url.chars().count()) }
+        if x <= 0.0 {
+            0
+        } else {
+            ((x / char_width) as usize).min(self.url.chars().count())
+        }
     }
 
     pub(super) fn handle_url_mouse_down(&mut self, event: &MouseDownEvent, cx: &mut Context<Self>) {
@@ -111,7 +118,11 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
         let click_x = (f32::from(event.position.x) - self.url_input_left).max(0.0);
         let index = self.index_for_x(click_x);
 
-        let effective_click = if event.click_count >= 4 { 1 } else { event.click_count };
+        let effective_click = if event.click_count >= 4 {
+            1
+        } else {
+            event.click_count
+        };
         match effective_click {
             2 => {
                 let start = find_word_start(&self.url, index);
@@ -119,10 +130,15 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                 self.url_selection = start..end;
                 cx.notify();
             }
-            3 => { self.select_all(cx); }
+            3 => {
+                self.select_all(cx);
+            }
             _ => {
-                if event.modifiers.shift { self.select_to(index, cx); }
-                else { self.move_to(index, cx); }
+                if event.modifiers.shift {
+                    self.select_to(index, cx);
+                } else {
+                    self.move_to(index, cx);
+                }
             }
         }
     }
@@ -147,17 +163,27 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
 
         if ctrl {
             match key {
-                "enter" => { self.send_request(cx); return; }
-                "a" => { self.select_all(cx); return; }
+                "enter" => {
+                    self.send_request(cx);
+                    return;
+                }
+                "a" => {
+                    self.select_all(cx);
+                    return;
+                }
                 "c" => {
                     if self.has_selection() {
-                        cx.write_to_clipboard(ClipboardItem::new_string(self.selected_text().to_string()));
+                        cx.write_to_clipboard(ClipboardItem::new_string(
+                            self.selected_text().to_string(),
+                        ));
                     }
                     return;
                 }
                 "x" => {
                     if self.has_selection() {
-                        cx.write_to_clipboard(ClipboardItem::new_string(self.selected_text().to_string()));
+                        cx.write_to_clipboard(ClipboardItem::new_string(
+                            self.selected_text().to_string(),
+                        ));
                         self.delete_selection(cx);
                     }
                     return;
@@ -171,10 +197,17 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                     return;
                 }
                 "z" => {
-                    if shift { self.url_redo(cx); } else { self.url_undo(cx); }
+                    if shift {
+                        self.url_redo(cx);
+                    } else {
+                        self.url_undo(cx);
+                    }
                     return;
                 }
-                "y" => { self.url_redo(cx); return; }
+                "y" => {
+                    self.url_redo(cx);
+                    return;
+                }
                 _ => {}
             }
         }
@@ -182,7 +215,10 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
         match key {
             "left" => {
                 if shift {
-                    if self.url_selection.end > 0 { self.url_selection.end -= 1; cx.notify(); }
+                    if self.url_selection.end > 0 {
+                        self.url_selection.end -= 1;
+                        cx.notify();
+                    }
                 } else if self.has_selection() {
                     let start = self.url_selection.start.min(self.url_selection.end);
                     self.move_to(start, cx);
@@ -193,7 +229,10 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             "right" => {
                 let char_count = self.url.chars().count();
                 if shift {
-                    if self.url_selection.end < char_count { self.url_selection.end += 1; cx.notify(); }
+                    if self.url_selection.end < char_count {
+                        self.url_selection.end += 1;
+                        cx.notify();
+                    }
                 } else if self.has_selection() {
                     let end = self.url_selection.start.max(self.url_selection.end);
                     self.move_to(end, cx);
@@ -202,13 +241,21 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                 }
             }
             "home" => {
-                if shift { self.url_selection.end = 0; cx.notify(); }
-                else { self.move_to(0, cx); }
+                if shift {
+                    self.url_selection.end = 0;
+                    cx.notify();
+                } else {
+                    self.move_to(0, cx);
+                }
             }
             "end" => {
                 let char_count = self.url.chars().count();
-                if shift { self.url_selection.end = char_count; cx.notify(); }
-                else { self.move_to(char_count, cx); }
+                if shift {
+                    self.url_selection.end = char_count;
+                    cx.notify();
+                } else {
+                    self.move_to(char_count, cx);
+                }
             }
             "backspace" => {
                 if self.has_selection() {
@@ -238,7 +285,9 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                     cx.notify();
                 }
             }
-            "enter" => { self.send_request(cx); }
+            "enter" => {
+                self.send_request(cx);
+            }
             _ => {
                 if let Some(ch) = &event.keystroke.key_char {
                     self.insert_text(ch, cx);

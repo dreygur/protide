@@ -1,5 +1,5 @@
-use log::debug;
 use super::*;
+use log::debug;
 
 impl ExplorerPanel {
     pub(super) fn scan_directory(&self, path: &PathBuf) -> Vec<CollectionItem> {

@@ -1,5 +1,7 @@
-use gpui::{Context, IntoElement, MouseButton, MouseDownEvent, ParentElement, SharedString, Styled, div, px};
 use super::*;
+use gpui::{
+    Context, IntoElement, MouseButton, MouseDownEvent, ParentElement, SharedString, Styled, div, px,
+};
 
 impl ExplorerPanel {
     pub(super) fn render_env_editor(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
@@ -66,7 +68,11 @@ impl ExplorerPanel {
                                     &new_env_name,
                                     "Environment name",
                                     is_editing_new_env,
-                                    if is_editing_new_env { edit_selection.clone() } else { 0..0 },
+                                    if is_editing_new_env {
+                                        edit_selection.clone()
+                                    } else {
+                                        0..0
+                                    },
                                     cx,
                                 ))
                                 .child(
@@ -178,7 +184,8 @@ impl ExplorerPanel {
                         )
                         .children(vars.into_iter().enumerate().map(|(idx, (i, key, value))| {
                             let is_editing_key = self.active_edit == Some(EnvEditTarget::VarKey(i));
-                            let is_editing_value = self.active_edit == Some(EnvEditTarget::VarValue(i));
+                            let is_editing_value =
+                                self.active_edit == Some(EnvEditTarget::VarValue(i));
                             let key_for_remove = key.clone();
                             let drop_here = dragging_env && self.env_row_drag_over == Some(i);
 
@@ -192,21 +199,35 @@ impl ExplorerPanel {
                                 .when(idx % 2 == 0, |el| {
                                     el.bg(theme.colors.bg_tertiary.opacity(0.2))
                                 })
-                                .when(drop_here, |el| el.border_t_2().border_color(theme.colors.accent))
+                                .when(drop_here, |el| {
+                                    el.border_t_2().border_color(theme.colors.accent)
+                                })
                                 .child(
                                     div()
                                         .id(SharedString::from(format!("env-grip-{}", i)))
                                         .w(px(12.0))
                                         .h(px(28.0))
-                                        .flex().items_center().justify_center()
+                                        .flex()
+                                        .items_center()
+                                        .justify_center()
                                         .cursor_grab()
-                                        .on_mouse_down(MouseButton::Left, cx.listener(move |this, event: &MouseDownEvent, _, cx| {
-                                            this.env_row_drag = Some((i, f32::from(event.position.y)));
-                                            this.env_row_drag_over = Some(i);
-                                            cx.notify();
-                                        }))
-                                        .child(icon(ICON_MENU, ICON_SM, theme.colors.text_muted.opacity(0.3)))
-                                        .hover(|s| s.opacity(0.8))
+                                        .on_mouse_down(
+                                            MouseButton::Left,
+                                            cx.listener(
+                                                move |this, event: &MouseDownEvent, _, cx| {
+                                                    this.env_row_drag =
+                                                        Some((i, f32::from(event.position.y)));
+                                                    this.env_row_drag_over = Some(i);
+                                                    cx.notify();
+                                                },
+                                            ),
+                                        )
+                                        .child(icon(
+                                            ICON_MENU,
+                                            ICON_SM,
+                                            theme.colors.text_muted.opacity(0.3),
+                                        ))
+                                        .hover(|s| s.opacity(0.8)),
                                 )
                                 .child(self.render_text_input_w(
                                     format!("var-key-{}", i),
@@ -214,7 +235,11 @@ impl ExplorerPanel {
                                     &key,
                                     "Key",
                                     is_editing_key,
-                                    if is_editing_key { edit_selection.clone() } else { 0..0 },
+                                    if is_editing_key {
+                                        edit_selection.clone()
+                                    } else {
+                                        0..0
+                                    },
                                     self.env_col_key_w,
                                     cx,
                                 ))
@@ -225,7 +250,11 @@ impl ExplorerPanel {
                                     &value,
                                     "Value",
                                     is_editing_value,
-                                    if is_editing_value { edit_selection.clone() } else { 0..0 },
+                                    if is_editing_value {
+                                        edit_selection.clone()
+                                    } else {
+                                        0..0
+                                    },
                                     cx,
                                 ))
                                 .child(
@@ -245,7 +274,11 @@ impl ExplorerPanel {
                                         .on_click(cx.listener(move |this, _, _, cx| {
                                             this.remove_variable(&key_for_remove, cx);
                                         }))
-                                        .child(icon(ICON_CLOSE, ICON_SM, theme.colors.text_muted.opacity(0.5))),
+                                        .child(icon(
+                                            ICON_CLOSE,
+                                            ICON_SM,
+                                            theme.colors.text_muted.opacity(0.5),
+                                        )),
                                 )
                         }))
                         .when(has_vars, |el| {
@@ -265,7 +298,11 @@ impl ExplorerPanel {
                                     .on_click(cx.listener(|this, _, _, cx| {
                                         this.add_variable(cx);
                                     }))
-                                    .child(icon(ICON_PLUS, ICON_SM, theme.colors.accent.opacity(0.6)))
+                                    .child(icon(
+                                        ICON_PLUS,
+                                        ICON_SM,
+                                        theme.colors.accent.opacity(0.6),
+                                    ))
                                     .child(
                                         div()
                                             .text_size(px(11.0))
@@ -322,5 +359,4 @@ impl ExplorerPanel {
             )
             .child(self.render_env_usage_hint(cx))
     }
-
 }

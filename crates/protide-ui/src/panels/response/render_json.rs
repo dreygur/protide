@@ -1,5 +1,5 @@
-use super::*;
 use super::render_json_row::render_json_row;
+use super::*;
 
 impl ResponsePanel {
     pub(super) fn render_json_tree(&self, cx: &Context<Self>) -> gpui::AnyElement {
@@ -16,15 +16,25 @@ impl ResponsePanel {
             .overflow_hidden()
             .child(if use_wrap {
                 // ── Wrap mode: plain scrollable div, variable row heights ──────────
-                let colors   = theme::current(cx).colors.clone();
-                let weak     = cx.weak_entity();
+                let colors = theme::current(cx).colors.clone();
+                let weak = cx.weak_entity();
                 let expanded = &self.expanded_strings;
-                let sel      = self.json_sel.as_ref();
-                let rows: Vec<gpui::AnyElement> = self.json_rows.iter().enumerate()
-                    .map(|(i, row)| render_json_row(
-                        i + 1, row, &colors, weak.clone(),
-                        true, expanded.contains(&i), sel,
-                    ))
+                let sel = self.json_sel.as_ref();
+                let rows: Vec<gpui::AnyElement> = self
+                    .json_rows
+                    .iter()
+                    .enumerate()
+                    .map(|(i, row)| {
+                        render_json_row(
+                            i + 1,
+                            row,
+                            &colors,
+                            weak.clone(),
+                            true,
+                            expanded.contains(&i),
+                            sel,
+                        )
+                    })
                     .collect();
                 let weak_bounds = cx.weak_entity();
                 div()
@@ -38,46 +48,69 @@ impl ResponsePanel {
                     .child(
                         canvas(
                             move |bounds, _, cx| {
-                                weak_bounds.update(cx, |this, _| { this.json_tree_bounds = Some(bounds); }).ok();
+                                weak_bounds
+                                    .update(cx, |this, _| {
+                                        this.json_tree_bounds = Some(bounds);
+                                    })
+                                    .ok();
                             },
                             |_, _, _, _| {},
                         )
-                        .absolute().top_0().left_0().size_full()
+                        .absolute()
+                        .top_0()
+                        .left_0()
+                        .size_full(),
                     )
-                    .on_mouse_down(MouseButton::Left, cx.listener(|this, event: &MouseDownEvent, _, cx| {
-                        let Some(row_i) = this.json_row_at_y(event.position.y) else { return };
-                        let col = this.json_val_char_at_x(event.position.x, row_i);
-                        this.json_sel = Some(SelectionRange::new(row_i, col, row_i, col));
-                        this.json_selecting = true;
-                        cx.notify();
-                    }))
+                    .on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(|this, event: &MouseDownEvent, _, cx| {
+                            let Some(row_i) = this.json_row_at_y(event.position.y) else {
+                                return;
+                            };
+                            let col = this.json_val_char_at_x(event.position.x, row_i);
+                            this.json_sel = Some(SelectionRange::new(row_i, col, row_i, col));
+                            this.json_selecting = true;
+                            cx.notify();
+                        }),
+                    )
                     .on_mouse_move(cx.listener(|this, event: &gpui::MouseMoveEvent, _, cx| {
-                        if !this.json_selecting { return; }
+                        if !this.json_selecting {
+                            return;
+                        }
                         let Some(sel) = this.json_sel else { return };
-                        let new_row = this.json_row_at_y(event.position.y)
+                        let new_row = this
+                            .json_row_at_y(event.position.y)
                             .unwrap_or_else(|| this.json_rows.len().saturating_sub(1));
                         let new_col = this.json_val_char_at_x(event.position.x, new_row);
-                        if selection_changed(
-                            Some((sel.end_offset, sel.end_row)),
-                            new_col, new_row,
-                        ) {
-                            this.json_sel = Some(SelectionRange::new(sel.start_row, sel.start_offset, new_row, new_col));
+                        if selection_changed(Some((sel.end_offset, sel.end_row)), new_col, new_row)
+                        {
+                            this.json_sel = Some(SelectionRange::new(
+                                sel.start_row,
+                                sel.start_offset,
+                                new_row,
+                                new_col,
+                            ));
                             cx.notify();
                         }
                     }))
-                    .on_mouse_up(MouseButton::Left, cx.listener(|this, _, _, cx| {
-                        if this.json_selecting {
-                            this.json_selecting = false;
-                            this.copy_json_selection(cx);
-                            // Clear zero-length selections (plain clicks, not drags)
-                            if let Some(sel) = this.json_sel {
-                                if sel.start_row == sel.end_row && sel.start_offset == sel.end_offset {
-                                    this.json_sel = None;
-                                    cx.notify();
+                    .on_mouse_up(
+                        MouseButton::Left,
+                        cx.listener(|this, _, _, cx| {
+                            if this.json_selecting {
+                                this.json_selecting = false;
+                                this.copy_json_selection(cx);
+                                // Clear zero-length selections (plain clicks, not drags)
+                                if let Some(sel) = this.json_sel {
+                                    if sel.start_row == sel.end_row
+                                        && sel.start_offset == sel.end_offset
+                                    {
+                                        this.json_sel = None;
+                                        cx.notify();
+                                    }
                                 }
                             }
-                        }
-                    }))
+                        }),
+                    )
                     .children(rows)
                     .into_any_element()
             } else {
@@ -88,12 +121,21 @@ impl ResponsePanel {
                     row_count,
                     cx.processor(|this, range: std::ops::Range<usize>, _window, cx| {
                         let colors = theme::current(cx).colors.clone();
-                        let weak   = cx.weak_entity();
-                        range.map(|i| {
-                            let row = this.json_rows[i].clone();
-                            render_json_row(i + 1, &row, &colors, weak.clone(), false, false, None)
-                        })
-                        .collect::<Vec<_>>()
+                        let weak = cx.weak_entity();
+                        range
+                            .map(|i| {
+                                let row = this.json_rows[i].clone();
+                                render_json_row(
+                                    i + 1,
+                                    &row,
+                                    &colors,
+                                    weak.clone(),
+                                    false,
+                                    false,
+                                    None,
+                                )
+                            })
+                            .collect::<Vec<_>>()
                     }),
                 )
                 .font_family(SharedString::from("JetBrains Mono"))

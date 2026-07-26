@@ -1,6 +1,6 @@
-use gpui::{Context, IntoElement, MouseButton, ParentElement, Styled, div, px, prelude::*};
 use super::MainWindow;
 use crate::theme;
+use gpui::{Context, IntoElement, MouseButton, ParentElement, Styled, div, prelude::*, px};
 
 impl MainWindow {
     pub(super) fn render_sidebar(&self, cx: &Context<Self>) -> impl IntoElement {
@@ -31,7 +31,8 @@ impl MainWindow {
                     .on_mouse_down(
                         MouseButton::Left,
                         cx.listener(|this, event: &gpui::MouseDownEvent, _, _| {
-                            this.drag_sidebar = Some((f32::from(event.position.x), this.sidebar_width));
+                            this.drag_sidebar =
+                                Some((f32::from(event.position.x), this.sidebar_width));
                         }),
                     ),
             )

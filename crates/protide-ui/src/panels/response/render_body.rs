@@ -1,7 +1,11 @@
 use super::*;
 
 impl ResponsePanel {
-    pub(super) fn render_body_tab(&self, response: &ResponseData, cx: &Context<Self>) -> gpui::AnyElement {
+    pub(super) fn render_body_tab(
+        &self,
+        response: &ResponseData,
+        cx: &Context<Self>,
+    ) -> gpui::AnyElement {
         let theme = theme::current(cx);
 
         if response.body.trim().is_empty() {
@@ -16,18 +20,17 @@ impl ResponsePanel {
                         .flex_col()
                         .items_center()
                         .gap(px(8.0))
-                        .child(
-                            div()
-                                .flex()
-                                .items_center()
-                                .child(icon(ICON_CIRCLE_CHECK, ICON_MD, theme.colors.text_muted.opacity(0.5)))
-                        )
+                        .child(div().flex().items_center().child(icon(
+                            ICON_CIRCLE_CHECK,
+                            ICON_MD,
+                            theme.colors.text_muted.opacity(0.5),
+                        )))
                         .child(
                             div()
                                 .text_size(px(12.0))
                                 .text_color(theme.colors.text_muted)
-                                .child("Response body is empty")
-                        )
+                                .child("Response body is empty"),
+                        ),
                 )
                 .into_any_element();
         }
@@ -52,9 +55,17 @@ impl ResponsePanel {
                     .py(px(4.0))
                     .border_1()
                     .border_color(if is_active { accent } else { border })
-                    .bg(if is_active { accent.opacity(0.10) } else { bg_secondary })
+                    .bg(if is_active {
+                        accent.opacity(0.10)
+                    } else {
+                        bg_secondary
+                    })
                     .text_size(px(11.0))
-                    .font_weight(if is_active { gpui::FontWeight::SEMIBOLD } else { gpui::FontWeight::NORMAL })
+                    .font_weight(if is_active {
+                        gpui::FontWeight::SEMIBOLD
+                    } else {
+                        gpui::FontWeight::NORMAL
+                    })
                     .text_color(if is_active { accent } else { text_secondary })
                     .cursor_pointer()
                     .hover(move |s| s.bg(bg_tertiary))
@@ -62,9 +73,11 @@ impl ResponsePanel {
             }
         };
 
-        let fb1 = fb.clone(); let fl1 = fl.clone();
+        let fb1 = fb.clone();
+        let fl1 = fl.clone();
         let rb1 = rb.clone();
-        let fb2 = fb.clone(); let fl2 = fl.clone();
+        let fb2 = fb.clone();
+        let fl2 = fl.clone();
 
         div()
             .w_full()
@@ -92,7 +105,7 @@ impl ResponsePanel {
                                         this.body_view_mode = BodyViewMode::Pretty;
                                         this.body_pending = Some((fb1.clone(), fl1.clone()));
                                         cx.notify();
-                                    }))
+                                    })),
                             )
                             .child(
                                 tab_btn("Raw", view_mode == BodyViewMode::Raw)
@@ -101,7 +114,7 @@ impl ResponsePanel {
                                         this.body_view_mode = BodyViewMode::Raw;
                                         this.body_pending = Some((rb1.clone(), String::new()));
                                         cx.notify();
-                                    }))
+                                    })),
                             )
                             .child(
                                 tab_btn("Preview", view_mode == BodyViewMode::Preview)
@@ -110,8 +123,8 @@ impl ResponsePanel {
                                         this.body_view_mode = BodyViewMode::Preview;
                                         this.body_pending = Some((fb2.clone(), fl2.clone()));
                                         cx.notify();
-                                    }))
-                            )
+                                    })),
+                            ),
                     )
                     .child(
                         div()
@@ -123,15 +136,20 @@ impl ResponsePanel {
                             .py(px(4.0))
                             .text_size(px(11.0))
                             .border_1()
-                            .when(is_copied, |el| el
-                                .text_color(theme.colors.status_success)
-                                .border_color(theme.colors.status_success))
-                            .when(!is_copied, |el| el
-                                .text_color(theme.colors.text_secondary)
-                                .border_color(theme.colors.border))
+                            .when(is_copied, |el| {
+                                el.text_color(theme.colors.status_success)
+                                    .border_color(theme.colors.status_success)
+                            })
+                            .when(!is_copied, |el| {
+                                el.text_color(theme.colors.text_secondary)
+                                    .border_color(theme.colors.border)
+                            })
                             .cursor_pointer()
                             .bg(theme.colors.bg_primary)
-                            .hover(|s| s.bg(theme.colors.bg_tertiary).border_color(theme.colors.text_muted))
+                            .hover(|s| {
+                                s.bg(theme.colors.bg_tertiary)
+                                    .border_color(theme.colors.text_muted)
+                            })
                             .on_click(cx.listener(|this, _, _, cx| {
                                 let content = this.body_viewer.read(cx).value().to_string();
                                 cx.write_to_clipboard(gpui::ClipboardItem::new_string(content));
@@ -141,11 +159,23 @@ impl ResponsePanel {
                                 div()
                                     .flex()
                                     .items_center()
-                                    .when(is_copied, |el| el.child(icon(ICON_CHECK, ICON_SM, theme.colors.status_success)))
-                                    .when(!is_copied, |el| el.child(icon(ICON_COPY, ICON_MD, theme.colors.text_secondary)))
+                                    .when(is_copied, |el| {
+                                        el.child(icon(
+                                            ICON_CHECK,
+                                            ICON_SM,
+                                            theme.colors.status_success,
+                                        ))
+                                    })
+                                    .when(!is_copied, |el| {
+                                        el.child(icon(
+                                            ICON_COPY,
+                                            ICON_MD,
+                                            theme.colors.text_secondary,
+                                        ))
+                                    }),
                             )
-                            .child(if is_copied { "Copied!" } else { "Copy" })
-                    )
+                            .child(if is_copied { "Copied!" } else { "Copy" }),
+                    ),
             )
             // ── Row 2: metrics ──────────────────────────────────────────
             .child(
@@ -159,16 +189,16 @@ impl ResponsePanel {
                         div()
                             .text_size(px(11.0))
                             .text_color(theme.colors.text_muted)
-                            .child(format!("{} lines", line_count))
+                            .child(format!("{} lines", line_count)),
                     )
                     .when(view_mode == BodyViewMode::Pretty, |el| {
                         el.child(
                             div()
                                 .text_size(px(10.0))
                                 .text_color(theme.colors.text_muted.opacity(0.6))
-                                .child("⌘F / Ctrl+F to search")
+                                .child("⌘F / Ctrl+F to search"),
                         )
-                    })
+                    }),
             )
             // ── Row 3: body content (flex_1, scrolls internally) ───────
             .child(match view_mode {
@@ -180,21 +210,27 @@ impl ResponsePanel {
                             .flex_1()
                             .w_full()
                             .overflow_hidden()
-                            .child(Input::new(&self.body_viewer).disabled(true).appearance(false).h_full())
+                            .child(
+                                Input::new(&self.body_viewer)
+                                    .disabled(true)
+                                    .appearance(false)
+                                    .h_full(),
+                            )
                             .into_any_element()
                     }
                 }
-                BodyViewMode::Raw => {
-                    div()
-                        .flex_1()
-                        .w_full()
-                        .overflow_hidden()
-                        .child(Input::new(&self.body_viewer).disabled(true).appearance(false).h_full())
-                        .into_any_element()
-                }
-                BodyViewMode::Preview => {
-                    self.render_html_preview(&response.body, cx)
-                }
+                BodyViewMode::Raw => div()
+                    .flex_1()
+                    .w_full()
+                    .overflow_hidden()
+                    .child(
+                        Input::new(&self.body_viewer)
+                            .disabled(true)
+                            .appearance(false)
+                            .h_full(),
+                    )
+                    .into_any_element(),
+                BodyViewMode::Preview => self.render_html_preview(&response.body, cx),
             })
             .into_any_element()
     }

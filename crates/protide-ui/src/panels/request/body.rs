@@ -1,5 +1,5 @@
-use gpui::{Context, Window};
 use super::*;
+use gpui::{Context, Window};
 
 impl<E: WebSocketExecutor> RequestPanel<E> {
     /// Queue a deferred editor content update to be applied on the next render.
@@ -12,7 +12,9 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
 
     /// Apply all deferred editor content updates (called from render, which has Window).
     pub(super) fn apply_pending_editors(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if self.editor_pending.is_empty() { return; }
+        if self.editor_pending.is_empty() {
+            return;
+        }
         for (target, content) in std::mem::take(&mut self.editor_pending) {
             let editor = match target {
                 PendingEditor::Body => &self.body_editor,
@@ -41,7 +43,11 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
     }
 
     /// Set variable extractions from @set annotations
-    pub fn set_variable_extractions(&mut self, extractions: Vec<VariableExtraction>, cx: &mut Context<Self>) {
+    pub fn set_variable_extractions(
+        &mut self,
+        extractions: Vec<VariableExtraction>,
+        cx: &mut Context<Self>,
+    ) {
         self.variable_extractions = extractions;
         cx.notify();
     }
@@ -51,26 +57,34 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
         // Update editor highlighter language
         let lang = match body_type {
             BodyType::Json => "json",
-            BodyType::Xml  => "xml",
-            _              => "",
+            BodyType::Xml => "xml",
+            _ => "",
         };
-        self.body_editor.update(cx, |s, cx| s.set_highlighter(lang, cx));
+        self.body_editor
+            .update(cx, |s, cx| s.set_highlighter(lang, cx));
         // Update Content-Type header
         let content_type = match body_type {
-            BodyType::Json   => "application/json",
-            BodyType::Xml    => "application/xml",
-            BodyType::Form   => "application/x-www-form-urlencoded",
-            BodyType::Raw    => "text/plain",
+            BodyType::Json => "application/json",
+            BodyType::Xml => "application/xml",
+            BodyType::Form => "application/x-www-form-urlencoded",
+            BodyType::Raw => "text/plain",
             BodyType::Binary => return cx.notify(), // no content-type update for binary
         };
-        if let Some(header) = self.headers.iter_mut().find(|h| h.key.eq_ignore_ascii_case("content-type")) {
+        if let Some(header) = self
+            .headers
+            .iter_mut()
+            .find(|h| h.key.eq_ignore_ascii_case("content-type"))
+        {
             header.value = content_type.to_string();
         } else {
-            self.headers.insert(0, KeyValuePair {
-                key: "Content-Type".to_string(),
-                value: content_type.to_string(),
-                enabled: true,
-            });
+            self.headers.insert(
+                0,
+                KeyValuePair {
+                    key: "Content-Type".to_string(),
+                    value: content_type.to_string(),
+                    enabled: true,
+                },
+            );
         }
         cx.notify();
     }

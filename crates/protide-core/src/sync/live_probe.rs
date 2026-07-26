@@ -1,7 +1,7 @@
 use std::net::{SocketAddr, UdpSocket};
+use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver};
-use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 
@@ -26,30 +26,29 @@ pub struct LiveProbe {
 
 impl LiveProbe {
     /// Start a live probe on the specified port (or default 42069).
-    pub fn start(
-        node_id: NodeId,
-        node_name: String,
-        port: Option<u16>,
-    ) -> Result<Self, String> {
+    pub fn start(node_id: NodeId, node_name: String, port: Option<u16>) -> Result<Self, String> {
         let port = port.unwrap_or(DEFAULT_PORT);
         let bind_addr: SocketAddr = format!("0.0.0.0:{}", port)
             .parse()
             .map_err(|e| format!("Invalid bind address: {}", e))?;
 
-        let socket = UdpSocket::bind(bind_addr)
-            .map_err(|e| format!("Failed to bind UDP socket: {}", e))?;
+        let socket =
+            UdpSocket::bind(bind_addr).map_err(|e| format!("Failed to bind UDP socket: {}", e))?;
 
-        socket.set_broadcast(true)
+        socket
+            .set_broadcast(true)
             .map_err(|e| format!("Failed to set broadcast: {}", e))?;
 
-        socket.set_read_timeout(Some(Duration::from_secs(1)))
+        socket
+            .set_read_timeout(Some(Duration::from_secs(1)))
             .map_err(|e| format!("Failed to set read timeout: {}", e))?;
 
         let (activity_tx, activity_rx) = mpsc::channel::<(SocketAddr, LiveActivity)>();
         let running = Arc::new(AtomicBool::new(true));
         let running_clone = running.clone();
 
-        let reader_socket = socket.try_clone()
+        let reader_socket = socket
+            .try_clone()
             .map_err(|e| format!("Failed to clone socket: {}", e))?;
 
         // Spawn a reader thread that listens for broadcasts
@@ -63,7 +62,9 @@ impl LiveProbe {
                             let msg = &buf[..len];
                             if msg.starts_with(MAGIC_PREAMBLE) {
                                 let payload = &msg[MAGIC_PREAMBLE.len()..];
-                                if let Ok(activity) = serde_json::from_slice::<LiveActivity>(payload) {
+                                if let Ok(activity) =
+                                    serde_json::from_slice::<LiveActivity>(payload)
+                                {
                                     let _ = activity_tx.send((src, activity));
                                 }
                             }
@@ -85,7 +86,14 @@ impl LiveProbe {
     }
 
     /// Broadcast a live activity to all peers on the local subnet.
-    pub fn broadcast(&self, request_name: &str, status: u16, time_ms: u64, method: &str, url: &str) -> Result<(), String> {
+    pub fn broadcast(
+        &self,
+        request_name: &str,
+        status: u16,
+        time_ms: u64,
+        method: &str,
+        url: &str,
+    ) -> Result<(), String> {
         let activity = LiveActivity {
             node_id: self.node_id.0.clone(),
             node_name: self.node_name.clone(),
@@ -102,12 +110,16 @@ impl LiveProbe {
         let mut packet = MAGIC_PREAMBLE.to_vec();
         packet.extend_from_slice(&payload);
 
-        let local_addr = self.socket.local_addr().unwrap_or(([0, 0, 0, 0], DEFAULT_PORT).into());
+        let local_addr = self
+            .socket
+            .local_addr()
+            .unwrap_or(([0, 0, 0, 0], DEFAULT_PORT).into());
         let broadcast_addr: SocketAddr = format!("{}:{}", BROADCAST_ADDR, local_addr.port())
             .parse()
             .map_err(|_| "Invalid broadcast address".to_string())?;
 
-        self.socket.send_to(&packet, broadcast_addr)
+        self.socket
+            .send_to(&packet, broadcast_addr)
             .map_err(|e| format!("Failed to send broadcast: {}", e))?;
 
         Ok(())

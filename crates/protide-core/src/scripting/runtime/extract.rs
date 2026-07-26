@@ -81,9 +81,9 @@ pub(super) fn extract_results(
     let url: Option<String> = mods.get("url").ok();
     script_ctx.modified_request.url = url.clone();
 
-    let headers_arr: rquickjs::Array = mods.get("headersToSet").unwrap_or_else(|_| {
-        rquickjs::Array::new(ctx.clone()).unwrap()
-    });
+    let headers_arr: rquickjs::Array = mods
+        .get("headersToSet")
+        .unwrap_or_else(|_| rquickjs::Array::new(ctx.clone()).unwrap());
     let mut headers_to_set = Vec::new();
     for i in 0..headers_arr.len() {
         if let Ok(pair) = headers_arr.get::<rquickjs::Array>(i) {
@@ -94,9 +94,9 @@ pub(super) fn extract_results(
     }
     script_ctx.modified_request.headers_to_set = headers_to_set;
 
-    let remove_arr: rquickjs::Array = mods.get("headersToRemove").unwrap_or_else(|_| {
-        rquickjs::Array::new(ctx.clone()).unwrap()
-    });
+    let remove_arr: rquickjs::Array = mods
+        .get("headersToRemove")
+        .unwrap_or_else(|_| rquickjs::Array::new(ctx.clone()).unwrap());
     let mut headers_to_remove = Vec::new();
     for i in 0..remove_arr.len() {
         if let Ok(s) = remove_arr.get::<String>(i) {

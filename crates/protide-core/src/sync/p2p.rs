@@ -11,7 +11,7 @@ use libp2p::identify;
 use libp2p::kad::{self, store::MemoryStore};
 use libp2p::mdns;
 use libp2p::swarm::{NetworkBehaviour, SwarmEvent};
-use libp2p::{identity, Multiaddr, PeerId, SwarmBuilder};
+use libp2p::{Multiaddr, PeerId, SwarmBuilder, identity};
 use serde::{Deserialize, Serialize};
 
 use log::{debug, error, info, warn};
@@ -134,16 +134,24 @@ enum ProtideBehaviourEvent {
 }
 
 impl From<gossipsub::Event> for ProtideBehaviourEvent {
-    fn from(e: gossipsub::Event) -> Self { ProtideBehaviourEvent::Gossipsub(e) }
+    fn from(e: gossipsub::Event) -> Self {
+        ProtideBehaviourEvent::Gossipsub(e)
+    }
 }
 impl From<kad::Event> for ProtideBehaviourEvent {
-    fn from(e: kad::Event) -> Self { ProtideBehaviourEvent::Kademlia(e) }
+    fn from(e: kad::Event) -> Self {
+        ProtideBehaviourEvent::Kademlia(e)
+    }
 }
 impl From<mdns::Event> for ProtideBehaviourEvent {
-    fn from(e: mdns::Event) -> Self { ProtideBehaviourEvent::Mdns(e) }
+    fn from(e: mdns::Event) -> Self {
+        ProtideBehaviourEvent::Mdns(e)
+    }
 }
 impl From<identify::Event> for ProtideBehaviourEvent {
-    fn from(e: identify::Event) -> Self { ProtideBehaviourEvent::Identify(e) }
+    fn from(e: identify::Event) -> Self {
+        ProtideBehaviourEvent::Identify(e)
+    }
 }
 
 // ── P2PSync ───────────────────────────────────────────────────────────────────
@@ -165,7 +173,11 @@ pub struct P2PSync {
 impl P2PSync {
     /// Create and start a new P2P sync node.
     /// `pairing_code` scopes gossip topics so only peers with the same code connect.
-    pub fn start(node_id: NodeId, listen_port: Option<u16>, pairing_code: &str) -> Result<Self, String> {
+    pub fn start(
+        node_id: NodeId,
+        listen_port: Option<u16>,
+        pairing_code: &str,
+    ) -> Result<Self, String> {
         let (event_tx, event_rx) = mpsc::channel::<P2PEvent>();
         let (broadcast_tx, broadcast_rx) = mpsc::channel::<CrdtEntry>();
         let (cmd_tx, cmd_rx) = mpsc::channel::<SwarmCmd>();
@@ -183,7 +195,10 @@ impl P2PSync {
         let crdt_topic_thread = crdt_topic.clone();
 
         info!("[P2P] Node starting. Local PeerID: {}", peer_id);
-        info!("[P2P] Requested listen addr: /ip4/0.0.0.0/tcp/{}", listen_port.unwrap_or(0));
+        info!(
+            "[P2P] Requested listen addr: /ip4/0.0.0.0/tcp/{}",
+            listen_port.unwrap_or(0)
+        );
 
         let pairing_code_owned = pairing_code.to_string();
         let event_tx_thread = event_tx.clone();
@@ -467,12 +482,16 @@ impl P2PSync {
 
     /// Subscribe to the PAKE topic for `code` so we can receive handshake messages.
     pub fn subscribe_pake_topic(&self, code: &str) {
-        let _ = self.cmd_tx.send(SwarmCmd::Subscribe(pake_topic_string(code)));
+        let _ = self
+            .cmd_tx
+            .send(SwarmCmd::Subscribe(pake_topic_string(code)));
     }
 
     /// Publish raw bytes on the PAKE topic for `code`.
     pub fn publish_on_pake_topic(&self, code: &str, data: Vec<u8>) {
-        let _ = self.cmd_tx.send(SwarmCmd::Publish(pake_topic_string(code), data));
+        let _ = self
+            .cmd_tx
+            .send(SwarmCmd::Publish(pake_topic_string(code), data));
     }
 
     /// Publish raw bytes on an arbitrary topic (used for PAKE response).
@@ -489,7 +508,11 @@ impl P2PSync {
         events
     }
 
-    pub fn peer_id(&self) -> &PeerId { &self.peer_id }
+    pub fn peer_id(&self) -> &PeerId {
+        &self.peer_id
+    }
 
-    pub fn known_peers(&self) -> &HashSet<PeerId> { &self.known_peers }
+    pub fn known_peers(&self) -> &HashSet<PeerId> {
+        &self.known_peers
+    }
 }

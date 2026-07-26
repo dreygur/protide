@@ -1,7 +1,7 @@
 //! Export a collection directory as Markdown documentation
 
-use std::path::Path;
 use http_parser;
+use std::path::Path;
 
 /// Walk a collection root directory and generate Markdown documentation.
 /// Each .http file becomes a documented request; folders become sections.
@@ -56,13 +56,11 @@ fn collect_dir(
             md.push_str(&format!("\n{} {}\n\n", hashes, name));
             collect_dir(root, &path, md, (heading_level + 1).min(6))?;
         } else if path.extension().and_then(|e| e.to_str()) == Some("http")
-            && let Ok(content) = std::fs::read_to_string(&path) {
-                let request_name = path
-                    .file_stem()
-                    .and_then(|s| s.to_str())
-                    .unwrap_or(&name);
-                append_http_request(md, request_name, &content, heading_level);
-            }
+            && let Ok(content) = std::fs::read_to_string(&path)
+        {
+            let request_name = path.file_stem().and_then(|s| s.to_str()).unwrap_or(&name);
+            append_http_request(md, request_name, &content, heading_level);
+        }
     }
 
     Ok(())
@@ -77,13 +75,18 @@ fn append_http_request(md: &mut String, name: &str, content: &str, heading_level
     let hashes = "#".repeat(heading_level);
 
     for (i, req) in requests.iter().enumerate() {
-        let display_name = req.meta.name.as_deref().map(|s| s.to_string()).unwrap_or_else(|| {
-            if requests.len() > 1 {
-                format!("{} ({})", name, i + 1)
-            } else {
-                name.to_string()
-            }
-        });
+        let display_name = req
+            .meta
+            .name
+            .as_deref()
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| {
+                if requests.len() > 1 {
+                    format!("{} ({})", name, i + 1)
+                } else {
+                    name.to_string()
+                }
+            });
 
         md.push_str(&format!("\n{} {}\n\n", hashes, display_name));
 
@@ -197,18 +200,34 @@ expect(response.json().token).toBeTruthy();
         append_http_request(&mut md, "login", content, 2);
 
         // Body section must only contain the JSON payload
-        let body_start = md.find("**Request Body**").expect("should have a body section");
-        let tests_start = md.find("**Test Scripts**").expect("should have a test scripts section");
-        assert!(body_start < tests_start, "body section must come before test scripts section");
+        let body_start = md
+            .find("**Request Body**")
+            .expect("should have a body section");
+        let tests_start = md
+            .find("**Test Scripts**")
+            .expect("should have a test scripts section");
+        assert!(
+            body_start < tests_start,
+            "body section must come before test scripts section"
+        );
 
         // The text between **Request Body** and **Test Scripts** must not contain expect()
         let body_section = &md[body_start..tests_start];
-        assert!(body_section.contains("{\"user\": \"alice\"}"), "body section should contain JSON payload");
-        assert!(!body_section.contains("expect("), "expect() must not appear in body section");
+        assert!(
+            body_section.contains("{\"user\": \"alice\"}"),
+            "body section should contain JSON payload"
+        );
+        assert!(
+            !body_section.contains("expect("),
+            "expect() must not appear in body section"
+        );
 
         // Test scripts section must contain the assertions
         let tests_section = &md[tests_start..];
-        assert!(tests_section.contains("expect(response.status).toBe(200)"), "test scripts must be documented");
+        assert!(
+            tests_section.contains("expect(response.status).toBe(200)"),
+            "test scripts must be documented"
+        );
     }
 
     #[test]
@@ -216,11 +235,15 @@ expect(response.json().token).toBeTruthy();
         // A header value containing a literal "|" must be escaped so a
         // Markdown table renderer treats it as literal pipe text instead of
         // an extra column delimiter.
-        let content = "POST https://api.example.com/x\nX-Note: a | b\nContent-Type: application/json\n\n{}\n";
+        let content =
+            "POST https://api.example.com/x\nX-Note: a | b\nContent-Type: application/json\n\n{}\n";
         let mut md = String::new();
         append_http_request(&mut md, "req", content, 2);
 
-        let header_row = md.lines().find(|l| l.contains("X-Note")).expect("header row present");
+        let header_row = md
+            .lines()
+            .find(|l| l.contains("X-Note"))
+            .expect("header row present");
         // A well-formed, properly-escaped 2-column row has exactly 3 raw
         // (unescaped) '|' chars: leading, the column separator, and
         // trailing. The pipe embedded in the value must be escaped as `\|`
@@ -286,8 +309,17 @@ expect(response.status).toBe(200);
         let mut md = String::new();
         append_http_request(&mut md, "demo", content, 2);
 
-        assert!(!md.contains("const ts ="), "pre-script must not appear in body section");
-        assert!(!md.contains("request.setHeader"), "pre-script must not appear in body section");
-        assert!(md.contains("{\"purpose\": \"demo\"}"), "body must contain JSON payload");
+        assert!(
+            !md.contains("const ts ="),
+            "pre-script must not appear in body section"
+        );
+        assert!(
+            !md.contains("request.setHeader"),
+            "pre-script must not appear in body section"
+        );
+        assert!(
+            md.contains("{\"purpose\": \"demo\"}"),
+            "body must contain JSON payload"
+        );
     }
 }

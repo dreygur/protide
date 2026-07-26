@@ -35,7 +35,10 @@ fn run_mcp(input: &str) -> Vec<String> {
     let stdout = child.stdout.take().unwrap();
     let reader_handle = std::thread::spawn(move || {
         let reader = BufReader::new(stdout);
-        reader.lines().map_while(Result::ok).collect::<Vec<String>>()
+        reader
+            .lines()
+            .map_while(Result::ok)
+            .collect::<Vec<String>>()
     });
 
     writer.join().unwrap();

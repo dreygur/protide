@@ -37,10 +37,17 @@ pub fn format_document(content: &str) -> Vec<TextEdit> {
             if normalized != name {
                 let indent = line.len() - trimmed.len();
                 let rest = &trimmed[colon..];
-                edits.push(line_edit(i as u32, line.len() as u32, format!("{}{normalized}{rest}", &line[..indent])));
+                edits.push(line_edit(
+                    i as u32,
+                    line.len() as u32,
+                    format!("{}{normalized}{rest}", &line[..indent]),
+                ));
             }
             if name.to_lowercase() == "content-type" {
-                if trimmed[colon + 1..].to_lowercase().contains("application/json") {
+                if trimmed[colon + 1..]
+                    .to_lowercase()
+                    .contains("application/json")
+                {
                     is_json = true;
                 }
             }
@@ -56,8 +63,14 @@ fn flush_body(lines: &[&str], body_lines: &[usize], is_json: bool, edits: &mut V
     if !is_json || body_lines.is_empty() {
         return;
     }
-    let raw: String = body_lines.iter().map(|&i| lines[i]).collect::<Vec<_>>().join("\n");
-    let Ok(val) = serde_json::from_str::<serde_json::Value>(&raw) else { return };
+    let raw: String = body_lines
+        .iter()
+        .map(|&i| lines[i])
+        .collect::<Vec<_>>()
+        .join("\n");
+    let Ok(val) = serde_json::from_str::<serde_json::Value>(&raw) else {
+        return;
+    };
     let pretty = serde_json::to_string_pretty(&val).unwrap_or(raw);
     let pretty_lines: Vec<&str> = pretty.lines().collect();
 
@@ -74,8 +87,14 @@ fn flush_body(lines: &[&str], body_lines: &[usize], is_json: bool, edits: &mut V
         let extra: String = pretty_lines[body_lines.len()..].join("\n");
         edits.push(TextEdit {
             range: Range {
-                start: Position { line: last + 1, character: 0 },
-                end: Position { line: last + 1, character: 0 },
+                start: Position {
+                    line: last + 1,
+                    character: 0,
+                },
+                end: Position {
+                    line: last + 1,
+                    character: 0,
+                },
             },
             new_text: format!("{extra}\n"),
         });
@@ -99,7 +118,10 @@ fn line_edit(line: u32, end_char: u32, new_text: String) -> TextEdit {
     TextEdit {
         range: Range {
             start: Position { line, character: 0 },
-            end: Position { line, character: end_char },
+            end: Position {
+                line,
+                character: end_char,
+            },
         },
         new_text,
     }

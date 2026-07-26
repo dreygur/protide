@@ -3,14 +3,14 @@
 use std::ops::Range;
 
 use gpui::{
-    canvas, div, prelude::*, px, Context, IntoElement, MouseDownEvent, MouseMoveEvent,
-    MouseUpEvent, ParentElement, SharedString, Styled,
+    Context, IntoElement, MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement,
+    SharedString, Styled, canvas, div, prelude::*, px,
 };
 
-use crate::theme;
-use protide_core::execution::ws::WebSocketExecutor;
 use super::super::request_types::{AuthType, EditTarget};
 use super::RequestPanel;
+use crate::theme;
+use protide_core::execution::ws::WebSocketExecutor;
 
 impl<E: WebSocketExecutor> RequestPanel<E> {
     pub(super) fn render_auth_tab(&mut self, cx: &mut Context<Self>) -> gpui::AnyElement {
@@ -73,9 +73,9 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                                     } else {
                                         theme.colors.text_secondary
                                     })
-                                    .child(*label)
+                                    .child(*label),
                             )
-                    }))
+                    })),
             )
             .child(self.render_auth_content(auth_type, active_edit, edit_selection, cx))
             .into_any_element()
@@ -91,7 +91,16 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
         selection: Range<usize>,
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
-        self.render_auth_input_impl(id, target, text, placeholder, is_editing, selection, false, cx)
+        self.render_auth_input_impl(
+            id,
+            target,
+            text,
+            placeholder,
+            is_editing,
+            selection,
+            false,
+            cx,
+        )
     }
 
     pub(super) fn render_auth_input_masked(
@@ -104,7 +113,16 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
         selection: Range<usize>,
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
-        self.render_auth_input_impl(id, target, text, placeholder, is_editing, selection, true, cx)
+        self.render_auth_input_impl(
+            id,
+            target,
+            text,
+            placeholder,
+            is_editing,
+            selection,
+            true,
+            cx,
+        )
     }
 
     pub(super) fn render_auth_input_impl(
@@ -140,7 +158,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             .when(is_editing, |el| el.border_color(theme.colors.accent))
             .when(!is_editing, |el| {
                 el.border_color(gpui::transparent_black())
-                  .hover(|s| s.border_color(theme.colors.border))
+                    .hover(|s| s.border_color(theme.colors.border))
             })
             .bg(theme.colors.bg_tertiary)
             .text_size(px(12.0))
@@ -166,13 +184,24 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                 canvas(
                     move |bounds, _, cx| {
                         let _ = entity.update(cx, |this, _| {
-                            this.edit_input_origins.insert(target, f32::from(bounds.origin.x) + 12.0);
+                            this.edit_input_origins
+                                .insert(target, f32::from(bounds.origin.x) + 12.0);
                         });
                     },
                     |_, _, _, _| {},
                 )
-                .absolute().top_0().left_0().size_full()
+                .absolute()
+                .top_0()
+                .left_0()
+                .size_full()
             })
-            .child(self.render_kv_text(&display_text, placeholder, is_editing, selection, Some(50), cx))
+            .child(self.render_kv_text(
+                &display_text,
+                placeholder,
+                is_editing,
+                selection,
+                Some(50),
+                cx,
+            ))
     }
 }

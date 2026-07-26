@@ -38,7 +38,11 @@ fn extract_title(html: &str) -> Option<String> {
     let start = lower.find("<title>")? + 7;
     let end = lower[start..].find("</title>")? + start;
     let raw = html[start..end].trim();
-    if raw.is_empty() { None } else { Some(decode_entities(raw)) }
+    if raw.is_empty() {
+        None
+    } else {
+        Some(decode_entities(raw))
+    }
 }
 
 /// Convert HTML into a flat list of styled lines for the preview canvas.
@@ -47,7 +51,10 @@ pub(super) fn extract_blocks(html: &str) -> Vec<HtmlLine> {
     let mut lines: Vec<HtmlLine> = Vec::new();
 
     if let Some(title) = extract_title(html) {
-        lines.push(HtmlLine { text: title, style: HtmlStyle::Title });
+        lines.push(HtmlLine {
+            text: title,
+            style: HtmlStyle::Title,
+        });
     }
 
     let bytes = html.as_bytes();
@@ -60,7 +67,10 @@ pub(super) fn extract_blocks(html: &str) -> Vec<HtmlLine> {
     let flush = |lines: &mut Vec<HtmlLine>, current: &mut String, style: &HtmlStyle| {
         let t = current.split_whitespace().collect::<Vec<_>>().join(" ");
         if !t.is_empty() {
-            lines.push(HtmlLine { text: decode_entities(&t), style: style.clone() });
+            lines.push(HtmlLine {
+                text: decode_entities(&t),
+                style: style.clone(),
+            });
         }
         current.clear();
     };
@@ -69,7 +79,9 @@ pub(super) fn extract_blocks(html: &str) -> Vec<HtmlLine> {
         if bytes[pos] != b'<' {
             if skip_depth == 0 {
                 let start = pos;
-                while pos < len && bytes[pos] != b'<' { pos += 1; }
+                while pos < len && bytes[pos] != b'<' {
+                    pos += 1;
+                }
                 let chunk = &html[start..pos];
                 let normalized = chunk.replace(['\n', '\r', '\t'], " ");
                 current.push_str(&normalized);
@@ -84,17 +96,42 @@ pub(super) fn extract_blocks(html: &str) -> Vec<HtmlLine> {
         pos += 1;
         while pos < len {
             match bytes[pos] {
-                b'"' => { pos += 1; while pos < len && bytes[pos] != b'"' { pos += 1; } if pos < len { pos += 1; } }
-                b'\'' => { pos += 1; while pos < len && bytes[pos] != b'\'' { pos += 1; } if pos < len { pos += 1; } }
-                b'>' => { pos += 1; break; }
-                _ => { pos += 1; }
+                b'"' => {
+                    pos += 1;
+                    while pos < len && bytes[pos] != b'"' {
+                        pos += 1;
+                    }
+                    if pos < len {
+                        pos += 1;
+                    }
+                }
+                b'\'' => {
+                    pos += 1;
+                    while pos < len && bytes[pos] != b'\'' {
+                        pos += 1;
+                    }
+                    if pos < len {
+                        pos += 1;
+                    }
+                }
+                b'>' => {
+                    pos += 1;
+                    break;
+                }
+                _ => {
+                    pos += 1;
+                }
             }
         }
         let tag_raw = &html[tag_start..pos];
         let inner = tag_raw.trim_start_matches('<').trim_end_matches('>').trim();
         let is_closing = inner.starts_with('/');
         let name_part = if is_closing { &inner[1..] } else { inner };
-        let name = name_part.split_whitespace().next().unwrap_or("").to_lowercase();
+        let name = name_part
+            .split_whitespace()
+            .next()
+            .unwrap_or("")
+            .to_lowercase();
 
         match name.as_str() {
             "script" | "style" | "head" => {
@@ -133,7 +170,8 @@ pub(super) fn extract_blocks(html: &str) -> Vec<HtmlLine> {
                 flush(&mut lines, &mut current, &current_style);
             }
             "div" | "section" | "article" | "main" | "header" | "footer" | "nav" | "aside"
-            if !is_closing => {
+                if !is_closing =>
+            {
                 flush(&mut lines, &mut current, &current_style);
             }
             "div" | "section" | "article" | "main" | "header" | "footer" if is_closing => {
@@ -142,7 +180,10 @@ pub(super) fn extract_blocks(html: &str) -> Vec<HtmlLine> {
             "br" | "hr" => {
                 flush(&mut lines, &mut current, &current_style);
                 if name == "hr" {
-                    lines.push(HtmlLine { text: "─".repeat(40), style: HtmlStyle::Dim });
+                    lines.push(HtmlLine {
+                        text: "─".repeat(40),
+                        style: HtmlStyle::Dim,
+                    });
                 }
             }
             "pre" | "code" if !is_closing => {
@@ -163,7 +204,9 @@ pub(super) fn extract_blocks(html: &str) -> Vec<HtmlLine> {
     let mut prev_empty = false;
     for line in lines {
         let empty = line.text.trim().is_empty();
-        if empty && prev_empty { continue; }
+        if empty && prev_empty {
+            continue;
+        }
         prev_empty = empty;
         if !line.text.trim().is_empty() {
             result.push(line);
@@ -195,8 +238,9 @@ impl ResponsePanel {
                 .into_any_element();
         }
 
-        let rendered: Vec<gpui::AnyElement> = blocks.into_iter().map(|line| {
-            match line.style {
+        let rendered: Vec<gpui::AnyElement> = blocks
+            .into_iter()
+            .map(|line| match line.style {
                 HtmlStyle::Title => div()
                     .w_full()
                     .pb(px(8.0))
@@ -265,8 +309,8 @@ impl ResponsePanel {
                     .text_color(theme.colors.text_secondary)
                     .child(line.text)
                     .into_any_element(),
-            }
-        }).collect();
+            })
+            .collect();
 
         div()
             .flex_1()

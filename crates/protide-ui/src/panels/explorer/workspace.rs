@@ -1,5 +1,5 @@
-use gpui::Context;
 use super::*;
+use gpui::Context;
 
 impl ExplorerPanel {
     /// Load collection from a specific path (full workspace switch with session save)
@@ -13,31 +13,36 @@ impl ExplorerPanel {
 
         // Persist state for the workspace we're leaving
         if let Some(ref current) = self.workspace_path.clone() {
-            let draft = self.request_panel.as_ref()
+            let draft = self
+                .request_panel
+                .as_ref()
                 .map(|rp| rp.read(cx).capture_draft(cx));
-            let entry = session.workspaces
+            let entry = session
+                .workspaces
                 .entry(current.to_string_lossy().to_string())
                 .or_default();
-            entry.active_file      = self.selected_item.clone();
-            entry.draft            = draft;
+            entry.active_file = self.selected_item.clone();
+            entry.draft = draft;
             entry.expanded_folders = self.collect_expanded();
-            entry.active_env       = self.env_state.active().map(|e| e.name.clone());
+            entry.active_env = self.env_state.active().map(|e| e.name.clone());
         }
 
         session.current_workspace = Some(path.clone());
         let saved_entry = session.workspaces.get(&new_key).cloned();
         crate::session::save_bg(session);
 
-        self.workspace_path    = Some(path.clone());
-        self.collection_items  = self.scan_directory(&path);
-        self.selected_item     = Option::None;
+        self.workspace_path = Some(path.clone());
+        self.collection_items = self.scan_directory(&path);
+        self.selected_item = Option::None;
 
         match protide_core::workspace::Workspace::open(&path) {
-            Ok(ws)  => {
+            Ok(ws) => {
                 info!("Workspace loaded: {}", path.display());
                 self.workspace_watcher = Some(Arc::new(ws));
             }
-            Err(e)  => { error!("File watcher failed: {}", e); }
+            Err(e) => {
+                error!("File watcher failed: {}", e);
+            }
         }
 
         if let Some(entry) = saved_entry {
@@ -62,14 +67,16 @@ impl ExplorerPanel {
         if !path.is_dir() {
             return;
         }
-        self.workspace_path   = Some(path.clone());
+        self.workspace_path = Some(path.clone());
         self.collection_items = self.scan_directory(&path);
         match protide_core::workspace::Workspace::open(&path) {
-            Ok(ws)  => {
+            Ok(ws) => {
                 info!("Workspace loaded: {}", path.display());
                 self.workspace_watcher = Some(Arc::new(ws));
             }
-            Err(e)  => { error!("Workspace watcher: {}", e); }
+            Err(e) => {
+                error!("Workspace watcher: {}", e);
+            }
         }
         if let Some(entry) = saved_entry {
             self.restore_workspace_session(&entry, cx);
@@ -84,16 +91,20 @@ impl ExplorerPanel {
         let workspace = self.workspace_path.clone();
         if let (Some(ws), Some(root)) = (watcher, workspace) {
             let events = ws.poll_events();
-            let relevant: Vec<_> = events.into_iter()
+            let relevant: Vec<_> = events
+                .into_iter()
                 .filter(|e| protide_core::workspace::is_relevant(e, &root))
                 .collect();
-            if relevant.is_empty() { return; }
+            if relevant.is_empty() {
+                return;
+            }
             for event in &relevant {
                 match event {
                     WorkspaceEvent::FileCreated(p) | WorkspaceEvent::FileModified(p) => {
                         if !self.sync_skip_paths.remove(p) {
                             if let Some(request_panel) = &self.request_panel {
-                                let is_open_file = request_panel.read(cx).current_file.as_deref() == Some(p.as_path());
+                                let is_open_file = request_panel.read(cx).current_file.as_deref()
+                                    == Some(p.as_path());
                                 if is_open_file {
                                     request_panel.update(cx, |panel, cx| {
                                         panel.external_change_pending = true;
@@ -105,7 +116,9 @@ impl ExplorerPanel {
                                 let p = p.clone();
                                 let root = root.clone();
                                 if let Some(win) = self.main_window.upgrade() {
-                                    win.update(cx, |win, _| win.broadcast_workspace_file(&root, &p, content, false));
+                                    win.update(cx, |win, _| {
+                                        win.broadcast_workspace_file(&root, &p, content, false)
+                                    });
                                 }
                             }
                         }
@@ -115,7 +128,9 @@ impl ExplorerPanel {
                             let p = p.clone();
                             let root = root.clone();
                             if let Some(win) = self.main_window.upgrade() {
-                                win.update(cx, |win, _| win.broadcast_workspace_file(&root, &p, String::new(), true));
+                                win.update(cx, |win, _| {
+                                    win.broadcast_workspace_file(&root, &p, String::new(), true)
+                                });
                             }
                         }
                     }
@@ -162,24 +177,25 @@ impl ExplorerPanel {
     pub fn load_request_file(&mut self, path: PathBuf, cx: &mut Context<Self>) {
         if let Ok(content) = fs::read_to_string(&path)
             && let Ok(requests) = http_parser::parse(&content)
-                && let Some(req) = requests.first()
-                    && let Some(request_panel) = &self.request_panel {
-                        let variable_extractions = req.meta.variable_extractions.clone();
-                        let proto_path = req.meta.proto_path.clone().map(std::path::PathBuf::from);
-                        let req = req.clone();
+            && let Some(req) = requests.first()
+            && let Some(request_panel) = &self.request_panel
+        {
+            let variable_extractions = req.meta.variable_extractions.clone();
+            let proto_path = req.meta.proto_path.clone().map(std::path::PathBuf::from);
+            let req = req.clone();
 
-                        request_panel.update(cx, |panel, cx| {
-                            panel.load_from_parsed_request(&req, cx);
-                            if !variable_extractions.is_empty() {
-                                panel.set_variable_extractions(variable_extractions, cx);
-                            }
-                            panel.current_file = Some(path.clone());
-                            panel.external_change_pending = false;
-                            if let Some(pp) = proto_path {
-                                panel.load_grpc_proto_from_path(pp, cx);
-                            }
-                        });
-                    }
+            request_panel.update(cx, |panel, cx| {
+                panel.load_from_parsed_request(&req, cx);
+                if !variable_extractions.is_empty() {
+                    panel.set_variable_extractions(variable_extractions, cx);
+                }
+                panel.current_file = Some(path.clone());
+                panel.external_change_pending = false;
+                if let Some(pp) = proto_path {
+                    panel.load_grpc_proto_from_path(pp, cx);
+                }
+            });
+        }
     }
 
     /// Close the open project / workspace folder
@@ -216,7 +232,8 @@ impl ExplorerPanel {
                 } else {
                     path
                 };
-                let content = "### New Request\n# @name new-request\n\nGET https://api.example.com\n";
+                let content =
+                    "### New Request\n# @name new-request\n\nGET https://api.example.com\n";
                 match fs::write(&path, content) {
                     Ok(_) => {
                         info!("Created: {}", path.display());
@@ -236,13 +253,17 @@ impl ExplorerPanel {
     pub(super) fn clone_file(&mut self, source_path: PathBuf, cx: &mut Context<Self>) {
         let content = match fs::read_to_string(&source_path) {
             Ok(c) => c,
-            Err(e) => { error!("Failed to read {}: {}", source_path.display(), e); return; }
+            Err(e) => {
+                error!("Failed to read {}: {}", source_path.display(), e);
+                return;
+            }
         };
         let parent = match source_path.parent() {
             Some(p) => p.to_path_buf(),
             None => return,
         };
-        let stem = source_path.file_stem()
+        let stem = source_path
+            .file_stem()
             .map(|s| s.to_string_lossy().to_string())
             .unwrap_or_else(|| "request".to_string());
         let mut new_path = parent.join(format!("{}-copy.http", stem));
@@ -268,7 +289,11 @@ impl ExplorerPanel {
         }
     }
 
-    pub(super) fn create_new_file_in_folder(&mut self, folder_path: PathBuf, cx: &mut Context<Self>) {
+    pub(super) fn create_new_file_in_folder(
+        &mut self,
+        folder_path: PathBuf,
+        cx: &mut Context<Self>,
+    ) {
         file_dialog::prompt(
             cx,
             Pick::Save,
@@ -286,7 +311,8 @@ impl ExplorerPanel {
                 } else {
                     path
                 };
-                let content = "### New Request\n# @name new-request\n\nGET https://api.example.com\n";
+                let content =
+                    "### New Request\n# @name new-request\n\nGET https://api.example.com\n";
                 match fs::write(&path, content) {
                     Ok(_) => {
                         info!("Created: {}", path.display());
@@ -302,5 +328,4 @@ impl ExplorerPanel {
             },
         );
     }
-
 }

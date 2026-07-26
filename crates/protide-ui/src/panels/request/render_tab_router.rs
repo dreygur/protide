@@ -1,15 +1,11 @@
 //! Tab bar and tab content routing for RequestPanel
 
+use gpui::{Context, IntoElement, ParentElement, SharedString, Styled, div, prelude::*, px};
 
-use gpui::{
-    div, prelude::*, px, Context, IntoElement,
-    ParentElement, SharedString, Styled,
-};
-
-use crate::theme;
-use protide_core::execution::ws::WebSocketExecutor;
 use super::super::request_types::RequestMode;
 use super::RequestPanel;
+use crate::theme;
+use protide_core::execution::ws::WebSocketExecutor;
 
 impl<E: WebSocketExecutor> RequestPanel<E> {
     pub(super) fn render_tabs(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
@@ -20,11 +16,21 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             RequestMode::SocketIo => &["Events", "Headers"],
             RequestMode::Grpc => &["Message", "Metadata", "Proto"],
             RequestMode::Trpc => &["Playground", "Headers", "Auth"],
-            RequestMode::Http => &["Params", "Headers", "Body", "Auth", "Scripts", "Data", "Settings"],
+            RequestMode::Http => &[
+                "Params", "Headers", "Body", "Auth", "Scripts", "Data", "Settings",
+            ],
         };
         let active_tab = self.active_tab;
-        let param_count = self.params.iter().filter(|p| p.enabled && !p.key.is_empty()).count();
-        let header_count = self.headers.iter().filter(|h| h.enabled && !h.key.is_empty()).count();
+        let param_count = self
+            .params
+            .iter()
+            .filter(|p| p.enabled && !p.key.is_empty())
+            .count();
+        let header_count = self
+            .headers
+            .iter()
+            .filter(|h| h.enabled && !h.key.is_empty())
+            .count();
         let mode = self.request_mode;
 
         div()
@@ -38,11 +44,41 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             .children(tab_labels.iter().enumerate().map(|(i, label)| {
                 let is_active = i == active_tab;
                 let count = match mode {
-                    RequestMode::GraphQL => if i == 2 { header_count } else { 0 },
-                    RequestMode::WebSocket => if i == 1 { header_count } else { 0 },
-                    RequestMode::SocketIo => if i == 1 { header_count } else { 0 },
-                    RequestMode::Grpc => if i == 1 { header_count } else { 0 },
-                    RequestMode::Trpc => if i == 1 { header_count } else { 0 },
+                    RequestMode::GraphQL => {
+                        if i == 2 {
+                            header_count
+                        } else {
+                            0
+                        }
+                    }
+                    RequestMode::WebSocket => {
+                        if i == 1 {
+                            header_count
+                        } else {
+                            0
+                        }
+                    }
+                    RequestMode::SocketIo => {
+                        if i == 1 {
+                            header_count
+                        } else {
+                            0
+                        }
+                    }
+                    RequestMode::Grpc => {
+                        if i == 1 {
+                            header_count
+                        } else {
+                            0
+                        }
+                    }
+                    RequestMode::Trpc => {
+                        if i == 1 {
+                            header_count
+                        } else {
+                            0
+                        }
+                    }
                     RequestMode::Http => match i {
                         0 => param_count,
                         1 => header_count,
@@ -80,7 +116,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                             } else {
                                 theme.colors.text_secondary
                             })
-                            .child(*label)
+                            .child(*label),
                     )
                     .when(count > 0, |el| {
                         el.child(
@@ -91,7 +127,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                                 .text_size(px(10.0))
                                 .font_weight(gpui::FontWeight::MEDIUM)
                                 .text_color(theme.colors.accent)
-                                .child(format!("{}", count))
+                                .child(format!("{}", count)),
                         )
                     })
             }))
@@ -99,58 +135,46 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
 
     pub(super) fn render_tab_content(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
         match self.request_mode {
-            RequestMode::GraphQL => {
-                match self.active_tab {
-                    0 => self.render_graphql_query_tab(cx),
-                    1 => self.render_graphql_variables_tab(cx),
-                    2 => self.render_headers_tab(cx),
-                    3 => self.render_auth_tab(cx),
-                    4 => self.render_graphql_schema_tab(cx),
-                    _ => div().into_any_element(),
-                }
-            }
-            RequestMode::WebSocket => {
-                match self.active_tab {
-                    0 => self.render_websocket_messages_tab(cx),
-                    1 => self.render_headers_tab(cx),
-                    _ => div().into_any_element(),
-                }
-            }
-            RequestMode::SocketIo => {
-                match self.active_tab {
-                    0 => self.render_socketio_events_tab(cx),
-                    1 => self.render_headers_tab(cx),
-                    _ => div().into_any_element(),
-                }
-            }
-            RequestMode::Http => {
-                match self.active_tab {
-                    0 => self.render_params_tab(cx),
-                    1 => self.render_headers_tab(cx),
-                    2 => self.render_body_tab(cx),
-                    3 => self.render_auth_tab(cx),
-                    4 => self.render_scripts_tab(cx),
-                    5 => self.render_data_tab(cx),
-                    6 => self.render_settings_tab(cx),
-                    _ => div().into_any_element(),
-                }
-            }
-            RequestMode::Grpc => {
-                match self.active_tab {
-                    0 => self.render_grpc_message_tab(cx),
-                    1 => self.render_grpc_metadata_tab(cx),
-                    2 => self.render_grpc_proto_tab(cx),
-                    _ => div().into_any_element(),
-                }
-            }
-            RequestMode::Trpc => {
-                match self.active_tab {
-                    0 => self.render_trpc_playground_tab(cx),
-                    1 => self.render_headers_tab(cx),
-                    2 => self.render_auth_tab(cx),
-                    _ => div().into_any_element(),
-                }
-            }
+            RequestMode::GraphQL => match self.active_tab {
+                0 => self.render_graphql_query_tab(cx),
+                1 => self.render_graphql_variables_tab(cx),
+                2 => self.render_headers_tab(cx),
+                3 => self.render_auth_tab(cx),
+                4 => self.render_graphql_schema_tab(cx),
+                _ => div().into_any_element(),
+            },
+            RequestMode::WebSocket => match self.active_tab {
+                0 => self.render_websocket_messages_tab(cx),
+                1 => self.render_headers_tab(cx),
+                _ => div().into_any_element(),
+            },
+            RequestMode::SocketIo => match self.active_tab {
+                0 => self.render_socketio_events_tab(cx),
+                1 => self.render_headers_tab(cx),
+                _ => div().into_any_element(),
+            },
+            RequestMode::Http => match self.active_tab {
+                0 => self.render_params_tab(cx),
+                1 => self.render_headers_tab(cx),
+                2 => self.render_body_tab(cx),
+                3 => self.render_auth_tab(cx),
+                4 => self.render_scripts_tab(cx),
+                5 => self.render_data_tab(cx),
+                6 => self.render_settings_tab(cx),
+                _ => div().into_any_element(),
+            },
+            RequestMode::Grpc => match self.active_tab {
+                0 => self.render_grpc_message_tab(cx),
+                1 => self.render_grpc_metadata_tab(cx),
+                2 => self.render_grpc_proto_tab(cx),
+                _ => div().into_any_element(),
+            },
+            RequestMode::Trpc => match self.active_tab {
+                0 => self.render_trpc_playground_tab(cx),
+                1 => self.render_headers_tab(cx),
+                2 => self.render_auth_tab(cx),
+                _ => div().into_any_element(),
+            },
         }
     }
 }

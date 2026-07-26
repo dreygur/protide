@@ -1,5 +1,8 @@
-use gpui::{AnyElement, Context, IntoElement, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement, SharedString, Styled, Window, canvas, div, px};
 use super::*;
+use gpui::{
+    AnyElement, Context, IntoElement, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent,
+    ParentElement, SharedString, Styled, Window, canvas, div, px,
+};
 
 impl ExplorerPanel {
     pub(super) fn render_text_input_w(
@@ -68,7 +71,10 @@ impl ExplorerPanel {
             .child({
                 let max_chars = (((width - 12.0) / 6.6).max(1.0)) as usize;
                 let scroll = if is_editing {
-                    self.edit_scroll_offsets.get(&target).copied().unwrap_or(0.0)
+                    self.edit_scroll_offsets
+                        .get(&target)
+                        .copied()
+                        .unwrap_or(0.0)
                 } else {
                     0.0
                 };
@@ -151,11 +157,21 @@ impl ExplorerPanel {
             })
             .child({
                 let scroll = if is_editing {
-                    self.edit_scroll_offsets.get(&target).copied().unwrap_or(0.0)
+                    self.edit_scroll_offsets
+                        .get(&target)
+                        .copied()
+                        .unwrap_or(0.0)
                 } else {
                     0.0
                 };
-                self.render_text_content_scrolled(text, placeholder, is_editing, selection, scroll, cx)
+                self.render_text_content_scrolled(
+                    text,
+                    placeholder,
+                    is_editing,
+                    selection,
+                    scroll,
+                    cx,
+                )
             })
     }
 
@@ -267,18 +283,26 @@ impl ExplorerPanel {
             .border_color(theme.colors.accent)
             .overflow_hidden()
             .cursor_text()
-            .on_mouse_down(MouseButton::Left, cx.listener(move |this, event: &MouseDownEvent, window: &mut Window, cx| {
-                cx.stop_propagation();
-                this.edit_focus.focus(window, cx);
-                this.handle_rename_mouse_down(event, cx);
-            }))
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(
+                    move |this, event: &MouseDownEvent, window: &mut Window, cx| {
+                        cx.stop_propagation();
+                        this.edit_focus.focus(window, cx);
+                        this.handle_rename_mouse_down(event, cx);
+                    },
+                ),
+            )
             .on_mouse_move(cx.listener(|this, event: &MouseMoveEvent, _, cx| {
                 this.handle_rename_mouse_move(event, cx);
             }))
-            .on_mouse_up(MouseButton::Left, cx.listener(|this, _, _, cx| {
-                this.rename_is_selecting = false;
-                cx.notify();
-            }))
+            .on_mouse_up(
+                MouseButton::Left,
+                cx.listener(|this, _, _, cx| {
+                    this.rename_is_selecting = false;
+                    cx.notify();
+                }),
+            )
             .child({
                 let entity = cx.entity();
                 canvas(
@@ -289,7 +313,10 @@ impl ExplorerPanel {
                     },
                     |_, _, _, _| {},
                 )
-                .absolute().top_0().left_0().size_full()
+                .absolute()
+                .top_0()
+                .left_0()
+                .size_full()
             })
             .child(render_text_view_with_max_scrolled(
                 &text,

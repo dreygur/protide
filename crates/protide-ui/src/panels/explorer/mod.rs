@@ -3,9 +3,7 @@
 use log::{error, info, warn};
 
 use crate::main_window::MainWindow;
-use gpui::{
-    Context, Entity, FocusHandle, Pixels, Point, Subscription, WeakEntity, prelude::*,
-};
+use gpui::{Context, Entity, FocusHandle, Pixels, Point, Subscription, WeakEntity, prelude::*};
 use std::fs;
 use std::ops::Range;
 use std::path::PathBuf;
@@ -14,37 +12,38 @@ use std::sync::Arc;
 use super::file_dialog::{self, Pick};
 use super::history::{HistoryEntry, RequestHistory};
 use super::request::RequestPanel;
-use crate::last_paths;
-use crate::theme;
 use crate::components::icons::{
-    ICON_ARROW_DOWN, ICON_CHEVRON_DOWN, ICON_CHEVRON_RIGHT, ICON_CHEVRON_UP, ICON_CLOSE,
-    ICON_COPY, ICON_DELETE, ICON_EDIT, ICON_EXPORT, ICON_FILE, ICON_FOLDER,
-    ICON_FOLDER_OPEN, ICON_INFO, ICON_LINK, ICON_MD, ICON_MENU, ICON_PLAY, ICON_PLUS,
-    ICON_REFRESH, ICON_SETTINGS, ICON_SM, ICON_TIMER,
-    icon,
+    ICON_ARROW_DOWN, ICON_CHEVRON_DOWN, ICON_CHEVRON_RIGHT, ICON_CHEVRON_UP, ICON_CLOSE, ICON_COPY,
+    ICON_DELETE, ICON_EDIT, ICON_EXPORT, ICON_FILE, ICON_FOLDER, ICON_FOLDER_OPEN, ICON_INFO,
+    ICON_LINK, ICON_MD, ICON_MENU, ICON_PLAY, ICON_PLUS, ICON_REFRESH, ICON_SETTINGS, ICON_SM,
+    ICON_TIMER, icon,
 };
 use crate::components::tooltip_text;
+use crate::components::{
+    ActionRow, ghost_action_btn, icon_btn, render_text_view_with_max_scrolled,
+};
+use crate::last_paths;
+use crate::theme;
 use http_parser::Protocol;
-use crate::components::{ActionRow, ghost_action_btn, icon_btn, render_text_view_with_max_scrolled};
 use protide_core::models::{Environment, EnvironmentState};
 
+pub mod env;
+pub mod env_input;
+pub mod history;
 pub mod init;
-pub mod workspace;
-pub mod workspace_io;
+pub mod render;
+pub mod render_env;
+pub mod render_env_editor;
+pub mod render_history;
+pub mod render_inputs;
+pub mod render_tree;
+pub mod render_tree_row;
 pub mod tree_nav;
 pub mod tree_ops;
 pub mod tree_scan;
-pub mod env_input;
-pub mod history;
-pub mod env;
-pub mod render;
-pub mod render_tree;
-pub mod render_tree_row;
-pub mod render_history;
-pub mod render_env;
-pub mod render_env_editor;
-pub mod render_inputs;
 pub mod util;
+pub mod workspace;
+pub mod workspace_io;
 
 /// Represents an item in the collection tree (either a folder or a .http file)
 #[derive(Clone, Debug)]

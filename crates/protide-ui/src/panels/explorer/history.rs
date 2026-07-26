@@ -1,5 +1,5 @@
-use gpui::Context;
 use super::*;
+use gpui::Context;
 
 impl ExplorerPanel {
     pub(super) fn toggle_history(&mut self, cx: &mut Context<Self>) {
@@ -21,11 +21,12 @@ impl ExplorerPanel {
             });
 
         if let Some((method, url, headers, body)) = entry_data
-            && let Some(request_panel) = &self.request_panel {
-                request_panel.update(cx, |panel, cx| {
-                    panel.load_from_history(method, url, headers, body, cx);
-                });
-            }
+            && let Some(request_panel) = &self.request_panel
+        {
+            request_panel.update(cx, |panel, cx| {
+                panel.load_from_history(method, url, headers, body, cx);
+            });
+        }
     }
 
     pub(super) fn get_history_entries(&self, cx: &Context<Self>) -> Vec<HistoryEntry> {

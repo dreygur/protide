@@ -75,9 +75,10 @@ fn parse_single_curl(input: &str) -> Result<Request, String> {
             "-H" | "--header" => {
                 i += 1;
                 if i < args.len()
-                    && let Some((key, value)) = parse_header(&args[i]) {
-                        headers.push(KeyValue::new(key, value));
-                    }
+                    && let Some((key, value)) = parse_header(&args[i])
+                {
+                    headers.push(KeyValue::new(key, value));
+                }
             }
             "-d" | "--data" | "--data-raw" | "--data-binary" => {
                 i += 1;
@@ -131,7 +132,10 @@ fn parse_single_curl(input: &str) -> Result<Request, String> {
             }
             "--compressed" => {
                 // Add Accept-Encoding header
-                if !headers.iter().any(|h| h.key.eq_ignore_ascii_case("Accept-Encoding")) {
+                if !headers
+                    .iter()
+                    .any(|h| h.key.eq_ignore_ascii_case("Accept-Encoding"))
+                {
                     headers.push(KeyValue::new("Accept-Encoding", "gzip, deflate, br"));
                 }
             }
@@ -142,18 +146,25 @@ fn parse_single_curl(input: &str) -> Result<Request, String> {
                 method = HttpMethod::Get;
             }
             // Ignored flags
-            "-k" | "--insecure" | "-s" | "--silent" | "-S" | "--show-error" |
-            "-L" | "--location" | "-v" | "--verbose" | "-i" | "--include" |
-            "-o" | "--output" | "-O" | "--remote-name" | "--connect-timeout" |
-            "-m" | "--max-time" | "--retry" => {
+            "-k" | "--insecure" | "-s" | "--silent" | "-S" | "--show-error" | "-L"
+            | "--location" | "-v" | "--verbose" | "-i" | "--include" | "-o" | "--output" | "-O"
+            | "--remote-name" | "--connect-timeout" | "-m" | "--max-time" | "--retry" => {
                 // Some of these take arguments
-                if matches!(arg.as_str(), "-o" | "--output" | "--connect-timeout" | "-m" | "--max-time" | "--retry") {
+                if matches!(
+                    arg.as_str(),
+                    "-o" | "--output" | "--connect-timeout" | "-m" | "--max-time" | "--retry"
+                ) {
                     i += 1; // Skip the argument
                 }
             }
             _ => {
                 // Check if it's a URL (doesn't start with -)
-                if !arg.starts_with('-') && (arg.starts_with("http://") || arg.starts_with("https://") || arg.contains("://") || arg.contains('.')) {
+                if !arg.starts_with('-')
+                    && (arg.starts_with("http://")
+                        || arg.starts_with("https://")
+                        || arg.contains("://")
+                        || arg.contains('.'))
+                {
                     url = arg.clone();
                     // Try to extract name from URL
                     if name.is_none() {
@@ -295,22 +306,38 @@ mod tests {
         let req = &result.requests[0];
         assert_eq!(req.method, HttpMethod::Post);
         assert_eq!(req.body, Some(r#"{"name":"test"}"#.to_string()));
-        assert!(req.headers.iter().any(|h| h.key == "Content-Type" && h.value == "application/json"));
+        assert!(
+            req.headers
+                .iter()
+                .any(|h| h.key == "Content-Type" && h.value == "application/json")
+        );
     }
 
     #[test]
     fn test_headers() {
         let result = parse_curl(r#"curl -H "Authorization: Bearer token123" -H "Accept: application/json" https://api.example.com"#).unwrap();
         let req = &result.requests[0];
-        assert!(req.headers.iter().any(|h| h.key == "Authorization" && h.value == "Bearer token123"));
-        assert!(req.headers.iter().any(|h| h.key == "Accept" && h.value == "application/json"));
+        assert!(
+            req.headers
+                .iter()
+                .any(|h| h.key == "Authorization" && h.value == "Bearer token123")
+        );
+        assert!(
+            req.headers
+                .iter()
+                .any(|h| h.key == "Accept" && h.value == "application/json")
+        );
     }
 
     #[test]
     fn test_basic_auth() {
         let result = parse_curl(r#"curl -u "user:password" https://api.example.com"#).unwrap();
         let req = &result.requests[0];
-        assert!(req.headers.iter().any(|h| h.key == "Authorization" && h.value.starts_with("Basic ")));
+        assert!(
+            req.headers
+                .iter()
+                .any(|h| h.key == "Authorization" && h.value.starts_with("Basic "))
+        );
     }
 
     #[test]
@@ -322,7 +349,10 @@ mod tests {
 
     #[test]
     fn test_quoted_args() {
-        let args = parse_curl_args(r#"-H "Content-Type: application/json" -d '{"key": "value"}' https://example.com"#).unwrap();
+        let args = parse_curl_args(
+            r#"-H "Content-Type: application/json" -d '{"key": "value"}' https://example.com"#,
+        )
+        .unwrap();
         assert!(args.contains(&"Content-Type: application/json".to_string()));
         assert!(args.contains(&r#"{"key": "value"}"#.to_string()));
     }
@@ -336,14 +366,25 @@ mod tests {
         // stays attached to the right command and no headers are lost.
         let cmd = "curl https://api.example.com/a \\\n  -H \"X-Test: 1\"\ncurl https://api.example.com/b \\\n  -H \"X-Test: 2\"";
         let result = parse_curl(cmd).unwrap();
-        assert_eq!(result.requests.len(), 2, "expected 2 requests, got {:?}", result.requests);
+        assert_eq!(
+            result.requests.len(),
+            2,
+            "expected 2 requests, got {:?}",
+            result.requests
+        );
         assert!(
-            result.requests[0].headers.iter().any(|h| h.key == "X-Test" && h.value == "1"),
+            result.requests[0]
+                .headers
+                .iter()
+                .any(|h| h.key == "X-Test" && h.value == "1"),
             "expected X-Test header on first request, got {:?}",
             result.requests[0].headers
         );
         assert!(
-            result.requests[1].headers.iter().any(|h| h.key == "X-Test" && h.value == "2"),
+            result.requests[1]
+                .headers
+                .iter()
+                .any(|h| h.key == "X-Test" && h.value == "2"),
             "expected X-Test header on second request, got {:?}",
             result.requests[1].headers
         );

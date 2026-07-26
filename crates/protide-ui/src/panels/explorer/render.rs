@@ -1,5 +1,8 @@
-use gpui::{Context, IntoElement, KeyDownEvent, MouseButton, MouseDownEvent, MouseMoveEvent, ParentElement, Render, Styled, Window, canvas, deferred, div, px, MouseUpEvent};
 use super::*;
+use gpui::{
+    Context, IntoElement, KeyDownEvent, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent,
+    ParentElement, Render, Styled, Window, canvas, deferred, div, px,
+};
 
 impl Render for ExplorerPanel {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
@@ -14,11 +17,14 @@ impl Render for ExplorerPanel {
             .flex_col()
             .bg(theme.colors.bg_secondary)
             .track_focus(&self.edit_focus)
-            .on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| {
-                if this.renaming_item.is_some() {
-                    this.cancel_rename(cx);
-                }
-            }))
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(|this, _, _, cx| {
+                    if this.renaming_item.is_some() {
+                        this.cancel_rename(cx);
+                    }
+                }),
+            )
             .child({
                 let entity = cx.entity();
                 canvas(
@@ -29,7 +35,10 @@ impl Render for ExplorerPanel {
                     },
                     |_, _, _, _| {},
                 )
-                .absolute().top_0().left_0().size_full()
+                .absolute()
+                .top_0()
+                .left_0()
+                .size_full()
             })
             .on_key_down(cx.listener(|this, event: &KeyDownEvent, _, cx| {
                 this.handle_edit_key(event, cx);
@@ -111,7 +120,11 @@ impl Render for ExplorerPanel {
                 el.child(
                     div()
                         .w_full()
-                        .h(px(if self.collections_expanded { self.collections_h } else { 48.0 }))
+                        .h(px(if self.collections_expanded {
+                            self.collections_h
+                        } else {
+                            48.0
+                        }))
                         .overflow_hidden()
                         .bg(theme.colors.bg_secondary)
                         .child(self.render_collections_section(cx)),
@@ -263,13 +276,16 @@ impl Render for ExplorerPanel {
                             .cursor_grab()
                             .on_mouse_move(cx.listener(|this, event: &MouseMoveEvent, _, cx| {
                                 if let Some((src, start_y)) = this.env_row_drag {
-                                    let len = this.env_state.active()
+                                    let len = this
+                                        .env_state
+                                        .active()
                                         .map(|e| e.variables.len())
                                         .unwrap_or(0);
                                     if len > 1 {
                                         let delta = f32::from(event.position.y) - start_y;
                                         let idx = (src as i32 + (delta / 40.0).round() as i32)
-                                            .clamp(0, len as i32 - 1) as usize;
+                                            .clamp(0, len as i32 - 1)
+                                            as usize;
                                         if this.env_row_drag_over != Some(idx) {
                                             this.env_row_drag_over = Some(idx);
                                             cx.notify();
@@ -277,14 +293,19 @@ impl Render for ExplorerPanel {
                                     }
                                 }
                             }))
-                            .on_mouse_up(MouseButton::Left, cx.listener(|this, _: &MouseUpEvent, _, cx| {
-                                let drag = this.env_row_drag.take();
-                                let over = this.env_row_drag_over.take();
-                                if let (Some((src, _)), Some(dst)) = (drag, over) {
-                                    if src != dst { this.reorder_env_var(src, dst, cx); }
-                                }
-                                cx.notify();
-                            })),
+                            .on_mouse_up(
+                                MouseButton::Left,
+                                cx.listener(|this, _: &MouseUpEvent, _, cx| {
+                                    let drag = this.env_row_drag.take();
+                                    let over = this.env_row_drag_over.take();
+                                    if let (Some((src, _)), Some(dst)) = (drag, over) {
+                                        if src != dst {
+                                            this.reorder_env_var(src, dst, cx);
+                                        }
+                                    }
+                                    cx.notify();
+                                }),
+                            ),
                     )
                     .with_priority(2),
                 )

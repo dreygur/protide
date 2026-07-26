@@ -1,8 +1,8 @@
 use std::collections::{HashMap, VecDeque};
 use std::sync::mpsc;
 
-use crate::scripting::context::{ResponseData as ScriptResponseData, ScriptContext};
 use crate::scripting::ScriptEngine;
+use crate::scripting::context::{ResponseData as ScriptResponseData, ScriptContext};
 
 // ── Public types ─────────────────────────────────────────────────────────────
 
@@ -69,7 +69,10 @@ pub struct WsRingBuffer {
 
 impl WsRingBuffer {
     pub fn new(cap: usize) -> Self {
-        Self { buf: VecDeque::with_capacity(cap), cap }
+        Self {
+            buf: VecDeque::with_capacity(cap),
+            cap,
+        }
     }
 
     pub fn push(&mut self, msg: WsMessage) {
@@ -134,9 +137,10 @@ impl WebSocketExecutor for TungsteniteExecutor {
             let rt = match tokio::runtime::Runtime::new() {
                 Ok(rt) => rt,
                 Err(e) => {
-                    let _ = event_tx.send(WsEvent::Error(
-                        format!("Failed to start WebSocket runtime: {}", e),
-                    ));
+                    let _ = event_tx.send(WsEvent::Error(format!(
+                        "Failed to start WebSocket runtime: {}",
+                        e
+                    )));
                     return;
                 }
             };
@@ -164,9 +168,7 @@ async fn run_connection(
     .await;
     match conn {
         Err(_elapsed) => {
-            let _ = event_tx.send(WsEvent::Error(
-                "Connection timed out after 15s".to_string(),
-            ));
+            let _ = event_tx.send(WsEvent::Error("Connection timed out after 15s".to_string()));
         }
         Ok(Err(e)) => {
             let msg = friendly_ws_error(&e);
@@ -213,11 +215,8 @@ async fn run_connection(
                 }
 
                 // ── Incoming (50 ms poll) ─────────────────────────────────
-                let poll = tokio::time::timeout(
-                    std::time::Duration::from_millis(50),
-                    read.next(),
-                )
-                .await;
+                let poll =
+                    tokio::time::timeout(std::time::Duration::from_millis(50), read.next()).await;
 
                 match poll {
                     Ok(Some(Ok(tokio_tungstenite::tungstenite::Message::Text(text)))) => {
@@ -246,7 +245,7 @@ async fn run_connection(
                         let _ = write.send(pong).await;
                     }
                     Ok(Some(Ok(tokio_tungstenite::tungstenite::Message::Close(_)))) | Ok(None) => {
-                        break
+                        break;
                     }
                     Ok(Some(Err(_))) => break,
                     Ok(Some(Ok(_))) => {} // binary, pong - ignore

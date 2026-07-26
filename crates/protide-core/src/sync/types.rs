@@ -102,7 +102,11 @@ pub enum SyncEvent {
     /// Our own libp2p listen multiaddress - logged once on startup
     LocalAddr(String),
     /// A workspace file arrived from a peer - write to disk and refresh
-    FileReceived { relative_path: String, content: String, deleted: bool },
+    FileReceived {
+        relative_path: String,
+        content: String,
+        deleted: bool,
+    },
 }
 
 /// Live activity from a peer (response console output)
@@ -147,7 +151,14 @@ pub struct SyncConfig {
 impl Default for SyncConfig {
     fn default() -> Self {
         Self {
-            node_name: format!("protide-{}", Uuid::new_v4().to_string().split('-').next().unwrap_or("node")),
+            node_name: format!(
+                "protide-{}",
+                Uuid::new_v4()
+                    .to_string()
+                    .split('-')
+                    .next()
+                    .unwrap_or("node")
+            ),
             sync_folder: None,
             p2p_enabled: false,
             live_probe_enabled: false,

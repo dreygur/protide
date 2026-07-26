@@ -10,7 +10,7 @@ use std::collections::HashMap;
 use std::io::{BufRead, Write};
 
 use serde::Deserialize;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use protide_core::execution::{ExecutionBody, ExecutionMode, ExecutionRequest};
 
@@ -28,7 +28,12 @@ struct Response {
 
 impl Response {
     fn ok(id: Value, result: Value) -> Self {
-        Self { jsonrpc: "2.0", id, result: Some(result), error: None }
+        Self {
+            jsonrpc: "2.0",
+            id,
+            result: Some(result),
+            error: None,
+        }
     }
     fn rpc_error(id: Value, code: i32, message: &str) -> Self {
         Self {
@@ -182,7 +187,10 @@ async fn call_tool(id: Value, params: &Value) -> Response {
         method: args.method,
         url: args.url,
         headers: args.headers.into_iter().map(|h| (h.key, h.value)).collect(),
-        body: args.body.map(ExecutionBody::Text).unwrap_or(ExecutionBody::None),
+        body: args
+            .body
+            .map(ExecutionBody::Text)
+            .unwrap_or(ExecutionBody::None),
         mode,
         pre_script: args.pre_script,
         post_script: args.post_script,

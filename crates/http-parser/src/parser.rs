@@ -167,7 +167,11 @@ impl<'a> Parser<'a> {
                 }
                 Token::Comment(text) => match parse_disabled_header(text) {
                     Some((key, value)) => {
-                        headers.push(KeyValue { key, value, enabled: false });
+                        headers.push(KeyValue {
+                            key,
+                            value,
+                            enabled: false,
+                        });
                         self.advance();
                     }
                     None => break,
@@ -190,7 +194,11 @@ impl<'a> Parser<'a> {
             None
         } else {
             // Trim trailing empty lines from body
-            while body_lines.last().map(|s| s.trim().is_empty()).unwrap_or(false) {
+            while body_lines
+                .last()
+                .map(|s| s.trim().is_empty())
+                .unwrap_or(false)
+            {
                 body_lines.pop();
             }
             if body_lines.is_empty() {
@@ -260,18 +268,20 @@ impl<'a> Parser<'a> {
             "description" => meta.description = value,
             "protocol" => {
                 if let Some(v) = value {
-                    meta.protocol = Some(parse_protocol(&v).ok_or_else(|| {
-                        ParseError::InvalidProtocol {
-                            line: self.line_number(),
-                            protocol: v,
-                        }
-                    })?);
+                    meta.protocol =
+                        Some(
+                            parse_protocol(&v).ok_or_else(|| ParseError::InvalidProtocol {
+                                line: self.line_number(),
+                                protocol: v,
+                            })?,
+                        );
                 }
             }
             "proto" => meta.proto_path = value,
             "depends" => {
                 if let Some(v) = value {
-                    meta.depends.extend(v.split(',').map(|s| s.trim().to_string()));
+                    meta.depends
+                        .extend(v.split(',').map(|s| s.trim().to_string()));
                 }
             }
             _ => {} // Ignore unknown annotations
@@ -311,7 +321,12 @@ fn parse_disabled_header(text: &str) -> Option<(String, String)> {
     let key = text[..colon_pos].trim();
     let value = text[colon_pos + 1..].trim();
 
-    if key.is_empty() || key.contains(' ') || !key.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_') {
+    if key.is_empty()
+        || key.contains(' ')
+        || !key
+            .chars()
+            .all(|c| c.is_alphanumeric() || c == '-' || c == '_')
+    {
         return None;
     }
 
@@ -347,7 +362,10 @@ Content-Type: application/json
         let requests = parse(content).unwrap();
         assert_eq!(requests.len(), 1);
         assert_eq!(requests[0].headers.len(), 2);
-        assert_eq!(requests[0].get_header("Authorization"), Some("Bearer token123"));
+        assert_eq!(
+            requests[0].get_header("Authorization"),
+            Some("Bearer token123")
+        );
     }
 
     #[test]
@@ -432,10 +450,16 @@ DELETE https://api.example.com/users/1\n";
         assert_eq!(requests[0].line, 2, "GET is on line 2");
 
         assert_eq!(requests[1].method, HttpMethod::Post);
-        assert_eq!(requests[1].line, 8, "POST is on line 8, after the @name annotation");
+        assert_eq!(
+            requests[1].line, 8,
+            "POST is on line 8, after the @name annotation"
+        );
 
         assert_eq!(requests[2].method, HttpMethod::Delete);
-        assert_eq!(requests[2].line, 15, "DELETE is on line 15, after a blank line");
+        assert_eq!(
+            requests[2].line, 15,
+            "DELETE is on line 15, after a blank line"
+        );
     }
 
     #[test]
@@ -471,7 +495,10 @@ Content-Type: application/json
         let requests = parse(content).unwrap();
         assert_eq!(requests.len(), 1);
         assert_eq!(requests[0].meta.variable_extractions.len(), 2);
-        assert_eq!(requests[0].meta.variable_extractions[0].name, "access_token");
+        assert_eq!(
+            requests[0].meta.variable_extractions[0].name,
+            "access_token"
+        );
     }
 
     #[test]

@@ -6,8 +6,8 @@ mod expect_js;
 mod extract;
 
 use bindings::{
-    setup_console_js, setup_env_js, setup_expect_js, setup_request_js,
-    setup_response_js, setup_storage, setup_utils_js,
+    setup_console_js, setup_env_js, setup_expect_js, setup_request_js, setup_response_js,
+    setup_storage, setup_utils_js,
 };
 use extract::extract_results;
 use rquickjs::{Context, Runtime, Value};
@@ -26,7 +26,9 @@ pub struct JsRuntime {
 
 impl JsRuntime {
     pub fn new() -> Result<Self, ScriptError> {
-        Ok(Self { timeout_ms: DEFAULT_SCRIPT_TIMEOUT_MS })
+        Ok(Self {
+            timeout_ms: DEFAULT_SCRIPT_TIMEOUT_MS,
+        })
     }
 
     /// Construct with a custom deadline - intended for tests only.
@@ -56,8 +58,7 @@ impl JsRuntime {
         // Install deadline-based interrupt handler. QuickJS calls this closure
         // periodically during script execution. Returning `true` causes the engine
         // to throw an InternalError and unwind the call stack cleanly.
-        let deadline = std::time::Instant::now()
-            + std::time::Duration::from_millis(timeout_ms);
+        let deadline = std::time::Instant::now() + std::time::Duration::from_millis(timeout_ms);
         runtime.set_interrupt_handler(Some(Box::new(move || {
             std::time::Instant::now() >= deadline
         })));
@@ -84,13 +85,10 @@ impl JsRuntime {
             // Distinguish a timeout-induced interrupt from a genuine script error.
             let eval_result = js_ctx.eval::<Value, _>(script);
             eval_result.map_err(|e| {
-                let is_timeout = std::time::Instant::now() >= deadline
-                    || e.to_string().contains("interrupted");
+                let is_timeout =
+                    std::time::Instant::now() >= deadline || e.to_string().contains("interrupted");
                 if is_timeout {
-                    ScriptError::new(format!(
-                        "Script execution timed out after {}ms",
-                        timeout_ms
-                    ))
+                    ScriptError::new(format!("Script execution timed out after {}ms", timeout_ms))
                 } else {
                     ScriptError::new(format!("Script error: {}", e))
                 }

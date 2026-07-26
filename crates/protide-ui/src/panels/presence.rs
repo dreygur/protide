@@ -1,5 +1,5 @@
-use std::time::{Duration, Instant};
 use gpui::SharedString;
+use std::time::{Duration, Instant};
 
 /// A connected peer on the network
 #[derive(Debug, Clone)]
@@ -126,7 +126,8 @@ impl PresenceManager {
     pub fn generate_code(&mut self) {
         #[cfg(feature = "pake-auth")]
         {
-            self.generated_code = SharedString::from(protide_core::sync::pake::generate_pairing_code());
+            self.generated_code =
+                SharedString::from(protide_core::sync::pake::generate_pairing_code());
             self.pairing_code = self.generated_code.clone();
         }
         #[cfg(not(feature = "pake-auth"))]

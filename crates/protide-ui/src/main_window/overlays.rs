@@ -1,9 +1,14 @@
-use gpui::{Context, FontWeight, IntoElement, MouseButton, ParentElement, Styled, div, hsla, px, prelude::*};
-use gpui_component::Sizable;
 use super::*;
+use gpui::{
+    Context, FontWeight, IntoElement, MouseButton, ParentElement, Styled, div, hsla, prelude::*, px,
+};
+use gpui_component::Sizable;
 
 impl MainWindow {
-    pub(super) fn render_pairing_flyout_panel(&mut self, cx: &mut Context<Self>) -> gpui::AnyElement {
+    pub(super) fn render_pairing_flyout_panel(
+        &mut self,
+        cx: &mut Context<Self>,
+    ) -> gpui::AnyElement {
         let theme = theme::current(cx);
         let status = self.presence.connection_status.clone();
         let tick = self.presence.handshake_tick;
@@ -15,9 +20,13 @@ impl MainWindow {
                 (ConnectionStatus::Handshaking, true) => {
                     (neon.opacity(0.15), neon, neon, "Connecting…", false)
                 }
-                (ConnectionStatus::Handshaking, false) => {
-                    (neon.opacity(0.15), neon.opacity(0.25), neon, "Connecting…", false)
-                }
+                (ConnectionStatus::Handshaking, false) => (
+                    neon.opacity(0.15),
+                    neon.opacity(0.25),
+                    neon,
+                    "Connecting…",
+                    false,
+                ),
                 _ => (
                     theme.colors.team_accent.opacity(0.12),
                     theme.colors.team_accent,
@@ -96,7 +105,13 @@ impl MainWindow {
             .flex_col()
             .gap(px(6.0))
             .child(Input::new(&self.join_input).with_size(gpui_component::Size::Small))
-            .child(div().flex().gap(px(6.0)).child(paste_btn).child(connect_btn))
+            .child(
+                div()
+                    .flex()
+                    .gap(px(6.0))
+                    .child(paste_btn)
+                    .child(connect_btn),
+            )
             .when_some(error_msg, |el, msg| {
                 let error_color = theme.colors.error;
                 el.child(
@@ -148,22 +163,52 @@ impl MainWindow {
         type ActionFn = Box<dyn Fn(&mut gpui::Window, &mut gpui::App)>;
         let items: Vec<(&str, &str, ActionFn)> = match self.open_menu {
             Some(0) => vec![
-                ("About Protide",     "",          Box::new(|w, cx| w.dispatch_action(Box::new(ShowAbout), cx))),
-                ("---",               "",          Box::new(|_, _| {})),
-                ("Quit",              "Ctrl+Q",    Box::new(|w, cx| w.dispatch_action(Box::new(Quit), cx))),
+                (
+                    "About Protide",
+                    "",
+                    Box::new(|w, cx| w.dispatch_action(Box::new(ShowAbout), cx)),
+                ),
+                ("---", "", Box::new(|_, _| {})),
+                (
+                    "Quit",
+                    "Ctrl+Q",
+                    Box::new(|w, cx| w.dispatch_action(Box::new(Quit), cx)),
+                ),
             ],
             Some(1) => vec![
-                ("Send Request",      "Ctrl+Enter", Box::new(|w, cx| w.dispatch_action(Box::new(SendRequest), cx))),
-                ("Save Request",      "Ctrl+S",     Box::new(|w, cx| w.dispatch_action(Box::new(SaveRequest), cx))),
+                (
+                    "Send Request",
+                    "Ctrl+Enter",
+                    Box::new(|w, cx| w.dispatch_action(Box::new(SendRequest), cx)),
+                ),
+                (
+                    "Save Request",
+                    "Ctrl+S",
+                    Box::new(|w, cx| w.dispatch_action(Box::new(SaveRequest), cx)),
+                ),
             ],
             Some(2) => vec![
-                ("Toggle Sidebar",      "Ctrl+B",       Box::new(|w, cx| w.dispatch_action(Box::new(ToggleSidebar), cx))),
-                ("Toggle Mock Server",  "Ctrl+Shift+M", Box::new(|w, cx| w.dispatch_action(Box::new(ToggleMockServer), cx))),
-                ("Toggle API Explorer", "Ctrl+Shift+D", Box::new(|w, cx| w.dispatch_action(Box::new(ToggleDocs), cx))),
+                (
+                    "Toggle Sidebar",
+                    "Ctrl+B",
+                    Box::new(|w, cx| w.dispatch_action(Box::new(ToggleSidebar), cx)),
+                ),
+                (
+                    "Toggle Mock Server",
+                    "Ctrl+Shift+M",
+                    Box::new(|w, cx| w.dispatch_action(Box::new(ToggleMockServer), cx)),
+                ),
+                (
+                    "Toggle API Explorer",
+                    "Ctrl+Shift+D",
+                    Box::new(|w, cx| w.dispatch_action(Box::new(ToggleDocs), cx)),
+                ),
             ],
-            Some(3) => vec![
-                ("Keyboard Shortcuts","F1",          Box::new(|w, cx| w.dispatch_action(Box::new(ShowHelp), cx))),
-            ],
+            Some(3) => vec![(
+                "Keyboard Shortcuts",
+                "F1",
+                Box::new(|w, cx| w.dispatch_action(Box::new(ShowHelp), cx)),
+            )],
             _ => vec![],
         };
 
@@ -172,7 +217,7 @@ impl MainWindow {
             Some(1) => 148.0,
             Some(2) => 220.0,
             Some(3) => 272.0,
-            _       => 88.0,
+            _ => 88.0,
         };
 
         div()
@@ -187,34 +232,51 @@ impl MainWindow {
             .border_color(theme.colors.border)
             .shadow_lg()
             .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-            .children(items.into_iter().enumerate().map(|(i, (label, hint, action))| {
-                if label == "---" {
-                    return div()
-                        .id(("menu-sep", i))
-                        .my(px(3.0))
-                        .mx(px(6.0))
-                        .h(px(1.0))
-                        .bg(theme.colors.border)
-                        .into_any_element();
-                }
-                div()
-                    .id(("menu-item", i))
-                    .px(px(12.0)).py(px(7.0))
-                    .flex().items_center().justify_between()
-                    .cursor_pointer()
-                    .hover(|s| s.bg(theme.colors.bg_tertiary))
-                    .on_click(cx.listener(move |this, _, window, cx| {
-                        this.open_menu = None;
-                        cx.notify();
-                        action(window, cx);
-                    }))
-                    .child(
-                        div().text_size(px(12.0)).text_color(theme.colors.text_primary).child(label)
-                    )
-                    .when(!hint.is_empty(), |el| el.child(
-                        div().text_size(px(10.0)).text_color(theme.colors.text_muted).ml(px(24.0)).child(hint)
-                    ))
-                    .into_any_element()
-            }))
+            .children(
+                items
+                    .into_iter()
+                    .enumerate()
+                    .map(|(i, (label, hint, action))| {
+                        if label == "---" {
+                            return div()
+                                .id(("menu-sep", i))
+                                .my(px(3.0))
+                                .mx(px(6.0))
+                                .h(px(1.0))
+                                .bg(theme.colors.border)
+                                .into_any_element();
+                        }
+                        div()
+                            .id(("menu-item", i))
+                            .px(px(12.0))
+                            .py(px(7.0))
+                            .flex()
+                            .items_center()
+                            .justify_between()
+                            .cursor_pointer()
+                            .hover(|s| s.bg(theme.colors.bg_tertiary))
+                            .on_click(cx.listener(move |this, _, window, cx| {
+                                this.open_menu = None;
+                                cx.notify();
+                                action(window, cx);
+                            }))
+                            .child(
+                                div()
+                                    .text_size(px(12.0))
+                                    .text_color(theme.colors.text_primary)
+                                    .child(label),
+                            )
+                            .when(!hint.is_empty(), |el| {
+                                el.child(
+                                    div()
+                                        .text_size(px(10.0))
+                                        .text_color(theme.colors.text_muted)
+                                        .ml(px(24.0))
+                                        .child(hint),
+                                )
+                            })
+                            .into_any_element()
+                    }),
+            )
     }
 }

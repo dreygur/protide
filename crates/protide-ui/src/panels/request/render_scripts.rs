@@ -1,18 +1,16 @@
 //! Scripts tab rendering for RequestPanel
 
-
 use gpui::{
-    div, prelude::*, px, Context, IntoElement, MouseDownEvent, MouseMoveEvent,
-    ParentElement, Styled,
+    Context, IntoElement, MouseDownEvent, MouseMoveEvent, ParentElement, Styled, div, prelude::*,
+    px,
 };
 
-use crate::theme;
-use crate::components::icons::{
-    icon, ICON_SM,
-    ICON_CHECK, ICON_CHEVRON_DOWN, ICON_CHEVRON_RIGHT, ICON_CHEVRON_LEFT,
-};
-use protide_core::execution::ws::WebSocketExecutor;
 use super::RequestPanel;
+use crate::components::icons::{
+    ICON_CHECK, ICON_CHEVRON_DOWN, ICON_CHEVRON_LEFT, ICON_CHEVRON_RIGHT, ICON_SM, icon,
+};
+use crate::theme;
+use protide_core::execution::ws::WebSocketExecutor;
 
 impl<E: WebSocketExecutor> RequestPanel<E> {
     pub(super) fn render_scripts_tab(&mut self, cx: &mut Context<Self>) -> gpui::AnyElement {
@@ -23,9 +21,8 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
         let script_pre_h = self.script_pre_h;
         let script_post_h = self.script_post_h;
 
-        let open_count = script_pre_open as usize
-            + script_post_open as usize
-            + script_tests_open as usize;
+        let open_count =
+            script_pre_open as usize + script_post_open as usize + script_tests_open as usize;
         let single_open = open_count == 1;
 
         div()
@@ -65,35 +62,35 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                             .flex()
                             .items_center()
                             .justify_center()
-                            .child(icon(ICON_CHEVRON_RIGHT, ICON_SM, theme.colors.method_post))
+                            .child(icon(ICON_CHEVRON_RIGHT, ICON_SM, theme.colors.method_post)),
                     )
                     .child(
                         div()
                             .text_size(px(12.0))
                             .font_weight(gpui::FontWeight::SEMIBOLD)
                             .text_color(theme.colors.text_primary)
-                            .child("Pre-request Script")
+                            .child("Pre-request Script"),
                     )
                     .child(
                         div()
                             .text_size(px(10.0))
                             .text_color(theme.colors.text_muted)
-                            .child("Runs before sending the request")
-                    )
+                            .child("Runs before sending the request"),
+                    ),
             )
             .when(script_pre_open, |el| {
                 let editor_div = if single_open {
-                    div()
-                        .flex_1()
-                        .w_full()
-                        .overflow_hidden()
-                        .child(gpui_component::input::Input::new(&self.pre_script_editor).appearance(false).h_full())
+                    div().flex_1().w_full().overflow_hidden().child(
+                        gpui_component::input::Input::new(&self.pre_script_editor)
+                            .appearance(false)
+                            .h_full(),
+                    )
                 } else {
-                    div()
-                        .h(px(script_pre_h))
-                        .w_full()
-                        .overflow_hidden()
-                        .child(gpui_component::input::Input::new(&self.pre_script_editor).appearance(false).h_full())
+                    div().h(px(script_pre_h)).w_full().overflow_hidden().child(
+                        gpui_component::input::Input::new(&self.pre_script_editor)
+                            .appearance(false)
+                            .h_full(),
+                    )
                 };
                 let el = el.child(editor_div);
                 if !single_open {
@@ -146,35 +143,39 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                             .flex()
                             .items_center()
                             .justify_center()
-                            .child(icon(ICON_CHEVRON_LEFT, ICON_SM, theme.colors.status_success))
+                            .child(icon(
+                                ICON_CHEVRON_LEFT,
+                                ICON_SM,
+                                theme.colors.status_success,
+                            )),
                     )
                     .child(
                         div()
                             .text_size(px(12.0))
                             .font_weight(gpui::FontWeight::SEMIBOLD)
                             .text_color(theme.colors.text_primary)
-                            .child("Post-response Script")
+                            .child("Post-response Script"),
                     )
                     .child(
                         div()
                             .text_size(px(10.0))
                             .text_color(theme.colors.text_muted)
-                            .child("Runs after receiving response")
-                    )
+                            .child("Runs after receiving response"),
+                    ),
             )
             .when(script_post_open, |el| {
                 let editor_div = if single_open {
-                    div()
-                        .flex_1()
-                        .w_full()
-                        .overflow_hidden()
-                        .child(gpui_component::input::Input::new(&self.post_script_editor).appearance(false).h_full())
+                    div().flex_1().w_full().overflow_hidden().child(
+                        gpui_component::input::Input::new(&self.post_script_editor)
+                            .appearance(false)
+                            .h_full(),
+                    )
                 } else {
-                    div()
-                        .h(px(script_post_h))
-                .w_full()
-                        .overflow_hidden()
-                        .child(gpui_component::input::Input::new(&self.post_script_editor).appearance(false).h_full())
+                    div().h(px(script_post_h)).w_full().overflow_hidden().child(
+                        gpui_component::input::Input::new(&self.post_script_editor)
+                            .appearance(false)
+                            .h_full(),
+                    )
                 };
                 let el = el.child(editor_div);
                 if !single_open {
@@ -227,80 +228,92 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                             .flex()
                             .items_center()
                             .justify_center()
-                            .child(icon(ICON_CHECK, ICON_SM, theme.colors.accent))
+                            .child(icon(ICON_CHECK, ICON_SM, theme.colors.accent)),
                     )
                     .child(
                         div()
                             .text_size(px(12.0))
                             .font_weight(gpui::FontWeight::SEMIBOLD)
                             .text_color(theme.colors.text_primary)
-                            .child("Tests")
+                            .child("Tests"),
                     )
                     .child(
                         div()
                             .text_size(px(10.0))
                             .text_color(theme.colors.text_muted)
-                            .child("Test assertions using expect()")
-                    )
+                            .child("Test assertions using expect()"),
+                    ),
             )
             .when(script_tests_open, |el| {
                 el.child(
-                    div()
-                        .flex_1()
-                        .w_full()
-                        .overflow_hidden()
-                        .child(gpui_component::input::Input::new(&self.tests_editor).appearance(false).h_full()),
+                    div().flex_1().w_full().overflow_hidden().child(
+                        gpui_component::input::Input::new(&self.tests_editor)
+                            .appearance(false)
+                            .h_full(),
+                    ),
                 )
             })
             // Pre-script drag overlay (only when multi-open and dragging)
             .when(self.drag_script_pre.is_some(), |el| {
-                el.child(gpui::deferred(
-                    div()
-                        .id("drag-script-pre-overlay")
-                        .absolute()
-                        .inset_0()
-                        .cursor_row_resize()
-                        .on_mouse_move(cx.listener(|this, event: &MouseMoveEvent, _, cx| {
-                            if let Some((start_y, start_h)) = this.drag_script_pre {
-                                let delta = f32::from(event.position.y) - start_y;
-                                this.script_pre_h = (start_h + delta).max(60.0).min(600.0);
-                                cx.notify();
-                            }
-                        }))
-                        .on_mouse_up(
-                            gpui::MouseButton::Left,
-                            cx.listener(|this, _, _, cx| {
-                                this.drag_script_pre = None;
-                                crate::prefs::set_f32("request.script_pre_h", this.script_pre_h);
-                                cx.notify();
-                            }),
-                        ),
-                ).with_priority(2))
+                el.child(
+                    gpui::deferred(
+                        div()
+                            .id("drag-script-pre-overlay")
+                            .absolute()
+                            .inset_0()
+                            .cursor_row_resize()
+                            .on_mouse_move(cx.listener(|this, event: &MouseMoveEvent, _, cx| {
+                                if let Some((start_y, start_h)) = this.drag_script_pre {
+                                    let delta = f32::from(event.position.y) - start_y;
+                                    this.script_pre_h = (start_h + delta).max(60.0).min(600.0);
+                                    cx.notify();
+                                }
+                            }))
+                            .on_mouse_up(
+                                gpui::MouseButton::Left,
+                                cx.listener(|this, _, _, cx| {
+                                    this.drag_script_pre = None;
+                                    crate::prefs::set_f32(
+                                        "request.script_pre_h",
+                                        this.script_pre_h,
+                                    );
+                                    cx.notify();
+                                }),
+                            ),
+                    )
+                    .with_priority(2),
+                )
             })
             // Post-script drag overlay (only when multi-open and dragging)
             .when(self.drag_script_post.is_some(), |el| {
-                el.child(gpui::deferred(
-                    div()
-                        .id("drag-script-post-overlay")
-                        .absolute()
-                        .inset_0()
-                        .cursor_row_resize()
-                        .on_mouse_move(cx.listener(|this, event: &MouseMoveEvent, _, cx| {
-                            if let Some((start_y, start_h)) = this.drag_script_post {
-                                let delta = f32::from(event.position.y) - start_y;
-                                this.script_post_h = (start_h + delta).max(60.0).min(600.0);
-                                cx.notify();
-                            }
-                        }))
-                        .on_mouse_up(
-                            gpui::MouseButton::Left,
-                            cx.listener(|this, _, _, cx| {
-                                this.drag_script_post = None;
-                                crate::prefs::set_f32("request.script_post_h", this.script_post_h);
-                                cx.notify();
-                            }),
-                        ),
-                ).with_priority(2))
+                el.child(
+                    gpui::deferred(
+                        div()
+                            .id("drag-script-post-overlay")
+                            .absolute()
+                            .inset_0()
+                            .cursor_row_resize()
+                            .on_mouse_move(cx.listener(|this, event: &MouseMoveEvent, _, cx| {
+                                if let Some((start_y, start_h)) = this.drag_script_post {
+                                    let delta = f32::from(event.position.y) - start_y;
+                                    this.script_post_h = (start_h + delta).max(60.0).min(600.0);
+                                    cx.notify();
+                                }
+                            }))
+                            .on_mouse_up(
+                                gpui::MouseButton::Left,
+                                cx.listener(|this, _, _, cx| {
+                                    this.drag_script_post = None;
+                                    crate::prefs::set_f32(
+                                        "request.script_post_h",
+                                        this.script_post_h,
+                                    );
+                                    cx.notify();
+                                }),
+                            ),
+                    )
+                    .with_priority(2),
+                )
             })
             .into_any_element()
     }
