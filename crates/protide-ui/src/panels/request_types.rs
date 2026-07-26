@@ -160,6 +160,24 @@ pub enum RequestMode {
     SocketIo,
 }
 
+impl RequestMode {
+    /// Tabs this mode shows, in order. The single source of truth for how many
+    /// tabs exist - the tab bar renders these and `active_tab` is only valid as
+    /// an index into them.
+    pub fn tab_labels(self) -> &'static [&'static str] {
+        match self {
+            RequestMode::GraphQL => &["Query", "Variables", "Headers", "Auth", "Schema"],
+            RequestMode::WebSocket => &["Messages", "Headers"],
+            RequestMode::SocketIo => &["Events", "Headers"],
+            RequestMode::Grpc => &["Message", "Metadata", "Proto"],
+            RequestMode::Trpc => &["Playground", "Headers", "Auth"],
+            RequestMode::Http => &[
+                "Params", "Headers", "Body", "Auth", "Scripts", "Data", "Settings",
+            ],
+        }
+    }
+}
+
 /// gRPC streaming type
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum GrpcStreamingType {

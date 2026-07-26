@@ -309,7 +309,10 @@ impl ResponsePanel {
             return 0;
         };
         let key_chars = match &row.kind {
-            RowKind::Leaf { key: Some(k), .. } => k.len() + 4, // "key":
+            // Rendered as `"key": ` - a *character* count, since it is scaled by
+            // JSON_CHAR_W below. `k.len()` (bytes) would over-measure any
+            // non-ASCII key and push every click on this row's value leftwards.
+            RowKind::Leaf { key: Some(k), .. } => k.chars().count() + 4,
             _ => 0,
         };
         let bounds = self.json_tree_bounds.unwrap_or_default();

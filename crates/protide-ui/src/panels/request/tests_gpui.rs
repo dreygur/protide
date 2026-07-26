@@ -252,3 +252,219 @@ mod tests {
         });
     }
 }
+
+#[cfg(test)]
+mod mode_and_tab_tests {
+    use crate::panels::request::RequestPanel;
+    use crate::panels::request_types::RequestMode;
+    use crate::panels::response::ResponsePanel;
+    use crate::session::RequestDraft;
+    use crate::test_support::init_theme;
+    use gpui::{AppContext as _, Entity, TestAppContext, VisualTestContext};
+    use protide_core::execution::ws::TungsteniteExecutor;
+
+    type TestPanel = RequestPanel<TungsteniteExecutor>;
+
+    const ALL_MODES: [RequestMode; 6] = [
+        RequestMode::Http,
+        RequestMode::GraphQL,
+        RequestMode::WebSocket,
+        RequestMode::SocketIo,
+        RequestMode::Grpc,
+        RequestMode::Trpc,
+    ];
+
+    fn panel(cx: &mut TestAppContext) -> (Entity<TestPanel>, &mut VisualTestContext) {
+        init_theme(cx);
+        cx.add_window_view(|window, cx| {
+            let response_panel = cx.new(|cx| ResponsePanel::new(window, cx));
+            TestPanel::new(window, cx, response_panel)
+        })
+    }
+
+    #[test]
+    fn every_mode_declares_at_least_one_tab() {
+        for mode in ALL_MODES {
+            assert!(
+                !mode.tab_labels().is_empty(),
+                "{mode:?} has no tabs, so no tab content could ever render"
+            );
+        }
+    }
+
+    #[gpui::test]
+    async fn switching_protocol_resets_the_active_tab_into_range(cx: &mut TestAppContext) {
+        // HTTP has the most tabs; every other mode has fewer, so a stale index
+        // would point past the end of the new tab bar and blank the editor.
+        let (p, cx) = panel(cx);
+        for mode in ALL_MODES {
+            p.update(cx, |p, cx| {
+                p.set_request_mode(RequestMode::Http, cx);
+                p.active_tab = RequestMode::Http.tab_labels().len() - 1;
+                p.set_request_mode(mode, cx);
+            });
+            p.read_with(cx, |p, _| {
+                assert_eq!(p.request_mode, mode);
+                assert!(
+                    p.active_tab < mode.tab_labels().len(),
+                    "{mode:?}: active_tab {} is outside its {} tabs",
+                    p.active_tab,
+                    mode.tab_labels().len()
+                );
+            });
+        }
+    }
+
+    #[gpui::test]
+    async fn re_selecting_the_current_protocol_keeps_the_open_tab(cx: &mut TestAppContext) {
+        let (p, cx) = panel(cx);
+        p.update(cx, |p, cx| {
+            p.set_request_mode(RequestMode::Http, cx);
+            p.active_tab = 3;
+            p.set_request_mode(RequestMode::Http, cx);
+            assert_eq!(p.active_tab, 3, "a no-op mode change must not lose the tab");
+        });
+    }
+
+    #[gpui::test]
+    async fn switching_protocol_drops_any_in_progress_field_edit(cx: &mut TestAppContext) {
+        // `active_edit` names a field of the *old* tab set; leaving it set would
+        // route keystrokes into a field the new mode no longer shows.
+        let (p, cx) = panel(cx);
+        p.update(cx, |p, cx| {
+            p.set_request_mode(RequestMode::Http, cx);
+            p.edit_selection = 2..5;
+            p.set_request_mode(RequestMode::GraphQL, cx);
+            assert!(p.active_edit.is_none());
+            assert_eq!(p.edit_selection, 0..0);
+        });
+    }
+
+    #[gpui::test]
+    async fn protocol_switches_install_a_usable_default_url(cx: &mut TestAppContext) {
+        let (p, cx) = panel(cx);
+        p.update(cx, |p, cx| {
+            p.set_request_mode(RequestMode::WebSocket, cx);
+            assert!(
+                p.url.starts_with("ws://") || p.url.starts_with("wss://"),
+                "WebSocket mode left a non-ws URL: {}",
+                p.url
+            );
+            p.set_request_mode(RequestMode::Grpc, cx);
+            assert!(p.url.contains("grpc"), "gRPC mode left {}", p.url);
+        });
+    }
+
+    #[gpui::test]
+    async fn the_url_cursor_stays_inside_a_replaced_url(cx: &mut TestAppContext) {
+        // The default URLs are installed with the caret at the end; a caret left
+        // beyond the new text would index past it on the next keystroke.
+        let (p, cx) = panel(cx);
+        p.update(cx, |p, cx| {
+            for mode in ALL_MODES {
+                p.set_request_mode(mode, cx);
+                let n = p.url.chars().count();
+                assert!(
+                    p.url_selection.start <= n && p.url_selection.end <= n,
+                    "{mode:?}: selection {:?} outside a {n}-char url",
+                    p.url_selection
+                );
+            }
+        });
+    }
+
+    // FIXED: `restore_from_draft` copied `draft.active_tab` verbatim. A session
+    // file whose tab index does not exist in the restored protocol - hand
+    // edited, truncated mid-write, or written by a build with a different tab
+    // set - left `active_tab` past the end of the tab bar, and
+    // `render_tab_content` fell through to a blank `div()`: an empty request
+    // editor with no tab highlighted and no indication why.
+    #[gpui::test]
+    async fn restoring_a_draft_clamps_a_tab_index_the_protocol_does_not_have(
+        cx: &mut TestAppContext,
+    ) {
+        let (p, cx) = panel(cx);
+        for (protocol, mode) in [
+            ("websocket", RequestMode::WebSocket),
+            ("socketio", RequestMode::SocketIo),
+            ("grpc", RequestMode::Grpc),
+            ("trpc", RequestMode::Trpc),
+            ("graphql", RequestMode::GraphQL),
+            ("http", RequestMode::Http),
+        ] {
+            let draft = RequestDraft {
+                protocol: protocol.to_string(),
+                active_tab: 999,
+                url: "https://x.test".to_string(),
+                method: "GET".to_string(),
+                ..Default::default()
+            };
+            p.update(cx, |p, cx| p.restore_from_draft(&draft, cx));
+            p.read_with(cx, |p, _| {
+                assert_eq!(p.request_mode, mode);
+                assert!(
+                    p.active_tab < mode.tab_labels().len(),
+                    "{protocol}: restored active_tab {} is outside its {} tabs",
+                    p.active_tab,
+                    mode.tab_labels().len()
+                );
+            });
+        }
+    }
+
+    #[gpui::test]
+    async fn an_unknown_protocol_in_a_draft_falls_back_to_http(cx: &mut TestAppContext) {
+        let (p, cx) = panel(cx);
+        for protocol in ["", "quic", "HTTP", "graphQL"] {
+            let draft = RequestDraft {
+                protocol: protocol.to_string(),
+                ..Default::default()
+            };
+            p.update(cx, |p, cx| p.restore_from_draft(&draft, cx));
+            p.read_with(cx, |p, _| {
+                assert_eq!(p.request_mode, RequestMode::Http, "protocol {protocol:?}");
+            });
+        }
+    }
+
+    #[gpui::test]
+    async fn a_restored_draft_leaves_the_url_caret_inside_the_url(cx: &mut TestAppContext) {
+        let (p, cx) = panel(cx);
+        let draft = RequestDraft {
+            protocol: "http".to_string(),
+            // Multi-byte: a byte-based caret would land past the character count.
+            url: "https://x.test/日本語?q=🎉".to_string(),
+            method: "POST".to_string(),
+            ..Default::default()
+        };
+        p.update(cx, |p, cx| p.restore_from_draft(&draft, cx));
+        p.read_with(cx, |p, _| {
+            let n = p.url.chars().count();
+            assert_eq!(p.url_selection, n..n, "caret must sit at the end in chars");
+        });
+    }
+
+    #[gpui::test]
+    async fn a_draft_round_trips_through_capture_and_restore(cx: &mut TestAppContext) {
+        let (p, cx) = panel(cx);
+        p.update(cx, |p, cx| {
+            p.set_request_mode(RequestMode::GraphQL, cx);
+            p.url = "https://api.test/graphql".to_string();
+            p.active_tab = 2;
+            p.graphql_operation_name = "Me".to_string();
+        });
+        let draft = p.read_with(cx, |p, cx| p.capture_draft(cx));
+        p.update(cx, |p, cx| {
+            p.set_request_mode(RequestMode::Http, cx);
+            p.url = "https://elsewhere.test".to_string();
+            p.graphql_operation_name = String::new();
+            p.restore_from_draft(&draft, cx);
+        });
+        p.read_with(cx, |p, _| {
+            assert_eq!(p.request_mode, RequestMode::GraphQL);
+            assert_eq!(p.url, "https://api.test/graphql");
+            assert_eq!(p.active_tab, 2);
+            assert_eq!(p.graphql_operation_name, "Me");
+        });
+    }
+}

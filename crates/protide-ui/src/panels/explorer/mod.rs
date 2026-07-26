@@ -38,6 +38,8 @@ pub mod render_history;
 pub mod render_inputs;
 pub mod render_tree;
 pub mod render_tree_row;
+#[cfg(test)]
+mod tests_gpui;
 pub mod tree_nav;
 pub mod tree_ops;
 pub mod tree_scan;

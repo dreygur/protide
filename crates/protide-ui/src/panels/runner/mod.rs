@@ -135,3 +135,80 @@ impl RunnerPanel {
             .count()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use gpui::{AppContext as _, TestAppContext};
+
+    fn row(name: &str, status: RowStatus) -> RunnerRow {
+        RunnerRow {
+            name: name.to_string(),
+            status,
+        }
+    }
+
+    #[gpui::test]
+    async fn a_new_runner_is_idle_and_empty(cx: &mut TestAppContext) {
+        let panel = cx.new(RunnerPanel::new);
+        panel.read_with(cx, |p, _| {
+            assert!(!p.running);
+            assert!(p.rows.is_empty());
+            assert_eq!((p.current, p.total), (0, 0));
+            assert_eq!((p.passed(), p.failed()), (0, 0));
+        });
+    }
+
+    #[gpui::test]
+    async fn the_tallies_count_only_finished_rows(cx: &mut TestAppContext) {
+        let panel = cx.new(RunnerPanel::new);
+        panel.update(cx, |p, _| {
+            p.rows = vec![
+                row("a", RowStatus::Passed),
+                row("b", RowStatus::Failed("assertion failed".into())),
+                row("c", RowStatus::Passed),
+                row("d", RowStatus::Running),
+                row("e", RowStatus::Pending),
+            ];
+        });
+        panel.read_with(cx, |p, _| {
+            assert_eq!(p.passed(), 2);
+            assert_eq!(p.failed(), 1);
+            assert_eq!(
+                p.passed() + p.failed(),
+                3,
+                "in-flight and queued rows must not be counted as results"
+            );
+        });
+    }
+
+    #[gpui::test]
+    async fn a_failure_is_counted_whatever_its_message(cx: &mut TestAppContext) {
+        let panel = cx.new(RunnerPanel::new);
+        panel.update(cx, |p, _| {
+            p.rows = vec![
+                row("a", RowStatus::Failed(String::new())),
+                row("b", RowStatus::Failed("日本語のエラー".into())),
+            ];
+        });
+        panel.read_with(cx, |p, _| assert_eq!(p.failed(), 2));
+    }
+
+    #[gpui::test]
+    async fn stopping_marks_the_run_finished_and_raises_the_stop_flag(cx: &mut TestAppContext) {
+        let panel = cx.new(RunnerPanel::new);
+        panel.update(cx, |p, cx| {
+            p.running = true;
+            p.stop(cx);
+            assert!(!p.running);
+            assert!(p.stop_flag.load(Ordering::Relaxed));
+        });
+    }
+
+    // NOT COVERED: `start()` spawns an OS thread that sends progress over an
+    // async channel, waking the gpui task from a foreign thread. gpui's test
+    // scheduler treats that as non-determinism and aborts the whole test
+    // binary, so the reset-on-start and fresh-stop-flag behaviour cannot be
+    // driven from a #[gpui::test] as `start` is currently written - it would
+    // need the progress channel injected rather than created inside.
+}

@@ -219,7 +219,11 @@ impl ResponsePanel {
                                     && let Some((_, val)) =
                                         this.response.as_ref().and_then(|r| r.headers.get(sel.row))
                                 {
-                                    let text = val[s.min(val.len())..e.min(val.len())].to_string();
+                                    // Snap to char boundaries: slicing a stray
+                                    // mid-character offset would panic.
+                                    let s = floor_char_boundary(val, s);
+                                    let e = floor_char_boundary(val, e);
+                                    let text = val[s..e].to_string();
                                     cx.write_to_clipboard(ClipboardItem::new_string(text));
                                     this.show_copy_feedback(CopyFeedback::HdrVal, cx);
                                 }

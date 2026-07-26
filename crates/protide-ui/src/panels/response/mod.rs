@@ -295,6 +295,10 @@ impl ResponsePanel {
         self.expanded_strings.clear();
         self.json_sel = None;
         self.json_selecting = false;
+        // Header selections are byte offsets into the *old* response's header
+        // values; carrying them over would highlight (and copy) arbitrary spans
+        // of the new response's headers.
+        self.hdr_sel = None;
         self.rebuild_json_rows();
 
         self.response = Some(response);

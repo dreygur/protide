@@ -86,7 +86,13 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             "socketio" => RequestMode::SocketIo,
             _ => RequestMode::Http,
         };
-        self.active_tab = draft.active_tab;
+        // Clamp: a session file can carry a tab index that does not exist in the
+        // restored protocol (hand-edited, truncated, or written by a build with a
+        // different tab set). An out-of-range index leaves the editor showing an
+        // empty pane with no tab highlighted.
+        self.active_tab = draft
+            .active_tab
+            .min(self.request_mode.tab_labels().len().saturating_sub(1));
         self.active_edit = Option::None;
         self.method_dropdown_open = false;
         self.variable_extractions.clear();

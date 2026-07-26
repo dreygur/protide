@@ -10,16 +10,7 @@ use protide_core::execution::ws::WebSocketExecutor;
 impl<E: WebSocketExecutor> RequestPanel<E> {
     pub(super) fn render_tabs(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = theme::current(cx);
-        let tab_labels: &[&str] = match self.request_mode {
-            RequestMode::GraphQL => &["Query", "Variables", "Headers", "Auth", "Schema"],
-            RequestMode::WebSocket => &["Messages", "Headers"],
-            RequestMode::SocketIo => &["Events", "Headers"],
-            RequestMode::Grpc => &["Message", "Metadata", "Proto"],
-            RequestMode::Trpc => &["Playground", "Headers", "Auth"],
-            RequestMode::Http => &[
-                "Params", "Headers", "Body", "Auth", "Scripts", "Data", "Settings",
-            ],
-        };
+        let tab_labels = self.request_mode.tab_labels();
         let active_tab = self.active_tab;
         let param_count = self
             .params
