@@ -180,12 +180,7 @@ make hooks      # one-time: enable .githooks (pre-commit fmt+clippy, pre-push ve
 ```
 
 - **719 tests** (89 http-parser + 308 protide-core + 225 protide-ui + 98 lsp + 2 mcp),
-  plus 5 `#[ignore]`d tests that document real unfixed defects, each explained at the
-  test: 3 in `http-parser/src/adversarial_tests.rs` (bare URL lexes as a header,
-  blank `@set` name, `MissingUrl` line past EOF) and 2 in `protide-ui`'s
-  `components/text_view.rs` (word-selection direction mismatch, grapheme splitting).
-  Do not delete them; un-ignore them when the defect is fixed. Each needs a
-  behaviour decision, not a mechanical fix.
+  plus 5 `#[ignore]`d tests recording real unfixed defects — see **Known Defects** below.
   `protide-core` drops tests without `--features full-sync`; the PAKE tests are
   `#![cfg(feature = "pake-auth")]`.
 - Use `execution/test_server.rs` (`TestServer`) for anything needing a real HTTP
@@ -197,6 +192,28 @@ make hooks      # one-time: enable .githooks (pre-commit fmt+clippy, pre-push ve
   (`protide-core/src/test_support.rs`) and always set socket/client timeouts.
 - `[workspace.lints]` in the root `Cargo.toml` carries `allow` entries with rationale.
   Fix the code and delete the entry rather than adding new ones.
+
+### Known Defects
+
+Five defects are recorded as **failing `#[ignore]`d tests** that assert the *correct*
+behaviour. Each is unfixed because the fix is a behaviour decision, not a mechanical
+change. The full reasoning lives in the `#[ignore = "..."]` string at each test.
+
+**Rules:** do not delete these tests, and do not edit them to match current behaviour.
+To fix one, change the production code and remove the `#[ignore]`. Follow the
+`REGRESSION:` / `FIXED:` comment convention used on the convergence test in
+`protide-core/src/sync/crdt.rs`.
+
+| # | Test | Defect | Why unfixed |
+|---|---|---|---|
+| 1 | `a_url_on_its_own_line_is_recognised_as_the_url` | A bare URL on its own line is lexed as a **header named after its scheme** — `https://api.test/y` → `Header("https", "//api.test/y")`. The lexer's standalone-URL branch is unreachable because the header rule matches first; `{{var}}/path` misses it via the leading-`{` guard that keeps JSON bodies out. | **Highest severity of the five, and silent** — inside a header block the bogus `https` header enters the AST and would go on the wire. Testing URL schemes before the header rule changes how a body whose first line is a bare URL parses. |
+| 2 | `set_with_a_blank_name_defines_nothing` | `# @set  = $.token` records a `VariableExtraction` named `""`, which becomes an environment variable with an empty name. It should be dropped like a `@set` with no `=`. | Fix lives in the lexer's annotation path; the empty name is inert in practice (the extraction runs, it just writes nowhere). |
+| 3 | `a_missing_url_is_blamed_on_the_request_line` | `MissingUrl` blames the token the parser is holding, which at EOF is one line past the document — `parse("GET")` blames line 2 of a one-line file. protide-lsp maps that straight to a diagnostic range **outside the file**. | Fixing it also shifts the non-EOF case from the header's line to the request line. |
+| 4 | `a_double_click_on_a_separator_selects_only_one_word` | `find_word_start` scans **backwards** while `find_word_end` scans **forwards**, so double-clicking a separator selects preceding word + separators + following word. The existing `test_find_word_start_simple` / `test_find_word_end_simple` pair pins both halves of the contradiction. | Requires choosing new double-click semantics. |
+| 5 | `a_double_click_selects_a_whole_grapheme_cluster` | Word selection is codepoint-based, so decomposed graphemes split: double-clicking `"cafe\u{0301}"` copies `"cafe"`, dropping the accent. Precomposed `café` is fine. | Needs grapheme segmentation, i.e. a new dependency. |
+
+Files: 1–3 in `crates/http-parser/src/adversarial_tests.rs`, 4–5 in
+`crates/protide-ui/src/components/text_view.rs`.
 
 ## Coding Rules
 
