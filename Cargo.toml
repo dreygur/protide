@@ -10,7 +10,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.1.0-alpha.4"
+version = "0.1.0-alpha.5"
 edition = "2024"
 # Floor implied by edition 2024. The toolchain actually used is pinned in
 # rust-toolchain.toml; this only documents the oldest compiler we claim to support.

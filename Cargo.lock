@@ -3550,7 +3550,7 @@ dependencies = [
 
 [[package]]
 name = "http-parser"
-version = "0.1.0-alpha.4"
+version = "0.1.0-alpha.5"
 dependencies = [
  "pretty_assertions",
  "serde",
@@ -6662,7 +6662,7 @@ dependencies = [
 
 [[package]]
 name = "protide"
-version = "0.1.0-alpha.4"
+version = "0.1.0-alpha.5"
 dependencies = [
  "anyhow",
  "dirs",
@@ -6681,7 +6681,7 @@ dependencies = [
 
 [[package]]
 name = "protide-core"
-version = "0.1.0-alpha.4"
+version = "0.1.0-alpha.5"
 dependencies = [
  "anyhow",
  "async-channel",
@@ -6725,7 +6725,7 @@ dependencies = [
 
 [[package]]
 name = "protide-lsp"
-version = "0.1.0-alpha.4"
+version = "0.1.0-alpha.5"
 dependencies = [
  "env_logger",
  "http-parser",
@@ -6737,7 +6737,7 @@ dependencies = [
 
 [[package]]
 name = "protide-mcp"
-version = "0.1.0-alpha.4"
+version = "0.1.0-alpha.5"
 dependencies = [
  "protide-core",
  "serde",
@@ -6747,7 +6747,7 @@ dependencies = [
 
 [[package]]
 name = "protide-ui"
-version = "0.1.0-alpha.4"
+version = "0.1.0-alpha.5"
 dependencies = [
  "async-channel",
  "base64",
