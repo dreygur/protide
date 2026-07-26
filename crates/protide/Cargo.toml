@@ -22,3 +22,9 @@ gpui-component-assets = { workspace = true }
 anyhow = { workspace = true }
 image = { workspace = true }
 dirs = { workspace = true }
+
+# Setting the Dock icon on unbundled macOS runs (see set_dock_icon in main.rs)
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6"
+objc2-app-kit = { version = "0.3", features = ["NSApplication", "NSImage", "NSResponder"] }
+objc2-foundation = { version = "0.3", features = ["NSData"] }

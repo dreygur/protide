@@ -1,6 +1,7 @@
+use std::borrow::Cow;
 use std::sync::Arc;
 use anyhow::Result;
-use gpui::{Menu, MenuItem, WindowOptions, size, px, AppContext as _};
+use gpui::{AssetSource, Menu, MenuItem, SharedString, WindowOptions, size, px, AppContext as _};
 use gpui_component::Root;
 use gpui_component_assets::Assets;
 use protide_ui::{
@@ -18,13 +19,52 @@ fn load_app_icon() -> Option<Arc<image::RgbaImage>> {
     Some(Arc::new(img.to_rgba8()))
 }
 
+/// gpui-component's bundled assets (icons, fonts) plus Protide's own logo, so the
+/// UI can reference the logo by path without reaching into this crate's `assets/`.
+struct ProtideAssets;
+
+impl AssetSource for ProtideAssets {
+    fn load(&self, path: &str) -> Result<Option<Cow<'static, [u8]>>> {
+        if path == protide_ui::LOGO_ASSET_PATH {
+            return Ok(Some(Cow::Borrowed(APP_ICON_PNG)));
+        }
+        Assets.load(path)
+    }
+
+    fn list(&self, path: &str) -> Result<Vec<SharedString>> {
+        Assets.list(path)
+    }
+}
+
+/// macOS takes the Dock / app-switcher icon from the `.app` bundle's
+/// `CFBundleIconFile` (see `packaging/macos/`), and `WindowOptions::icon` is
+/// X11-only - so an unbundled binary (`cargo run`) shows the generic executable
+/// icon unless we hand the image to NSApplication ourselves.
+#[cfg(target_os = "macos")]
+fn set_dock_icon() {
+    use objc2::{AnyThread, MainThreadMarker};
+    use objc2_app_kit::{NSApplication, NSImage};
+    use objc2_foundation::NSData;
+
+    let Some(mtm) = MainThreadMarker::new() else {
+        return;
+    };
+    let data = NSData::with_bytes(APP_ICON_PNG);
+    if let Some(image) = NSImage::initWithData(NSImage::alloc(), &data) {
+        unsafe { NSApplication::sharedApplication(mtm).setApplicationIconImage(Some(&image)) };
+    }
+}
+
 fn main() -> Result<()> {
     // Default to info level; override with RUST_LOG=debug cargo run
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
 
     gpui_platform::application()
-        .with_assets(Assets)
+        .with_assets(ProtideAssets)
         .run(|cx| {
+            #[cfg(target_os = "macos")]
+            set_dock_icon();
+
             gpui_component::init(cx);
             gpui_component::Theme::change(gpui_component::ThemeMode::Dark, None, cx);
             {

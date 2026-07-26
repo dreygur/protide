@@ -90,6 +90,16 @@ sudo apt-get install -y \
   libegl1-mesa-dev mesa-common-dev
 ```
 
+**macOS app bundle:**
+
+macOS only reads an app icon from a `.app` bundle, so build one to get the Protide
+icon in the Dock and Finder:
+
+```bash
+make bundle-mac        # → target/Protide.app
+open target/Protide.app
+```
+
 ### LSP
 
 ```bash

@@ -1,4 +1,4 @@
-.PHONY: deps deps-visual-qa build release run test test-core test-ui test-lsp test-mcp test-parser check clippy fmt clean help
+.PHONY: deps deps-visual-qa build release run bundle-mac test test-core test-ui test-lsp test-mcp test-parser check clippy fmt clean help
 
 help:
 	@echo "make deps           - install system packages needed to build/run Protide (Ubuntu/Debian)"
@@ -6,6 +6,7 @@ help:
 	@echo "make build           - debug build"
 	@echo "make release         - release build (recommended for actually running the app)"
 	@echo "make run             - cargo run --release"
+	@echo "make bundle-mac      - build target/Protide.app (macOS: needed for the Dock/Finder icon)"
 	@echo "make test            - run the full workspace test suite, crate by crate"
 	@echo "make check           - cargo check across the whole workspace, crate by crate"
 	@echo "make clippy          - cargo clippy across the whole workspace, crate by crate"
@@ -56,6 +57,9 @@ release:
 
 run:
 	cargo run --release -p protide
+
+bundle-mac: release
+	packaging/macos/bundle.sh
 
 test: test-core test-ui test-lsp test-mcp test-parser
 

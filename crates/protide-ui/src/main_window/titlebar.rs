@@ -1,4 +1,4 @@
-use gpui::{App, Context, FontWeight, IntoElement, MouseButton, ParentElement, Styled, div, px, prelude::*};
+use gpui::{App, Context, FontWeight, IntoElement, MouseButton, ParentElement, Styled, div, img, px, prelude::*};
 use super::*;
 
 impl MainWindow {
@@ -31,21 +31,7 @@ impl MainWindow {
                     .on_mouse_down(MouseButton::Left, |_, window, _cx: &mut App| {
                         window.start_window_move();
                     })
-                    .child(
-                        div()
-                            .size(px(18.0))
-                            .bg(theme.colors.accent)
-                            .flex()
-                            .items_center()
-                            .justify_center()
-                            .child(
-                                div()
-                                    .text_size(px(10.0))
-                                    .font_weight(FontWeight::BOLD)
-                                    .text_color(theme.colors.bg_primary)
-                                    .child("P"),
-                            ),
-                    )
+                    .child(img(crate::LOGO_ASSET_PATH).size(px(18.0)))
                     .child(
                         div()
                             .text_size(px(12.0))
