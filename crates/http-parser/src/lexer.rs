@@ -2,6 +2,9 @@
 //!
 //! Tokenizes .http file content into a stream of tokens for the parser.
 
+/// Schemes that make a line unambiguously a URL rather than a header.
+const URL_SCHEMES: [&str; 5] = ["http://", "https://", "ws://", "wss://", "grpc://"];
+
 /// Token types for the .http file format
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Token {
@@ -202,6 +205,21 @@ impl<'a> Lexer<'a> {
             }
         }
 
+        // A line beginning with a URL scheme is a URL, never a header. Decided
+        // *before* the header rule because `find(':')` would otherwise split
+        // `https://api.test/x` into key `https` / value `//api.test/x` - and
+        // inside a header block that is silent, putting a header named after the
+        // scheme on the wire. No real header name is a scheme followed by `//`,
+        // so claiming these lines here is safe. The `{{var}}` URL form below
+        // must stay *after* the header rule, or `Authorization: Bearer {{token}}`
+        // would lex as a URL.
+        if URL_SCHEMES.iter().any(|scheme| trimmed.starts_with(scheme)) {
+            return TokenSpan {
+                token: Token::Url(trimmed.to_string()),
+                line: line_num,
+            };
+        }
+
         // Check for header (Key: Value)
         // Headers must not start with { or [ (which would be JSON body)
         if !trimmed.starts_with('{')
@@ -226,13 +244,7 @@ impl<'a> Lexer<'a> {
         }
 
         // If we have a URL-like pattern ({{var}} substitution only matches when not inside JSON)
-        if trimmed.starts_with("http://")
-            || trimmed.starts_with("https://")
-            || trimmed.starts_with("ws://")
-            || trimmed.starts_with("wss://")
-            || trimmed.starts_with("grpc://")
-            || (trimmed.contains("{{") && !trimmed.starts_with('{') && !trimmed.starts_with('['))
-        {
+        if trimmed.contains("{{") && !trimmed.starts_with('{') && !trimmed.starts_with('[') {
             return TokenSpan {
                 token: Token::Url(trimmed.to_string()),
                 line: line_num,

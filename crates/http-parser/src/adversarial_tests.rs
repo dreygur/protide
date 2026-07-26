@@ -571,37 +571,65 @@ fn a_hash_line_always_closes_the_body() {
     );
 }
 
+/// REGRESSION: a scheme-prefixed URL on a line of its own used to match the
+/// header rule first - `find(':')` split `https://api.test/x` into key `https`
+/// and value `//api.test/x` - so the lexer's standalone-URL branch was
+/// unreachable and `Parser::parse_request`'s `Token::Url` arm was dead code.
+/// Inside a header block this was silent: a bare URL line became a header named
+/// after its scheme and would have gone out on the wire.
+///
+/// FIXED: `URL_SCHEMES` is tested before the header rule. Only the scheme test
+/// moved - the `{{var}}` URL form still has to be decided *after* the header
+/// rule, or `Authorization: Bearer {{token}}` would lex as a URL.
 #[test]
-#[ignore = "DEFECT: the lexer's standalone-URL branch is unreachable, so a URL \
-on a line of its own is never recognised. `https://...` matches the header rule \
-first (key `https`, value `//...`), and `{{var}}/path` is excluded from the URL \
-rule by the leading `{` guard that keeps JSON bodies out, so it becomes body \
-text. Worse than the parse error below, the header case is silent: a bare URL \
-line inside a header block is accepted as a header named after its scheme and \
-would go out on the wire. Left unfixed because the obvious repair - testing the \
-URL schemes before the header rule - also changes how a body whose *first* line \
-is a bare URL parses, which is a live format currently in use."]
 fn a_url_on_its_own_line_is_recognised_as_the_url() {
-    // Both spellings of the request line the parser clearly intends to accept:
+    // The request-line spelling the parser clearly intends to accept:
     // `Parser::parse_request` has a `Token::Url` arm reached only from here.
     assert_eq!(ok("GET\nhttps://api.test/x\n")[0].url, "https://api.test/x");
-    assert_eq!(ok("GET\n{{base_url}}/users\n")[0].url, "{{base_url}}/users");
+    assert_eq!(ok("GET\nws://api.test/sock\n")[0].url, "ws://api.test/sock");
 
-    // And the silent-corruption case: a stray URL line among the headers must
-    // never turn into a header called `https`.
-    let requests = ok("GET https://api.test/x\nAccept: */*\nhttps://api.test/y\n");
-    assert_eq!(requests[0].get_header("https"), None);
+    // The silent-corruption case: a stray URL line among the headers used to
+    // become a header named `https` and go out on the wire. It is now a loud
+    // parse error - malformed input the user can see and fix, rather than a
+    // request that quietly carries a header they never wrote.
+    let err = parse("GET https://api.test/x\nAccept: */*\nhttps://api.test/y\n")
+        .expect_err("a stray URL line among headers must not parse silently");
+    assert!(
+        matches!(err, ParseError::UnexpectedToken { line: 3, .. }),
+        "{err:?}"
+    );
+}
+
+/// A header value containing a variable must keep lexing as a header. This is
+/// what stops the fix above from being "test the URL rule first" - that rule
+/// also matches any line containing `{{`, so hoisting it wholesale would turn
+/// every variable-bearing header into a URL.
+#[test]
+fn a_header_whose_value_holds_a_variable_is_still_a_header() {
+    let requests = ok("GET https://api.test/x\nAuthorization: Bearer {{token}}\n");
+    assert_eq!(
+        requests[0].get_header("Authorization"),
+        Some("Bearer {{token}}")
+    );
 }
 
 #[test]
-fn a_url_on_its_own_line_fails_loudly_rather_than_dangerously() {
-    // Companion to the ignored test above: until the lexer is fixed, pin the
-    // damage. The method-then-URL-on-the-next-line form must at least be a
-    // clean error and never a panic.
-    assert!(matches!(
-        parse("GET\nhttps://api.test/x\n"),
-        Err(ParseError::MissingUrl { .. })
-    ));
+#[ignore = "DEFECT: a `{{var}}`-prefixed URL on its own line is still not \
+recognised. The URL rule excludes anything starting with `{` to keep JSON \
+bodies out, and `{{base_url}}/users` trips that guard, so it becomes body \
+text. Unlike the scheme case this one is not silent - it is a clean parse \
+error - and the obvious repair (admitting `{{`, which is never valid JSON) \
+would reclassify a raw body that is just a variable, e.g. a request whose \
+entire body is `{{payload}}`. That is a live format, so the trade needs a \
+decision rather than a patch."]
+fn a_variable_prefixed_url_on_its_own_line_is_recognised() {
+    assert_eq!(ok("GET\n{{base_url}}/users\n")[0].url, "{{base_url}}/users");
+}
+
+#[test]
+fn a_variable_prefixed_url_on_its_own_line_fails_loudly_rather_than_dangerously() {
+    // Companion to the ignored test above: pin the damage while it stands. It
+    // must be a clean error, never a panic and never a silently wrong request.
     assert!(matches!(
         parse("GET\n{{base_url}}/users\n"),
         Err(ParseError::UnexpectedToken { .. })
