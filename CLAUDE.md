@@ -1,5 +1,7 @@
 # Protide - Development Context
 
+@.claude/preferences.md
+
 ## Project Overview
 Native desktop API testing tool built with Rust + GPUI (Zed's GPU-accelerated UI framework).
 Supports HTTP, GraphQL, WebSocket, gRPC, tRPC, and Socket.IO protocols.
