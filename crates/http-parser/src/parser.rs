@@ -79,176 +79,183 @@ impl<'a> Parser<'a> {
         }
     }
 
-    /// Parse a single request
+    /// Parse a single request. A `###` where the request line was expected
+    /// restarts from scratch, discarding annotations gathered so far - as a
+    /// loop iteration, not a recursive call: input is untrusted, and a file
+    /// alternating annotations with separators would otherwise recurse once
+    /// per separator and abort the process on a stack overflow.
     fn parse_request(&mut self) -> Result<Option<Request>, ParseError> {
-        let mut meta = RequestMeta::default();
-        let mut scripts = Scripts::default();
-
-        // Parse annotations, plain comments, and empty lines before the request line
         loop {
-            match &self.current_token.token {
-                Token::Annotation(key, value) => {
-                    let (k, v) = (key.clone(), value.clone());
-                    self.parse_annotation(&mut meta, k, v)?;
-                    self.advance();
-                }
-                Token::SetVariable(name, expr) => {
-                    meta.variable_extractions.push(VariableExtraction {
-                        name: name.clone(),
-                        expression: expr.clone(),
-                    });
-                    self.advance();
-                }
-                Token::Comment(_) | Token::EmptyLine => {
-                    self.advance();
-                }
-                _ => break,
-            }
-        }
+            let mut meta = RequestMeta::default();
+            let mut scripts = Scripts::default();
 
-        // Expect HTTP method
-        let (method, start_line) = match &self.current_token.token {
-            Token::Method(m) => {
-                let method = HttpMethod::from_str(m).ok_or_else(|| ParseError::InvalidMethod {
-                    line: self.line_number(),
-                    method: m.clone(),
-                })?;
-                let start_line = self.line_number();
-                self.advance();
-                (method, start_line)
-            }
-            Token::Eof => return Ok(None),
-            Token::RequestSeparator => {
-                self.advance();
-                return self.parse_request();
-            }
-            _ => {
-                return Err(ParseError::UnexpectedToken {
-                    line: self.line_number(),
-                    expected: "HTTP method".to_string(),
-                    got: format!("{:?}", self.current_token.token),
-                });
-            }
-        };
-
-        // Parse URL (might be on same line as method or next line)
-        let url = match &self.current_token.token {
-            Token::Url(u) => {
-                let url = u.clone();
-                self.advance();
-                url
-            }
-            Token::Header(_, _) | Token::EmptyLine | Token::Eof => {
-                // URL might have been part of the method line
-                return Err(ParseError::MissingUrl {
-                    line: self.line_number(),
-                });
-            }
-            _ => {
-                return Err(ParseError::UnexpectedToken {
-                    line: self.line_number(),
-                    expected: "URL".to_string(),
-                    got: format!("{:?}", self.current_token.token),
-                });
-            }
-        };
-
-        // Parse headers. A commented-out header line (`# Key: Value`) that
-        // looks like a real header is treated as a disabled header, so the
-        // enabled/disabled state can round-trip through save/load. Only
-        // comments immediately within the header block are considered here,
-        // so ordinary comments elsewhere in the file are unaffected.
-        let mut headers = Vec::new();
-        loop {
-            match &self.current_token.token {
-                Token::Header(key, value) => {
-                    headers.push(KeyValue::new(key.clone(), value.clone()));
-                    self.advance();
-                }
-                Token::Comment(text) => match parse_disabled_header(text) {
-                    Some((key, value)) => {
-                        headers.push(KeyValue {
-                            key,
-                            value,
-                            enabled: false,
+            // Parse annotations, plain comments, and empty lines before the request line
+            loop {
+                match &self.current_token.token {
+                    Token::Annotation(key, value) => {
+                        let (k, v) = (key.clone(), value.clone());
+                        self.parse_annotation(&mut meta, k, v)?;
+                        self.advance();
+                    }
+                    Token::SetVariable(name, expr) => {
+                        meta.variable_extractions.push(VariableExtraction {
+                            name: name.clone(),
+                            expression: expr.clone(),
                         });
                         self.advance();
                     }
-                    None => break,
-                },
-                _ => break,
+                    Token::Comment(_) | Token::EmptyLine => {
+                        self.advance();
+                    }
+                    _ => break,
+                }
             }
-        }
 
-        // Skip empty line before body
-        self.skip_empty_lines();
+            // Expect HTTP method
+            let (method, start_line) = match &self.current_token.token {
+                Token::Method(m) => {
+                    let method =
+                        HttpMethod::from_str(m).ok_or_else(|| ParseError::InvalidMethod {
+                            line: self.line_number(),
+                            method: m.clone(),
+                        })?;
+                    let start_line = self.line_number();
+                    self.advance();
+                    (method, start_line)
+                }
+                Token::Eof => return Ok(None),
+                Token::RequestSeparator => {
+                    self.advance();
+                    continue;
+                }
+                _ => {
+                    return Err(ParseError::UnexpectedToken {
+                        line: self.line_number(),
+                        expected: "HTTP method".to_string(),
+                        got: format!("{:?}", self.current_token.token),
+                    });
+                }
+            };
 
-        // Parse body
-        let mut body_lines = Vec::new();
-        while let Token::Body(line) = &self.current_token.token {
-            body_lines.push(line.clone());
-            self.advance();
-        }
+            // Parse URL (might be on same line as method or next line)
+            let url = match &self.current_token.token {
+                Token::Url(u) => {
+                    let url = u.clone();
+                    self.advance();
+                    url
+                }
+                Token::Header(_, _) | Token::EmptyLine | Token::Eof => {
+                    // URL might have been part of the method line
+                    return Err(ParseError::MissingUrl {
+                        line: self.line_number(),
+                    });
+                }
+                _ => {
+                    return Err(ParseError::UnexpectedToken {
+                        line: self.line_number(),
+                        expected: "URL".to_string(),
+                        got: format!("{:?}", self.current_token.token),
+                    });
+                }
+            };
 
-        let body = if body_lines.is_empty() {
-            None
-        } else {
-            // Trim trailing empty lines from body
-            while body_lines
-                .last()
-                .map(|s| s.trim().is_empty())
-                .unwrap_or(false)
-            {
-                body_lines.pop();
+            // Parse headers. A commented-out header line (`# Key: Value`) that
+            // looks like a real header is treated as a disabled header, so the
+            // enabled/disabled state can round-trip through save/load. Only
+            // comments immediately within the header block are considered here,
+            // so ordinary comments elsewhere in the file are unaffected.
+            let mut headers = Vec::new();
+            loop {
+                match &self.current_token.token {
+                    Token::Header(key, value) => {
+                        headers.push(KeyValue::new(key.clone(), value.clone()));
+                        self.advance();
+                    }
+                    Token::Comment(text) => match parse_disabled_header(text) {
+                        Some((key, value)) => {
+                            headers.push(KeyValue {
+                                key,
+                                value,
+                                enabled: false,
+                            });
+                            self.advance();
+                        }
+                        None => break,
+                    },
+                    _ => break,
+                }
             }
-            if body_lines.is_empty() {
+
+            // Skip empty line before body
+            self.skip_empty_lines();
+
+            // Parse body
+            let mut body_lines = Vec::new();
+            while let Token::Body(line) = &self.current_token.token {
+                body_lines.push(line.clone());
+                self.advance();
+            }
+
+            let body = if body_lines.is_empty() {
                 None
             } else {
-                Some(body_lines.join("\n"))
-            }
-        };
-
-        // Parse post-body annotations and scripts
-        self.skip_empty_lines();
-
-        loop {
-            match &self.current_token.token {
-                Token::Annotation(key, value) => {
-                    self.parse_annotation(&mut meta, key.clone(), value.clone())?;
-                    self.advance();
+                // Trim trailing empty lines from body
+                while body_lines
+                    .last()
+                    .map(|s| s.trim().is_empty())
+                    .unwrap_or(false)
+                {
+                    body_lines.pop();
                 }
-                Token::SetVariable(name, expr) => {
-                    meta.variable_extractions.push(VariableExtraction {
-                        name: name.clone(),
-                        expression: expr.clone(),
-                    });
-                    self.advance();
+                if body_lines.is_empty() {
+                    None
+                } else {
+                    Some(body_lines.join("\n"))
                 }
-                Token::ScriptMarker(script_type) => {
-                    let script_type = *script_type;
-                    self.advance();
-                    let script = self.parse_script_block();
-                    match script_type {
-                        ScriptType::PreScript => scripts.pre_script = Some(script),
-                        ScriptType::PostScript => scripts.post_script = Some(script),
-                        ScriptType::Tests => scripts.tests = Some(script),
+            };
+
+            // Parse post-body annotations and scripts
+            self.skip_empty_lines();
+
+            loop {
+                match &self.current_token.token {
+                    Token::Annotation(key, value) => {
+                        self.parse_annotation(&mut meta, key.clone(), value.clone())?;
+                        self.advance();
                     }
+                    Token::SetVariable(name, expr) => {
+                        meta.variable_extractions.push(VariableExtraction {
+                            name: name.clone(),
+                            expression: expr.clone(),
+                        });
+                        self.advance();
+                    }
+                    Token::ScriptMarker(script_type) => {
+                        let script_type = *script_type;
+                        self.advance();
+                        let script = self.parse_script_block();
+                        match script_type {
+                            ScriptType::PreScript => scripts.pre_script = Some(script),
+                            ScriptType::PostScript => scripts.post_script = Some(script),
+                            ScriptType::Tests => scripts.tests = Some(script),
+                        }
+                    }
+                    Token::EmptyLine => self.advance(),
+                    Token::Comment(_) => self.advance(),
+                    _ => break,
                 }
-                Token::EmptyLine => self.advance(),
-                Token::Comment(_) => self.advance(),
-                _ => break,
             }
-        }
 
-        Ok(Some(Request {
-            meta,
-            method,
-            url,
-            headers,
-            body,
-            scripts,
-            line: start_line,
-        }))
+            return Ok(Some(Request {
+                meta,
+                method,
+                url,
+                headers,
+                body,
+                scripts,
+                line: start_line,
+            }));
+        }
     }
 
     fn skip_empty_lines(&mut self) {

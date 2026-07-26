@@ -35,6 +35,9 @@ mod ast;
 mod lexer;
 mod parser;
 
+#[cfg(test)]
+mod adversarial_tests;
+
 pub use ast::*;
 pub use lexer::Lexer;
 pub use parser::{ParseError, Parser};

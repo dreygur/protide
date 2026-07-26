@@ -66,6 +66,10 @@ pub struct Lexer<'a> {
 
 impl<'a> Lexer<'a> {
     pub fn new(content: &'a str) -> Self {
+        // A UTF-8 BOM is not whitespace, so left in place it would glue itself
+        // to the first token (typically the method keyword) and make an
+        // otherwise valid file unparseable. Editors on Windows write it freely.
+        let content = content.strip_prefix('\u{feff}').unwrap_or(content);
         let lines: Vec<&str> = content.lines().collect();
         Self {
             content,
