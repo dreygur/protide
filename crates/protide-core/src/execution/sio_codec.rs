@@ -24,21 +24,35 @@ pub(super) fn encode_sio_connect(namespace: &str) -> String {
     }
 }
 
+/// Render `s` as a JSON string literal, escaping quotes, backslashes and
+/// control characters.
+fn json_string(s: &str) -> String {
+    serde_json::Value::String(s.to_string()).to_string()
+}
+
 /// Encode a Socket.IO EVENT packet (type 2).
 ///
 /// A blank `payload` encodes an event with no argument (`["name"]`); emitting
 /// `["name",]` instead would be malformed JSON and servers drop the connection.
+/// A payload that is not valid JSON is sent as a JSON string argument, which is
+/// what typing a bare word into the payload box means; splicing it in raw would
+/// produce a malformed frame the server silently drops.
 pub(super) fn encode_sio_event(
     namespace: &str,
     event_name: &str,
     payload: &str,
     ack_id: Option<u32>,
 ) -> String {
-    let escaped_name = event_name.replace('\\', "\\\\").replace('"', "\\\"");
-    let data = if payload.trim().is_empty() {
-        format!("[\"{}\"]", escaped_name)
+    let trimmed = payload.trim();
+    let data = if trimmed.is_empty() {
+        format!("[{}]", json_string(event_name))
     } else {
-        format!("[\"{}\",{}]", escaped_name, payload)
+        let arg = if serde_json::from_str::<serde_json::Value>(trimmed).is_ok() {
+            trimmed.to_string()
+        } else {
+            json_string(trimmed)
+        };
+        format!("[{},{}]", json_string(event_name), arg)
     };
     let ack_str = ack_id.map(|id| id.to_string()).unwrap_or_default();
     if namespace == "/" {
@@ -215,18 +229,49 @@ mod tests {
         );
     }
 
-    /// A payload that is not valid JSON is spliced into the frame unchanged,
-    /// producing a malformed packet (`2["evt",hello]`) that a Socket.IO server
-    /// rejects, usually by closing the connection with no visible error.
-    /// Deliberately unfixed: whether a bare payload should be quoted as a JSON
-    /// string, rejected up-front in the UI, or sent as-is is a product
-    /// decision, not something to change under a test.
+    /// REGRESSION: a payload that is not valid JSON used to be spliced into the
+    /// frame unchanged, producing a malformed packet (`2["evt",hello]`) that a
+    /// Socket.IO server rejects, usually by closing the connection with no
+    /// visible error.
+    ///
+    /// FIXED: a non-JSON payload is now encoded as a JSON string argument, so
+    /// the frame is always parseable and a bare word arrives as that word.
     #[test]
-    #[ignore = "known defect: non-JSON payloads produce a malformed frame (see comment)"]
     fn encode_event_with_non_json_payload_should_not_produce_malformed_frame() {
         let frame = encode_sio_event("/", "evt", "hello", None);
         serde_json::from_str::<serde_json::Value>(&frame[1..])
             .expect("frame data must be valid JSON");
+        assert_eq!(frame, r#"2["evt","hello"]"#);
+    }
+
+    /// Every payload a user can type must produce a parseable frame, and a
+    /// non-JSON one must survive the round trip as the string it looked like.
+    #[test]
+    fn encode_event_quotes_non_json_payloads_and_preserves_json_ones() {
+        let cases = [
+            ("hello", r#""hello""#),
+            ("he said \"hi\"", r#""he said \"hi\"""#),
+            ("{unclosed", r#""{unclosed""#),
+            ("2026-07-26", r#""2026-07-26""#),
+            ("日本 🎉", r#""日本 🎉""#),
+            // Valid JSON of every shape is passed through untouched.
+            ("42", "42"),
+            ("null", "null"),
+            ("true", "true"),
+            (r#""already a string""#, r#""already a string""#),
+            (r#"{"a":1}"#, r#"{"a":1}"#),
+            ("[1,2,3]", "[1,2,3]"),
+        ];
+        for (payload, expected_arg) in cases {
+            let frame = encode_sio_event("/", "evt", payload, None);
+            assert_eq!(frame, format!(r#"2["evt",{}]"#, expected_arg));
+            let (name, parsed) = parse_event_array(&frame[1..]).expect("event array parses");
+            assert_eq!(name, "evt");
+            assert_eq!(
+                serde_json::from_str::<serde_json::Value>(&parsed).expect("payload JSON"),
+                serde_json::from_str::<serde_json::Value>(expected_arg).expect("payload JSON"),
+            );
+        }
     }
 
     // ── round-trip ───────────────────────────────────────────────────────────

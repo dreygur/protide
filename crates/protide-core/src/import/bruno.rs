@@ -14,6 +14,7 @@ pub fn parse_bruno(content: &str) -> Result<ImportResult, String> {
     let mut headers: Vec<KeyValue> = Vec::new();
     let mut body = String::new();
     let mut query_params: Vec<KeyValue> = Vec::new();
+    let mut path_params: Vec<KeyValue> = Vec::new();
     let mut protocol: Option<Protocol> = None;
     let mut scripts = Scripts::default();
     let mut graphql_vars: Option<String> = None;
@@ -33,102 +34,40 @@ pub fn parse_bruno(content: &str) -> Result<ImportResult, String> {
             }
             "get" | "post" | "put" | "delete" | "patch" | "head" | "options" => {
                 method = block_name.to_uppercase();
-                for line in lines {
-                    if let Some((k, v)) = split_kv(line)
-                        && k == "url"
-                    {
-                        url = v;
-                    }
+                if let Some(v) = find_value(lines, "url") {
+                    url = v;
                 }
             }
-            "headers" => {
-                for line in lines {
-                    if let Some((k, v)) = split_kv(line) {
-                        let enabled = !k.starts_with('~');
-                        let key = k.trim_start_matches('~').to_string();
-                        headers.push(KeyValue {
-                            key,
-                            value: v,
-                            enabled,
-                        });
-                    }
-                }
-            }
-            "query" => {
-                for line in lines {
-                    if let Some((k, v)) = split_kv(line) {
-                        let enabled = !k.starts_with('~');
-                        let key = k.trim_start_matches('~').to_string();
-                        query_params.push(KeyValue {
-                            key,
-                            value: v,
-                            enabled,
-                        });
-                    }
-                }
-            }
+            "headers" => collect_kv(lines, &mut headers),
+            // `query` is the legacy block name; bru-lang v2 writes `params:query`.
+            "query" | "params:query" => collect_kv(lines, &mut query_params),
+            "params:path" => collect_kv(lines, &mut path_params),
             "auth:bearer" => {
-                for line in lines {
-                    if let Some((k, v)) = split_kv(line)
-                        && k == "token"
-                    {
-                        headers.push(KeyValue {
-                            key: "Authorization".to_string(),
-                            value: format!("Bearer {}", v),
-                            enabled: true,
-                        });
-                    }
+                if let Some(v) = find_value(lines, "token") {
+                    headers.push(auth_header(format!("Bearer {}", v)));
                 }
             }
             "auth:basic" => {
-                let mut user = String::new();
-                let mut pass = String::new();
-                for line in lines {
-                    if let Some((k, v)) = split_kv(line) {
-                        match k.as_str() {
-                            "username" => user = v,
-                            "password" => pass = v,
-                            _ => {}
-                        }
-                    }
-                }
+                let user = find_value(lines, "username").unwrap_or_default();
                 if !user.is_empty() {
                     use base64::{Engine, engine::general_purpose::STANDARD};
+                    let pass = find_value(lines, "password").unwrap_or_default();
                     let encoded = STANDARD.encode(format!("{}:{}", user, pass));
-                    headers.push(KeyValue {
-                        key: "Authorization".to_string(),
-                        value: format!("Basic {}", encoded),
-                        enabled: true,
-                    });
+                    headers.push(auth_header(format!("Basic {}", encoded)));
                 }
             }
             "auth:apikey" => {
-                let mut key_name = String::new();
-                let mut key_value = String::new();
-                let mut placement = String::from("header");
-                for line in lines {
-                    if let Some((k, v)) = split_kv(line) {
-                        match k.as_str() {
-                            "key" => key_name = v,
-                            "value" => key_value = v,
-                            "placement" => placement = v,
-                            _ => {}
-                        }
-                    }
-                }
+                let key_name = find_value(lines, "key").unwrap_or_default();
                 if !key_name.is_empty() {
-                    if placement == "query" {
-                        query_params.push(KeyValue {
-                            key: key_name,
-                            value: key_value,
-                            enabled: true,
-                        });
+                    let kv = KeyValue {
+                        key: key_name,
+                        value: find_value(lines, "value").unwrap_or_default(),
+                        enabled: true,
+                    };
+                    if find_value(lines, "placement").as_deref() == Some("query") {
+                        query_params.push(kv);
                     } else {
-                        headers.push(KeyValue {
-                            key: key_name,
-                            value: key_value,
-                            enabled: true,
-                        });
+                        headers.push(kv);
                     }
                 }
             }
@@ -198,26 +137,33 @@ pub fn parse_bruno(content: &str) -> Result<ImportResult, String> {
         body = serde_json::to_string_pretty(&wrapped).unwrap_or(body);
     }
 
-    let final_url = if query_params.is_empty() {
-        url
-    } else {
-        let qs: String = query_params
-            .iter()
-            .filter(|kv| kv.enabled)
-            .map(|kv| {
-                format!(
-                    "{}={}",
-                    urlencoding::encode(&kv.key),
-                    urlencoding::encode(&kv.value)
-                )
-            })
-            .collect::<Vec<_>>()
-            .join("&");
-        if url.contains('?') {
-            format!("{}&{}", url, qs)
-        } else {
-            format!("{}?{}", url, qs)
-        }
+    let (url, path_warnings) = apply_path_params(&url, &path_params);
+    result.warnings.extend(path_warnings);
+
+    // Bruno mirrors `params:query` into the URL's query string, so only append
+    // keys the URL does not already carry - otherwise every param is doubled.
+    let existing = url.split_once('?').map_or("", |(_, q)| q);
+    let qs: String = query_params
+        .iter()
+        .filter(|kv| {
+            kv.enabled
+                && !existing
+                    .split('&')
+                    .any(|pair| pair.split('=').next() == Some(kv.key.as_str()))
+        })
+        .map(|kv| {
+            format!(
+                "{}={}",
+                urlencoding::encode(&kv.key),
+                urlencoding::encode(&kv.value)
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("&");
+    let final_url = match (qs.is_empty(), url.contains('?')) {
+        (true, _) => url,
+        (false, true) => format!("{}&{}", url, qs),
+        (false, false) => format!("{}?{}", url, qs),
     };
 
     let http_method = HttpMethod::from_str(&method).unwrap_or(HttpMethod::Get);
@@ -232,6 +178,73 @@ pub fn parse_bruno(content: &str) -> Result<ImportResult, String> {
 
     result.requests.push(request);
     Ok(result)
+}
+
+/// First value for `key` among a block's lines.
+fn find_value(lines: &[String], key: &str) -> Option<String> {
+    lines
+        .iter()
+        .filter_map(|l| split_kv(l))
+        .find_map(|(k, v)| (k == key).then_some(v))
+}
+
+fn auth_header(value: String) -> KeyValue {
+    KeyValue {
+        key: "Authorization".to_string(),
+        value,
+        enabled: true,
+    }
+}
+
+/// Collect `key: value` lines, honouring Bruno's `~` disabled-entry prefix.
+fn collect_kv(lines: &[String], out: &mut Vec<KeyValue>) {
+    for line in lines {
+        if let Some((k, v)) = split_kv(line) {
+            out.push(KeyValue {
+                key: k.trim_start_matches('~').to_string(),
+                value: v,
+                enabled: !k.starts_with('~'),
+            });
+        }
+    }
+}
+
+/// Substitute Bruno `:name` path placeholders with their `params:path` values,
+/// mirroring Bruno's own whole-segment matching (so `https://`, `host:8080` and
+/// userinfo are never touched). Anything that cannot be paired up is reported
+/// as a warning rather than dropped in silence.
+fn apply_path_params(url: &str, params: &[KeyValue]) -> (String, Vec<String>) {
+    let (path, suffix) = url.find(['?', '#']).map_or((url, ""), |i| url.split_at(i));
+    let mut warnings = Vec::new();
+    let mut used: Vec<&str> = Vec::new();
+    let substituted =
+        path.split('/')
+            .map(|segment| {
+                let Some(name) = segment.strip_prefix(':').filter(|n| {
+                    !n.is_empty() && n.chars().all(|c| c.is_alphanumeric() || c == '_')
+                }) else {
+                    return segment.to_string();
+                };
+                match params.iter().find(|p| p.key == name) {
+                    Some(p) => {
+                        used.push(name);
+                        p.value.clone()
+                    }
+                    None => {
+                        warnings.push(format!("Path parameter `:{}` has no value", name));
+                        segment.to_string()
+                    }
+                }
+            })
+            .collect::<Vec<_>>()
+            .join("/");
+    for p in params.iter().filter(|p| !used.contains(&p.key.as_str())) {
+        warnings.push(format!(
+            "Path parameter `{}` matches no `:{}` placeholder in the URL",
+            p.key, p.key
+        ));
+    }
+    (format!("{}{}", substituted, suffix), warnings)
 }
 
 fn count_unquoted_braces(line: &str) -> (i32, i32) {
@@ -625,22 +638,79 @@ body:graphql:vars {
         assert_eq!(auth.value, format!("Basic {}", STANDARD.encode("alice:")));
     }
 
-    /// Bruno's current (bru-lang v2) request files carry path variable
-    /// values in a `params:path` block, with the URL keeping the `:id`
-    /// placeholder. Protide has no path-parameter concept, so the block name
-    /// is unrecognised and the concrete values are dropped without a
-    /// warning. Fixing it means deciding how `:id` maps onto protide's
-    /// `{{id}}` substitution, which is a behaviour change rather than a
-    /// bugfix - left failing on purpose so the gap is visible.
+    /// REGRESSION: bru-lang v2 carries path variable values in a `params:path`
+    /// block, with the URL keeping the `:id` placeholder. Both that block and
+    /// v2's `params:query` were unrecognised block names, so every path and
+    /// query parameter value was dropped on import with no error and no
+    /// warning - the request still imported "successfully", just wrong.
+    ///
+    /// FIXED: `params:path` values are substituted into the URL path using
+    /// Bruno's own whole-segment matching, `params:query` is treated as an
+    /// alias of the legacy `query` block, and anything that cannot be paired
+    /// up is reported through `ImportResult::warnings`.
     #[test]
-    #[ignore = "known gap: Bruno params:path / params:query blocks are dropped silently"]
     fn test_bruno_path_params_are_imported() {
         let bru = "meta {\n  name: P\n}\n\nget {\n  url: https://api.example.com/users/:id\n}\n\nparams:path {\n  id: 42\n}\n";
         let result = parse_bruno(bru).unwrap();
+        assert_eq!(result.requests[0].url, "https://api.example.com/users/42");
+        assert!(result.warnings.is_empty(), "{:?}", result.warnings);
+    }
+
+    #[test]
+    fn test_params_query_block_is_an_alias_of_query() {
+        let bru = "meta {\n  name: Q2\n}\n\nget {\n  url: https://api.example.com/s\n}\n\nparams:query {\n  page: 1\n  ~limit: 20\n}\n";
+        let url = &parse_bruno(bru).unwrap().requests[0].url;
+        assert_eq!(url, "https://api.example.com/s?page=1");
+    }
+
+    /// Bruno writes `params:query` entries into the URL string as well, so a
+    /// naive append doubles every parameter (`?limit=3&limit=3`).
+    #[test]
+    fn test_params_query_mirrored_in_url_is_not_duplicated() {
+        let bru = "meta {\n  name: M\n}\n\nget {\n  url: https://api.example.com/todos/:num?limit=3\n}\n\nparams:query {\n  limit: 3\n  page: 2\n}\n\nparams:path {\n  num: 1\n}\n";
+        let url = &parse_bruno(bru).unwrap().requests[0].url;
+        assert_eq!(url, "https://api.example.com/todos/1?limit=3&page=2");
+    }
+
+    #[test]
+    fn test_path_params_substitute_every_placeholder_and_leave_the_rest_alone() {
+        let bru = "meta {\n  name: Multi\n}\n\nget {\n  url: https://user:pw@api.example.com:8443/o/:orgId/u/:userId/raw?a=:notAParam\n}\n\nparams:path {\n  orgId: acme\n  userId: 7\n}\n";
+        let result = parse_bruno(bru).unwrap();
+        assert_eq!(
+            result.requests[0].url,
+            "https://user:pw@api.example.com:8443/o/acme/u/7/raw?a=:notAParam"
+        );
+        assert!(result.warnings.is_empty(), "{:?}", result.warnings);
+    }
+
+    #[test]
+    fn test_unpaired_path_params_are_warned_about_not_dropped() {
+        let bru = "meta {\n  name: W\n}\n\nget {\n  url: https://api.example.com/users/:id/posts/:postId\n}\n\nparams:path {\n  id: 42\n  stray: 9\n}\n";
+        let result = parse_bruno(bru).unwrap();
+        // The unfilled placeholder stays in the URL rather than being blanked.
+        assert_eq!(
+            result.requests[0].url,
+            "https://api.example.com/users/42/posts/:postId"
+        );
         assert!(
-            result.requests[0].url.contains("42") || !result.warnings.is_empty(),
-            "path param value 42 was dropped with no warning: {:?}",
-            result.requests[0].url
+            result.warnings.iter().any(|w| w.contains(":postId")),
+            "missing value not reported: {:?}",
+            result.warnings
+        );
+        assert!(
+            result.warnings.iter().any(|w| w.contains("stray")),
+            "unused path param not reported: {:?}",
+            result.warnings
+        );
+    }
+
+    #[test]
+    fn test_path_params_with_unicode_and_no_url_query() {
+        let bru = "meta {\n  name: U\n}\n\nget {\n  url: https://api.example.com/ユーザー/:名前\n}\n\nparams:path {\n  名前: 🙂\n}\n";
+        let result = parse_bruno(bru).unwrap();
+        assert_eq!(
+            result.requests[0].url,
+            "https://api.example.com/ユーザー/🙂"
         );
     }
 
