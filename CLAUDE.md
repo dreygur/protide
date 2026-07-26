@@ -179,10 +179,13 @@ make verify     # fmt-check -> clippy (-D warnings) -> test -> audit
 make hooks      # one-time: enable .githooks (pre-commit fmt+clippy, pre-push verify)
 ```
 
-- **503 tests** (23 http-parser + 300 protide-core + 80 protide-ui + 98 lsp + 2 mcp),
-  plus 2 `#[ignore]`d tests that document real unfixed defects — see their comments
-  in `execution/sio_codec.rs` and `import/bruno.rs`. Do not delete them; un-ignore
-  them when the defect is fixed.
+- **719 tests** (89 http-parser + 308 protide-core + 225 protide-ui + 98 lsp + 2 mcp),
+  plus 5 `#[ignore]`d tests that document real unfixed defects, each explained at the
+  test: 3 in `http-parser/src/adversarial_tests.rs` (bare URL lexes as a header,
+  blank `@set` name, `MissingUrl` line past EOF) and 2 in `protide-ui`'s
+  `components/text_view.rs` (word-selection direction mismatch, grapheme splitting).
+  Do not delete them; un-ignore them when the defect is fixed. Each needs a
+  behaviour decision, not a mechanical fix.
   `protide-core` drops tests without `--features full-sync`; the PAKE tests are
   `#![cfg(feature = "pake-auth")]`.
 - Use `execution/test_server.rs` (`TestServer`) for anything needing a real HTTP
