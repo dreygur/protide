@@ -468,3 +468,79 @@ mod mode_and_tab_tests {
         });
     }
 }
+
+#[cfg(test)]
+mod url_double_click_tests {
+    use crate::panels::request::RequestPanel;
+    use crate::panels::response::ResponsePanel;
+    use crate::test_support::init_theme;
+    use gpui::{
+        AppContext as _, Modifiers, MouseButton, MouseDownEvent, TestAppContext, point, px,
+    };
+    use protide_core::execution::ws::TungsteniteExecutor;
+    use std::ops::Range;
+
+    type TestPanel = RequestPanel<TungsteniteExecutor>;
+
+    /// Double-click the URL bar at `char_index` and return the resulting
+    /// selection, driving the real `render()`-registered `on_mouse_down` rather
+    /// than calling `find_word_start` / `find_word_end` directly.
+    ///
+    /// `cx.simulate_click` hardcodes `click_count: 1`, so the double-click goes
+    /// in as a raw `MouseDownEvent` - that count is exactly what
+    /// `handle_url_mouse_down` branches on.
+    async fn double_click_at(
+        cx: &mut TestAppContext,
+        url: &str,
+        char_index: usize,
+    ) -> Range<usize> {
+        init_theme(cx);
+        let (panel, cx) = cx.add_window_view(|window, cx| {
+            let response_panel = cx.new(|cx| ResponsePanel::new(window, cx));
+            TestPanel::new(window, cx, response_panel)
+        });
+        panel.update(cx, |p, cx| {
+            p.url = url.to_string();
+            cx.notify();
+        });
+        cx.run_until_parked();
+
+        let bounds = cx
+            .debug_bounds("url-input")
+            .expect("url-input should be rendered in the URL bar");
+        // `url_input_left` is captured during render by the canvas child, and
+        // `index_for_x` divides by a fixed 7.8px char width - so aim at the
+        // middle of the target character's cell.
+        let left = panel.read_with(cx, |p, _| p.url_input_left);
+        let x = left + char_index as f32 * 7.8 + 3.9;
+
+        cx.simulate_event(MouseDownEvent {
+            position: point(px(x), bounds.center().y),
+            modifiers: Modifiers::none(),
+            button: MouseButton::Left,
+            click_count: 2,
+            first_mouse: false,
+        });
+        cx.run_until_parked();
+
+        panel.read_with(cx, |p, _| p.url_selection.clone())
+    }
+
+    const URL: &str = "https://api.example.com";
+
+    #[gpui::test]
+    async fn a_double_click_inside_a_word_selects_that_word(cx: &mut TestAppContext) {
+        assert_eq!(
+            double_click_at(cx, URL, 0).await,
+            0..5,
+            "expected \"https\""
+        );
+    }
+
+    #[gpui::test]
+    async fn a_double_click_on_a_separator_selects_the_separator_run(cx: &mut TestAppContext) {
+        // The behaviour the word_select fix chose, asserted end-to-end through
+        // real mouse wiring: "://" rather than the old "https://api".
+        assert_eq!(double_click_at(cx, URL, 5).await, 5..8, "expected \"://\"");
+    }
+}

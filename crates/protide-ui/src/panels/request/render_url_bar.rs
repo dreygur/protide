@@ -126,6 +126,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             .child(
                 div()
                     .id("url-input")
+                    .debug_selector(|| "url-input".to_string())
                     .flex_1()
                     .min_w(px(0.0))
                     .h(px(32.0))
