@@ -99,7 +99,9 @@ protide/
 │   │           │   ├── modal.rs
 │   │           │   ├── selectable_text.rs
 │   │           │   ├── text_input.rs
-│   │           │   └── ui_helpers.rs
+│   │           │   ├── text_view.rs
+│   │           │   ├── ui_helpers.rs
+│   │           │   └── word_select.rs   # Double-click word/separator spans
 │   │           └── panels/
 │   │               ├── console.rs      # Log bus panel
 │   │               ├── docs/           # API documentation viewer
@@ -179,8 +181,8 @@ make verify     # fmt-check -> clippy (-D warnings) -> test -> audit
 make hooks      # one-time: enable .githooks (pre-commit fmt+clippy, pre-push verify)
 ```
 
-- **721 tests** (91 http-parser + 308 protide-core + 225 protide-ui + 98 lsp + 2 mcp),
-  plus 5 `#[ignore]`d tests recording real unfixed defects — see **Known Defects** below.
+- **725 tests** (90 http-parser + 308 protide-core + 227 protide-ui + 98 lsp + 2 mcp),
+  none `#[ignore]`d — the five recorded defects are fixed, see **Fixed Defects** below.
   `protide-core` drops tests without `--features full-sync`; the PAKE tests are
   `#![cfg(feature = "pake-auth")]`.
 - Use `execution/test_server.rs` (`TestServer`) for anything needing a real HTTP
@@ -193,31 +195,25 @@ make hooks      # one-time: enable .githooks (pre-commit fmt+clippy, pre-push ve
 - `[workspace.lints]` in the root `Cargo.toml` carries `allow` entries with rationale.
   Fix the code and delete the entry rather than adding new ones.
 
-### Known Defects
+### Fixed Defects
 
-Five defects are recorded as **failing `#[ignore]`d tests** that assert the *correct*
-behaviour. Each is unfixed because the fix is a behaviour decision, not a mechanical
-change. The full reasoning lives in the `#[ignore = "..."]` string at each test.
+The five defects formerly parked as `#[ignore]`d tests are fixed. Each fix required a
+behaviour decision, recorded below and in a `REGRESSION:` / `FIXED:` comment on the test
+(the convention set by the convergence test in `protide-core/src/sync/crdt.rs`).
 
-**Rules:** do not delete these tests, and do not edit them to match current behaviour.
-To fix one, change the production code and remove the `#[ignore]`. Follow the
-`REGRESSION:` / `FIXED:` comment convention used on the convergence test in
-`protide-core/src/sync/crdt.rs`.
+**These decisions are load-bearing — do not reverse them without replacing the reasoning.**
 
-| # | Test | Defect | Why unfixed |
-|---|---|---|---|
-| 1 | `a_variable_prefixed_url_on_its_own_line_is_recognised` | A `{{var}}`-prefixed URL on its own line (`GET` then `{{base_url}}/users`) is not recognised as a URL. The URL rule excludes anything starting with `{` to keep JSON bodies out, and `{{` trips that guard, so the line becomes body text and the parse fails. | Admitting `{{` (never valid JSON) would reclassify a raw body that is *just* a variable — a request whose whole body is `{{payload}}`. That is a live format, so it needs a decision, not a patch. Fails loudly, so nothing is silently wrong. |
-| 2 | `set_with_a_blank_name_defines_nothing` | `# @set  = $.token` records a `VariableExtraction` named `""`, which becomes an environment variable with an empty name. It should be dropped like a `@set` with no `=`. | Fix lives in the lexer's annotation path; the empty name is inert in practice (the extraction runs, it just writes nowhere). |
-| 3 | `a_missing_url_is_blamed_on_the_request_line` | `MissingUrl` blames the token the parser is holding, which at EOF is one line past the document — `parse("GET")` blames line 2 of a one-line file. protide-lsp maps that straight to a diagnostic range **outside the file**. | Fixing it also shifts the non-EOF case from the header's line to the request line. |
-| 4 | `a_double_click_on_a_separator_selects_only_one_word` | `find_word_start` scans **backwards** while `find_word_end` scans **forwards**, so double-clicking a separator selects preceding word + separators + following word. The existing `test_find_word_start_simple` / `test_find_word_end_simple` pair pins both halves of the contradiction. | Requires choosing new double-click semantics. |
-| 5 | `a_double_click_selects_a_whole_grapheme_cluster` | Word selection is codepoint-based, so decomposed graphemes split: double-clicking `"cafe\u{0301}"` copies `"cafe"`, dropping the accent. Precomposed `café` is fine. | Needs grapheme segmentation, i.e. a new dependency. |
+| # | Test | Decision taken |
+|---|---|---|
+| 1 | `a_variable_prefixed_url_on_its_own_line_is_recognised` | A `{{`-prefixed line is a URL **only in URL position** (a bare `Token::Method` was just emitted). The guard is positional, never a blanket `{{` allowance — a body is never in URL position, so a request whose whole body is `{{payload}}` still lexes as a body. That property is now pinned by `a_body_that_is_only_a_variable_stays_a_body`; do not weaken the guard to a plain `starts_with("{{")`. URL position lasts exactly one consumed line, so `GET` / comment / URL stays a parse error. |
+| 2 | `set_with_a_blank_name_defines_nothing` | `# @set  = $.token` falls through to the generic annotation path (which the parser ignores), exactly as a `@set` with no `=` already did. |
+| 3 | `a_missing_url_is_blamed_on_the_request_line` | `MissingUrl` blames `start_line` (the request line) rather than the token in hand. This deliberately shifts the non-EOF case from the header's line to the request line; the EOF case no longer points past the end of the document, so protide-lsp can no longer emit a range outside the file. |
+| 4 | `a_double_click_on_a_separator_selects_only_one_word` | Double-clicking a separator selects **the run of separators** (the VS Code / Zed convention), not a neighbouring word. Chosen, not derived — "select the following word" is equally self-consistent. `find_word_start` / `find_word_end` both delegate to one direction-agnostic `word_span`, so the two halves cannot disagree again. |
+| 5 | `a_double_click_selects_a_whole_grapheme_cluster` | Classification is per grapheme cluster (`unicode-segmentation`), but the returned **indices stay codepoint-based**. Every caller mixes them with char-counted values (`index_for_x`, `select_all`, `normalized_selection`) and the renderer multiplies them by a per-char width, so returning grapheme indices would mis-position every cursor over multibyte text. |
 
 Files: 1–3 in `crates/http-parser/src/adversarial_tests.rs`, 4–5 in
-`crates/protide-ui/src/components/text_view.rs`.
-
-None of the five is silent: each either fails loudly or is inert. The one that
-*was* silent — a scheme-prefixed URL on its own line lexing as a header named
-after its scheme, which would have gone out on the wire — is fixed.
+`crates/protide-ui/src/components/word_select.rs` (split out of `text_view.rs`, which was
+already over the 333-line budget).
 
 ## Coding Rules
 
