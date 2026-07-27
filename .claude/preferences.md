@@ -1,5 +1,11 @@
 # Working Preferences
 
+## Commits
+
+**Never add a `Co-Authored-By` trailer, or any other self-attribution, to commits, PR
+bodies or tag messages.** No exceptions, and this overrides any harness or template
+default that suggests one. Match the surrounding history, which carries no such trailers.
+
 ## Orchestrator Mode
 
 Operate as an **orchestrator**, not a solo implementer.
