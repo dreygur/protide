@@ -7,6 +7,7 @@ use gpui::{
 
 use super::super::request_types::{RequestMode, SioConnectionState, WsConnectionState};
 use super::RequestPanel;
+use super::url_metrics::{URL_FONT_SIZE, URL_INPUT_PADDING};
 use crate::components::icons::{
     ICON_ARROW_DOWN, ICON_CHEVRON_DOWN, ICON_CHEVRON_UP, ICON_CODE, ICON_MD, ICON_SM, icon,
 };
@@ -130,7 +131,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                     .flex_1()
                     .min_w(px(0.0))
                     .h(px(32.0))
-                    .px(px(14.0))
+                    .px(px(URL_INPUT_PADDING))
                     .flex()
                     .items_center()
                     .overflow_hidden()
@@ -177,8 +178,13 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                         canvas(
                             move |bounds, _, cx| {
                                 entity.update(cx, |this, _| {
-                                    this.url_input_left = f32::from(bounds.origin.x) + 14.0;
+                                    this.url_input_left =
+                                        f32::from(bounds.origin.x) + URL_INPUT_PADDING;
                                     this.url_input_width = f32::from(bounds.size.width);
+                                    // Record what this frame actually painted, so a
+                                    // click against it maps to the right character.
+                                    this.url_render_scroll =
+                                        this.effective_url_scroll(is_url_focused);
                                 });
                             },
                             |_, _, _, _| {},
@@ -320,16 +326,12 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
 
     pub(super) fn render_url_text(&self, is_focused: bool, cx: &Context<Self>) -> gpui::AnyElement {
         let theme = theme::current(cx);
-        let scroll = if is_focused {
-            self.url_scroll_offset
-        } else {
-            0.0
-        };
+        let scroll = self.effective_url_scroll(is_focused);
         render_text_view_with_max_scrolled(
             &self.url,
             &self.url_selection,
             is_focused,
-            13.0,
+            URL_FONT_SIZE,
             theme.colors.text_primary,
             Some("Enter request URL..."),
             theme.colors.text_muted,

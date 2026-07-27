@@ -104,19 +104,9 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
         cx.notify();
     }
 
-    pub(super) fn index_for_x(&self, x: f32) -> usize {
-        let char_width: f32 = 7.8;
-        if x <= 0.0 {
-            0
-        } else {
-            ((x / char_width) as usize).min(self.url.chars().count())
-        }
-    }
-
     pub(super) fn handle_url_mouse_down(&mut self, event: &MouseDownEvent, cx: &mut Context<Self>) {
         self.is_selecting = true;
-        let click_x = (f32::from(event.position.x) - self.url_input_left).max(0.0);
-        let index = self.index_for_x(click_x);
+        let index = self.index_for_event_x(f32::from(event.position.x));
 
         let effective_click = if event.click_count >= 4 {
             1
@@ -145,8 +135,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
 
     pub(super) fn handle_url_mouse_move(&mut self, event: &MouseMoveEvent, cx: &mut Context<Self>) {
         if self.is_selecting {
-            let click_x = (f32::from(event.position.x) - self.url_input_left).max(0.0);
-            let index = self.index_for_x(click_x);
+            let index = self.index_for_event_x(f32::from(event.position.x));
             self.url_selection.end = index.min(self.url.chars().count());
             cx.notify();
         }
@@ -295,21 +284,5 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             }
         }
         self.update_url_scroll();
-    }
-
-    pub(super) fn update_url_scroll(&mut self) {
-        let char_width = 13.0 * 0.6;
-        let padding = 14.0 * 2.0;
-        let visible_width = (self.url_input_width - padding).max(60.0);
-        let cursor_px = self.url_selection.end as f32 * char_width;
-
-        if cursor_px < self.url_scroll_offset {
-            self.url_scroll_offset = cursor_px;
-        } else if cursor_px > self.url_scroll_offset + visible_width - char_width {
-            self.url_scroll_offset = cursor_px - visible_width + char_width;
-        }
-        if self.url_scroll_offset < 0.0 {
-            self.url_scroll_offset = 0.0;
-        }
     }
 }

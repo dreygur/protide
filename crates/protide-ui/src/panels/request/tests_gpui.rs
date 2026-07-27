@@ -472,6 +472,7 @@ mod mode_and_tab_tests {
 #[cfg(test)]
 mod url_double_click_tests {
     use crate::panels::request::RequestPanel;
+    use crate::panels::request::url_metrics::URL_CHAR_WIDTH;
     use crate::panels::response::ResponsePanel;
     use crate::test_support::init_theme;
     use gpui::{
@@ -509,10 +510,10 @@ mod url_double_click_tests {
             .debug_bounds("url-input")
             .expect("url-input should be rendered in the URL bar");
         // `url_input_left` is captured during render by the canvas child, and
-        // `index_for_x` divides by a fixed 7.8px char width - so aim at the
-        // middle of the target character's cell.
+        // `index_for_x` divides by a fixed cell width - so aim at the middle
+        // of the target character's cell.
         let left = panel.read_with(cx, |p, _| p.url_input_left);
-        let x = left + char_index as f32 * 7.8 + 3.9;
+        let x = left + char_index as f32 * URL_CHAR_WIDTH + URL_CHAR_WIDTH / 2.0;
 
         cx.simulate_event(MouseDownEvent {
             position: point(px(x), bounds.center().y),
@@ -542,5 +543,65 @@ mod url_double_click_tests {
         // The behaviour the word_select fix chose, asserted end-to-end through
         // real mouse wiring: "://" rather than the old "https://api".
         assert_eq!(double_click_at(cx, URL, 5).await, 5..8, "expected \"://\"");
+    }
+
+    /// REGRESSION: click mapping subtracted only `url_input_left`, ignoring the
+    /// horizontal scroll `render_url_text` had actually painted with. Once a URL
+    /// was long enough to scroll, every click landed `url_scroll_offset /
+    /// URL_CHAR_WIDTH` characters early - on a 264-char URL scrolled to the end,
+    /// clicking the leftmost visible character gave index 0 instead of ~91.
+    ///
+    /// FIXED: the painted scroll is recorded as `url_render_scroll` and added
+    /// back when mapping x to an index.
+    #[gpui::test]
+    async fn a_click_on_a_scrolled_url_hits_the_character_under_the_cursor(
+        cx: &mut TestAppContext,
+    ) {
+        init_theme(cx);
+        let (panel, cx) = cx.add_window_view(|window, cx| {
+            let response_panel = cx.new(|cx| ResponsePanel::new(window, cx));
+            TestPanel::new(window, cx, response_panel)
+        });
+        panel.update(cx, |p, cx| {
+            p.url = format!("https://api.example.com/{}", "segment/".repeat(30));
+            cx.notify();
+        });
+        cx.run_until_parked();
+
+        let bounds = cx.debug_bounds("url-input").expect("url-input");
+        // Focus, then park the caret at the end so the text scrolls.
+        cx.simulate_click(bounds.center(), Modifiers::none());
+        cx.run_until_parked();
+        panel.update(cx, |p, cx| {
+            let n = p.url.chars().count();
+            p.url_selection = n..n;
+            p.update_url_scroll();
+            cx.notify();
+        });
+        cx.run_until_parked();
+
+        let (left, scroll) = panel.read_with(cx, |p, _| (p.url_input_left, p.url_render_scroll));
+        assert!(
+            scroll > 0.0,
+            "URL must actually be scrolled for this to test anything"
+        );
+
+        // The leftmost visible cell holds the character at `scroll / width`.
+        let expected = (scroll / URL_CHAR_WIDTH) as usize;
+        cx.simulate_event(MouseDownEvent {
+            position: point(px(left + URL_CHAR_WIDTH / 2.0), bounds.center().y),
+            modifiers: Modifiers::none(),
+            button: MouseButton::Left,
+            click_count: 1,
+            first_mouse: false,
+        });
+        cx.run_until_parked();
+
+        panel.read_with(cx, |p, _| {
+            assert_eq!(
+                p.url_selection.start, expected,
+                "clicking the leftmost visible cell must select the character painted there"
+            );
+        });
     }
 }

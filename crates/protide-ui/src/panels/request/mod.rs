@@ -45,6 +45,7 @@ mod import;
 mod init;
 mod save;
 mod state;
+mod url_metrics;
 mod url_sync;
 
 #[cfg(test)]
@@ -118,6 +119,11 @@ pub struct RequestPanel<E: WebSocketExecutor = TungsteniteExecutor> {
     pub(super) url_input_left: f32,
     pub(super) url_input_width: f32,
     pub(super) url_scroll_offset: f32,
+    /// Scroll the last painted frame applied to the URL text. Click mapping
+    /// reads this rather than `url_scroll_offset`, because a click arrives
+    /// against the frame the user saw - which, if the input was not yet
+    /// focused, was painted unscrolled.
+    pub(super) url_render_scroll: f32,
     _edit_blur_sub: Option<Subscription>,
     pub(super) response_panel: Entity<ResponsePanel>,
     pub(super) loading: bool,

@@ -109,6 +109,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             url_input_left: 0.0,
             url_input_width: 400.0,
             url_scroll_offset: 0.0,
+            url_render_scroll: 0.0,
             _edit_blur_sub: None,
             response_panel,
             loading: false,
