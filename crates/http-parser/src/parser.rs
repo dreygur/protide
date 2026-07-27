@@ -145,10 +145,10 @@ impl<'a> Parser<'a> {
                     url
                 }
                 Token::Header(_, _) | Token::EmptyLine | Token::Eof => {
-                    // URL might have been part of the method line
-                    return Err(ParseError::MissingUrl {
-                        line: self.line_number(),
-                    });
+                    // Blame the request line, not the token in hand: at EOF that
+                    // token sits one line past the document, which protide-lsp
+                    // turns into a diagnostic range outside the file.
+                    return Err(ParseError::MissingUrl { line: start_line });
                 }
                 _ => {
                     return Err(ParseError::UnexpectedToken {

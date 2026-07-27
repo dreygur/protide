@@ -57,14 +57,17 @@ pub struct TokenSpan {
 }
 
 /// Lexer for .http files
+#[derive(Clone)]
 pub struct Lexer<'a> {
-    content: &'a str,
     lines: Vec<&'a str>,
     current_line: usize,
     in_script: Option<ScriptType>,
     in_body: bool,
     /// Pending token to return on next call (used when method and URL are on same line)
     pending_token: Option<TokenSpan>,
+    /// *URL position*: a bare `Token::Method` was just emitted, so the next
+    /// line is the URL. Only there may a `{{`-prefixed line be one.
+    expect_url: bool,
 }
 
 impl<'a> Lexer<'a> {
@@ -73,28 +76,19 @@ impl<'a> Lexer<'a> {
         // to the first token (typically the method keyword) and make an
         // otherwise valid file unparseable. Editors on Windows write it freely.
         let content = content.strip_prefix('\u{feff}').unwrap_or(content);
-        let lines: Vec<&str> = content.lines().collect();
         Self {
-            content,
-            lines,
+            lines: content.lines().collect(),
             current_line: 0,
             in_script: None,
             in_body: false,
             pending_token: None,
+            expect_url: false,
         }
     }
 
     /// Peek at the next token without consuming it
     pub fn peek(&self) -> TokenSpan {
-        let mut clone = Self {
-            content: self.content,
-            lines: self.lines.clone(),
-            current_line: self.current_line,
-            in_script: self.in_script,
-            in_body: self.in_body,
-            pending_token: self.pending_token.clone(),
-        };
-        clone.next_token()
+        self.clone().next_token()
     }
 
     /// Get the next token, tagged with the 1-indexed source line it came from.
@@ -116,45 +110,40 @@ impl<'a> Lexer<'a> {
         let line_num = self.current_line + 1;
         let line = self.lines[self.current_line];
         self.current_line += 1;
+        // URL position lasts exactly one line: consuming any line spends it.
+        let expect_url = std::mem::take(&mut self.expect_url);
+        let span = |token| TokenSpan {
+            token,
+            line: line_num,
+        };
 
         // Handle script blocks
-        if let Some(_script_type) = self.in_script {
+        if self.in_script.is_some() {
             // Check if we're exiting the script block
             if line.trim().starts_with("###") || line.trim().starts_with("# @") {
                 self.in_script = None;
                 self.current_line -= 1; // Re-process this line
                 return self.next_token();
             }
-            return TokenSpan {
-                token: Token::ScriptLine(line.to_string()),
-                line: line_num,
-            };
+            return span(Token::ScriptLine(line.to_string()));
         }
 
         let trimmed = line.trim();
 
         // Empty line
         if trimmed.is_empty() {
-            if self.in_body {
-                return TokenSpan {
-                    token: Token::Body(String::new()),
-                    line: line_num,
-                };
-            }
-            return TokenSpan {
-                token: Token::EmptyLine,
-                line: line_num,
-            };
+            return span(if self.in_body {
+                Token::Body(String::new())
+            } else {
+                Token::EmptyLine
+            });
         }
 
         // Request separator
         if trimmed.starts_with("###") {
             self.in_body = false;
             // Title (if any) becomes a comment; separator itself has no text.
-            return TokenSpan {
-                token: Token::RequestSeparator,
-                line: line_num,
-            };
+            return span(Token::RequestSeparator);
         }
 
         // Annotations and comments - body is always over when we see a # line
@@ -164,24 +153,15 @@ impl<'a> Lexer<'a> {
 
             // Check for annotations
             if comment.starts_with('@') {
-                return TokenSpan {
-                    token: self.parse_annotation(comment),
-                    line: line_num,
-                };
+                return span(self.parse_annotation(comment));
             }
 
-            return TokenSpan {
-                token: Token::Comment(comment.to_string()),
-                line: line_num,
-            };
+            return span(Token::Comment(comment.to_string()));
         }
 
         // If we're in body mode, everything is body content
         if self.in_body {
-            return TokenSpan {
-                token: Token::Body(line.to_string()),
-                line: line_num,
-            };
+            return span(Token::Body(line.to_string()));
         }
 
         // Check for HTTP method at start of line
@@ -189,19 +169,14 @@ impl<'a> Lexer<'a> {
         if let Some(method) = parts.first() {
             let method_upper = method.to_uppercase();
             if is_http_method(&method_upper) {
-                // If there's a URL on the same line, store it as pending token
-                if let Some(url) = parts.get(1).map(|s| s.trim())
-                    && !url.is_empty()
-                {
-                    self.pending_token = Some(TokenSpan {
-                        token: Token::Url(url.to_string()),
-                        line: line_num,
-                    });
+                // A URL on the method's own line becomes a pending token; a bare
+                // method instead puts the lexer in URL position for the next line.
+                let url = parts.get(1).map(|s| s.trim()).filter(|u| !u.is_empty());
+                self.expect_url = url.is_none();
+                if let Some(url) = url {
+                    self.pending_token = Some(span(Token::Url(url.to_string())));
                 }
-                return TokenSpan {
-                    token: Token::Method(method_upper),
-                    line: line_num,
-                };
+                return span(Token::Method(method_upper));
             }
         }
 
@@ -214,16 +189,12 @@ impl<'a> Lexer<'a> {
         // must stay *after* the header rule, or `Authorization: Bearer {{token}}`
         // would lex as a URL.
         if URL_SCHEMES.iter().any(|scheme| trimmed.starts_with(scheme)) {
-            return TokenSpan {
-                token: Token::Url(trimmed.to_string()),
-                line: line_num,
-            };
+            return span(Token::Url(trimmed.to_string()));
         }
 
         // Check for header (Key: Value)
         // Headers must not start with { or [ (which would be JSON body)
-        if !trimmed.starts_with('{')
-            && !trimmed.starts_with('[')
+        if !trimmed.starts_with(['{', '['])
             && let Some(colon_pos) = trimmed.find(':')
         {
             let key = trimmed[..colon_pos].trim();
@@ -236,27 +207,24 @@ impl<'a> Lexer<'a> {
                     .chars()
                     .all(|c| c.is_alphanumeric() || c == '-' || c == '_')
             {
-                return TokenSpan {
-                    token: Token::Header(key.to_string(), value.to_string()),
-                    line: line_num,
-                };
+                return span(Token::Header(key.to_string(), value.to_string()));
             }
         }
 
-        // If we have a URL-like pattern ({{var}} substitution only matches when not inside JSON)
-        if trimmed.contains("{{") && !trimmed.starts_with('{') && !trimmed.starts_with('[') {
-            return TokenSpan {
-                token: Token::Url(trimmed.to_string()),
-                line: line_num,
-            };
+        // A line carrying `{{var}}` is a URL. `{`/`[` normally disqualify it to
+        // keep JSON bodies out, but in URL position a `{{`-prefixed line is a
+        // URL - that is the only spelling of one. The guard must stay positional:
+        // a body is never in URL position, so a body of just `{{payload}}` stays
+        // a body.
+        if trimmed.contains("{{")
+            && (!trimmed.starts_with(['{', '[']) || (expect_url && trimmed.starts_with("{{")))
+        {
+            return span(Token::Url(trimmed.to_string()));
         }
 
         // Otherwise it's body content
         self.in_body = true;
-        TokenSpan {
-            token: Token::Body(line.to_string()),
-            line: line_num,
-        }
+        span(Token::Body(line.to_string()))
     }
 
     fn parse_annotation(&mut self, comment: &str) -> Token {
@@ -280,9 +248,14 @@ impl<'a> Lexer<'a> {
         if annotation.starts_with("set ") {
             let rest = annotation.trim_start_matches("set ").trim();
             if let Some(eq_pos) = rest.find('=') {
-                let name = rest[..eq_pos].trim().to_string();
-                let expr = rest[eq_pos + 1..].trim().to_string();
-                return Token::SetVariable(name, expr);
+                // A blank name would define a nameless environment variable, so it
+                // falls through to the generic annotation path - which the parser
+                // ignores - exactly as a `@set` with no `=` already does.
+                let name = rest[..eq_pos].trim();
+                if !name.is_empty() {
+                    let expr = rest[eq_pos + 1..].trim().to_string();
+                    return Token::SetVariable(name.to_string(), expr);
+                }
             }
         }
 

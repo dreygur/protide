@@ -613,27 +613,24 @@ fn a_header_whose_value_holds_a_variable_is_still_a_header() {
     );
 }
 
+/// REGRESSION: the `{{var}}` URL rule excluded any line starting with `{`, to
+/// keep JSON bodies out, so `{{base_url}}/users` on its own line lexed as body
+/// text and the request failed to parse.
+///
+/// FIXED: the guard is now positional. The lexer tracks *URL position* - it has
+/// just emitted a bare `Token::Method` with no URL on its line - and only there
+/// is a `{{`-prefixed line a URL. A body is never in URL position, so a raw
+/// body that is nothing but `{{payload}}` still lexes as body (pinned by
+/// `a_body_that_is_only_a_variable_stays_a_body` below).
 #[test]
-#[ignore = "DEFECT: a `{{var}}`-prefixed URL on its own line is still not \
-recognised. The URL rule excludes anything starting with `{` to keep JSON \
-bodies out, and `{{base_url}}/users` trips that guard, so it becomes body \
-text. Unlike the scheme case this one is not silent - it is a clean parse \
-error - and the obvious repair (admitting `{{`, which is never valid JSON) \
-would reclassify a raw body that is just a variable, e.g. a request whose \
-entire body is `{{payload}}`. That is a live format, so the trade needs a \
-decision rather than a patch."]
 fn a_variable_prefixed_url_on_its_own_line_is_recognised() {
     assert_eq!(ok("GET\n{{base_url}}/users\n")[0].url, "{{base_url}}/users");
 }
 
 #[test]
-fn a_variable_prefixed_url_on_its_own_line_fails_loudly_rather_than_dangerously() {
-    // Companion to the ignored test above: pin the damage while it stands. It
-    // must be a clean error, never a panic and never a silently wrong request.
-    assert!(matches!(
-        parse("GET\n{{base_url}}/users\n"),
-        Err(ParseError::UnexpectedToken { .. })
-    ));
+fn a_body_that_is_only_a_variable_stays_a_body() {
+    let requests = ok("POST https://api.test/x\n\n{{payload}}\n");
+    assert_eq!(requests[0].body.as_deref(), Some("{{payload}}"));
 }
 
 // ---------------------------------------------------------------------------
@@ -747,39 +744,29 @@ fn thousands_of_requests_parse() {
 }
 
 // ---------------------------------------------------------------------------
-// Known defects, documented rather than fixed
+// Annotation edge cases and error line reporting
 // ---------------------------------------------------------------------------
 
+/// REGRESSION: `# @set  = $.token` recorded an extraction named `""`, which
+/// downstream became an environment variable with an empty name.
+///
+/// FIXED: the lexer's `@set` path now falls through to the generic annotation
+/// path when the name is blank, exactly as a `@set` with no `=` already did.
 #[test]
-#[ignore = "DEFECT: `@set` with a blank name records an extraction named \"\", \
-which downstream becomes an environment variable with an empty name. It should \
-be dropped the same way a `@set` with no `=` is. Left unfixed because the \
-change lives in the lexer's annotation path and the empty name is inert in \
-practice (the extraction still runs, it just writes to a nameless variable)."]
 fn set_with_a_blank_name_defines_nothing() {
     let requests = ok("GET https://api.test/x\n\n# @set  = $.token\n");
     assert!(requests[0].meta.variable_extractions.is_empty());
 }
 
+/// REGRESSION: `MissingUrl` reported the line of the token the parser was
+/// holding, which at end of file is one past the last line - `parse("GET")`
+/// blamed line 2 of a one-line document, and protide-lsp turned that straight
+/// into a diagnostic range outside the file.
+///
+/// FIXED: it blames `start_line`, the request line the URL is missing from.
+/// This also moves the non-EOF case (`GET` then a header line) off the
+/// header's line and onto the request line, which is the point.
 #[test]
-fn set_with_a_blank_name_is_at_least_harmless() {
-    // Companion to the ignored test above: pin the property that actually
-    // matters until the defect is fixed - it parses, and it does not panic.
-    let requests = ok("GET https://api.test/x\n\n# @set  = $.token\n");
-    assert_eq!(
-        requests[0].meta.variable_extractions[0].expression,
-        "$.token"
-    );
-}
-
-#[test]
-#[ignore = "DEFECT: `MissingUrl` reports the line of the token the parser is \
-holding, which at end of file is one past the last line - `parse(\"GET\")` \
-blames line 2 of a one-line document. protide-lsp turns that straight into a \
-diagnostic range, so the squiggle lands outside the file. It should blame the \
-request line the URL is missing from. Left unfixed because it also shifts the \
-non-EOF case (`GET` then a header line) from the header's line to the request \
-line, which is a visible change to existing diagnostics."]
 fn a_missing_url_is_blamed_on_the_request_line() {
     for (input, expected) in [("GET", 1), ("### x\nGET\n", 2), ("GET\nAccept: */*\n", 1)] {
         match parse(input).unwrap_err() {
