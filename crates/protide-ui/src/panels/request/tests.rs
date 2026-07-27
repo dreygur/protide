@@ -1,5 +1,5 @@
 use super::*;
-use crate::components::text_view::is_word_char;
+use crate::components::word_select::is_word_char;
 use crate::components::{find_word_end, find_word_start};
 use crate::panels::request_utils::{base64_encode, url_decode, url_encode};
 
@@ -59,8 +59,8 @@ fn test_find_word_start_simple() {
     let text = "hello world";
     assert_eq!(find_word_start(text, 0), 0);
     assert_eq!(find_word_start(text, 3), 0);
-    assert_eq!(find_word_start(text, 5), 0); // end of "hello"
-    assert_eq!(find_word_start(text, 6), 6); // space -> finds "world"
+    assert_eq!(find_word_start(text, 5), 5); // on the space -> the separator run
+    assert_eq!(find_word_start(text, 6), 6); // start of "world"
     assert_eq!(find_word_start(text, 8), 6); // middle of "world"
 }
 
@@ -69,7 +69,7 @@ fn test_find_word_end_simple() {
     let text = "hello world";
     assert_eq!(find_word_end(text, 0), 5);
     assert_eq!(find_word_end(text, 3), 5);
-    assert_eq!(find_word_end(text, 5), 11); // at space, skips to next word end
+    assert_eq!(find_word_end(text, 5), 6); // on the space -> end of the separator run
     assert_eq!(find_word_end(text, 6), 11);
     assert_eq!(find_word_end(text, 8), 11);
 }

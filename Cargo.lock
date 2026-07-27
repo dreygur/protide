@@ -6765,6 +6765,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tokio",
+ "unicode-segmentation",
  "url",
  "urlencoding",
  "uuid",

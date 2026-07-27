@@ -105,6 +105,9 @@ uuid = { version = "1", features = ["v4", "serde"] }
 chrono = { version = "0.4", features = ["serde"] }
 log = "0.4"
 
+# Grapheme segmentation (word selection must not split a grapheme cluster)
+unicode-segmentation = "1"
+
 # File watching
 notify = "7"
 
