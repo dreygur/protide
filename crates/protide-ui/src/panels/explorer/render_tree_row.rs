@@ -1,6 +1,9 @@
 use super::*;
 use gpui::{Context, IntoElement, MouseDownEvent, ParentElement, SharedString, Styled, div, px};
 
+/// Method badge width: fits the longest method, OPTIONS, at the badge font.
+const BADGE_W: f32 = 46.0;
+
 impl ExplorerPanel {
     /// Render a single collection item row (non-recursive)
     pub(super) fn render_collection_item_row(
@@ -73,8 +76,11 @@ impl ExplorerPanel {
             );
         }
 
+        // `min_w(0)` lets the row shrink below its text so the name can
+        // truncate instead of running past the sidebar edge.
         let content = div()
             .flex_1()
+            .min_w(px(0.0))
             .flex()
             .items_center()
             .pl(indent)
@@ -106,10 +112,12 @@ impl ExplorerPanel {
             .when_some(method, |el, method| {
                 let color = theme.method_color(&method);
                 el.child(
+                    // Fixed width so names line up whatever the method.
                     div()
-                        .min_w(px(36.0))
+                        .flex_none()
+                        .w(px(BADGE_W))
                         .h(px(16.0))
-                        .px(px(4.0))
+                        .overflow_hidden()
                         .flex()
                         .items_center()
                         .justify_center()
@@ -132,7 +140,7 @@ impl ExplorerPanel {
                     div()
                         .flex_1()
                         .min_w(px(0.0))
-                        .overflow_hidden()
+                        .truncate()
                         .text_size(px(12.0))
                         .text_color(theme.colors.text_primary)
                         .when(is_folder, |el| el.font_weight(gpui::FontWeight::SEMIBOLD))
@@ -150,13 +158,20 @@ impl ExplorerPanel {
                         .child("●"),
                 )
             })
-            .when(is_renaming, |el| el.child(self.render_rename_input(cx)))
-            .when(is_folder && has_watcher, |el| {
-                el.child(div().w(px(4.0)))
-                    .child(icon(ICON_LINK, ICON_SM, theme.colors.team_accent))
-            });
+            .when(is_renaming, |el| el.child(self.render_rename_input(cx)));
 
         row = row.child(content);
+
+        // Revealed on hover like the "+" action, not shown permanently.
+        if is_folder && has_watcher {
+            row = row.action(
+                div()
+                    .id(SharedString::from(format!("watched-{}", idx)))
+                    .px(px(4.0))
+                    .tooltip(tooltip_text("Watched for changes"))
+                    .child(icon(ICON_LINK, ICON_SM, theme.colors.team_accent)),
+            );
+        }
 
         if is_folder {
             row = row.action(
