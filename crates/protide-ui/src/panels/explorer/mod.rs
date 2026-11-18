@@ -31,11 +31,16 @@ pub mod env;
 pub mod env_input;
 pub mod history;
 pub mod init;
+mod input_mouse;
 pub mod render;
+mod render_context_menu;
 pub mod render_env;
 pub mod render_env_editor;
+mod render_env_hints;
+mod render_header;
 pub mod render_history;
 pub mod render_inputs;
+mod render_new_env;
 pub mod render_tree;
 pub mod render_tree_row;
 #[cfg(test)]
