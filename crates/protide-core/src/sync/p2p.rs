@@ -1,62 +1,20 @@
 #![cfg(feature = "p2p-sync")]
 
 use std::collections::{HashMap, HashSet};
-use std::num::NonZeroUsize;
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::time::Duration;
 
 use futures_util::StreamExt;
 use libp2p::gossipsub;
-use libp2p::identify;
-use libp2p::kad::{self, store::MemoryStore};
-use libp2p::mdns;
-use libp2p::swarm::{NetworkBehaviour, SwarmEvent};
-use libp2p::{Multiaddr, PeerId, SwarmBuilder, identity};
+use libp2p::kad;
+use libp2p::{Multiaddr, PeerId, identity};
 use serde::{Deserialize, Serialize};
 
-use log::{debug, error, info, warn};
+use log::{error, info, warn};
 
+use super::p2p_swarm::{bootstrap_kademlia, build_swarm, handle_swarm_event};
+use super::p2p_topic::{crdt_topic_string, pake_topic_string};
 use super::types::{CrdtEntry, NodeId};
-
-const GOSSIP_TOPIC: &str = "protide-crdt";
-const PAKE_TOPIC_PREFIX: &str = "protide-pake-";
-
-/// Derive a one-way, non-reversible topic-name component from a plaintext
-/// pairing code.
-///
-/// Gossipsub topic subscriptions are visible to every peer on the mesh (via
-/// GRAFT / mesh announcements), so embedding the pairing code itself in a
-/// topic name - as this code previously did for both the PAKE and CRDT
-/// topics - lets any observer who never learned the code read it straight
-/// off the wire. Peers who *do* know `pairing_code` can still compute the
-/// same topic locally (this is a plain deterministic hash, not a secret
-/// derivation), so pairing still works the same way; observers who only see
-/// the topic name cannot invert the hash to recover the code.
-///
-/// `domain` provides domain separation so the CRDT topic and PAKE topic
-/// derived from the same code don't collide with each other.
-fn topic_hash(domain: &str, pairing_code: &str) -> String {
-    let mut hasher = blake3::Hasher::new();
-    hasher.update(domain.as_bytes());
-    hasher.update(b":");
-    hasher.update(pairing_code.as_bytes());
-    hasher.finalize().to_hex()[..32].to_string()
-}
-
-/// Full gossipsub topic string for CRDT sync, scoped to `pairing_code`.
-fn crdt_topic_string(pairing_code: &str) -> String {
-    if pairing_code.is_empty() {
-        GOSSIP_TOPIC.to_string()
-    } else {
-        format!("{}-{}", GOSSIP_TOPIC, topic_hash("crdt", pairing_code))
-    }
-}
-
-/// Full gossipsub topic string for PAKE handshake messages, scoped to
-/// `pairing_code`.
-fn pake_topic_string(pairing_code: &str) -> String {
-    format!("{}{}", PAKE_TOPIC_PREFIX, topic_hash("pake", pairing_code))
-}
 
 // ── Wire protocol ─────────────────────────────────────────────────────────────
 
@@ -111,47 +69,6 @@ pub enum P2PEvent {
     },
     /// Our own listen multiaddress - emitted once the swarm binds a port
     LocalAddr(String),
-}
-
-// ── libp2p behaviour ──────────────────────────────────────────────────────────
-
-#[derive(NetworkBehaviour)]
-#[behaviour(to_swarm = "ProtideBehaviourEvent")]
-struct ProtideBehaviour {
-    gossipsub: gossipsub::Behaviour,
-    kademlia: kad::Behaviour<MemoryStore>,
-    mdns: mdns::tokio::Behaviour,
-    identify: identify::Behaviour,
-}
-
-#[derive(Debug)]
-#[allow(dead_code)]
-enum ProtideBehaviourEvent {
-    Gossipsub(gossipsub::Event),
-    Kademlia(kad::Event),
-    Mdns(mdns::Event),
-    Identify(identify::Event),
-}
-
-impl From<gossipsub::Event> for ProtideBehaviourEvent {
-    fn from(e: gossipsub::Event) -> Self {
-        ProtideBehaviourEvent::Gossipsub(e)
-    }
-}
-impl From<kad::Event> for ProtideBehaviourEvent {
-    fn from(e: kad::Event) -> Self {
-        ProtideBehaviourEvent::Kademlia(e)
-    }
-}
-impl From<mdns::Event> for ProtideBehaviourEvent {
-    fn from(e: mdns::Event) -> Self {
-        ProtideBehaviourEvent::Mdns(e)
-    }
-}
-impl From<identify::Event> for ProtideBehaviourEvent {
-    fn from(e: identify::Event) -> Self {
-        ProtideBehaviourEvent::Identify(e)
-    }
 }
 
 // ── P2PSync ───────────────────────────────────────────────────────────────────
@@ -222,80 +139,7 @@ impl P2PSync {
                 };
 
                 rt.block_on(async move {
-                    // IIFE returns Result so we can use ? for each builder step, then match once.
-                    let build: Result<_, String> = (move || {
-                        Ok(SwarmBuilder::with_existing_identity(keypair)
-                            .with_tokio()
-                            .with_tcp(
-                                libp2p::tcp::Config::new().nodelay(true),
-                                libp2p::noise::Config::new,
-                                libp2p::yamux::Config::default,
-                            )
-                            .map_err(|e| format!("TCP transport error: {}", e))?
-                            .with_quic()
-                            .with_behaviour(|key: &identity::Keypair| {
-                                let pid = key.public().to_peer_id();
-
-                                let gs_config = gossipsub::ConfigBuilder::default()
-                                    .validation_mode(gossipsub::ValidationMode::Permissive)
-                                    .message_id_fn(|msg| {
-                                        let data = &msg.data[..msg.data.len().min(64)];
-                                        let mut hasher = blake3::Hasher::new();
-                                        hasher.update(data);
-                                        gossipsub::MessageId::from(
-                                            &hasher.finalize().as_bytes()[..8],
-                                        )
-                                    })
-                                    .build()
-                                    .map_err(|e| format!("Gossipsub config error: {:?}", e))?;
-
-                                let gossipsub = gossipsub::Behaviour::new(
-                                    gossipsub::MessageAuthenticity::Signed(key.clone()),
-                                    gs_config,
-                                )
-                                .map_err(|e| format!("Gossipsub error: {:?}", e))?;
-
-                                let store = MemoryStore::new(pid);
-                                // Throttle DHT to minimise background network noise:
-                                // - replication_factor 3 (down from 20): fewer peers contacted per query
-                                // - periodic_bootstrap 30 min (down from 5 min): less crawl churn
-                                // - disable record/provider replication: we use Kademlia only for
-                                //   peer discovery, not distributed storage
-                                let mut kad_config = kad::Config::new(libp2p::StreamProtocol::new(
-                                    "/protide/kad/1.0.0",
-                                ));
-                                kad_config
-                                    .set_replication_factor(NonZeroUsize::new(3).unwrap())
-                                    .set_periodic_bootstrap_interval(Some(Duration::from_secs(
-                                        30 * 60,
-                                    )))
-                                    .set_replication_interval(None)
-                                    .set_publication_interval(None)
-                                    .set_provider_publication_interval(None);
-                                let kademlia = kad::Behaviour::with_config(pid, store, kad_config);
-
-                                let mdns =
-                                    mdns::tokio::Behaviour::new(mdns::Config::default(), pid)
-                                        .map_err(|e| format!("mDNS error: {:?}", e))?;
-
-                                let identify = identify::Behaviour::new(
-                                    identify::Config::new("protide/0.1.0".into(), key.public())
-                                        .with_agent_version("protide/0.1.0".into()),
-                                );
-
-                                Ok(ProtideBehaviour {
-                                    gossipsub,
-                                    kademlia,
-                                    mdns,
-                                    identify,
-                                })
-                            })
-                            .map_err(|e| format!("Behaviour error: {:?}", e))?
-                            .with_swarm_config(|cfg| {
-                                cfg.with_idle_connection_timeout(Duration::from_secs(60))
-                            })
-                            .build())
-                    })();
+                    let build = build_swarm(keypair);
 
                     let mut swarm = match build {
                         Ok(s) => s,
@@ -345,46 +189,7 @@ impl P2PSync {
                         .kademlia
                         .set_mode(Some(kad::Mode::Server));
 
-                    // Bootstrap into the global libp2p DHT so remote peers can find us.
-                    // Note: libp2p does NOT use STUN. NAT traversal is handled by the DHT
-                    // (peer discovery) + DCUtR hole-punch protocol. For strict CGNAT you
-                    // would additionally need a circuit-relay server; that's a future step.
-                    const BOOTSTRAP_PEERS: &[(&str, &str)] = &[
-                        (
-                            "/dnsaddr/bootstrap.libp2p.io",
-                            "QmNnooDu7bfjPFoTZYxMNLWUQJyrVwtbZg5gBMjTezGAJN",
-                        ),
-                        (
-                            "/dnsaddr/bootstrap.libp2p.io",
-                            "QmQCU2EcMqAqQPR2i9bChDtGNJchTbq5TbXJJ16u19uLTa",
-                        ),
-                        (
-                            "/dnsaddr/bootstrap.libp2p.io",
-                            "QmbLHAnMoJPWSCR5Zhtx6BHJX9KiKNN6tpvbUcqanj75Nb",
-                        ),
-                        (
-                            "/dnsaddr/bootstrap.libp2p.io",
-                            "QmcZf59bWwK5XFi76CZX8cbJ4BhTzzA3gU1ZjYZcYW3dwt",
-                        ),
-                    ];
-                    let mut added = 0usize;
-                    for (addr_str, peer_str) in BOOTSTRAP_PEERS {
-                        match (addr_str.parse::<Multiaddr>(), peer_str.parse::<PeerId>()) {
-                            (Ok(addr), Ok(pid)) => {
-                                swarm.behaviour_mut().kademlia.add_address(&pid, addr);
-                                added += 1;
-                            }
-                            _ => warn!(
-                                "[Kad] Failed to parse bootstrap entry: {} {}",
-                                addr_str, peer_str
-                            ),
-                        }
-                    }
-                    debug!("[Kad] Added {} bootstrap peers", added);
-                    match swarm.behaviour_mut().kademlia.bootstrap() {
-                        Ok(qid) => debug!("[Kad] Bootstrap query started: {:?}", qid),
-                        Err(e) => warn!("[Kad] Bootstrap failed (no known peers): {:?}", e),
-                    }
+                    bootstrap_kademlia(&mut swarm);
 
                     let mut pake_topics: HashMap<String, gossipsub::IdentTopic> = HashMap::new();
 
@@ -435,87 +240,7 @@ impl P2PSync {
                             Err(_) => continue,
                         };
 
-                        match event {
-                            SwarmEvent::Behaviour(ProtideBehaviourEvent::Gossipsub(
-                                gossipsub::Event::Message { message, .. },
-                            )) => {
-                                let topic_str = message.topic.to_string();
-                                let from = message.source.unwrap_or_else(PeerId::random);
-
-                                if topic_str.starts_with(PAKE_TOPIC_PREFIX) {
-                                    debug!(
-                                        "[PAKE] Received packet on topic '{}' from {}",
-                                        topic_str, from
-                                    );
-                                    if let Ok(payload) =
-                                        serde_json::from_slice::<PakeMsgPayload>(&message.data)
-                                    {
-                                        debug!(
-                                            "[PAKE] Message kind='{}' node='{}'",
-                                            payload.kind, payload.node_name
-                                        );
-                                        let _ = event_tx_thread.send(P2PEvent::PakeMsg {
-                                            from,
-                                            topic: topic_str,
-                                            node_name: payload.node_name,
-                                            kind: payload.kind,
-                                            pake_bytes: payload.pake_bytes,
-                                            confirm: payload.confirm,
-                                        });
-                                    }
-                                } else if let Ok(entry) =
-                                    serde_json::from_slice::<CrdtEntry>(&message.data)
-                                {
-                                    let _ = event_tx_thread.send(P2PEvent::EntryReceived(entry));
-                                }
-                            }
-                            SwarmEvent::Behaviour(ProtideBehaviourEvent::Mdns(mdns_event)) => {
-                                match mdns_event {
-                                    mdns::Event::Discovered(peers) => {
-                                        for (peer, addr) in peers {
-                                            info!("[mDNS] Discovered peer {} at {}", peer, addr);
-                                            let _ =
-                                                event_tx_thread.send(P2PEvent::PeerJoined(peer));
-                                        }
-                                    }
-                                    mdns::Event::Expired(peers) => {
-                                        for (peer, _addr) in peers {
-                                            let _ = event_tx_thread.send(P2PEvent::PeerLeft(peer));
-                                        }
-                                    }
-                                }
-                            }
-                            SwarmEvent::Behaviour(ProtideBehaviourEvent::Identify(_)) => {}
-                            SwarmEvent::Behaviour(ProtideBehaviourEvent::Kademlia(kad_event)) => {
-                                match kad_event {
-                                    kad::Event::OutboundQueryProgressed {
-                                        result: kad::QueryResult::Bootstrap(res),
-                                        ..
-                                    } => match res {
-                                        Ok(kad::BootstrapOk {
-                                            peer,
-                                            num_remaining,
-                                        }) => {
-                                            debug!(
-                                                "[Kad] Bootstrap progress: peer={} remaining={}",
-                                                peer, num_remaining
-                                            );
-                                        }
-                                        Err(e) => warn!("[Kad] Bootstrap error: {:?}", e),
-                                    },
-                                    kad::Event::RoutingUpdated { peer, .. } => {
-                                        debug!("[Kad] Routing table updated: new peer {}", peer);
-                                    }
-                                    _ => {}
-                                }
-                            }
-                            SwarmEvent::NewListenAddr { address, .. } => {
-                                info!("[P2P] Bound listen address: {}", address);
-                                let _ =
-                                    event_tx_thread.send(P2PEvent::LocalAddr(address.to_string()));
-                            }
-                            _ => {}
-                        }
+                        handle_swarm_event(event, &event_tx_thread);
                     }
                 });
             })

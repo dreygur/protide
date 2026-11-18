@@ -24,6 +24,8 @@ pub mod types;
 
 mod engine;
 mod handshake;
+mod p2p_swarm;
+mod p2p_topic;
 
 use std::path::PathBuf;
 use std::sync::mpsc::{self, Receiver, Sender};

@@ -32,6 +32,7 @@
 //! ```
 
 mod ast;
+mod error;
 mod lexer;
 mod parser;
 
@@ -39,8 +40,9 @@ mod parser;
 mod adversarial_tests;
 
 pub use ast::*;
+pub use error::ParseError;
 pub use lexer::Lexer;
-pub use parser::{ParseError, Parser};
+pub use parser::Parser;
 
 /// Parse a .http file content into a list of requests
 pub fn parse(content: &str) -> Result<Vec<Request>, ParseError> {

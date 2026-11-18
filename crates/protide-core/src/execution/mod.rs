@@ -1,6 +1,7 @@
 pub(crate) mod http;
 pub mod sio;
 mod sio_codec;
+mod sio_handshake;
 #[cfg(test)]
 pub(crate) mod test_server;
 pub mod ws;
