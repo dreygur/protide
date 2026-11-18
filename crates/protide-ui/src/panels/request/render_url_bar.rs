@@ -11,9 +11,12 @@ use super::url_metrics::URL_INPUT_PADDING;
 use crate::components::icons::{
     ICON_ARROW_DOWN, ICON_CHEVRON_DOWN, ICON_CHEVRON_UP, ICON_CODE, ICON_MD, ICON_SM, icon,
 };
-use crate::components::toolbar_btn;
+use crate::components::{toolbar_btn, tooltip_text};
 use crate::theme;
 use protide_core::execution::ws::WebSocketExecutor;
+
+/// Fits "Saved!" and the changed on disk dot, so the label swap never moves the URL field.
+const SAVE_BTN_W: f32 = 64.0;
 
 impl<E: WebSocketExecutor> RequestPanel<E> {
     pub(super) fn render_url_bar(
@@ -284,6 +287,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                         let is_saved = self.save_feedback;
                         let has_conflict = self.external_change_pending;
                         toolbar_btn("save-button", cx)
+                            .w(px(SAVE_BTN_W))
                             .when(is_saved, |el| {
                                 el.text_color(theme.colors.status_success)
                                     .border_color(theme.colors.status_success.opacity(0.4))
@@ -291,17 +295,18 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                             .when(has_conflict && !is_saved, |el| {
                                 el.text_color(theme.colors.status_redirect)
                                     .border_color(theme.colors.status_redirect.opacity(0.4))
+                                    .tooltip(tooltip_text("File changed on disk"))
+                                    .child(
+                                        div()
+                                            .size(px(6.0))
+                                            .rounded_full()
+                                            .bg(theme.colors.status_redirect),
+                                    )
                             })
                             .on_click(cx.listener(|this, _, _, cx| {
                                 this.save_request(cx);
                             }))
-                            .child(if is_saved {
-                                "Saved!"
-                            } else if has_conflict {
-                                "Save (changed on disk)"
-                            } else {
-                                "Save"
-                            })
+                            .child(if is_saved { "Saved!" } else { "Save" })
                     })
                     // Code generation button
                     .child(
