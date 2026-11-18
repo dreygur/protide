@@ -121,10 +121,7 @@ pub fn format_size(bytes: usize) -> String {
 
 /// Truncate a long error for single-line display, on a char boundary.
 ///
-/// Currently exercised only by its tests - the status header that used to call it
-/// is gone. Kept because the char-boundary handling is easy to get wrong (naive
-/// byte slicing panics on multi-byte input) and the tests pin that behavior.
-#[allow(dead_code)]
+/// Naive byte slicing panics on multibyte input; the tests pin that.
 pub(crate) fn truncate_error(error: &str) -> String {
     if error.chars().count() > 40 {
         let end = error

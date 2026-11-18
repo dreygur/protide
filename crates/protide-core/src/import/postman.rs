@@ -167,7 +167,7 @@ fn parse_request(
         name,
         description: request.description.clone().map(|d| match d {
             PostmanDescription::String(s) => s,
-            PostmanDescription::Object { content, .. } => content.unwrap_or_default(),
+            PostmanDescription::Object { content } => content.unwrap_or_default(),
         }),
         ..Default::default()
     };
@@ -186,8 +186,6 @@ struct PostmanCollection {
 #[derive(Debug, Deserialize)]
 struct PostmanInfo {
     name: Option<String>,
-    #[allow(dead_code)]
-    schema: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -252,12 +250,7 @@ struct PostmanGraphQL {
 #[serde(untagged)]
 enum PostmanDescription {
     String(String),
-    Object {
-        content: Option<String>,
-        #[serde(rename = "type")]
-        #[allow(dead_code)]
-        content_type: Option<String>,
-    },
+    Object { content: Option<String> },
 }
 
 #[derive(Debug, Deserialize)]
@@ -328,6 +321,27 @@ mod tests {
         assert!(req.headers[0].enabled);
         assert!(!req.headers[1].enabled);
         assert_eq!(req.body, Some(r#"{"username": "test"}"#.to_string()));
+    }
+
+    #[test]
+    fn test_object_description_keeps_content() {
+        let json = r#"{
+            "info": {"name": "Test"},
+            "item": [{
+                "name": "Documented",
+                "request": {
+                    "method": "GET",
+                    "url": "https://api.example.com/docs",
+                    "description": {"content": "Lists docs", "type": "text/markdown"}
+                }
+            }]
+        }"#;
+
+        let result = parse_postman(json).unwrap();
+        assert_eq!(
+            result.requests[0].meta.description,
+            Some("Lists docs".to_string())
+        );
     }
 
     #[test]
