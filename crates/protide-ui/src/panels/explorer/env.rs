@@ -23,6 +23,10 @@ impl ExplorerPanel {
         self.env_editor_open = !self.env_editor_open;
         if self.env_editor_open {
             self.env_dropdown_open = false;
+            // The icon edits the selected environment; only "+ New Environment" creates one.
+            if self.show_new_env_input {
+                self.cancel_new_env(cx);
+            }
         }
         cx.notify();
     }
@@ -301,5 +305,28 @@ impl ExplorerPanel {
         } else {
             0
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ExplorerPanel;
+    use gpui::{AppContext as _, TestAppContext, WeakEntity};
+
+    /// REGRESSION: a New Environment form left open survived closing the
+    /// editor, so the edit icon reopened on "Create New Environment"
+    /// instead of the selected environment's variables.
+    #[gpui::test]
+    fn the_edit_icon_opens_the_selected_environment_not_the_new_form(cx: &mut TestAppContext) {
+        let panel = cx.new(|cx| ExplorerPanel::new(cx, WeakEntity::new_invalid()));
+        panel.update(cx, |p, cx| {
+            p.env_editor_open = true;
+            p.start_new_env(cx);
+            p.toggle_env_editor(cx);
+            p.toggle_env_editor(cx);
+            assert!(p.env_editor_open);
+            assert!(!p.show_new_env_input);
+            assert!(p.active_edit.is_none());
+        });
     }
 }
