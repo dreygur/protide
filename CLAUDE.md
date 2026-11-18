@@ -90,29 +90,26 @@ protide/
 │   │       ├── prefs.rs
 │   │       ├── session.rs
 │   │       ├── last_paths.rs
-│   │       └── ui/
-│   │           ├── main_window/        # Main window layout (split into 12 files)
-│   │           ├── components/
-│   │           │   ├── action_row.rs
-│   │           │   ├── code_editor/    # Syntax-highlighted editor
-│   │           │   ├── icons.rs
-│   │           │   ├── modal.rs
-│   │           │   ├── selectable_text.rs
-│   │           │   ├── text_input.rs
-│   │           │   ├── text_view.rs
-│   │           │   ├── ui_helpers.rs
-│   │           │   └── word_select.rs   # Double-click word/separator spans
-│   │           └── panels/
-│   │               ├── console/        # Log bus panel
-│   │               ├── docs/           # API documentation viewer
-│   │               ├── explorer/       # File tree + environments (split into ~24 files)
-│   │               ├── history.rs
-│   │               ├── mock_server/    # Mock server panel (split into 3 files)
-│   │               ├── presence.rs     # Collaboration presence UI
-│   │               ├── request/        # Request panel (split into ~60 files)
-│   │               ├── request_types.rs
-│   │               ├── request_utils.rs
-│   │               └── response/       # Response panel (split into ~19 files)
+│   │       ├── main_window/            # Main window layout (split into 12 files)
+│   │       ├── components/             # Editors and inputs come from gpui-component
+│   │       │   ├── action_row.rs
+│   │       │   ├── icons.rs
+│   │       │   ├── selectable_text.rs
+│   │       │   ├── text_view.rs
+│   │       │   ├── ui_helpers.rs
+│   │       │   └── word_select.rs      # Double-click word/separator spans
+│   │       └── panels/
+│   │           ├── console/            # Log bus panel
+│   │           ├── docs/               # API documentation viewer
+│   │           ├── explorer/           # File tree + environments (split into ~24 files)
+│   │           ├── history.rs
+│   │           ├── mock_server/        # Mock server panel (split into 3 files)
+│   │           ├── presence*.rs        # Collaboration presence UI
+│   │           ├── request/            # Request panel (split into ~60 files)
+│   │           ├── request_types.rs
+│   │           ├── request_utils.rs
+│   │           ├── response/           # Response panel (split into ~19 files)
+│   │           └── runner/             # Collection runner
 │   ├── protide-core/                   # Business logic (no UI)
 │   │   └── src/
 │   │       ├── chaining/               # JSONPath extraction, @set
@@ -183,7 +180,7 @@ make verify     # fmt-check -> clippy (-D warnings) -> test -> audit
 make hooks      # one-time: enable .githooks (pre-commit fmt+clippy, pre-push verify)
 ```
 
-- **728 tests** (90 http-parser + 308 protide-core + 230 protide-ui + 98 lsp + 2 mcp),
+- **729 tests** (90 http-parser + 309 protide-core + 230 protide-ui + 98 lsp + 2 mcp),
   none `#[ignore]`d — the five recorded defects are fixed, see **Fixed Defects** below.
   `protide-core` drops tests without `--features full-sync`; the PAKE tests are
   `#![cfg(feature = "pake-auth")]`.
