@@ -14,6 +14,12 @@ impl MainWindow {
         let response_info = self.response_panel.read(cx).last_response_summary();
         let is_loading = self.response_panel.read(cx).is_loading();
         let failed = self.response_panel.read(cx).last_error().is_some();
+        let env_name: SharedString = self
+            .explorer
+            .read(cx)
+            .env_state()
+            .active()
+            .map_or_else(|| "No Environment".into(), |e| e.name.clone().into());
 
         let sep = || {
             div()
@@ -45,7 +51,7 @@ impl MainWindow {
                         div()
                             .text_size(px(10.0))
                             .text_color(theme.colors.text_secondary)
-                            .child("Local Dev"),
+                            .child(env_name),
                     ),
             )
             .child(sep())
