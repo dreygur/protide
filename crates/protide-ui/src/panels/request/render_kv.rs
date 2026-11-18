@@ -36,15 +36,20 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
         cx: &Context<Self>,
     ) -> impl IntoElement {
         let theme = theme::current(cx);
+        let tone = if count == 0 {
+            theme.colors.text_secondary
+        } else {
+            theme.colors.accent
+        };
         div()
             .px(px(6.0))
             .py(px(2.0))
-            .bg(theme.colors.accent.opacity(0.12))
+            .bg(tone.opacity(0.12))
             .border_1()
-            .border_color(theme.colors.accent.opacity(0.35))
+            .border_color(tone.opacity(0.35))
             .text_size(px(10.0))
             .font_weight(gpui::FontWeight::MEDIUM)
-            .text_color(theme.colors.accent)
+            .text_color(tone)
             .child(format!("{} {}", count, suffix))
     }
 
