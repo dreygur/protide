@@ -321,7 +321,7 @@ mod tests {
 #[cfg(test)]
 mod mode_and_tab_tests {
     use crate::panels::request::RequestPanel;
-    use crate::panels::request_types::RequestMode;
+    use crate::panels::request_types::{AuthType, BodyType, RequestMode};
     use crate::panels::response::ResponsePanel;
     use crate::session::RequestDraft;
     use crate::test_support::init_theme;
@@ -388,6 +388,29 @@ mod mode_and_tab_tests {
             p.active_tab = 3;
             p.set_request_mode(RequestMode::Http, cx);
             assert_eq!(p.active_tab, 3, "a no-op mode change must not lose the tab");
+        });
+    }
+
+    #[gpui::test]
+    async fn loading_a_request_without_a_body_clears_the_previous_body(cx: &mut TestAppContext) {
+        let (p, cx) = panel(cx);
+        cx.run_until_parked();
+        let req = http_parser::parse("GET https://example.com/users\n")
+            .expect("valid request")
+            .remove(0);
+        p.update(cx, |p, cx| {
+            p.body_type = BodyType::Raw;
+            p.auth_type = AuthType::Bearer;
+            p.bearer_token = "stale".to_string();
+            p.load_from_parsed_request(&req, cx);
+        });
+        cx.run_until_parked();
+        p.read_with(cx, |p, cx| {
+            assert_eq!(p.body_editor.read(cx).value().to_string(), "");
+            assert_eq!(p.body, "");
+            assert_eq!(p.body_type, BodyType::Json);
+            assert_eq!(p.auth_type, AuthType::None);
+            assert_eq!(p.bearer_token, "");
         });
     }
 

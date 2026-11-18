@@ -1,6 +1,33 @@
+use super::init::{DEFAULT_GRAPHQL_QUERY, EMPTY_JSON};
 use super::*;
 
 impl<E: WebSocketExecutor> RequestPanel<E> {
+    /// Reset every per request field to its default so a loaded request that
+    /// leaves a field undefined never inherits the previous request's value.
+    /// Auth is reset too: a saved request carries it as a plain header.
+    fn reset_request_fields(&mut self, cx: &mut Context<Self>) {
+        self.set_body_content("", cx);
+        self.body_type = BodyType::Json;
+        self.form_data = vec![FormField::default()];
+        self.binary_file_path = None;
+        self.auth_type = AuthType::None;
+        self.bearer_token.clear();
+        self.basic_username.clear();
+        self.basic_password.clear();
+        self.api_key_name.clear();
+        self.api_key_value.clear();
+        self.api_key_location = ApiKeyLocation::Header;
+        self.queue_editor(
+            PendingEditor::GraphqlQuery,
+            DEFAULT_GRAPHQL_QUERY.to_string(),
+        );
+        self.queue_editor(PendingEditor::GraphqlVariables, EMPTY_JSON.to_string());
+        self.graphql_operation_name.clear();
+        self.queue_editor(PendingEditor::GrpcMessage, EMPTY_JSON.to_string());
+        self.queue_editor(PendingEditor::TrpcParams, EMPTY_JSON.to_string());
+        self.trpc_procedure.clear();
+    }
+
     /// Load request data from a history entry
     pub fn load_from_history(
         &mut self,
@@ -10,6 +37,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
         body: Option<String>,
         cx: &mut Context<Self>,
     ) {
+        self.reset_request_fields(cx);
         if let Some(m) = HttpMethod::from_str(&method) {
             self.method = m;
         }
@@ -44,6 +72,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
     pub fn load_from_parsed_request(&mut self, req: &http_parser::Request, cx: &mut Context<Self>) {
         use http_parser::Protocol;
 
+        self.reset_request_fields(cx);
         self.request_mode = match req.protocol() {
             Protocol::Http => RequestMode::Http,
             Protocol::GraphQL => RequestMode::GraphQL,

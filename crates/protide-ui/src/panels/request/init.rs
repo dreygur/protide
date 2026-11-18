@@ -1,6 +1,9 @@
 use super::*;
 use gpui_component::input::InputState;
 
+pub(super) const DEFAULT_GRAPHQL_QUERY: &str = "query {\n  \n}";
+pub(super) const EMPTY_JSON: &str = "{}";
+
 impl<E: WebSocketExecutor> RequestPanel<E> {
     pub fn new(
         window: &mut Window,
@@ -40,14 +43,14 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                 .multi_line(true)
                 .code_editor("graphql")
                 .line_number(true)
-                .default_value("query {\n  \n}")
+                .default_value(DEFAULT_GRAPHQL_QUERY)
         });
         let graphql_variables_editor = cx.new(|cx| {
             InputState::new(window, cx)
                 .multi_line(true)
                 .code_editor("json")
                 .line_number(true)
-                .default_value("{}")
+                .default_value(EMPTY_JSON)
         });
         let ws_message_editor = cx.new(|cx| {
             InputState::new(window, cx)
@@ -61,14 +64,14 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                 .multi_line(true)
                 .code_editor("json")
                 .line_number(true)
-                .default_value("{}")
+                .default_value(EMPTY_JSON)
         });
         let trpc_params_editor = cx.new(|cx| {
             InputState::new(window, cx)
                 .multi_line(true)
                 .code_editor("json")
                 .line_number(true)
-                .default_value("{}")
+                .default_value(EMPTY_JSON)
         });
         let trpc_pg_search_input =
             cx.new(|cx| InputState::new(window, cx).placeholder("Search procedures..."));
@@ -89,7 +92,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             InputState::new(window, cx)
                 .multi_line(true)
                 .code_editor("json")
-                .default_value("{}")
+                .default_value(EMPTY_JSON)
         });
         let codegen_editor = cx.new(|cx| {
             InputState::new(window, cx)
