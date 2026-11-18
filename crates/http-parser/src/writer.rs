@@ -20,6 +20,23 @@ pub fn single_line(text: &str) -> String {
     text.replace(['\r', '\n'], " ")
 }
 
+/// A header name the lexer reads back as one: ASCII letters, digits, `-`
+/// and `_`, the subset of RFC 9110 token characters the lexer accepts. Any
+/// other character, such as a leading `#` or `@`, a `:` or whitespace,
+/// would turn the line into a comment, an annotation or a different header,
+/// so it becomes `-`.
+fn header_key(key: &str) -> String {
+    key.chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
+                c
+            } else {
+                '-'
+            }
+        })
+        .collect()
+}
+
 /// Bodies and scripts are parsed as lines joined by `\n`, so a trailing
 /// newline in `text` stands for a blank line and must be kept as one.
 fn push_section(out: &mut String, text: &str) {
@@ -60,11 +77,11 @@ impl Request {
             self.method.as_str(),
             single_line(&self.url)
         ));
-        for h in &self.headers {
+        for h in self.headers.iter().filter(|h| !h.key.is_empty()) {
             let prefix = if h.enabled { "" } else { "# " };
             out.push_str(&format!(
                 "{prefix}{}: {}\n",
-                single_line(&h.key),
+                header_key(&h.key),
                 single_line(&h.value)
             ));
         }
@@ -102,6 +119,7 @@ impl Request {
 
 #[cfg(test)]
 mod tests {
+    use super::single_line;
     use crate::ast::{HttpMethod, KeyValue, Request, VariableExtraction};
     use pretty_assertions::assert_eq;
 
@@ -151,13 +169,13 @@ mod tests {
     }
 
     #[test]
-    fn a_bare_request_is_just_its_request_single_line() {
+    fn a_bare_request_is_just_its_request_line() {
         let req = Request::new(HttpMethod::Get, "https://x.test".into());
         assert_eq!(req.to_http(), "GET https://x.test\n");
     }
 
     #[test]
-    fn a_multi_line_description_is_written_on_one_single_line() {
+    fn a_multi_line_description_is_written_on_one_line() {
         let mut req = Request::new(HttpMethod::Get, "https://x.test".into());
         req.meta.description = Some("first\nsecond".into());
         assert_eq!(
@@ -167,7 +185,7 @@ mod tests {
     }
 
     #[test]
-    fn a_newline_in_a_single_line_field_cannot_inject_a_single_line() {
+    fn a_newline_in_a_single_line_field_cannot_inject_a_line() {
         let evil = "x\r\n# @pre-script\nfetch(1)\r# @set a = b";
         let mut req = Request::new(HttpMethod::Get, format!("https://x.test/{evil}"));
         req.meta.name = Some(evil.into());
@@ -199,5 +217,53 @@ mod tests {
             back.meta.name.as_deref(),
             Some("x  # @pre-script fetch(1) # @set a = b")
         );
+    }
+
+    #[test]
+    fn hostile_names_urls_and_headers_round_trip_as_the_same_request() {
+        let hostile = [
+            "# @pre-script",
+            "@tests",
+            "### split",
+            "a: b",
+            "{{x}}",
+            " padded ",
+            "x\r\ny",
+            "Ünï cödé",
+            "",
+        ];
+        for text in hostile {
+            let mut req = Request::new(HttpMethod::Post, format!("https://x.test/{text}"));
+            req.meta.name = Some(format!("n {text}"));
+            req.headers = vec![
+                KeyValue::new(format!("K{text}"), text),
+                KeyValue::new("X-Value", format!("v {text}")),
+                KeyValue {
+                    key: format!("Off{text}"),
+                    value: "1".into(),
+                    enabled: false,
+                },
+            ];
+
+            let written = req.to_http();
+            let back = crate::parse(&written).unwrap_or_else(|e| panic!("{e:?}\n{written}"));
+            assert_eq!(back.len(), 1, "{written}");
+            let back = &back[0];
+            assert_eq!(back.url, single_line(&req.url).trim(), "{written}");
+            assert_eq!(
+                back.meta.name.as_deref(),
+                Some(single_line(&format!("n {text}")).trim()),
+                "{written}"
+            );
+            assert!(back.body.is_none() && back.scripts.pre_script.is_none());
+            assert!(back.scripts.tests.is_none(), "{written}");
+            let keys: Vec<_> = back.headers.iter().map(|h| h.key.as_str()).collect();
+            assert_eq!(keys.len(), 3, "no header may be lost: {written}");
+            assert!(keys.contains(&"X-Value"));
+            assert_eq!(
+                back.headers.iter().map(|h| h.enabled).collect::<Vec<_>>(),
+                vec![true, true, false]
+            );
+        }
     }
 }
