@@ -2,8 +2,8 @@
 
 use crate::components::code_input;
 use gpui::{
-    Context, IntoElement, MouseDownEvent, MouseMoveEvent, ParentElement, Styled, div, prelude::*,
-    px,
+    App, Context, Div, Hsla, IntoElement, MouseDownEvent, MouseMoveEvent, ParentElement, Stateful,
+    Styled, div, prelude::*, px,
 };
 
 use super::RequestPanel;
@@ -12,6 +12,65 @@ use crate::components::icons::{
 };
 use crate::theme;
 use protide_core::execution::ws::WebSocketExecutor;
+
+/// Smallest editor height that still shows a few lines when every section is open.
+const SCRIPT_MIN_H: f32 = 120.0;
+
+/// Collapsible header shared by the three script sections. Caller adds .on_click().
+fn script_header(
+    id: &'static str,
+    open: bool,
+    (badge_icon, badge_color): (&'static str, Hsla),
+    title: &'static str,
+    hint: &'static str,
+    cx: &App,
+) -> Stateful<Div> {
+    let theme = theme::current(cx);
+    div()
+        .id(id)
+        .h(px(36.0))
+        .flex_shrink_0()
+        .w_full()
+        .flex()
+        .items_center()
+        .gap(px(8.0))
+        .px(px(12.0))
+        .border_b_1()
+        .border_color(theme.colors.border.opacity(0.5))
+        .cursor_pointer()
+        .hover(|s| s.bg(theme.colors.bg_tertiary.opacity(0.5)))
+        .child(icon(
+            if open {
+                ICON_CHEVRON_DOWN
+            } else {
+                ICON_CHEVRON_RIGHT
+            },
+            ICON_SM,
+            theme.colors.text_muted,
+        ))
+        .child(
+            div()
+                .size(px(18.0))
+                .bg(badge_color.opacity(0.15))
+                .flex()
+                .items_center()
+                .justify_center()
+                .child(icon(badge_icon, ICON_SM, badge_color)),
+        )
+        .child(
+            div()
+                .text_size(px(12.0))
+                .font_weight(gpui::FontWeight::SEMIBOLD)
+                .text_color(theme.colors.text_primary)
+                .child(title),
+        )
+        .child(
+            div()
+                .text_size(px(10.0))
+                .text_color(theme.colors.text_muted)
+                .child(hint),
+        )
+}
 
 impl<E: WebSocketExecutor> RequestPanel<E> {
     pub(super) fn render_scripts_tab(&mut self, cx: &mut Context<Self>) -> gpui::AnyElement {
@@ -29,69 +88,48 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
         div()
             .id("scripts-tab")
             .w_full()
-            .h_full()
+            .min_h_full()
             .relative()
             .flex()
             .flex_col()
             // Pre-request Script section
             .child(
-                div()
-                    .id("script-pre-header")
-                    .h(px(36.0))
-                    .w_full()
-                    .flex()
-                    .items_center()
-                    .gap(px(8.0))
-                    .px(px(12.0))
-                    .border_b_1()
-                    .border_color(theme.colors.border.opacity(0.5))
-                    .cursor_pointer()
-                    .hover(|s| s.bg(theme.colors.bg_tertiary.opacity(0.5)))
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        this.script_pre_open = !this.script_pre_open;
-                        cx.notify();
-                    }))
-                    .child(if script_pre_open {
-                        icon(ICON_CHEVRON_DOWN, ICON_SM, theme.colors.text_muted)
-                    } else {
-                        icon(ICON_CHEVRON_RIGHT, ICON_SM, theme.colors.text_muted)
-                    })
-                    .child(
-                        div()
-                            .size(px(18.0))
-                            .bg(theme.colors.method_post.opacity(0.15))
-                            .flex()
-                            .items_center()
-                            .justify_center()
-                            .child(icon(ICON_CHEVRON_RIGHT, ICON_SM, theme.colors.method_post)),
-                    )
-                    .child(
-                        div()
-                            .text_size(px(12.0))
-                            .font_weight(gpui::FontWeight::SEMIBOLD)
-                            .text_color(theme.colors.text_primary)
-                            .child("Pre-request Script"),
-                    )
-                    .child(
-                        div()
-                            .text_size(px(10.0))
-                            .text_color(theme.colors.text_muted)
-                            .child("Runs before sending the request"),
-                    ),
+                script_header(
+                    "script-pre-header",
+                    script_pre_open,
+                    (ICON_CHEVRON_RIGHT, theme.colors.method_post),
+                    "Pre-request Script",
+                    "Runs before sending the request",
+                    cx,
+                )
+                .on_click(cx.listener(|this, _, _, cx| {
+                    this.script_pre_open = !this.script_pre_open;
+                    cx.notify();
+                })),
             )
             .when(script_pre_open, |el| {
                 let editor_div = if single_open {
-                    div().flex_1().w_full().overflow_hidden().child(
-                        code_input(&self.pre_script_editor)
-                            .appearance(false)
-                            .h_full(),
-                    )
+                    div()
+                        .flex_1()
+                        .min_h(px(SCRIPT_MIN_H))
+                        .w_full()
+                        .overflow_hidden()
+                        .child(
+                            code_input(&self.pre_script_editor)
+                                .appearance(false)
+                                .h_full(),
+                        )
                 } else {
-                    div().h(px(script_pre_h)).w_full().overflow_hidden().child(
-                        code_input(&self.pre_script_editor)
-                            .appearance(false)
-                            .h_full(),
-                    )
+                    div()
+                        .h(px(script_pre_h))
+                        .flex_shrink_0()
+                        .w_full()
+                        .overflow_hidden()
+                        .child(
+                            code_input(&self.pre_script_editor)
+                                .appearance(false)
+                                .h_full(),
+                        )
                 };
                 let el = el.child(editor_div);
                 if !single_open {
@@ -116,67 +154,42 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             })
             // Post-response Script section
             .child(
-                div()
-                    .id("script-post-header")
-                    .h(px(36.0))
-                    .w_full()
-                    .flex()
-                    .items_center()
-                    .gap(px(8.0))
-                    .px(px(12.0))
-                    .border_b_1()
-                    .border_color(theme.colors.border.opacity(0.5))
-                    .cursor_pointer()
-                    .hover(|s| s.bg(theme.colors.bg_tertiary.opacity(0.5)))
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        this.script_post_open = !this.script_post_open;
-                        cx.notify();
-                    }))
-                    .child(if script_post_open {
-                        icon(ICON_CHEVRON_DOWN, ICON_SM, theme.colors.text_muted)
-                    } else {
-                        icon(ICON_CHEVRON_RIGHT, ICON_SM, theme.colors.text_muted)
-                    })
-                    .child(
-                        div()
-                            .size(px(18.0))
-                            .bg(theme.colors.status_success.opacity(0.15))
-                            .flex()
-                            .items_center()
-                            .justify_center()
-                            .child(icon(
-                                ICON_CHEVRON_LEFT,
-                                ICON_SM,
-                                theme.colors.status_success,
-                            )),
-                    )
-                    .child(
-                        div()
-                            .text_size(px(12.0))
-                            .font_weight(gpui::FontWeight::SEMIBOLD)
-                            .text_color(theme.colors.text_primary)
-                            .child("Post-response Script"),
-                    )
-                    .child(
-                        div()
-                            .text_size(px(10.0))
-                            .text_color(theme.colors.text_muted)
-                            .child("Runs after receiving response"),
-                    ),
+                script_header(
+                    "script-post-header",
+                    script_post_open,
+                    (ICON_CHEVRON_LEFT, theme.colors.status_success),
+                    "Post-response Script",
+                    "Runs after receiving response",
+                    cx,
+                )
+                .on_click(cx.listener(|this, _, _, cx| {
+                    this.script_post_open = !this.script_post_open;
+                    cx.notify();
+                })),
             )
             .when(script_post_open, |el| {
                 let editor_div = if single_open {
-                    div().flex_1().w_full().overflow_hidden().child(
-                        code_input(&self.post_script_editor)
-                            .appearance(false)
-                            .h_full(),
-                    )
+                    div()
+                        .flex_1()
+                        .min_h(px(SCRIPT_MIN_H))
+                        .w_full()
+                        .overflow_hidden()
+                        .child(
+                            code_input(&self.post_script_editor)
+                                .appearance(false)
+                                .h_full(),
+                        )
                 } else {
-                    div().h(px(script_post_h)).w_full().overflow_hidden().child(
-                        code_input(&self.post_script_editor)
-                            .appearance(false)
-                            .h_full(),
-                    )
+                    div()
+                        .h(px(script_post_h))
+                        .flex_shrink_0()
+                        .w_full()
+                        .overflow_hidden()
+                        .child(
+                            code_input(&self.post_script_editor)
+                                .appearance(false)
+                                .h_full(),
+                        )
                 };
                 let el = el.child(editor_div);
                 if !single_open {
@@ -201,54 +214,24 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             })
             // Tests section
             .child(
-                div()
-                    .id("script-tests-header")
-                    .h(px(36.0))
-                    .w_full()
-                    .flex()
-                    .items_center()
-                    .gap(px(8.0))
-                    .px(px(12.0))
-                    .border_b_1()
-                    .border_color(theme.colors.border.opacity(0.5))
-                    .cursor_pointer()
-                    .hover(|s| s.bg(theme.colors.bg_tertiary.opacity(0.5)))
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        this.script_tests_open = !this.script_tests_open;
-                        cx.notify();
-                    }))
-                    .child(if script_tests_open {
-                        icon(ICON_CHEVRON_DOWN, ICON_SM, theme.colors.text_muted)
-                    } else {
-                        icon(ICON_CHEVRON_RIGHT, ICON_SM, theme.colors.text_muted)
-                    })
-                    .child(
-                        div()
-                            .size(px(18.0))
-                            .bg(theme.colors.accent.opacity(0.15))
-                            .flex()
-                            .items_center()
-                            .justify_center()
-                            .child(icon(ICON_CHECK, ICON_SM, theme.colors.accent)),
-                    )
-                    .child(
-                        div()
-                            .text_size(px(12.0))
-                            .font_weight(gpui::FontWeight::SEMIBOLD)
-                            .text_color(theme.colors.text_primary)
-                            .child("Tests"),
-                    )
-                    .child(
-                        div()
-                            .text_size(px(10.0))
-                            .text_color(theme.colors.text_muted)
-                            .child("Test assertions using expect()"),
-                    ),
+                script_header(
+                    "script-tests-header",
+                    script_tests_open,
+                    (ICON_CHECK, theme.colors.accent),
+                    "Tests",
+                    "Test assertions using expect()",
+                    cx,
+                )
+                .on_click(cx.listener(|this, _, _, cx| {
+                    this.script_tests_open = !this.script_tests_open;
+                    cx.notify();
+                })),
             )
             .when(script_tests_open, |el| {
                 el.child(
                     div()
                         .flex_1()
+                        .min_h(px(SCRIPT_MIN_H))
                         .w_full()
                         .overflow_hidden()
                         .child(code_input(&self.tests_editor).appearance(false).h_full()),
