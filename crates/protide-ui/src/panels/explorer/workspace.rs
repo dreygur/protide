@@ -1,6 +1,12 @@
 use super::*;
 use gpui::Context;
 
+/// Request `index` of the .http file at `path`, if it reads and parses.
+pub(super) fn read_request(path: &std::path::Path, index: usize) -> Option<http_parser::Request> {
+    let content = fs::read_to_string(path).ok()?;
+    http_parser::parse(&content).ok()?.into_iter().nth(index)
+}
+
 impl ExplorerPanel {
     /// Load collection from a specific path (full workspace switch with session save)
     pub fn load_collection_from_path(&mut self, path: PathBuf, cx: &mut Context<Self>) {
@@ -180,23 +186,18 @@ impl ExplorerPanel {
 
     /// Load request `index` of a .http file into the request panel
     pub fn load_request_file(&mut self, path: PathBuf, index: usize, cx: &mut Context<Self>) {
-        if let Ok(content) = fs::read_to_string(&path)
-            && let Ok(requests) = http_parser::parse(&content)
-            && let Some(req) = requests.get(index)
+        if let Some(req) = read_request(&path, index)
             && let Some(request_panel) = &self.request_panel
         {
             let variable_extractions = req.meta.variable_extractions.clone();
             let proto_path = req.meta.proto_path.clone().map(std::path::PathBuf::from);
-            let req = req.clone();
 
             request_panel.update(cx, |panel, cx| {
                 panel.load_from_parsed_request(&req, cx);
                 if !variable_extractions.is_empty() {
                     panel.set_variable_extractions(variable_extractions, cx);
                 }
-                panel.current_file = Some(path.clone());
-                panel.current_request_index = index;
-                panel.external_change_pending = false;
+                panel.set_loaded_file(path.clone(), index, req);
                 if let Some(pp) = proto_path {
                     panel.load_grpc_proto_from_path(pp, cx);
                 }
@@ -210,128 +211,5 @@ impl ExplorerPanel {
         self.collection_items.clear();
         self.collections_expanded = true;
         cx.notify();
-    }
-
-    pub fn create_new_request(&mut self, cx: &mut Context<Self>) {
-        let default_dir = self.workspace_path.clone().or_else(dirs::home_dir);
-        let start_dir = last_paths::last_dir("new_request")
-            .or_else(|| last_paths::last_dir("save_request"))
-            .or(default_dir);
-        file_dialog::prompt(
-            cx,
-            Pick::Save,
-            move |d| {
-                let d = d
-                    .set_title("Create New Request")
-                    .set_file_name("new-request.http")
-                    .add_filter("HTTP Request", &["http"]);
-                match start_dir {
-                    Some(dir) => d.set_directory(dir),
-                    None => d,
-                }
-            },
-            |this, path, cx| {
-                last_paths::save_last_dir("new_request", &path);
-                last_paths::save_last_dir("save_request", &path);
-                let path = if path.extension().is_none() || path.extension().unwrap() != "http" {
-                    path.with_extension("http")
-                } else {
-                    path
-                };
-                let content =
-                    "### New Request\n# @name new-request\n\nGET https://api.example.com\n";
-                match fs::write(&path, content) {
-                    Ok(_) => {
-                        info!("Created: {}", path.display());
-                        if let Some(workspace) = &this.workspace_path
-                            && path.starts_with(workspace)
-                        {
-                            this.collection_items = this.scan_directory(workspace);
-                        }
-                        this.load_request_file(path, 0, cx);
-                    }
-                    Err(e) => error!("Failed to create request {}: {}", path.display(), e),
-                }
-            },
-        );
-    }
-
-    pub(super) fn clone_file(&mut self, source_path: PathBuf, cx: &mut Context<Self>) {
-        let content = match fs::read_to_string(&source_path) {
-            Ok(c) => c,
-            Err(e) => {
-                error!("Failed to read {}: {}", source_path.display(), e);
-                return;
-            }
-        };
-        let parent = match source_path.parent() {
-            Some(p) => p.to_path_buf(),
-            None => return,
-        };
-        let stem = source_path
-            .file_stem()
-            .map(|s| s.to_string_lossy().to_string())
-            .unwrap_or_else(|| "request".to_string());
-        let mut new_path = parent.join(format!("{}-copy.http", stem));
-        let mut n = 2usize;
-        while new_path.exists() {
-            new_path = parent.join(format!("{}-copy-{}.http", stem, n));
-            n += 1;
-        }
-        match fs::write(&new_path, &content) {
-            Ok(_) => {
-                info!("Cloned: {}", new_path.display());
-                if let Some(workspace) = &self.workspace_path
-                    && new_path.starts_with(workspace)
-                {
-                    self.collection_items = self.scan_directory(workspace);
-                }
-                self.load_request_file(new_path, 0, cx);
-            }
-            Err(e) => {
-                error!("Failed to clone: {}", e);
-                cx.notify();
-            }
-        }
-    }
-
-    pub(super) fn create_new_file_in_folder(
-        &mut self,
-        folder_path: PathBuf,
-        cx: &mut Context<Self>,
-    ) {
-        file_dialog::prompt(
-            cx,
-            Pick::Save,
-            move |d| {
-                d.set_title("Create New Request")
-                    .set_file_name("new-request.http")
-                    .set_directory(&folder_path)
-                    .add_filter("HTTP Request", &["http"])
-            },
-            |this, path, cx| {
-                last_paths::save_last_dir("new_request", &path);
-                last_paths::save_last_dir("save_request", &path);
-                let path = if path.extension().is_none_or(|e| e != "http") {
-                    path.with_extension("http")
-                } else {
-                    path
-                };
-                let content =
-                    "### New Request\n# @name new-request\n\nGET https://api.example.com\n";
-                match fs::write(&path, content) {
-                    Ok(_) => {
-                        info!("Created: {}", path.display());
-                        if let Some(workspace) = &this.workspace_path
-                            && path.starts_with(workspace)
-                        {
-                            this.collection_items = this.scan_directory(workspace);
-                        }
-                        this.load_request_file(path, 0, cx);
-                    }
-                    Err(e) => error!("Failed to create request: {}", e),
-                }
-            },
-        );
     }
 }

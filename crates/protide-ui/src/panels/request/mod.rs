@@ -53,6 +53,7 @@ mod execution_sio;
 mod execution_trpc;
 mod execution_trpc_schema;
 mod execution_ws;
+mod file_state;
 mod graphql;
 mod import;
 mod init;
@@ -65,6 +66,8 @@ mod url_sync;
 mod tests;
 #[cfg(test)]
 mod tests_gpui;
+#[cfg(test)]
+mod tests_save;
 
 use super::console::{ConsoleEntry, ConsoleEntrySource, ConsolePanel, LogLevel};
 use super::explorer::ExplorerPanel;
@@ -267,6 +270,9 @@ pub struct RequestPanel<E: WebSocketExecutor = TungsteniteExecutor> {
     pub(super) current_file: Option<std::path::PathBuf>,
     /// Which request of `current_file` is loaded, counted from 0
     pub(super) current_request_index: usize,
+    /// The request as last loaded from or saved to `current_file`; saving
+    /// starts from it so annotations the editor does not show survive
+    pub(super) loaded_request: Option<http_parser::Request>,
     /// Set when the file watcher observes `current_file` change on disk
     /// while it's open here. Rendered as a visible warning on the Save
     /// button so the user can't blindly overwrite an external edit without

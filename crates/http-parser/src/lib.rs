@@ -36,12 +36,13 @@ mod blocks;
 mod error;
 mod lexer;
 mod parser;
+mod writer;
 
 #[cfg(test)]
 mod adversarial_tests;
 
 pub use ast::*;
-pub use blocks::{RequestBlock, parse_blocks};
+pub use blocks::{RequestBlock, parse_blocks, replace_request};
 pub use error::ParseError;
 pub use lexer::Lexer;
 pub use parser::Parser;

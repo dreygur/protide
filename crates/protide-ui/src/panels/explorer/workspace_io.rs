@@ -1,4 +1,4 @@
-use super::util::{request_to_http_content, sanitize_filename};
+use super::util::sanitize_filename;
 use super::*;
 use gpui::Context;
 
@@ -57,14 +57,11 @@ impl ExplorerPanel {
                                         collection_dir.clone()
                                     };
                                 let filepath = parent.join(format!("{}.http", filename));
-                                match request_to_http_content(request) {
-                                    Ok(c) => match fs::write(&filepath, &c) {
-                                        Ok(_) => created += 1,
-                                        Err(e) => {
-                                            warn!("Failed to write {}: {}", filepath.display(), e)
-                                        }
-                                    },
-                                    Err(e) => warn!("Failed to convert '{}': {}", filename, e),
+                                match fs::write(&filepath, request.to_http()) {
+                                    Ok(_) => created += 1,
+                                    Err(e) => {
+                                        warn!("Failed to write {}: {}", filepath.display(), e)
+                                    }
                                 }
                             }
                             if this.workspace_path.is_some() {

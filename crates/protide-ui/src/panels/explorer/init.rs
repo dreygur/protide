@@ -1,3 +1,4 @@
+use super::workspace::read_request;
 use super::*;
 use gpui::{Context, Entity};
 
@@ -81,10 +82,7 @@ impl ExplorerPanel {
             && file.exists()
         {
             let index = entry.active_request;
-            let multi = fs::read_to_string(file)
-                .ok()
-                .and_then(|c| http_parser::parse(&c).ok())
-                .is_some_and(|r| r.len() > 1);
+            let multi = read_request(file, 1).is_some();
             self.selected_item = Some(file.clone());
             self.selected_request = multi.then_some(index);
             if let Some(ref draft) = entry.draft
@@ -92,10 +90,14 @@ impl ExplorerPanel {
             {
                 let draft = draft.clone();
                 let file = file.clone();
+                let request = read_request(&file, index);
                 rp.update(cx, |panel, cx| {
                     panel.restore_from_draft(&draft, cx);
-                    panel.current_file = Some(file);
-                    panel.current_request_index = index;
+                    // Without the request on disk a save must not guess
+                    // which block to rewrite; it asks for a file instead.
+                    if let Some(request) = request {
+                        panel.set_loaded_file(file, index, request);
+                    }
                 });
             }
         }

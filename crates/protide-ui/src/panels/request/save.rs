@@ -1,14 +1,43 @@
 use super::super::request_utils::{base64_encode, url_encode};
 use super::*;
 use gpui::Context;
+use http_parser::Protocol;
+
+fn mode_protocol(mode: RequestMode) -> Protocol {
+    match mode {
+        RequestMode::Http => Protocol::Http,
+        RequestMode::GraphQL => Protocol::GraphQL,
+        RequestMode::WebSocket => Protocol::WebSocket,
+        RequestMode::Grpc => Protocol::Grpc,
+        RequestMode::Trpc => Protocol::Trpc,
+        RequestMode::SocketIo => Protocol::SocketIO,
+    }
+}
+
+fn non_empty(text: String) -> Option<String> {
+    (!text.trim().is_empty()).then_some(text)
+}
 
 impl<E: WebSocketExecutor> RequestPanel<E> {
     /// Save the current request to a .http file
     pub fn save_request(&mut self, cx: &mut Context<Self>) {
-        let content = self.generate_http_content(cx);
+        let request = self.build_request(cx);
 
-        // Save in-place if a file is already loaded
+        // Save in place if a file is already loaded: only the loaded request's
+        // block is rewritten, every other request in the file is kept as is.
         if let Some(ref path) = self.current_file.clone() {
+            let index = self.current_request_index;
+            let content = std::fs::read_to_string(path)
+                .ok()
+                .and_then(|old| http_parser::replace_request(&old, index, &request));
+            let Some(content) = content else {
+                log::error!(
+                    "Not saved: request {} of {} could not be found",
+                    index + 1,
+                    path.display()
+                );
+                return;
+            };
             if let Err(e) = std::fs::write(path, &content) {
                 log::error!("Failed to save request {}: {}", path.display(), e);
             } else {
@@ -16,6 +45,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                     log::warn!("Overwrote external changes to {}", path.display());
                 }
                 log::info!("Saved: {}", path.display());
+                self.loaded_request = Some(request);
                 self.external_change_pending = false;
                 self.save_feedback = true;
                 cx.notify();
@@ -45,6 +75,12 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                 .unwrap_or("request");
             format!("{}.http", name)
         };
+        let title = if self.url.is_empty() {
+            "New Request"
+        } else {
+            &self.url
+        };
+        let content = format!("### {}\n\n{}", title, request.to_http());
 
         let start_dir = last_paths::last_dir("save_request").or_else(dirs::home_dir);
         file_dialog::prompt(
@@ -72,82 +108,94 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                 } else {
                     log::info!("Saved: {}", path.display());
                     this.current_file = Some(path);
+                    this.current_request_index = 0;
+                    this.loaded_request = Some(request);
                 }
             },
         );
     }
 
-    /// Generate .http file content from current request state
-    pub(super) fn generate_http_content(&self, cx: &Context<Self>) -> String {
-        let mut lines = Vec::new();
-
-        let name = if self.url.is_empty() {
-            "New Request"
-        } else {
-            &self.url
-        };
-        lines.push(format!("### {}", name));
-        lines.push(String::new());
-
-        if self.request_mode == RequestMode::GraphQL {
-            lines.push("# @protocol graphql".to_string());
-        }
-
-        if let Some(ref proto_path) = self.grpc_proto_path {
-            lines.push(format!("# @proto {}", proto_path.display()));
-        }
-
+    /// The editor state as a parsed request. Starts from the request loaded
+    /// from the file, so annotations the editor does not show (`@name`,
+    /// `@description`, `@depends`, `@set`) are kept as they were.
+    fn build_request(&self, cx: &Context<Self>) -> http_parser::Request {
+        let mut req = self.loaded_request.clone().unwrap_or_else(|| {
+            http_parser::Request::new(http_parser::HttpMethod::Get, String::new())
+        });
         let method = if self.request_mode == RequestMode::GraphQL {
             "POST"
         } else {
             self.method.as_str()
         };
-        lines.push(format!("{} {}", method, self.url));
+        if let Some(m) = http_parser::HttpMethod::from_str(method) {
+            req.method = m;
+        }
+        req.url = if self.request_mode == RequestMode::Trpc {
+            format!("{}{}", self.url, self.trpc_procedure)
+        } else {
+            self.url.clone()
+        };
 
-        // Disabled headers are written as `# Key: Value` comment lines so the
-        // http-parser can round-trip the enabled/disabled state on load.
-        for header in &self.headers {
-            if header.key.is_empty() {
-                continue;
-            }
-            if header.enabled {
-                lines.push(format!("{}: {}", header.key, header.value));
-            } else {
-                lines.push(format!("# {}: {}", header.key, header.value));
-            }
+        // Only write @protocol when the method alone would not imply it, or
+        // when the file already spelled it out.
+        let protocol = mode_protocol(self.request_mode);
+        let had_protocol = req.meta.protocol.is_some();
+        req.meta.protocol = None;
+        if had_protocol || req.protocol() != protocol {
+            req.meta.protocol = Some(protocol);
+        }
+        if self.request_mode == RequestMode::Grpc
+            && let Some(ref proto_path) = self.grpc_proto_path
+        {
+            req.meta.proto_path = Some(proto_path.display().to_string());
         }
 
+        req.headers = self
+            .headers
+            .iter()
+            .filter(|h| !h.key.is_empty())
+            .map(|h| http_parser::KeyValue {
+                key: h.key.clone(),
+                value: h.value.clone(),
+                enabled: h.enabled,
+            })
+            .collect();
+        if let Some((key, value)) = self.auth_header() {
+            req.headers.push(http_parser::KeyValue::new(key, value));
+        }
+
+        req.body = non_empty(self.generate_body_content(cx));
+        req.scripts = http_parser::Scripts {
+            pre_script: non_empty(self.pre_script_editor.read(cx).value().to_string()),
+            post_script: non_empty(self.post_script_editor.read(cx).value().to_string()),
+            tests: non_empty(self.tests_editor.read(cx).value().to_string()),
+        };
+        req
+    }
+
+    /// The auth tab as the header it is saved as, if it saves to one.
+    fn auth_header(&self) -> Option<(String, String)> {
         match self.auth_type {
-            AuthType::None => {}
-            AuthType::Bearer => {
-                if !self.bearer_token.is_empty() {
-                    lines.push(format!("Authorization: Bearer {}", self.bearer_token));
-                }
-            }
-            AuthType::Basic => {
-                if !self.basic_username.is_empty() || !self.basic_password.is_empty() {
+            AuthType::None => None,
+            AuthType::Bearer => (!self.bearer_token.is_empty()).then(|| {
+                (
+                    "Authorization".to_string(),
+                    format!("Bearer {}", self.bearer_token),
+                )
+            }),
+            AuthType::Basic => (!self.basic_username.is_empty() || !self.basic_password.is_empty())
+                .then(|| {
                     let credentials = format!("{}:{}", self.basic_username, self.basic_password);
-                    let encoded = base64_encode(credentials.as_bytes());
-                    lines.push(format!("Authorization: Basic {}", encoded));
-                }
-            }
-            AuthType::ApiKey => {
-                if !self.api_key_name.is_empty()
-                    && !self.api_key_value.is_empty()
-                    && self.api_key_location == ApiKeyLocation::Header
-                {
-                    lines.push(format!("{}: {}", self.api_key_name, self.api_key_value));
-                }
-            }
+                    (
+                        "Authorization".to_string(),
+                        format!("Basic {}", base64_encode(credentials.as_bytes())),
+                    )
+                }),
+            AuthType::ApiKey => (!self.api_key_name.is_empty()
+                && !self.api_key_value.is_empty()
+                && self.api_key_location == ApiKeyLocation::Header)
+                .then(|| (self.api_key_name.clone(), self.api_key_value.clone())),
         }
-
-        let body_content = self.generate_body_content(cx);
-        if !body_content.is_empty() {
-            lines.push(String::new());
-            lines.push(body_content);
-        }
-
-        lines.join("\n")
     }
 
     /// Build the saved body text for the current mode/body type. GraphQL is

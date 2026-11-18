@@ -29,6 +29,7 @@ use protide_core::models::{Environment, EnvironmentState};
 
 pub mod env;
 pub mod env_input;
+mod file_create;
 pub mod history;
 pub mod init;
 mod input_mouse;
