@@ -38,6 +38,8 @@ pub struct SessionState {
 pub struct WorkspaceEntry {
     /// The .http file that was active when this workspace was last visited.
     pub active_file: Option<PathBuf>,
+    /// Which request of `active_file` was loaded, counted from 0.
+    pub active_request: usize,
     /// Editor state at the time of the last save (may include unsaved edits).
     pub draft: Option<RequestDraft>,
     /// Which tree folders were expanded.
@@ -364,6 +366,7 @@ mod tests {
             "/ws".into(),
             WorkspaceEntry {
                 active_file: Some(PathBuf::from("/ws/a.http")),
+                active_request: 2,
                 draft: Some(draft),
                 expanded_folders: vec![PathBuf::from("/ws"), PathBuf::from("/ws/sub")],
                 active_env: Some("dev".into()),
@@ -382,6 +385,7 @@ mod tests {
         assert_eq!(back.current_workspace, Some(PathBuf::from("/ws")));
         let entry = back.workspaces.get("/ws").expect("workspace restored");
         assert_eq!(entry.active_file, Some(PathBuf::from("/ws/a.http")));
+        assert_eq!(entry.active_request, 2);
         assert_eq!(entry.active_env.as_deref(), Some("dev"));
         assert_eq!(entry.expanded_folders.len(), 2);
 

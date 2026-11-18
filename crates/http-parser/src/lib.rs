@@ -32,6 +32,7 @@
 //! ```
 
 mod ast;
+mod blocks;
 mod error;
 mod lexer;
 mod parser;
@@ -40,6 +41,7 @@ mod parser;
 mod adversarial_tests;
 
 pub use ast::*;
+pub use blocks::{RequestBlock, parse_blocks};
 pub use error::ParseError;
 pub use lexer::Lexer;
 pub use parser::Parser;

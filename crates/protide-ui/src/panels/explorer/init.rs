@@ -26,6 +26,7 @@ impl ExplorerPanel {
             edit_input_widths: std::collections::HashMap::new(),
             _edit_blur_sub: None,
             selected_item: None,
+            selected_request: None,
             context_menu: None,
             renaming_item: None,
             rename_text: String::new(),
@@ -79,7 +80,13 @@ impl ExplorerPanel {
         if let Some(ref file) = entry.active_file
             && file.exists()
         {
+            let index = entry.active_request;
+            let multi = fs::read_to_string(file)
+                .ok()
+                .and_then(|c| http_parser::parse(&c).ok())
+                .is_some_and(|r| r.len() > 1);
             self.selected_item = Some(file.clone());
+            self.selected_request = multi.then_some(index);
             if let Some(ref draft) = entry.draft
                 && let Some(ref rp) = self.request_panel
             {
@@ -88,6 +95,7 @@ impl ExplorerPanel {
                 rp.update(cx, |panel, cx| {
                     panel.restore_from_draft(&draft, cx);
                     panel.current_file = Some(file);
+                    panel.current_request_index = index;
                 });
             }
         }

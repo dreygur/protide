@@ -13,15 +13,15 @@ impl ExplorerPanel {
 
         // Persist state for the workspace we're leaving
         if let Some(ref current) = self.workspace_path.clone() {
-            let draft = self
-                .request_panel
-                .as_ref()
-                .map(|rp| rp.read(cx).capture_draft(cx));
+            let rp = self.request_panel.as_ref().map(|rp| rp.read(cx));
+            let draft = rp.map(|rp| rp.capture_draft(cx));
+            let location = rp.and_then(|rp| rp.loaded_location());
             let entry = session
                 .workspaces
                 .entry(current.to_string_lossy().to_string())
                 .or_default();
-            entry.active_file = self.selected_item.clone();
+            entry.active_request = location.as_ref().map_or(0, |l| l.1);
+            entry.active_file = location.map(|l| l.0);
             entry.draft = draft;
             entry.expanded_folders = self.collect_expanded();
             entry.active_env = self.env_state.active().map(|e| e.name.clone());
@@ -178,11 +178,11 @@ impl ExplorerPanel {
         );
     }
 
-    /// Load a .http file into the request panel
-    pub fn load_request_file(&mut self, path: PathBuf, cx: &mut Context<Self>) {
+    /// Load request `index` of a .http file into the request panel
+    pub fn load_request_file(&mut self, path: PathBuf, index: usize, cx: &mut Context<Self>) {
         if let Ok(content) = fs::read_to_string(&path)
             && let Ok(requests) = http_parser::parse(&content)
-            && let Some(req) = requests.first()
+            && let Some(req) = requests.get(index)
             && let Some(request_panel) = &self.request_panel
         {
             let variable_extractions = req.meta.variable_extractions.clone();
@@ -195,6 +195,7 @@ impl ExplorerPanel {
                     panel.set_variable_extractions(variable_extractions, cx);
                 }
                 panel.current_file = Some(path.clone());
+                panel.current_request_index = index;
                 panel.external_change_pending = false;
                 if let Some(pp) = proto_path {
                     panel.load_grpc_proto_from_path(pp, cx);
@@ -247,7 +248,7 @@ impl ExplorerPanel {
                         {
                             this.collection_items = this.scan_directory(workspace);
                         }
-                        this.load_request_file(path, cx);
+                        this.load_request_file(path, 0, cx);
                     }
                     Err(e) => error!("Failed to create request {}: {}", path.display(), e),
                 }
@@ -285,7 +286,7 @@ impl ExplorerPanel {
                 {
                     self.collection_items = self.scan_directory(workspace);
                 }
-                self.load_request_file(new_path, cx);
+                self.load_request_file(new_path, 0, cx);
             }
             Err(e) => {
                 error!("Failed to clone: {}", e);
@@ -326,7 +327,7 @@ impl ExplorerPanel {
                         {
                             this.collection_items = this.scan_directory(workspace);
                         }
-                        this.load_request_file(path, cx);
+                        this.load_request_file(path, 0, cx);
                     }
                     Err(e) => error!("Failed to create request: {}", e),
                 }

@@ -17,12 +17,20 @@ impl ExplorerPanel {
         let path_for_select = item.path.clone();
         let path_for_action = item.path.clone();
         let is_folder = item.is_folder;
+        let is_expandable = item.is_expandable();
         let is_expanded = item.expanded;
-        let display_name = item.name.trim_end_matches(".http").to_string();
+        let request_index = item.request_index;
+        let is_request_row = request_index.is_some();
+        let display_name = if is_request_row {
+            item.name.clone()
+        } else {
+            item.name.trim_end_matches(".http").to_string()
+        };
         let method = item.method.clone();
         let has_badge = method.is_some();
-        let is_selected = self.selected_item.as_ref() == Some(&item.path);
-        let is_renaming = self.renaming_item.as_ref() == Some(&item.path);
+        let is_selected = self.selected_item.as_ref() == Some(&item.path)
+            && self.selected_request == request_index;
+        let is_renaming = !is_request_row && self.renaming_item.as_ref() == Some(&item.path);
         let has_watcher = self.workspace_watcher.is_some();
         let guide_color = theme.colors.text_muted.opacity(0.12);
 
@@ -34,14 +42,16 @@ impl ExplorerPanel {
         .selected(is_selected)
         .on_click(cx.listener(move |this, _, _, cx| {
             this.selected_item = Some(path_for_select.clone());
-            if is_folder {
+            this.selected_request = request_index;
+            if is_expandable {
                 this.toggle_collection_folder(path.clone(), cx);
             } else {
-                this.load_request_file(path.clone(), cx);
+                this.load_request_file(path.clone(), request_index.unwrap_or(0), cx);
             }
         }))
         .on_right_click(cx.listener(move |this, event: &MouseDownEvent, _, cx| {
             this.selected_item = Some(path_for_right_click.clone());
+            this.selected_request = request_index;
             this.context_menu = Some((path_for_right_click.clone(), event.position));
             cx.notify();
         }));
@@ -64,7 +74,7 @@ impl ExplorerPanel {
             .items_center()
             .pl(indent)
             .pr(px(4.0))
-            .when(is_folder, |el| {
+            .when(is_expandable, |el| {
                 el.child(
                     div()
                         .w(px(10.0))
@@ -78,14 +88,16 @@ impl ExplorerPanel {
                         }),
                 )
             })
-            .when(!is_folder, |el| el.child(div().w(px(10.0))))
+            .when(!is_expandable, |el| el.child(div().w(px(10.0))))
             .child(div().w(px(crate::theme::sizes::CHEVRON_ICON_GAP)))
-            .child(if is_folder {
-                icon(ICON_FOLDER, ICON_MD, theme.colors.text_muted)
-            } else {
-                icon(ICON_FILE, ICON_MD, theme.colors.accent)
+            .when(!is_request_row, |el| {
+                el.child(if is_folder {
+                    icon(ICON_FOLDER, ICON_MD, theme.colors.text_muted)
+                } else {
+                    icon(ICON_FILE, ICON_MD, theme.colors.accent)
+                })
+                .child(div().w(px(crate::theme::sizes::ICON_TEXT_GAP)))
             })
-            .child(div().w(px(crate::theme::sizes::ICON_TEXT_GAP)))
             .when_some(method, |el, method| {
                 let color = theme.method_color(&method);
                 el.child(

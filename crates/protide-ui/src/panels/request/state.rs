@@ -18,6 +18,13 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
         cx.notify();
     }
 
+    /// The file and request index the editor was loaded from, if any.
+    pub fn loaded_location(&self) -> Option<(std::path::PathBuf, usize)> {
+        self.current_file
+            .clone()
+            .map(|f| (f, self.current_request_index))
+    }
+
     pub fn shows_response_panel(&self) -> bool {
         !matches!(
             self.request_mode,

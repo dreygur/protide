@@ -1,6 +1,57 @@
 use super::*;
 use log::debug;
 
+fn request_badge(req: &http_parser::Request) -> String {
+    match req.protocol() {
+        Protocol::GraphQL => "GQL",
+        Protocol::WebSocket => "WS",
+        Protocol::Grpc => "GRPC",
+        Protocol::SocketIO => "SIO",
+        Protocol::Trpc => "TRPC",
+        Protocol::Http => req.method.as_str(),
+    }
+    .to_string()
+}
+
+/// Tree row for a .http file. A file holding several requests lists them as
+/// children so each one is reachable; a single request file stays one row.
+pub(super) fn file_item(path: PathBuf, name: String) -> CollectionItem {
+    let blocks = fs::read_to_string(&path)
+        .ok()
+        .and_then(|c| http_parser::parse_blocks(&c).ok())
+        .unwrap_or_default();
+    let children: Vec<CollectionItem> = if blocks.len() > 1 {
+        blocks
+            .iter()
+            .enumerate()
+            .map(|(i, block)| CollectionItem {
+                name: block.label(),
+                path: path.clone(),
+                is_folder: false,
+                children: Vec::new(),
+                method: Some(request_badge(&block.request)),
+                expanded: false,
+                request_index: Some(i),
+            })
+            .collect()
+    } else {
+        Vec::new()
+    };
+    let method = blocks
+        .first()
+        .filter(|_| children.is_empty())
+        .map(|b| request_badge(&b.request));
+    CollectionItem {
+        name,
+        path,
+        is_folder: false,
+        children,
+        method,
+        expanded: false,
+        request_index: None,
+    }
+}
+
 impl ExplorerPanel {
     pub(super) fn scan_directory(&self, path: &PathBuf) -> Vec<CollectionItem> {
         debug!("Scanning: {}", path.display());
@@ -36,18 +87,11 @@ impl ExplorerPanel {
                             children,
                             method: None,
                             expanded: false,
+                            request_index: None,
                         });
                     }
                 } else if entry_path.extension().is_some_and(|ext| ext == "http") {
-                    let method = self.parse_method_from_file(&entry_path);
-                    items.push(CollectionItem {
-                        name,
-                        path: entry_path,
-                        is_folder: false,
-                        children: Vec::new(),
-                        method,
-                        expanded: false,
-                    });
+                    items.push(file_item(entry_path, name));
                 }
             }
         }
@@ -65,23 +109,5 @@ impl ExplorerPanel {
             }
         }
         false
-    }
-
-    pub(super) fn parse_method_from_file(&self, path: &PathBuf) -> Option<String> {
-        if let Ok(content) = fs::read_to_string(path)
-            && let Ok(requests) = http_parser::parse(&content)
-            && let Some(req) = requests.first()
-        {
-            let label = match req.protocol() {
-                Protocol::GraphQL => "GQL",
-                Protocol::WebSocket => "WS",
-                Protocol::Grpc => "GRPC",
-                Protocol::SocketIO => "SIO",
-                Protocol::Trpc => "TRPC",
-                Protocol::Http => req.method.as_str(),
-            };
-            return Some(label.to_string());
-        }
-        None
     }
 }

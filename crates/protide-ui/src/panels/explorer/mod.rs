@@ -65,8 +65,17 @@ pub struct CollectionItem {
     pub children: Vec<CollectionItem>,
     /// HTTP method (for .http files, parsed from first line)
     pub method: Option<String>,
-    /// Whether this folder is expanded
+    /// Whether this folder (or multi request file) is expanded
     pub expanded: bool,
+    /// Which request of the file this row loads, for the rows listed under a
+    /// multi request file
+    pub request_index: Option<usize>,
+}
+
+impl CollectionItem {
+    pub fn is_expandable(&self) -> bool {
+        self.is_folder || !self.children.is_empty()
+    }
 }
 
 /// Edit target for environment variable editor
@@ -101,6 +110,8 @@ pub struct ExplorerPanel {
     pub(super) edit_input_widths: std::collections::HashMap<EnvEditTarget, f32>,
     pub(super) _edit_blur_sub: Option<Subscription>,
     pub(super) selected_item: Option<PathBuf>,
+    /// Request row selected under `selected_item` when that file lists several
+    pub(super) selected_request: Option<usize>,
     pub(super) context_menu: Option<(PathBuf, Point<Pixels>)>,
     pub(super) renaming_item: Option<PathBuf>,
     pub(super) rename_text: String,
@@ -127,11 +138,6 @@ impl ExplorerPanel {
         &self.env_state
     }
 
-    /// Return the currently selected file path (if any).
-    pub fn selected_item(&self) -> Option<&PathBuf> {
-        self.selected_item.as_ref()
-    }
-
     /// Return the open workspace path (if any).
     pub fn workspace_path(&self) -> Option<&PathBuf> {
         self.workspace_path.as_ref()
@@ -141,7 +147,7 @@ impl ExplorerPanel {
     pub fn collect_expanded(&self) -> Vec<PathBuf> {
         fn gather(items: &[CollectionItem], out: &mut Vec<PathBuf>) {
             for item in items {
-                if item.is_folder && item.expanded {
+                if item.is_expandable() && item.expanded {
                     out.push(item.path.clone());
                     gather(&item.children, out);
                 }
@@ -156,7 +162,7 @@ impl ExplorerPanel {
     pub(super) fn apply_expanded(&mut self, paths: &[PathBuf]) {
         fn mark(items: &mut [CollectionItem], paths: &[PathBuf]) {
             for item in items.iter_mut() {
-                if item.is_folder {
+                if item.is_expandable() {
                     if paths.contains(&item.path) {
                         item.expanded = true;
                     }

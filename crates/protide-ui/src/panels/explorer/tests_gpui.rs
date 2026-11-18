@@ -118,42 +118,77 @@ fn unicode_file_and_folder_names_survive_the_scan(cx: &mut TestAppContext) {
     );
 }
 
-// ── parse_method_from_file ──────────────────────────────────────────────────
+// ── file_item ───────────────────────────────────────────────────────────────
+
+fn badge(path: &Path) -> Option<String> {
+    super::tree_scan::file_item(path.to_path_buf(), "r.http".into()).method
+}
 
 #[gpui::test]
-fn the_tree_badge_shows_the_method_or_protocol_of_the_first_request(cx: &mut TestAppContext) {
+fn the_tree_badge_shows_the_method_or_protocol_of_a_single_request(_cx: &mut TestAppContext) {
     let tmp = TempDir::new("badge");
-    let p = panel(cx);
     for (body, want) in [
         ("GET https://x.test\n", Some("GET")),
         ("DELETE https://x.test\n", Some("DELETE")),
         ("# @protocol graphql\nPOST https://x.test\n", Some("GQL")),
         ("# @protocol websocket\nGET wss://x.test\n", Some("WS")),
         ("# @protocol grpc\nPOST https://x.test\n", Some("GRPC")),
-        // Only the *first* request in a multi-request file drives the badge.
-        (
-            "GET https://x.test\n\n###\n\nDELETE https://x.test\n",
-            Some("GET"),
-        ),
     ] {
         let file = tmp.join("r.http");
         write(&file, body);
-        let got = p.read_with(cx, |p, _| p.parse_method_from_file(&file));
-        assert_eq!(got.as_deref(), want, "for {body:?}");
+        assert_eq!(badge(&file).as_deref(), want, "for {body:?}");
     }
 }
 
 #[gpui::test]
-fn an_unparseable_or_missing_file_has_no_method_badge(cx: &mut TestAppContext) {
+fn an_unparseable_or_missing_file_has_no_method_badge(_cx: &mut TestAppContext) {
     let tmp = TempDir::new("badge-bad");
-    let p = panel(cx);
-    p.read_with(cx, |p, _| {
-        assert_eq!(p.parse_method_from_file(&tmp.join("nope.http")), None);
-        let empty = tmp.write("empty.http", "");
-        assert_eq!(p.parse_method_from_file(&empty), None);
-        let comment = tmp.write("comment.http", "# just a comment\n");
-        assert_eq!(p.parse_method_from_file(&comment), None);
-    });
+    assert_eq!(badge(&tmp.join("nope.http")), None);
+    assert_eq!(badge(&tmp.write("empty.http", "")), None);
+    assert_eq!(
+        badge(&tmp.write("comment.http", "# just a comment\n")),
+        None
+    );
+}
+
+#[gpui::test]
+fn a_multi_request_file_lists_every_request_as_a_child(_cx: &mut TestAppContext) {
+    let tmp = TempDir::new("multi");
+    let file = tmp.write(
+        "users.http",
+        "### List\nGET https://x.test\n\n###\n# @name drop\nDELETE https://x.test/1\n",
+    );
+    let item = super::tree_scan::file_item(file.clone(), "users.http".into());
+    assert!(item.is_expandable());
+    assert_eq!(item.method, None);
+    let rows: Vec<_> = item
+        .children
+        .iter()
+        .map(|c| {
+            (
+                c.name.as_str(),
+                c.method.as_deref(),
+                c.request_index,
+                &c.path,
+            )
+        })
+        .collect();
+    assert_eq!(
+        rows,
+        vec![
+            ("List", Some("GET"), Some(0), &file),
+            ("drop", Some("DELETE"), Some(1), &file),
+        ]
+    );
+}
+
+#[gpui::test]
+fn a_single_request_file_stays_one_row(_cx: &mut TestAppContext) {
+    let tmp = TempDir::new("single");
+    let file = tmp.write("one.http", "GET https://x.test\n");
+    let item = super::tree_scan::file_item(file, "one.http".into());
+    assert!(!item.is_expandable());
+    assert!(item.children.is_empty());
 }
 
 // ── flatten / expand / collapse ─────────────────────────────────────────────
@@ -166,6 +201,7 @@ fn item(name: &str, is_folder: bool, children: Vec<CollectionItem>) -> Collectio
         children,
         method: None,
         expanded: false,
+        request_index: None,
     }
 }
 

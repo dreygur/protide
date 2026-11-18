@@ -265,6 +265,8 @@ pub struct RequestPanel<E: WebSocketExecutor = TungsteniteExecutor> {
     pub(super) drag_script_pre: Option<(f32, f32)>,
     pub(super) drag_script_post: Option<(f32, f32)>,
     pub(super) current_file: Option<std::path::PathBuf>,
+    /// Which request of `current_file` is loaded, counted from 0
+    pub(super) current_request_index: usize,
     /// Set when the file watcher observes `current_file` change on disk
     /// while it's open here. Rendered as a visible warning on the Save
     /// button so the user can't blindly overwrite an external edit without

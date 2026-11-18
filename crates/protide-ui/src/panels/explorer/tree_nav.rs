@@ -12,11 +12,11 @@ impl ExplorerPanel {
     pub(super) fn toggle_collection_folder(&mut self, path: PathBuf, cx: &mut Context<Self>) {
         fn toggle_in_items(items: &mut [CollectionItem], target: &PathBuf) -> bool {
             for item in items.iter_mut() {
-                if item.path == *target && item.is_folder {
+                if item.path == *target && item.is_expandable() {
                     item.expanded = !item.expanded;
                     return true;
                 }
-                if item.is_folder && toggle_in_items(&mut item.children, target) {
+                if item.is_expandable() && toggle_in_items(&mut item.children, target) {
                     return true;
                 }
             }
@@ -31,7 +31,7 @@ impl ExplorerPanel {
     pub(super) fn collapse_all_folders(&mut self, cx: &mut Context<Self>) {
         fn collapse(items: &mut [CollectionItem]) {
             for item in items.iter_mut() {
-                if item.is_folder {
+                if item.is_expandable() {
                     item.expanded = false;
                     collapse(&mut item.children);
                 }
@@ -50,7 +50,7 @@ impl ExplorerPanel {
         let mut result = Vec::new();
         for item in items {
             result.push((item.clone(), depth));
-            if item.is_folder && item.expanded {
+            if item.is_expandable() && item.expanded {
                 result.extend(self.flatten_collection_items(&item.children, depth + 1));
             }
         }

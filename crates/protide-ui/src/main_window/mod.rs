@@ -265,10 +265,13 @@ impl MainWindow {
         let explorer = self.explorer.read(cx);
 
         if let Some(workspace) = explorer.workspace_path().cloned() {
-            let draft = self.request_panel.read(cx).capture_draft(cx);
+            let request_panel = self.request_panel.read(cx);
+            let draft = request_panel.capture_draft(cx);
+            let location = request_panel.loaded_location();
             let key = workspace.to_string_lossy().to_string();
             let entry = session.workspaces.entry(key).or_default();
-            entry.active_file = explorer.selected_item().cloned();
+            entry.active_request = location.as_ref().map_or(0, |l| l.1);
+            entry.active_file = location.map(|l| l.0);
             entry.draft = Some(draft);
             entry.expanded_folders = explorer.collect_expanded();
             entry.active_env = explorer.env_state().active().map(|e| e.name.clone());
