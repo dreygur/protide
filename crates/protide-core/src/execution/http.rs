@@ -58,6 +58,10 @@ fn resolve_request(
     }
 }
 
+/// Sent when neither the user nor the browser profile sets a User-Agent;
+/// some APIs reject requests without one.
+const USER_AGENT: &str = concat!("Protide/", env!("CARGO_PKG_VERSION"));
+
 /// Chrome 131 browser header fingerprint (Windows, en-US).
 /// Applied when `impersonate_browser` is true.  Existing user-supplied values
 /// for the same header names are preserved (user headers take precedence).
@@ -147,6 +151,7 @@ pub fn run_http(
     if impersonate_browser {
         resolved_headers = apply_browser_profile(&resolved_headers);
     }
+    add_default_header(&mut resolved_headers, "User-Agent", USER_AGENT);
 
     let req_method = reqwest::Method::from_bytes(method.as_bytes())
         .map_err(|e| format!("Invalid HTTP method '{}': {}", method, e))?;
@@ -303,6 +308,22 @@ mod tests {
         assert_eq!(req.header("X-Custom"), Some("abc"));
         assert_eq!(req.header("Accept"), Some("application/json"));
         assert_eq!(req.body, "");
+    }
+
+    #[test]
+    fn sends_a_default_user_agent_unless_the_user_set_one() {
+        let server = TestServer::json("{}");
+        send(&server.url("/"), "GET", &[], &ExecutionBody::None).expect("send");
+        let expected = format!("Protide/{}", env!("CARGO_PKG_VERSION"));
+        assert_eq!(server.only_request().header("User-Agent"), Some(&*expected));
+
+        let server = TestServer::json("{}");
+        let headers = vec![hdr("user-agent", "mine/1")];
+        send(&server.url("/"), "GET", &headers, &ExecutionBody::None).expect("send");
+        assert_eq!(
+            server.only_request().header_values("User-Agent"),
+            vec!["mine/1"]
+        );
     }
 
     /// Query strings are the transport for API-key-in-query auth, so they must
