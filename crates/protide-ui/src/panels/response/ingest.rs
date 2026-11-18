@@ -15,6 +15,7 @@ impl ResponsePanel {
             .find(|(k, _)| k.eq_ignore_ascii_case("content-type"))
             .map(|(_, v)| v.to_lowercase());
 
+        self.json_invalid = false;
         let (body_text, language) = if let Some(ct) = &content_type {
             if ct.contains("application/json") || ct.contains("+json") {
                 if let Ok(json) = serde_json::from_str::<serde_json::Value>(&response.body) {
@@ -27,6 +28,7 @@ impl ResponsePanel {
                         ct,
                         response.body.len()
                     );
+                    self.json_invalid = true;
                     (response.body.clone(), "json".to_string())
                 }
             } else if ct.contains("text/html") {

@@ -89,6 +89,8 @@ pub struct ResponsePanel {
     pub(super) formatted_lang: String,
     /// Parsed JSON value for tree rendering (Some when body is valid JSON)
     pub(super) json_value: Option<serde_json::Value>,
+    /// The response claims JSON but its body does not parse
+    pub(super) json_invalid: bool,
     /// Set of collapsed JSON paths (using "/" as separator, root = "")
     pub(super) json_tree_collapsed: std::collections::HashSet<String>,
     /// Flat pre-computed row list for the JSON tree (rebuilt on every collapse change)
@@ -153,6 +155,7 @@ impl ResponsePanel {
             formatted_body: String::new(),
             formatted_lang: String::new(),
             json_value: None,
+            json_invalid: false,
             json_tree_collapsed: std::collections::HashSet::new(),
             json_rows: Vec::new(),
             json_scroll_handle: UniformListScrollHandle::new(),

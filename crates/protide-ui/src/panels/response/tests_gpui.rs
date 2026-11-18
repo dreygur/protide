@@ -46,6 +46,24 @@ mod tests {
     }
 
     #[gpui::test]
+    async fn invalid_json_with_a_json_content_type_is_flagged(cx: &mut TestAppContext) {
+        init_theme(cx);
+        let (panel, _cx) = cx.add_window_view(ResponsePanel::new);
+        let data = |body: &str| ResponseData {
+            status: 200,
+            status_text: "OK".to_string(),
+            headers: vec![("Content-Type".to_string(), "application/json".to_string())],
+            body: body.to_string(),
+            time: std::time::Duration::from_millis(1),
+            size: body.len(),
+        };
+        panel.update(cx, |p, cx| p.set_response(data("{not json"), cx));
+        panel.read_with(cx, |p, _| assert!(p.json_invalid));
+        panel.update(cx, |p, cx| p.set_response(data("{}"), cx));
+        panel.read_with(cx, |p, _| assert!(!p.json_invalid));
+    }
+
+    #[gpui::test]
     async fn test_response_panel_set_response(cx: &mut TestAppContext) {
         init_theme(cx);
         let (panel, _cx) = cx.add_window_view(ResponsePanel::new);

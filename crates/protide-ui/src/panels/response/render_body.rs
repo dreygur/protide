@@ -199,7 +199,18 @@ impl ResponsePanel {
                                 .text_color(theme.colors.text_muted.opacity(0.6))
                                 .child(format!("{} to search", shortcut_label("secondary-f"))),
                         )
-                    }),
+                    })
+                    .when(
+                        self.json_invalid && view_mode == BodyViewMode::Pretty,
+                        |el| {
+                            el.child(
+                                div()
+                                    .text_size(px(10.0))
+                                    .text_color(theme.colors.status_client_error)
+                                    .child("Invalid JSON, showing raw text"),
+                            )
+                        },
+                    ),
             )
             // ── Row 3: body content (flex_1, scrolls internally) ───────
             .child(match view_mode {
