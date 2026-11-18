@@ -172,14 +172,14 @@ impl Colors {
             accent: rgb(0x007acc).into(),
             accent_hover: rgb(0x0066b8).into(),
 
-            // HTTP Methods
-            method_get: rgb(0x0066cc).into(),
-            method_post: rgb(0x2e7d32).into(),
-            method_put: rgb(0xef6c00).into(),
-            method_patch: rgb(0x00897b).into(),
-            method_delete: rgb(0xc62828).into(),
-            method_head: rgb(0x7c3aed).into(),
-            method_options: rgb(0x475569).into(),
+            // HTTP Methods: the dark palette's hues, darkened to 4.5:1 on white
+            method_get: rgb(0x188640).into(),
+            method_post: rgb(0x0871f2).into(),
+            method_put: rgb(0x966d03).into(),
+            method_patch: rgb(0xbe5804).into(),
+            method_delete: rgb(0xe90c0c).into(),
+            method_head: rgb(0x460bf4).into(),
+            method_options: rgb(0x627693).into(),
 
             // Protocol colors
             protocol_ws: rgb(0x059669).into(),

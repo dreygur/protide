@@ -354,6 +354,17 @@ mod tests {
     }
 
     #[test]
+    fn each_method_keeps_its_hue_in_both_themes() {
+        // GET was green in dark and blue in light, where blue meant POST.
+        let (light, dark) = (Theme::light(), Theme::dark());
+        for m in ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"] {
+            let (l, d) = (light.method_color(m).h, dark.method_color(m).h);
+            let diff = (l - d).abs().min(1.0 - (l - d).abs());
+            assert!(diff * 360.0 < 1.0, "{m}: light hue {l} vs dark hue {d}");
+        }
+    }
+
+    #[test]
     fn method_colours_are_case_insensitive() {
         let theme = Theme::dark();
         for m in ["get", "Get", "gEt"] {
