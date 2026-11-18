@@ -31,6 +31,7 @@ mod render_trpc_pg_row;
 mod render_trpc_pg_sidebar;
 mod render_trpc_playground;
 mod render_url_bar;
+mod render_url_bar_actions;
 mod render_url_bar_text;
 mod render_websocket;
 
