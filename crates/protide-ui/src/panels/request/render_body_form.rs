@@ -113,7 +113,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                         .w(px(130.0))
                         .text_size(px(10.0))
                         .font_weight(gpui::FontWeight::SEMIBOLD)
-                        .text_color(theme.colors.accent.opacity(0.7))
+                        .text_color(theme.colors.text_secondary)
                         .child("KEY"),
                 )
                 .child(
