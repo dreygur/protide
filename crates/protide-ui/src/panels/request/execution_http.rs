@@ -47,11 +47,15 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
         let variable_extractions = self.variable_extractions.clone();
         let explorer_panel = self.explorer_panel.clone();
 
-        let mut headers: Vec<(String, String)> = self
+        let written_headers: Vec<(String, String)> = self
             .headers
             .iter()
             .filter(|h| h.enabled && !h.key.is_empty())
-            .map(|h| (substitute(&h.key), substitute(&h.value)))
+            .map(|h| (h.key.clone(), h.value.clone()))
+            .collect();
+        let mut headers: Vec<(String, String)> = written_headers
+            .iter()
+            .map(|(k, v)| (substitute(k), substitute(v)))
             .collect();
 
         headers.extend(self.build_auth_headers(&substitute));
@@ -94,13 +98,20 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             RequestMode::Trpc => "TRPC".to_string(),
             RequestMode::SocketIo => "SIO".to_string(),
         };
+        // History is persisted to disk, so it records the request as written
+        // ({{vars}} unresolved, no auth headers or query key) to keep secrets out.
+        let written_body = self
+            .build_execution_body(is_graphql_mode, &method, &body_content, &|s: &str| {
+                s.to_string()
+            })
+            .as_text();
         let history_id =
             cx.update_global::<super::super::history::RequestHistory, _>(|history, _| {
                 history.add(
                     history_badge,
-                    final_url.clone(),
-                    headers.clone(),
-                    exec_body.as_text(),
+                    self.url.clone(),
+                    written_headers,
+                    written_body,
                 )
             });
 

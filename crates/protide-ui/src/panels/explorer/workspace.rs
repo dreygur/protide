@@ -33,6 +33,7 @@ impl ExplorerPanel {
 
         self.workspace_path = Some(path.clone());
         self.env_state = EnvironmentState::load(&path);
+        cx.set_global(RequestHistory::load(&path));
         self.collection_items = self.scan_directory(&path);
         self.selected_item = Option::None;
 
@@ -70,6 +71,7 @@ impl ExplorerPanel {
         }
         self.workspace_path = Some(path.clone());
         self.env_state = EnvironmentState::load(&path);
+        cx.set_global(RequestHistory::load(&path));
         self.collection_items = self.scan_directory(&path);
         match protide_core::workspace::Workspace::open(&path) {
             Ok(ws) => {

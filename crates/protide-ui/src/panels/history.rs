@@ -1,12 +1,20 @@
-//! Request history storage and management
+//! Request history storage and management, persisted per workspace in
+//! `<workspace>/.protide/history.json`.
 
-use std::time::{Duration, Instant};
+use log::warn;
+use protide_core::storage::{data_file, load_json, save_json};
+use serde::{Deserialize, Serialize};
+use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 /// Maximum number of history entries to keep
-pub const MAX_HISTORY_ENTRIES: usize = 50;
+pub const MAX_HISTORY_ENTRIES: usize = 200;
 
-/// A single history entry storing request/response data
-#[derive(Clone)]
+const HISTORY_FILE: &str = "history.json";
+
+/// A single history entry storing request/response data. The request is kept
+/// as written ({{vars}} unresolved) because it is written to disk.
+#[derive(Clone, Serialize, Deserialize)]
 pub struct HistoryEntry {
     /// Unique ID for this entry
     pub id: u64,
@@ -22,8 +30,6 @@ pub struct HistoryEntry {
     pub status: Option<u16>,
     /// Response time
     pub response_time: Option<Duration>,
-    /// Timestamp when request was made
-    pub timestamp: Instant,
 }
 
 impl HistoryEntry {
@@ -43,18 +49,27 @@ impl HistoryEntry {
             body,
             status: None,
             response_time: None,
-            timestamp: Instant::now(),
         }
     }
 
     /// Get a truncated URL for display
     pub fn display_url(&self) -> String {
         const MAX_LEN: usize = 40;
-        if self.url.len() <= MAX_LEN {
+        if self.url.chars().count() <= MAX_LEN {
             self.url.clone()
         } else {
-            format!("{}...", &self.url[..MAX_LEN - 3])
+            let head: String = self.url.chars().take(MAX_LEN - 3).collect();
+            format!("{head}...")
         }
+    }
+
+    /// Status code and duration, e.g. "200 150ms", once a response arrived.
+    pub fn summary(&self) -> Option<String> {
+        let status = self.status?;
+        Some(match self.response_time {
+            Some(time) => format!("{status} {}ms", time.as_millis()),
+            None => status.to_string(),
+        })
     }
 }
 
@@ -63,13 +78,33 @@ impl HistoryEntry {
 pub struct RequestHistory {
     entries: Vec<HistoryEntry>,
     next_id: u64,
+    /// Where to persist; `None` when no workspace is open.
+    file: Option<PathBuf>,
 }
 
 impl RequestHistory {
     pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Load the workspace's history. A missing or corrupt file starts empty.
+    pub fn load(workspace: &Path) -> Self {
+        let file = data_file(workspace, HISTORY_FILE);
+        let mut entries: Vec<HistoryEntry> = load_json(&file).unwrap_or_default();
+        entries.truncate(MAX_HISTORY_ENTRIES);
+        let next_id = entries.iter().map(|e| e.id + 1).max().unwrap_or(0);
         Self {
-            entries: Vec::new(),
-            next_id: 0,
+            entries,
+            next_id,
+            file: Some(file),
+        }
+    }
+
+    fn persist(&self) {
+        if let Some(file) = &self.file
+            && let Err(e) = save_json(file, &self.entries)
+        {
+            warn!("Failed to save history to {}: {}", file.display(), e);
         }
     }
 
@@ -91,6 +126,7 @@ impl RequestHistory {
         if self.entries.len() > MAX_HISTORY_ENTRIES {
             self.entries.truncate(MAX_HISTORY_ENTRIES);
         }
+        self.persist();
 
         id
     }
@@ -100,6 +136,7 @@ impl RequestHistory {
         if let Some(entry) = self.entries.iter_mut().find(|e| e.id == id) {
             entry.status = Some(status);
             entry.response_time = Some(response_time);
+            self.persist();
         }
     }
 
@@ -119,6 +156,7 @@ impl gpui::Global for RequestHistory {}
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_support::TempDir;
 
     // HistoryEntry tests
     #[test]
@@ -280,5 +318,71 @@ mod tests {
                 .url
                 .ends_with(&format!("{}", MAX_HISTORY_ENTRIES + 9))
         );
+    }
+
+    #[test]
+    fn history_round_trips_through_the_workspace() {
+        let tmp = TempDir::new("history-round-trip");
+        let mut history = RequestHistory::load(tmp.path());
+        let first = history.add(
+            "GET".into(),
+            "{{base_url}}/a".into(),
+            vec![("X-Key".into(), "{{api_key}}".into())],
+            None,
+        );
+        history.update_response(first, 404, Duration::from_millis(12));
+        history.add(
+            "POST".into(),
+            "{{base_url}}/b".into(),
+            vec![],
+            Some("{}".into()),
+        );
+
+        let mut back = RequestHistory::load(tmp.path());
+        assert_eq!(back.entries().len(), 2);
+        assert_eq!(back.entries()[0].url, "{{base_url}}/b");
+        let old = back.get(first).unwrap();
+        assert_eq!(
+            old.headers,
+            [("X-Key".to_string(), "{{api_key}}".to_string())]
+        );
+        assert_eq!(old.summary().as_deref(), Some("404 12ms"));
+        assert_ne!(back.add("GET".into(), "x".into(), vec![], None), first);
+    }
+
+    #[test]
+    fn a_saved_history_is_capped_and_a_corrupt_one_starts_empty() {
+        let tmp = TempDir::new("history-cap");
+        let mut history = RequestHistory::load(tmp.path());
+        for i in 0..MAX_HISTORY_ENTRIES + 5 {
+            history.add("GET".into(), format!("/{i}"), vec![], None);
+        }
+        assert_eq!(
+            RequestHistory::load(tmp.path()).entries().len(),
+            MAX_HISTORY_ENTRIES
+        );
+
+        let file = protide_core::storage::data_file(tmp.path(), HISTORY_FILE);
+        std::fs::write(&file, "not json").unwrap();
+        assert!(RequestHistory::load(tmp.path()).entries().is_empty());
+    }
+
+    #[test]
+    fn summary_shows_status_and_duration() {
+        let mut history = RequestHistory::new();
+        let id = history.add("GET".into(), "/".into(), vec![], None);
+        assert_eq!(history.get(id).unwrap().summary(), None);
+        history.update_response(id, 200, Duration::from_millis(150));
+        assert_eq!(
+            history.get(id).unwrap().summary().as_deref(),
+            Some("200 150ms")
+        );
+    }
+
+    #[test]
+    fn display_url_truncates_on_char_boundaries() {
+        let url = format!("https://例え.jp/{}", "日本語".repeat(20));
+        let entry = HistoryEntry::new(1, "GET".into(), url, vec![], None);
+        assert!(entry.display_url().ends_with("..."));
     }
 }

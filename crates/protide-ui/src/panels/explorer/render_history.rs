@@ -117,8 +117,8 @@ impl ExplorerPanel {
                             let method = entry.method.clone();
                             let display_url = entry.display_url();
                             let method_color = theme.method_color(&method);
-                            let status = entry.status;
-                            let status_color = status.map(|s| theme.status_color(s));
+                            let summary = entry.summary();
+                            let status_color = entry.status.map(|s| theme.status_color(s));
 
                             ActionRow::new(
                                 SharedString::from(format!("history-{}", entry_id)),
@@ -166,8 +166,15 @@ impl ExplorerPanel {
                                             .text_color(theme.colors.text_primary)
                                             .child(display_url),
                                     )
-                                    .when_some(status_color, |el, color| {
-                                        el.child(div().size(px(7.0)).bg(color))
+                                    .when_some(summary.zip(status_color), |el, (text, color)| {
+                                        el.child(
+                                            div()
+                                                .flex_none()
+                                                .text_size(px(10.0))
+                                                .font_family("JetBrains Mono")
+                                                .text_color(color)
+                                                .child(text),
+                                        )
                                     }),
                             )
                         })),
