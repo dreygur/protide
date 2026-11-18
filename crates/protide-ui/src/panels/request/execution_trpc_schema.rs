@@ -68,11 +68,11 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
 
         cx.spawn(
             async move |this: gpui::WeakEntity<Self>, cx: &mut gpui::AsyncApp| {
-                let result = std::thread::spawn(move || {
+                let result = run_blocking(cx, move || {
                     let raw = protide_core::protocols::trpc::fetch_trpc_schema_raw(&url)?;
                     protide_core::protocols::trpc::parse_trpc_schema(&raw)
                 })
-                .join()
+                .await
                 .unwrap_or_else(|_| Err("URL import thread panicked".to_string()));
 
                 cx.update(|cx| {
@@ -135,11 +135,11 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
 
         cx.spawn(
             async move |this: gpui::WeakEntity<Self>, cx: &mut gpui::AsyncApp| {
-                let result = std::thread::spawn(move || {
+                let result = run_blocking(cx, move || {
                     let raw = protide_core::protocols::trpc::fetch_trpc_schema_raw(&url);
                     raw.and_then(|json| protide_core::protocols::trpc::parse_trpc_schema(&json))
                 })
-                .join()
+                .await
                 .unwrap_or_else(|_| Err("tRPC thread panicked".to_string()));
 
                 cx.update(|cx| {

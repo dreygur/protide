@@ -111,6 +111,18 @@ pub enum GraphqlSchemaState {
     Error(String),
 }
 
+/// Run blocking work on its own thread and await it from a `cx.spawn` task.
+/// Joining the thread directly inside the task would block the UI thread
+/// until the work finished, so nothing (not even a loading state) renders.
+async fn run_blocking<T: Send + 'static>(
+    cx: &gpui::AsyncApp,
+    work: impl FnOnce() -> T + Send + 'static,
+) -> std::thread::Result<T> {
+    cx.background_executor()
+        .spawn(async move { std::thread::spawn(work).join() })
+        .await
+}
+
 fn char_to_byte_offset(text: &str, char_idx: usize) -> usize {
     text.char_indices()
         .nth(char_idx)

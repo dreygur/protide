@@ -157,8 +157,8 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
 
         cx.spawn(
             async move |this: gpui::WeakEntity<Self>, cx: &mut gpui::AsyncApp| {
-                let result = std::thread::spawn(move || protide_core::execution::execute(req))
-                    .join()
+                let result = run_blocking(cx, move || protide_core::execution::execute(req))
+                    .await
                     .unwrap_or_else(|_| Err("Request thread panicked".to_string()));
 
                 match result {

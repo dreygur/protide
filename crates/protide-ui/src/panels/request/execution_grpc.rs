@@ -124,7 +124,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
     ) {
         cx.spawn(
             async move |this: gpui::WeakEntity<Self>, cx: &mut gpui::AsyncApp| {
-                let result = std::thread::spawn(move || {
+                let result = run_blocking(cx, move || {
                     protide_core::protocols::grpc::execute_unary_blocking(
                         &url,
                         &method.full_name,
@@ -133,7 +133,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                         &proto_path,
                     )
                 })
-                .join()
+                .await
                 .unwrap_or_else(|_| Err("gRPC thread panicked".to_string()));
                 match result {
                     Ok((body, elapsed)) => {
