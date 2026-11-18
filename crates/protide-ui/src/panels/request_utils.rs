@@ -2,6 +2,8 @@
 //!
 //! Contains URL encoding/decoding, base64, and HTTP status helpers.
 
+use protide_core::models::{Environment, EnvironmentState};
+
 /// HTTP status code to text description
 pub fn status_text(status: u16) -> &'static str {
     match status {
@@ -89,6 +91,16 @@ pub fn base64_encode(data: &[u8]) -> String {
     base64::engine::general_purpose::STANDARD.encode(data)
 }
 
+/// Names of the `{{variables}}` in `input` that the active environment does
+/// not define, so they would be sent literally.
+pub fn undefined_variables(env: Option<&EnvironmentState>, input: &str) -> Vec<String> {
+    let active = env.and_then(|e| e.active());
+    Environment::find_variables(input)
+        .into_iter()
+        .filter(|name| active.and_then(|a| a.get(name)).is_none())
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -111,6 +123,20 @@ mod tests {
     fn test_base64_encode() {
         assert_eq!(base64_encode(b"hello"), "aGVsbG8=");
         assert_eq!(base64_encode(b"user:pass"), "dXNlcjpwYXNz");
+    }
+
+    #[test]
+    fn undefined_variables_lists_only_names_the_environment_lacks() {
+        let env = EnvironmentState::new();
+        assert_eq!(
+            undefined_variables(Some(&env), "{{base_url}}/{{missing}}"),
+            vec!["missing".to_string()]
+        );
+        assert_eq!(
+            undefined_variables(None, "{{base_url}}"),
+            vec!["base_url".to_string()]
+        );
+        assert!(undefined_variables(Some(&env), "plain").is_empty());
     }
 
     #[test]

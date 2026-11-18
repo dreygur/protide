@@ -1,3 +1,4 @@
+use super::super::request_utils::undefined_variables;
 use super::graphql::dns_troubleshoot_hint;
 use super::*;
 use gpui::Context;
@@ -33,7 +34,11 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             .explorer_panel
             .as_ref()
             .map(|panel| panel.read(cx).env_state().clone());
+        let undefined = std::cell::RefCell::new(std::collections::BTreeSet::new());
         let substitute = |s: &str| -> String {
+            undefined
+                .borrow_mut()
+                .extend(undefined_variables(env_state.as_ref(), s));
             if let Some(ref env) = env_state {
                 env.substitute(s)
             } else {
@@ -117,6 +122,16 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             });
 
         let console_panel = self.console_panel.clone();
+        let undefined = undefined.into_inner();
+        if !undefined.is_empty()
+            && let Some(console) = &console_panel
+        {
+            let names = undefined.into_iter().collect::<Vec<_>>().join(", ");
+            let message = format!("Undefined variables sent literally: {names}");
+            console.update(cx, |panel, cx| {
+                panel.log(ConsoleEntry::warning(message), cx)
+            });
+        }
         let log_protocol = match self.request_mode {
             RequestMode::Http => "HTTP",
             RequestMode::GraphQL => "GraphQL",

@@ -18,6 +18,7 @@ pub(super) fn render_entry_row(
     } else {
         match entry.level {
             LogLevel::Error => theme.colors.error,
+            LogLevel::Warn => theme.colors.warning,
             LogLevel::Debug => theme.colors.info,
             LogLevel::Info => {
                 if entry.error.is_some() || status >= 500 {
@@ -40,6 +41,7 @@ pub(super) fn render_entry_row(
     } else {
         match entry.level {
             LogLevel::Error => theme.colors.error,
+            LogLevel::Warn => theme.colors.warning,
             LogLevel::Debug => theme.colors.info,
             LogLevel::Info => theme.colors.success.opacity(0.0),
         }

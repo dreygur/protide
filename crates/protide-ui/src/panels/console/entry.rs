@@ -4,6 +4,7 @@ pub enum LogLevel {
     #[default]
     Info,
     Debug,
+    Warn,
     Error,
 }
 
@@ -67,6 +68,14 @@ impl ConsoleEntry {
             error: None,
             response_body: String::new(),
             troubleshoot_hint: None,
+        }
+    }
+
+    /// Build a warning about a request that is about to be sent.
+    pub fn warning(message: impl Into<String>) -> Self {
+        Self {
+            level: LogLevel::Warn,
+            ..Self::extraction_error(message)
         }
     }
 
