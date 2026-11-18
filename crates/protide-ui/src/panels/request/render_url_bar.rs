@@ -96,7 +96,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                 el.child(
                     div()
                         .id("method-selector")
-                        .min_w(px(72.0))
+                        .min_w(px(100.0))
                         .h(px(32.0))
                         .px(px(12.0))
                         .bg(method_color.opacity(0.1))

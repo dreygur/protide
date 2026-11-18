@@ -771,8 +771,10 @@ mod url_double_click_tests {
             "URL must actually be scrolled for this to test anything"
         );
 
-        // The leftmost visible cell holds the character at `scroll / width`.
-        let expected = (scroll / URL_CHAR_WIDTH) as usize;
+        // The click lands half a cell into the visible text, so it hits the
+        // character painted at `scroll + width / 2`. The leftmost cell can be
+        // partly scrolled out, which is why this is not `scroll / width`.
+        let expected = ((scroll + URL_CHAR_WIDTH / 2.0) / URL_CHAR_WIDTH) as usize;
         cx.simulate_event(MouseDownEvent {
             position: point(px(left + URL_CHAR_WIDTH / 2.0), bounds.center().y),
             modifiers: Modifiers::none(),
