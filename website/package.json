@@ -17,7 +17,7 @@
   },
   "overrides": {
     "postcss": "^8.5.23",
-    "sharp": "^0.35.3",
+    "sharp": "^0.35.5",
     "zod": "~4.1.12"
   },
   "devDependencies": {
