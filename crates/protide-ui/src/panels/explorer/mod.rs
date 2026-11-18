@@ -190,6 +190,7 @@ impl ExplorerPanel {
     pub fn set_env_variable(&mut self, name: &str, value: &str, cx: &mut Context<Self>) {
         if let Some(env) = self.env_state.active_mut() {
             env.set(name, value);
+            self.persist_envs();
             cx.notify();
         }
     }

@@ -2,6 +2,15 @@ use super::*;
 use gpui::{Context, Window};
 
 impl ExplorerPanel {
+    /// Write the environments to the open workspace. Called after every change.
+    pub(super) fn persist_envs(&self) {
+        if let Some(ws) = &self.workspace_path
+            && let Err(e) = self.env_state.save(ws)
+        {
+            warn!("Failed to save environments for {}: {}", ws.display(), e);
+        }
+    }
+
     pub(super) fn toggle_env_dropdown(&mut self, cx: &mut Context<Self>) {
         self.env_dropdown_open = !self.env_dropdown_open;
         if self.env_dropdown_open {
@@ -20,6 +29,7 @@ impl ExplorerPanel {
 
     pub(super) fn select_environment(&mut self, index: Option<usize>, cx: &mut Context<Self>) {
         self.env_state.set_active(index);
+        self.persist_envs();
         self.env_dropdown_open = false;
         cx.notify();
     }
@@ -27,6 +37,7 @@ impl ExplorerPanel {
     /// Select an environment and immediately open its editor.
     pub(super) fn open_env_editor_for(&mut self, index: usize, cx: &mut Context<Self>) {
         self.env_state.set_active(Some(index));
+        self.persist_envs();
         self.env_dropdown_open = false;
         self.env_editor_open = true;
         cx.notify();
@@ -36,6 +47,7 @@ impl ExplorerPanel {
         if let Some(env) = self.env_state.active_mut() {
             let key = format!("var_{}", env.variables.len() + 1);
             env.set(key, "");
+            self.persist_envs();
             cx.notify();
         }
     }
@@ -43,6 +55,7 @@ impl ExplorerPanel {
     pub(super) fn remove_variable(&mut self, key: &str, cx: &mut Context<Self>) {
         if let Some(env) = self.env_state.active_mut() {
             env.remove(key);
+            self.persist_envs();
             cx.notify();
         }
     }
@@ -61,6 +74,7 @@ impl ExplorerPanel {
             self.env_state.add_environment(env);
             let new_index = self.env_state.environments.len() - 1;
             self.env_state.set_active(Some(new_index));
+            self.persist_envs();
         }
         self.show_new_env_input = false;
         self.new_env_name.clear();
@@ -78,6 +92,7 @@ impl ExplorerPanel {
     pub(super) fn delete_environment(&mut self, index: usize, cx: &mut Context<Self>) {
         if self.env_state.environments.len() > 1 {
             self.env_state.remove_environment(index);
+            self.persist_envs();
             cx.notify();
         }
     }
@@ -162,6 +177,7 @@ impl ExplorerPanel {
                         if !text.is_empty() {
                             env.variables.insert(text, value);
                         }
+                        self.persist_envs();
                     }
                 }
             }
@@ -170,6 +186,7 @@ impl ExplorerPanel {
                     && let Some(key) = env.variables.keys().nth(i).cloned()
                 {
                     env.variables.insert(key, text);
+                    self.persist_envs();
                 }
             }
             EnvEditTarget::NewEnvName => {
@@ -265,6 +282,7 @@ impl ExplorerPanel {
             let len = env.variables.len();
             if from < len && to < len {
                 env.variables.move_index(from, to);
+                self.persist_envs();
             }
         }
         cx.notify();

@@ -148,7 +148,9 @@ pub fn is_relevant(event: &WorkspaceEvent, root: &Path) -> bool {
         | WorkspaceEvent::DirCreated(p)
         | WorkspaceEvent::DirDeleted(p) => p,
     };
-    path.starts_with(root)
+    // Protide's own state files (environments with secrets, history) must never
+    // be broadcast to peers or trigger a tree rescan.
+    path.starts_with(root) && !path.starts_with(root.join(crate::storage::DATA_DIR))
 }
 
 #[cfg(test)]
@@ -170,5 +172,17 @@ mod tests {
                 .iter()
                 .all(|e| e.path.extension().map(|x| x == "http").unwrap_or(true))
         );
+    }
+
+    #[test]
+    fn protide_state_files_are_not_relevant_events() {
+        let root = Path::new("/ws");
+        let modified = |p: &str| WorkspaceEvent::FileModified(PathBuf::from(p));
+        assert!(is_relevant(&modified("/ws/a.http"), root));
+        assert!(!is_relevant(
+            &modified("/ws/.protide/environments.json"),
+            root
+        ));
+        assert!(!is_relevant(&modified("/other/a.http"), root));
     }
 }

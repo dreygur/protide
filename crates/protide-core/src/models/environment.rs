@@ -1,8 +1,19 @@
 //! Environment model for variable substitution
 
+use crate::storage::{data_file, load_json, save_json};
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+
+const ENVIRONMENTS_FILE: &str = "environments.json";
+
+/// On disk shape of `<workspace>/.protide/environments.json`. The active
+/// environment is stored by name so it survives reordering and deletion.
+#[derive(Serialize, Deserialize)]
+struct EnvironmentsFile {
+    environments: Vec<Environment>,
+    active: Option<String>,
+}
 
 /// An environment containing variables
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -159,6 +170,63 @@ mod tests {
             "prefix bar mid {{unterminated"
         );
     }
+
+    #[test]
+    fn environments_round_trip_with_the_active_one_restored() {
+        let tmp = crate::test_support::TempDir::new("env_round_trip");
+        let mut state = EnvironmentState::new();
+        let mut staging = Environment::new("Staging");
+        staging.set("base_url", "https://staging.test");
+        staging.set("token", "s3cret");
+        state.add_environment(staging);
+        state.set_active(Some(2));
+        state.save(tmp.path()).unwrap();
+
+        let back = EnvironmentState::load(tmp.path());
+        assert_eq!(
+            back.environment_names(),
+            ["Development", "Production", "Staging"]
+        );
+        assert_eq!(back.active_index, Some(2));
+        let active = back.active().unwrap();
+        assert_eq!(
+            active.variables.keys().collect::<Vec<_>>(),
+            ["base_url", "token"]
+        );
+        assert_eq!(active.get("token").map(String::as_str), Some("s3cret"));
+    }
+
+    #[test]
+    fn no_active_environment_round_trips_as_none() {
+        let tmp = crate::test_support::TempDir::new("env_no_active");
+        let mut state = EnvironmentState::new();
+        state.set_active(None);
+        state.save(tmp.path()).unwrap();
+        assert_eq!(EnvironmentState::load(tmp.path()).active_index, None);
+    }
+
+    #[test]
+    fn a_missing_file_loads_the_defaults() {
+        let tmp = crate::test_support::TempDir::new("env_missing");
+        let back = EnvironmentState::load(tmp.path());
+        assert_eq!(back.environment_names(), ["Development", "Production"]);
+        assert_eq!(back.active_index, Some(0));
+    }
+
+    #[test]
+    fn a_corrupt_file_loads_the_defaults_without_panicking() {
+        let tmp = crate::test_support::TempDir::new("env_corrupt");
+        std::fs::create_dir_all(tmp.path().join(crate::storage::DATA_DIR)).unwrap();
+        for body in ["", "not json", "[]", "{\"environments\":42}", "\0\0"] {
+            std::fs::write(data_file(tmp.path(), ENVIRONMENTS_FILE), body).unwrap();
+            let back = EnvironmentState::load(tmp.path());
+            assert_eq!(
+                back.environment_names(),
+                ["Development", "Production"],
+                "{body:?}"
+            );
+        }
+    }
 }
 
 impl Default for Environment {
@@ -191,6 +259,31 @@ impl EnvironmentState {
             environments: vec![dev, prod],
             active_index: Some(0), // Default to Development
         }
+    }
+
+    /// Load the workspace's environments. A missing or unreadable file yields
+    /// the built in defaults so a fresh workspace looks the same as before.
+    pub fn load(workspace: &Path) -> Self {
+        let Some(file) = load_json::<EnvironmentsFile>(&data_file(workspace, ENVIRONMENTS_FILE))
+        else {
+            return Self::new();
+        };
+        let active_index = file
+            .active
+            .and_then(|name| file.environments.iter().position(|e| e.name == name));
+        Self {
+            environments: file.environments,
+            active_index,
+        }
+    }
+
+    /// Write the environments and the active environment name for `workspace`.
+    pub fn save(&self, workspace: &Path) -> std::io::Result<()> {
+        let file = EnvironmentsFile {
+            environments: self.environments.clone(),
+            active: self.active().map(|e| e.name.clone()),
+        };
+        save_json(&data_file(workspace, ENVIRONMENTS_FILE), &file)
     }
 
     /// Get the active environment

@@ -8,6 +8,7 @@ pub mod mock_server;
 pub mod models;
 pub mod protocols;
 pub mod scripting;
+pub mod storage;
 pub mod sync;
 #[cfg(test)]
 mod test_support;
