@@ -1,4 +1,3 @@
-use super::super::request_utils::url_encode;
 use super::graphql::dns_troubleshoot_hint;
 use super::*;
 use gpui::Context;
@@ -55,11 +54,6 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             .map(|h| (substitute(&h.key), substitute(&h.value)))
             .collect();
 
-        let auth_type = self.auth_type;
-        let api_key_name = substitute(&self.api_key_name);
-        let api_key_value = substitute(&self.api_key_value);
-        let api_key_location = self.api_key_location;
-
         headers.extend(self.build_auth_headers(&substitute));
 
         let exec_body =
@@ -90,29 +84,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             })
             .unwrap_or_default();
 
-        let final_url = if auth_type == AuthType::ApiKey
-            && api_key_location == ApiKeyLocation::QueryParam
-            && !api_key_name.is_empty()
-            && !api_key_value.is_empty()
-        {
-            if url.contains('?') {
-                format!(
-                    "{}&{}={}",
-                    url,
-                    url_encode(&api_key_name),
-                    url_encode(&api_key_value)
-                )
-            } else {
-                format!(
-                    "{}?{}={}",
-                    url,
-                    url_encode(&api_key_name),
-                    url_encode(&api_key_value)
-                )
-            }
-        } else {
-            url
-        };
+        let final_url = self.with_auth_query(url, &substitute);
 
         let history_badge = match self.request_mode {
             RequestMode::Http => method.as_str().to_string(),

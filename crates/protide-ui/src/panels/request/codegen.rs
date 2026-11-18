@@ -1,6 +1,11 @@
-use super::super::request_utils::{base64_encode, url_encode};
 use super::*;
 use gpui::{ClipboardItem, Context, Window};
+
+// File uploads aren't representable as a single body string across
+// curl/Python/JS/Go/Rust without a per-language multipart implementation;
+// say so plainly rather than silently emitting an empty body.
+const FILE_UPLOAD_NOTE: &str =
+    "# File upload bodies aren't supported by code generation yet; attach the file manually.";
 
 impl<E: WebSocketExecutor> RequestPanel<E> {
     /// Generate code for current request using selected language
@@ -10,68 +15,47 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        let env_state = self
+            .explorer_panel
+            .as_ref()
+            .map(|panel| panel.read(cx).env_state().clone());
+        let substitute = |s: &str| {
+            env_state
+                .as_ref()
+                .map_or_else(|| s.to_string(), |env| env.substitute(s))
+        };
+
         let mut headers: Vec<(String, String)> = self
             .headers
             .iter()
             .filter(|h| h.enabled && !h.key.is_empty())
-            .map(|h| (h.key.clone(), h.value.clone()))
+            .map(|h| (substitute(&h.key), substitute(&h.value)))
             .collect();
-
-        match self.auth_type {
-            AuthType::Bearer if !self.bearer_token.is_empty() => {
-                headers.push((
-                    "Authorization".to_string(),
-                    format!("Bearer {}", self.bearer_token),
-                ));
-            }
-            AuthType::Basic
-                if !self.basic_username.is_empty() || !self.basic_password.is_empty() =>
-            {
-                let credentials = format!("{}:{}", self.basic_username, self.basic_password);
-                let encoded = base64_encode(credentials.as_bytes());
-                headers.push(("Authorization".to_string(), format!("Basic {}", encoded)));
-            }
-            AuthType::ApiKey
-                if !self.api_key_name.is_empty()
-                    && self.api_key_location == ApiKeyLocation::Header =>
-            {
-                headers.push((self.api_key_name.clone(), self.api_key_value.clone()));
-            }
-            _ => {}
-        }
+        headers.extend(self.build_auth_headers(&substitute));
 
         let body = match self.body_type {
-            BodyType::Form => {
-                let has_files = self.form_data.iter()
-                    .any(|f| f.enabled && f.field_type == FormFieldType::File && f.file_path.is_some());
-                if has_files {
-                    // File uploads aren't representable as a single body
-                    // string across curl/Python/JS/Go/Rust without a
-                    // per-language multipart implementation; say so plainly
-                    // rather than silently emitting an empty body.
-                    Some("# File upload bodies aren't supported by code generation yet - attach the file manually.".to_string())
-                } else {
-                    let s = self.form_data.iter()
-                        .filter(|f| f.enabled && !f.key.is_empty())
-                        .map(|f| format!("{}={}", url_encode(&f.key), url_encode(&f.value)))
-                        .collect::<Vec<_>>().join("&");
-                    if s.is_empty() { None } else { Some(s) }
-                }
-            }
             BodyType::Binary => self.binary_file_path.as_ref().map(|p| {
-                format!("# Binary body from file: {} - read and send this file's bytes as the request body.", p.display())
+                format!("# Binary body from file: {}; read and send this file's bytes as the request body.", p.display())
             }),
             _ => {
-                let body = self.body_editor.read(cx).value().to_string();
-                if body.trim().is_empty() { None } else { Some(body) }
+                let body_content = self.body_editor.read(cx).value().to_string();
+                match self.build_execution_body(false, &self.method, &body_content, &substitute) {
+                    ExecutionBody::Multipart(_) => Some(FILE_UPLOAD_NOTE.to_string()),
+                    exec_body => exec_body.as_text(),
+                }
             }
         };
 
         let request = protide_core::codegen::CodegenRequest {
             method: self.method.as_str().to_string(),
-            url: self.url.clone(),
+            url: self.with_auth_query(substitute(&self.url), &substitute),
             headers,
             body,
+            content_type: match self.body_type {
+                BodyType::Json => Some("application/json".to_string()),
+                BodyType::Xml => Some("application/xml".to_string()),
+                _ => None,
+            },
         };
 
         let code = protide_core::codegen::generate(&request, language);

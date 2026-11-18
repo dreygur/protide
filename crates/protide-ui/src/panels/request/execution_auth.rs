@@ -1,4 +1,4 @@
-use super::super::request_utils::base64_encode;
+use super::super::request_utils::{base64_encode, url_encode};
 use super::*;
 
 impl<E: WebSocketExecutor> RequestPanel<E> {
@@ -43,5 +43,27 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             AuthType::None => {}
         }
         auth
+    }
+
+    /// Append the API key to `url` when auth sends it as a query parameter.
+    pub(super) fn with_auth_query<F>(&self, url: String, substitute: &F) -> String
+    where
+        F: Fn(&str) -> String,
+    {
+        let name = substitute(&self.api_key_name);
+        let value = substitute(&self.api_key_value);
+        if self.auth_type != AuthType::ApiKey
+            || self.api_key_location != ApiKeyLocation::QueryParam
+            || name.is_empty()
+            || value.is_empty()
+        {
+            return url;
+        }
+        let separator = if url.contains('?') { '&' } else { '?' };
+        format!(
+            "{url}{separator}{}={}",
+            url_encode(&name),
+            url_encode(&value)
+        )
     }
 }

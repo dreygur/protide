@@ -6,8 +6,8 @@ use super::CodegenRequest;
 pub fn generate_curl(request: &CodegenRequest) -> String {
     let mut parts = vec!["curl".to_string()];
 
-    // Method (GET is default, only add if not GET)
-    if request.method != "GET" {
+    // curl infers GET, or POST once `-d` is given, so only a bare GET may omit it
+    if request.method != "GET" || request.body.is_some() {
         parts.push(format!("-X '{}'", escape_single_quotes(&request.method)));
     }
 
@@ -65,6 +65,16 @@ mod tests {
         assert!(code.contains("-X 'POST'"));
         assert!(code.contains("-H 'Content-Type: application/json'"));
         assert!(code.contains(r#"-d '{"name": "John"}'"#));
+    }
+
+    /// `-d` makes curl infer POST, so a GET with data needs an explicit
+    /// method or the command silently sends a different request.
+    #[test]
+    fn test_get_with_data_keeps_its_method() {
+        let request =
+            CodegenRequest::new("GET", "https://example.com").with_body(Some("x".to_string()));
+        let code = generate_curl(&request);
+        assert!(code.contains("-X 'GET'"), "{}", code);
     }
 
     #[test]

@@ -8,13 +8,15 @@
 
 #[cfg(test)]
 mod tests {
+    use crate::panels::explorer::ExplorerPanel;
     use crate::panels::request::RequestPanel;
     use crate::panels::request_types::{
-        BodyType, FormField, FormFieldType, GrpcMethodInfo, GrpcStreamingType, RequestMode,
+        ApiKeyLocation, AuthType, BodyType, FormField, FormFieldType, GrpcMethodInfo,
+        GrpcStreamingType, HttpMethod, RequestMode,
     };
     use crate::panels::response::ResponsePanel;
     use crate::test_support::init_theme;
-    use gpui::{AppContext, Modifiers, TestAppContext};
+    use gpui::{AppContext, Modifiers, TestAppContext, WeakEntity};
     use protide_core::codegen::Language as CodegenLanguage;
     use protide_core::execution::ws::TungsteniteExecutor;
 
@@ -182,6 +184,7 @@ mod tests {
 
         panel.update(cx, |p, _cx| {
             p.url = "https://api.example.com/login".to_string();
+            p.method = HttpMethod::Post;
             p.body_type = BodyType::Form;
             p.form_data = vec![
                 FormField {
@@ -228,6 +231,7 @@ mod tests {
 
         panel.update(cx, |p, _cx| {
             p.url = "https://api.example.com/upload".to_string();
+            p.method = HttpMethod::Post;
             p.body_type = BodyType::Form;
             p.form_data = vec![FormField {
                 key: "file".to_string(),
@@ -250,6 +254,67 @@ mod tests {
                 "a file-upload body should not silently produce an empty generated body",
             );
         });
+    }
+
+    /// Generated code must be the request the app sends: variables resolved
+    /// from the active environment, auth applied the same way, and the
+    /// body type's Content-Type present.
+    #[gpui::test]
+    async fn test_generate_code_reproduces_the_sent_request(cx: &mut TestAppContext) {
+        init_theme(cx);
+        let (panel, cx) = cx.add_window_view(|window, cx| {
+            let response_panel = cx.new(|cx| ResponsePanel::new(window, cx));
+            TestPanel::new(window, cx, response_panel)
+        });
+        let explorer = cx.new(|cx| ExplorerPanel::new(cx, WeakEntity::new_invalid()));
+        explorer.update(cx, |e, cx| {
+            e.set_env_variable("base_url", "http://localhost:3000", cx);
+            e.set_env_variable("api_key", "k1", cx);
+        });
+        cx.run_until_parked();
+
+        let generate = |cx: &mut gpui::VisualTestContext| {
+            panel.update_in(cx, |p, window, cx| {
+                p.generate_code(CodegenLanguage::Curl, window, cx);
+            });
+            cx.run_until_parked();
+            panel.read_with(cx, |p, cx| p.codegen_editor.read(cx).value().to_string())
+        };
+
+        panel.update(cx, |p, cx| {
+            p.set_explorer_panel(explorer.clone(), cx);
+            p.url = "{{base_url}}/echo/env?key={{api_key}}".to_string();
+            p.headers.clear();
+            p.auth_type = AuthType::ApiKey;
+            p.api_key_name = "token".to_string();
+            p.api_key_value = "{{api_key}}".to_string();
+            p.api_key_location = ApiKeyLocation::QueryParam;
+        });
+        let code = generate(cx);
+        assert!(
+            code.contains("'http://localhost:3000/echo/env?key=k1&token=k1'"),
+            "variables or query api key not applied: {code}"
+        );
+
+        panel.update(cx, |p, _| {
+            p.auth_type = AuthType::Bearer;
+            p.bearer_token = "{{api_key}}".to_string();
+            p.method = HttpMethod::Post;
+        });
+        panel.update_in(cx, |p, window, cx| {
+            p.body_editor
+                .update(cx, |s, cx| s.set_value("{\"a\": 1}", window, cx));
+        });
+        let code = generate(cx);
+        assert!(
+            code.contains("-H 'Authorization: Bearer k1'"),
+            "bearer token not resolved: {code}"
+        );
+        assert!(
+            code.contains("-H 'Content-Type: application/json'"),
+            "JSON body without Content-Type: {code}"
+        );
+        assert!(!code.contains("{{"), "unresolved variable left: {code}");
     }
 }
 
