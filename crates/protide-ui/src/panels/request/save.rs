@@ -1,4 +1,5 @@
 use super::super::request_utils::{base64_encode, split_grpc_url, url_encode};
+use super::init::EMPTY_JSON;
 use super::*;
 use gpui::Context;
 use http_parser::Protocol;
@@ -176,7 +177,13 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             req.headers.push(http_parser::KeyValue::new(key, value));
         }
 
-        req.body = non_empty(self.generate_body_content(cx));
+        // A load fills the gRPC and tRPC editors with "{}" when the file has
+        // no body; that untouched default is not written back as one.
+        let body = non_empty(self.generate_body_content(cx));
+        let default_only = matches!(self.request_mode, RequestMode::Grpc | RequestMode::Trpc)
+            && req.body.is_none()
+            && body.as_deref() == Some(EMPTY_JSON);
+        req.body = body.filter(|_| !default_only);
         req.scripts = http_parser::Scripts {
             pre_script: non_empty(self.pre_script_editor.read(cx).value().to_string()),
             post_script: non_empty(self.post_script_editor.read(cx).value().to_string()),

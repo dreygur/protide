@@ -207,6 +207,21 @@ async fn a_grpc_request_keeps_its_service_and_method_path(cx: &mut TestAppContex
 }
 
 #[gpui::test]
+async fn grpc_and_trpc_requests_without_a_body_save_none(cx: &mut TestAppContext) {
+    let tmp = TempDir::new("save-no-body");
+    let (p, cx) = panel(cx);
+    for text in [
+        "### A\n# @protocol grpc\n\nGRPC grpc://{{host}}/e2e.testing.EmployeeService/ListEmployees\n",
+        "### B\n# @protocol trpc\n\nPOST http://{{host}}/trpc/user.list\n",
+    ] {
+        let file = tmp.write("no-body.http", text);
+        load(&p, cx, &file, 0);
+        p.update(cx, |p, cx| p.save_request(cx));
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), text);
+    }
+}
+
+#[gpui::test]
 async fn a_history_load_detaches_the_editor_from_its_file(cx: &mut TestAppContext) {
     let tmp = TempDir::new("save-history");
     let file = tmp.write("users.http", USERS);
