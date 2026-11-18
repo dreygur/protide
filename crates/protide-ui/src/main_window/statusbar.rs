@@ -1,4 +1,5 @@
 use super::*;
+use crate::panels::format_size;
 use gpui::{
     Context, FontWeight, IntoElement, ParentElement, SharedString, Styled, div, prelude::*, px,
 };
@@ -12,6 +13,7 @@ impl MainWindow {
 
         let response_info = self.response_panel.read(cx).last_response_summary();
         let is_loading = self.response_panel.read(cx).is_loading();
+        let failed = self.response_panel.read(cx).last_error().is_some();
 
         let sep = || {
             div()
@@ -67,15 +69,15 @@ impl MainWindow {
                             .child("Sending…"),
                     )
                     .into_any_element()
+            } else if failed {
+                div()
+                    .text_size(px(10.0))
+                    .font_weight(FontWeight::BOLD)
+                    .text_color(theme.colors.status_client_error)
+                    .child("Request failed")
+                    .into_any_element()
             } else if let Some((status, _, time_ms, size_bytes)) = response_info {
                 let status_color = theme.status_color(status);
-                let size_str = if size_bytes >= 1024 * 1024 {
-                    format!("{:.1} MB", size_bytes as f64 / (1024.0 * 1024.0))
-                } else if size_bytes >= 1024 {
-                    format!("{:.1} KB", size_bytes as f64 / 1024.0)
-                } else {
-                    format!("{} B", size_bytes)
-                };
                 div()
                     .flex()
                     .items_center()
@@ -109,7 +111,7 @@ impl MainWindow {
                         div()
                             .text_size(px(10.0))
                             .text_color(theme.colors.text_secondary)
-                            .child(size_str),
+                            .child(format_size(size_bytes)),
                     )
                     .into_any_element()
             } else {
