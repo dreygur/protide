@@ -14,6 +14,6 @@ pub mod theme;
 pub const LOGO_ASSET_PATH: &str = "protide-logo.png";
 
 pub use main_window::{
-    DismissOverlay, MainWindow, Quit, SaveRequest, SendRequest, ShowAbout, ShowHelp,
+    DismissOverlay, MainWindow, Quit, SaveRequest, SendRequest, ShowAbout, ShowHelp, StartSync,
     ToggleMockServer, ToggleSidebar, register_keybindings,
 };

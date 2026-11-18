@@ -8,11 +8,13 @@ use super::presence::PresenceManager;
 impl PresenceManager {
     /// Render the pairing flyout panel.
     /// `join_section` is the interactive "Join Peer" block built by the caller
-    /// (needs MainWindow context for button handlers and TextInput entity).
+    /// (needs MainWindow context for button handlers and TextInput entity), and
+    /// so is `toggle`, the on/off switch for collaboration.
     pub fn render_pairing_flyout(
         &self,
         theme: &theme::Theme,
         join_section: gpui::AnyElement,
+        toggle: gpui::AnyElement,
     ) -> gpui::AnyElement {
         let code = self.pairing_code.clone();
         let has_code = !code.is_empty();
@@ -57,115 +59,128 @@ impl PresenceManager {
                             .text_size(px(9.0))
                             .text_color(theme.colors.team_accent)
                             .child(format!("{} peers", self.peers.len())),
-                    ),
+                    )
+                    .child(toggle),
             )
-            // ── Your Code ─────────────────────────────────────────────────────
-            .child(
-                div()
-                    .px(px(12.0))
-                    .pt(px(10.0))
-                    .pb(px(10.0))
-                    .flex()
-                    .flex_col()
-                    .gap(px(6.0))
-                    // Section label
-                    .child(
-                        div()
-                            .text_size(px(9.0))
-                            .font_weight(gpui::FontWeight::SEMIBOLD)
-                            .text_color(theme.colors.text_muted)
-                            .child("YOUR CODE"),
-                    )
-                    // Code display
-                    .child(
-                        div()
-                            .w_full()
-                            .h(px(40.0))
-                            .bg(theme.colors.bg_primary)
-                            .border_1()
-                            .border_color(theme.colors.team_accent.opacity(0.3))
-                            .flex()
-                            .items_center()
-                            .justify_center()
-                            .child(
-                                div()
-                                    .text_size(px(16.0))
-                                    .font_weight(gpui::FontWeight::BOLD)
-                                    .font_family("JetBrains Mono")
-                                    .text_color(if has_code {
-                                        theme.colors.team_accent
-                                    } else {
-                                        theme.colors.text_muted
-                                    })
-                                    .child(if has_code {
-                                        code.clone()
-                                    } else {
-                                        SharedString::from("------")
-                                    }),
-                            ),
-                    )
-                    // Copy code button - hover/cursor/click only when a code exists
-                    .child(
-                        div()
-                            .id("pairing-copy-btn")
-                            .h(px(26.0))
-                            .w_full()
-                            .flex()
-                            .items_center()
-                            .justify_center()
-                            .gap(px(6.0))
-                            .bg(theme.colors.team_accent.opacity(0.12))
-                            .border_1()
-                            .border_color(theme.colors.team_accent.opacity(0.3))
-                            .when(has_code, {
-                                let code = code.clone();
-                                let accent = theme.colors.team_accent;
-                                move |el| {
-                                    let code = code.clone();
-                                    el.cursor_pointer()
-                                        .hover(move |s| s.bg(accent.opacity(0.2)))
-                                        .on_mouse_down(MouseButton::Left, move |_, _, cx| {
-                                            cx.write_to_clipboard(ClipboardItem::new_string(
-                                                code.to_string(),
-                                            ));
+            .when(!self.enabled, |el| {
+                el.child(
+                    div()
+                        .px(px(12.0))
+                        .py(px(10.0))
+                        .text_size(px(10.0))
+                        .text_color(theme.colors.text_secondary)
+                        .child("Collaboration is off. Nothing listens on the network until you turn it on."),
+                )
+            })
+            .when(self.enabled, |el| {
+                // ── Your Code ─────────────────────────────────────────────────────
+                el.child(
+                    div()
+                        .px(px(12.0))
+                        .pt(px(10.0))
+                        .pb(px(10.0))
+                        .flex()
+                        .flex_col()
+                        .gap(px(6.0))
+                        // Section label
+                        .child(
+                            div()
+                                .text_size(px(9.0))
+                                .font_weight(gpui::FontWeight::SEMIBOLD)
+                                .text_color(theme.colors.text_muted)
+                                .child("YOUR CODE"),
+                        )
+                        // Code display
+                        .child(
+                            div()
+                                .w_full()
+                                .h(px(40.0))
+                                .bg(theme.colors.bg_primary)
+                                .border_1()
+                                .border_color(theme.colors.team_accent.opacity(0.3))
+                                .flex()
+                                .items_center()
+                                .justify_center()
+                                .child(
+                                    div()
+                                        .text_size(px(16.0))
+                                        .font_weight(gpui::FontWeight::BOLD)
+                                        .font_family("JetBrains Mono")
+                                        .text_color(if has_code {
+                                            theme.colors.team_accent
+                                        } else {
+                                            theme.colors.text_muted
                                         })
-                                }
-                            })
-                            .child(icon(ICON_COPY, ICON_SM, theme.colors.team_accent))
-                            .child(
-                                div()
-                                    .text_size(px(10.0))
-                                    .font_weight(gpui::FontWeight::SEMIBOLD)
-                                    .text_color(theme.colors.team_accent)
-                                    .child("Copy Code"),
-                            ),
-                    ),
-            )
-            // ── Divider ───────────────────────────────────────────────────────
-            .child(
-                div()
-                    .h(px(1.0))
-                    .w_full()
-                    .bg(theme.colors.team_accent.opacity(0.2)),
-            )
-            // ── Join Peer (interactive - provided by caller) ──────────────────
-            .child(
-                div()
-                    .px(px(12.0))
-                    .pt(px(10.0))
-                    .pb(px(10.0))
-                    .flex()
-                    .flex_col()
-                    .gap(px(6.0))
-                    .child(
-                        div()
-                            .text_size(px(9.0))
-                            .font_weight(gpui::FontWeight::SEMIBOLD)
-                            .text_color(theme.colors.text_muted)
-                            .child("JOIN PEER"),
-                    )
-                    .child(join_section),
-            )
+                                        .child(if has_code {
+                                            code.clone()
+                                        } else {
+                                            SharedString::from("------")
+                                        }),
+                                ),
+                        )
+                        // Copy code button - hover/cursor/click only when a code exists
+                        .child(
+                            div()
+                                .id("pairing-copy-btn")
+                                .h(px(26.0))
+                                .w_full()
+                                .flex()
+                                .items_center()
+                                .justify_center()
+                                .gap(px(6.0))
+                                .bg(theme.colors.team_accent.opacity(0.12))
+                                .border_1()
+                                .border_color(theme.colors.team_accent.opacity(0.3))
+                                .when(has_code, {
+                                    let code = code.clone();
+                                    let accent = theme.colors.team_accent;
+                                    move |el| {
+                                        let code = code.clone();
+                                        el.cursor_pointer()
+                                            .hover(move |s| s.bg(accent.opacity(0.2)))
+                                            .on_mouse_down(MouseButton::Left, move |_, _, cx| {
+                                                cx.write_to_clipboard(ClipboardItem::new_string(
+                                                    code.to_string(),
+                                                ));
+                                            })
+                                    }
+                                })
+                                .child(icon(ICON_COPY, ICON_SM, theme.colors.team_accent))
+                                .child(
+                                    div()
+                                        .text_size(px(10.0))
+                                        .font_weight(gpui::FontWeight::SEMIBOLD)
+                                        .text_color(theme.colors.team_accent)
+                                        .child("Copy Code"),
+                                ),
+                        ),
+                )
+                // ── Divider ───────────────────────────────────────────────────────
+                .child(
+                    div()
+                        .h(px(1.0))
+                        .w_full()
+                        .bg(theme.colors.team_accent.opacity(0.2)),
+                )
+                // ── Join Peer (interactive - provided by caller) ──────────────────
+                .child(
+                    div()
+                        .px(px(12.0))
+                        .pt(px(10.0))
+                        .pb(px(10.0))
+                        .flex()
+                        .flex_col()
+                        .gap(px(6.0))
+                        .child(
+                            div()
+                                .text_size(px(9.0))
+                                .font_weight(gpui::FontWeight::SEMIBOLD)
+                                .text_color(theme.colors.text_muted)
+                                .child("JOIN PEER"),
+                        )
+                        .child(join_section),
+                )
+            })
             // ── Peers Found Nearby (mDNS) - shown when peers visible ──────────
             .when(!nearby.is_empty(), |el| {
                 el.child(

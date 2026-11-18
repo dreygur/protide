@@ -101,7 +101,9 @@ impl PresenceManager {
                     } else {
                         theme.colors.text_muted
                     })
-                    .child(if has_code {
+                    .child(if !self.enabled {
+                        SharedString::from("OFF")
+                    } else if has_code {
                         code
                     } else {
                         SharedString::from("PAIR")

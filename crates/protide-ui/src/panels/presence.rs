@@ -1,4 +1,5 @@
 use gpui::SharedString;
+use protide_core::sync::SyncEngine;
 use std::time::{Duration, Instant};
 
 /// A connected peer on the network
@@ -80,13 +81,24 @@ impl PresenceManager {
     pub fn new() -> Self {
         Self {
             peers: Vec::new(),
-            enabled: true,
+            enabled: false,
             show_pairing: false,
             pairing_code: SharedString::default(),
             generated_code: SharedString::default(),
             connection_status: ConnectionStatus::Idle,
             handshake_tick: false,
         }
+    }
+
+    /// Presence for a running engine, or the off state when there is none.
+    pub fn for_engine(engine: Option<&SyncEngine>) -> Self {
+        let mut presence = Self::new();
+        presence.enabled = engine.is_some();
+        if let Some(code) = engine.and_then(|e| e.config().pairing_code.as_deref()) {
+            presence.pairing_code = SharedString::from(code.to_string());
+            presence.generated_code = presence.pairing_code.clone();
+        }
+        presence
     }
 
     /// Add or update a peer

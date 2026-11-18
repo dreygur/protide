@@ -153,7 +153,27 @@ impl MainWindow {
             })
             .into_any_element();
 
-        self.presence.render_pairing_flyout(&theme, join_section)
+        let enabled = self.presence.enabled;
+        let accent = theme.colors.team_accent;
+        let toggle = div()
+            .id("collab-toggle")
+            .px(px(6.0))
+            .h(px(18.0))
+            .flex()
+            .items_center()
+            .border_1()
+            .border_color(accent.opacity(0.35))
+            .text_size(px(9.0))
+            .font_weight(FontWeight::SEMIBOLD)
+            .text_color(accent)
+            .cursor_pointer()
+            .hover(move |s| s.bg(accent.opacity(0.15)))
+            .on_click(cx.listener(move |this, _, _, cx| this.set_collaboration(!enabled, cx)))
+            .child(if enabled { "Turn off" } else { "Turn on" })
+            .into_any_element();
+
+        self.presence
+            .render_pairing_flyout(&theme, join_section, toggle)
     }
 
     pub(super) fn render_menu_dropdown(&self, cx: &Context<Self>) -> impl IntoElement {

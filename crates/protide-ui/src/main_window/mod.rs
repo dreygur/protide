@@ -13,6 +13,7 @@ mod titlebar;
 mod visibility;
 
 use std::path::PathBuf;
+use std::rc::Rc;
 
 use gpui::{Context, Entity, FocusHandle, KeyBinding, WeakEntity, Window, prelude::*};
 
@@ -60,6 +61,10 @@ use crate::theme;
 use gpui_component::input::{Input, InputState};
 use protide_core::sync::{SyncEngine, SyncEvent};
 
+/// Builds a started sync engine. Called only once the user has opted in to
+/// collaboration, because starting it listens on the network.
+pub type StartSync = Rc<dyn Fn() -> SyncEngine>;
+
 /// Main window containing the application layout
 pub struct MainWindow {
     pub(super) explorer: Entity<ExplorerPanel>,
@@ -101,8 +106,10 @@ pub struct MainWindow {
     pub(super) _appearance_sub: gpui::Subscription,
     /// Collaboration presence manager
     pub(super) presence: PresenceManager,
-    /// Sync engine for peer discovery and CRDT sync
+    /// Sync engine for peer discovery and CRDT sync, present only while
+    /// collaboration is on
     pub(super) sync_engine: Option<SyncEngine>,
+    pub(super) start_sync: StartSync,
     /// Text input for the "Join Peer" pairing code field
     pub(super) join_input: Entity<InputState>,
     /// When the current PAKE handshake was initiated (for 10-second timeout)
@@ -112,11 +119,7 @@ pub struct MainWindow {
 }
 
 impl MainWindow {
-    pub fn build(
-        window: &mut Window,
-        cx: &mut Context<Self>,
-        sync_engine: Option<SyncEngine>,
-    ) -> Self {
+    pub fn build(window: &mut Window, cx: &mut Context<Self>, start_sync: StartSync) -> Self {
         let main_window_weak: WeakEntity<MainWindow> = cx.entity().downgrade();
         let explorer = cx.new(|cx| ExplorerPanel::new(cx, main_window_weak.clone()));
         let runner_panel = cx.new(RunnerPanel::new);
@@ -176,15 +179,8 @@ impl MainWindow {
         let join_input =
             cx.new(|cx| InputState::new(window, cx).placeholder("enter pairing code…"));
 
-        let mut presence = PresenceManager::new();
-        if let Some(code) = sync_engine
-            .as_ref()
-            .and_then(|e| e.config().pairing_code.as_deref())
-        {
-            let s = gpui::SharedString::from(code.to_string());
-            presence.pairing_code = s.clone();
-            presence.generated_code = s;
-        }
+        let sync_engine = crate::prefs::collaboration_enabled().then(|| start_sync());
+        let presence = PresenceManager::for_engine(sync_engine.as_ref());
 
         let poll_weak = cx.entity().downgrade();
         cx.spawn(async move |_, cx| {
@@ -238,6 +234,7 @@ impl MainWindow {
             _appearance_sub: appearance_sub,
             presence,
             sync_engine,
+            start_sync,
             join_input,
             handshake_started: None,
             last_p2p_notify: std::time::Instant::now(),
@@ -297,7 +294,7 @@ impl MainWindow {
 
 #[cfg(test)]
 mod tests {
-    use super::{MainWindow, ShowHelp};
+    use super::{MainWindow, ShowHelp, SyncEngine};
     use gpui::{AppContext as _, TestAppContext};
 
     /// Counter entity used as a lightweight stand-in — does not need Render.
@@ -333,7 +330,13 @@ mod tests {
             crate::theme::init(cx);
             cx.set_global(crate::panels::RequestHistory::new());
         });
-        let (window, cx) = cx.add_window_view(|window, cx| MainWindow::build(window, cx, None));
+        let (window, cx) = cx.add_window_view(|window, cx| {
+            MainWindow::build(
+                window,
+                cx,
+                std::rc::Rc::new(|| SyncEngine::new(Default::default())),
+            )
+        });
 
         window.update(cx, |mw, _| {
             assert!(!mw.show_help);

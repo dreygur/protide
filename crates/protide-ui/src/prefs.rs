@@ -6,6 +6,8 @@ use std::path::{Path, PathBuf};
 
 type Prefs = HashMap<String, serde_json::Value>;
 
+const COLLABORATION_KEY: &str = "collab.enabled";
+
 fn config_path() -> Option<PathBuf> {
     dirs::config_dir().map(|d| d.join("protide").join("prefs.json"))
 }
@@ -71,6 +73,23 @@ pub fn set_string(key: &str, value: &str) {
     save(&map);
 }
 
+/// Collaboration listens on the network, so it stays off until the user opts in.
+fn collaboration_in(map: &Prefs) -> bool {
+    map.get(COLLABORATION_KEY)
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false)
+}
+
+pub fn collaboration_enabled() -> bool {
+    collaboration_in(&load())
+}
+
+pub fn set_collaboration_enabled(on: bool) {
+    let mut map = load();
+    map.insert(COLLABORATION_KEY.to_string(), serde_json::Value::from(on));
+    save(&map);
+}
+
 pub fn remove(key: &str) {
     let mut map = load();
     map.remove(key);
@@ -102,6 +121,29 @@ mod tests {
         let back = load_from(&file);
         assert_eq!(f32_in(&back, "sidebar_width", 0.0), 240.5);
         assert_eq!(str_in(&back, "last_workspace").as_deref(), Some("/w"));
+    }
+
+    #[test]
+    fn collaboration_is_off_until_the_user_opts_in() {
+        assert!(!collaboration_in(&Prefs::new()));
+        let tmp = TempDir::new("prefs-collab-corrupt");
+        assert!(!collaboration_in(&load_from(
+            &tmp.write("prefs.json", "}{")
+        )));
+        assert!(!collaboration_in(&prefs(&[(
+            COLLABORATION_KEY,
+            Value::from("true")
+        )])));
+    }
+
+    #[test]
+    fn collaboration_choice_round_trips_through_disk() {
+        let tmp = TempDir::new("prefs-collab");
+        let file = tmp.join("prefs.json");
+        for on in [true, false] {
+            save_to(&file, &prefs(&[(COLLABORATION_KEY, Value::from(on))]));
+            assert_eq!(collaboration_in(&load_from(&file)), on);
+        }
     }
 
     #[test]

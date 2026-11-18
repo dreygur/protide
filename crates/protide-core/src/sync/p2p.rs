@@ -193,7 +193,7 @@ impl P2PSync {
 
                     let mut pake_topics: HashMap<String, gossipsub::IdentTopic> = HashMap::new();
 
-                    loop {
+                    'run: loop {
                         // Drain outgoing CRDT broadcasts
                         while let Ok(entry) = broadcast_rx.try_recv() {
                             if let Ok(data) = serde_json::to_vec(&entry) {
@@ -205,7 +205,14 @@ impl P2PSync {
                         }
 
                         // Drain commands (subscribe / publish on dynamic topics)
-                        while let Ok(cmd) = cmd_rx.try_recv() {
+                        loop {
+                            let cmd = match cmd_rx.try_recv() {
+                                Ok(cmd) => cmd,
+                                Err(mpsc::TryRecvError::Empty) => break,
+                                // P2PSync was dropped: drop the swarm so it
+                                // stops listening.
+                                Err(mpsc::TryRecvError::Disconnected) => break 'run,
+                            };
                             match cmd {
                                 SwarmCmd::Subscribe(topic_str) => {
                                     let t = gossipsub::IdentTopic::new(&topic_str);

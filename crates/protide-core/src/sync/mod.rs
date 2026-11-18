@@ -270,6 +270,18 @@ mod tests {
     }
 
     #[test]
+    fn an_engine_with_networking_disabled_starts_no_listener() {
+        let mut engine = SyncEngine::new(SyncConfig {
+            pairing_code: Some("apple-banana-123".into()),
+            ..Default::default()
+        });
+        engine.init().unwrap();
+        assert!(!engine.is_p2p_active());
+        assert!(engine.live_probe.is_none());
+        assert!(engine.drain_events().is_empty(), "no backend came online");
+    }
+
+    #[test]
     fn test_engine_poll_returns_events() {
         let config = SyncConfig::default();
         let mut engine = SyncEngine::new(config);

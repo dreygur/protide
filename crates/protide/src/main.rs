@@ -5,10 +5,11 @@ use gpui_component_assets::Assets;
 use protide_core::sync::{SyncConfig, SyncEngine};
 use protide_ui::panels::RequestHistory;
 use protide_ui::{
-    MainWindow, Quit, SaveRequest, SendRequest, ShowAbout, ShowHelp, ToggleMockServer,
+    MainWindow, Quit, SaveRequest, SendRequest, ShowAbout, ShowHelp, StartSync, ToggleMockServer,
     ToggleSidebar, register_keybindings,
 };
 use std::borrow::Cow;
+use std::rc::Rc;
 use std::sync::Arc;
 
 const APP_ICON_PNG: &[u8] = include_bytes!("../assets/protide-logo.png");
@@ -135,23 +136,25 @@ fn main() -> Result<()> {
                 ..Default::default()
             };
 
-            let node_name = std::env::var("USER")
-                .or_else(|_| std::env::var("USERNAME"))
-                .unwrap_or_else(|_| "developer".into());
-            let pairing_code = protide_core::sync::pake::generate_pairing_code();
-            let mut engine = SyncEngine::new(SyncConfig {
-                node_name,
-                p2p_enabled: true,
-                live_probe_enabled: true,
-                pairing_code: Some(pairing_code),
-                node_id_path: dirs::config_dir().map(|d| d.join("protide").join("node_id")),
-                ..Default::default()
+            let start_sync: StartSync = Rc::new(|| {
+                let node_name = std::env::var("USER")
+                    .or_else(|_| std::env::var("USERNAME"))
+                    .unwrap_or_else(|_| "developer".into());
+                let pairing_code = protide_core::sync::pake::generate_pairing_code();
+                let mut engine = SyncEngine::new(SyncConfig {
+                    node_name,
+                    p2p_enabled: true,
+                    live_probe_enabled: true,
+                    pairing_code: Some(pairing_code),
+                    node_id_path: dirs::config_dir().map(|d| d.join("protide").join("node_id")),
+                    ..Default::default()
+                });
+                let _ = engine.init();
+                engine
             });
-            let _ = engine.init();
-            let sync_engine = Some(engine);
 
             cx.open_window(window_options, |window, cx| {
-                let view = cx.new(|cx| MainWindow::build(window, cx, sync_engine));
+                let view = cx.new(|cx| MainWindow::build(window, cx, start_sync));
                 cx.new(|cx| Root::new(view, window, cx).window_shadow_size(gpui::px(0.0)))
             })
             .expect("Failed to open main window");

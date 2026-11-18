@@ -2,6 +2,21 @@ use super::*;
 use gpui::{Context, Window};
 
 impl MainWindow {
+    /// Turning collaboration off drops the engine, which stops every listener.
+    pub(super) fn set_collaboration(&mut self, on: bool, cx: &mut Context<Self>) {
+        crate::prefs::set_collaboration_enabled(on);
+        self.sync_engine = on.then(|| (self.start_sync)());
+        let show_pairing = self.presence.show_pairing;
+        self.presence = PresenceManager::for_engine(self.sync_engine.as_ref());
+        self.presence.show_pairing = show_pairing;
+        self.handshake_started = None;
+        let state = if on { "on" } else { "off" };
+        self.console_panel.update(cx, |panel, cx| {
+            panel.log(ConsoleEntry::team(format!("Collaboration {}", state)), cx);
+        });
+        cx.notify();
+    }
+
     pub(super) fn connect_peer(&mut self, cx: &mut Context<Self>) {
         let code = self
             .join_input
