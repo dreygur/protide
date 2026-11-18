@@ -81,6 +81,8 @@ pub struct MainWindow {
     pub(super) drag_codegen: Option<(f32, f32)>,
     pub(super) pending_alert: Option<(String, String, bool)>,
     pub(super) pending_delete: Option<PathBuf>,
+    /// Tree row waiting on the unsaved changes prompt: file and row index
+    pub(super) pending_switch: Option<(PathBuf, Option<usize>)>,
     pub(super) show_help: bool,
     pub(super) show_about: bool,
     pub(super) focus: FocusHandle,
@@ -213,6 +215,7 @@ impl MainWindow {
             drag_codegen: None,
             pending_alert: None,
             pending_delete: None,
+            pending_switch: None,
             show_help: false,
             show_about: false,
             focus: cx.focus_handle(),

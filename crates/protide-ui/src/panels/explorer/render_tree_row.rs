@@ -31,6 +31,11 @@ impl ExplorerPanel {
         let is_selected = self.selected_item.as_ref() == Some(&item.path)
             && self.selected_request == request_index;
         let is_renaming = !is_request_row && self.renaming_item.as_ref() == Some(&item.path);
+        let is_dirty = self
+            .request_panel
+            .as_ref()
+            .and_then(|rp| rp.read(cx).dirty_location())
+            .is_some_and(|(file, i)| file == item.path && request_index.is_none_or(|r| r == i));
         let has_watcher = self.workspace_watcher.is_some();
         let guide_color = theme.colors.text_muted.opacity(0.12);
 
@@ -41,12 +46,12 @@ impl ExplorerPanel {
         )
         .selected(is_selected)
         .on_click(cx.listener(move |this, _, _, cx| {
-            this.selected_item = Some(path_for_select.clone());
-            this.selected_request = request_index;
             if is_expandable {
+                this.selected_item = Some(path_for_select.clone());
+                this.selected_request = request_index;
                 this.toggle_collection_folder(path.clone(), cx);
             } else {
-                this.load_request_file(path.clone(), request_index.unwrap_or(0), cx);
+                this.open_request(path.clone(), request_index, cx);
             }
         }))
         .on_right_click(cx.listener(move |this, event: &MouseDownEvent, _, cx| {
@@ -132,6 +137,17 @@ impl ExplorerPanel {
                         .text_color(theme.colors.text_primary)
                         .when(is_folder, |el| el.font_weight(gpui::FontWeight::SEMIBOLD))
                         .child(display_name),
+                )
+            })
+            .when(is_dirty, |el| {
+                el.child(
+                    div()
+                        .id(SharedString::from(format!("coll-dirty-{}", idx)))
+                        .pl(px(4.0))
+                        .text_size(px(10.0))
+                        .text_color(theme.colors.warning)
+                        .tooltip(tooltip_text("Unsaved changes"))
+                        .child("●"),
                 )
             })
             .when(is_renaming, |el| el.child(self.render_rename_input(cx)))

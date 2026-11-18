@@ -203,7 +203,7 @@ impl ExplorerPanel {
                 if !variable_extractions.is_empty() {
                     panel.set_variable_extractions(variable_extractions, cx);
                 }
-                panel.set_loaded_file(path.clone(), index, req, content);
+                panel.set_loaded_file(path.clone(), index, req, content, cx);
                 if let Some(pp) = proto_path {
                     panel.load_grpc_proto_from_path(pp, cx);
                 }

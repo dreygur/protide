@@ -240,6 +240,8 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             current_request_index: 0,
             loaded_request: None,
             disk_content: None,
+            clean_snapshot: None,
+            dirty: false,
             external_change_pending: false,
             save_feedback: false,
             custom_method_input: String::new(),

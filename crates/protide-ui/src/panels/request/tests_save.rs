@@ -49,7 +49,7 @@ fn load(p: &Entity<TestPanel>, cx: &mut VisualTestContext, file: &Path, index: u
     let req = http_parser::parse(&content).unwrap().remove(index);
     p.update(cx, |p, cx| {
         p.load_from_parsed_request(&req, cx);
-        p.set_loaded_file(file.to_path_buf(), index, req, content);
+        p.set_loaded_file(file.to_path_buf(), index, req, content, cx);
     });
     cx.run_until_parked();
 }
@@ -115,4 +115,26 @@ async fn the_apps_own_save_is_not_an_external_change(cx: &mut TestAppContext) {
         assert!(p.is_external_change(&file, Some("GET https://other.test\n")));
         assert!(!p.is_external_change(&tmp.join("other.http"), Some("x")));
     });
+}
+
+#[gpui::test]
+async fn an_edit_marks_the_request_dirty_until_it_is_saved(cx: &mut TestAppContext) {
+    let tmp = TempDir::new("save-dirty");
+    let file = tmp.write("users.http", USERS);
+    let (p, cx) = panel(cx);
+    load(&p, cx, &file, 1);
+    p.read_with(cx, |p, _| assert_eq!(p.dirty_location(), None));
+
+    p.update(cx, |p, cx| {
+        p.url = "{{base}}/people".into();
+        cx.notify();
+    });
+    cx.run_until_parked();
+    p.read_with(cx, |p, _| {
+        assert_eq!(p.dirty_location(), Some((file.clone(), 1)));
+    });
+
+    p.update(cx, |p, cx| assert!(p.save_request(cx)));
+    cx.run_until_parked();
+    p.read_with(cx, |p, _| assert_eq!(p.dirty_location(), None));
 }

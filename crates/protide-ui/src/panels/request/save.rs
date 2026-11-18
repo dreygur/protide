@@ -19,8 +19,9 @@ fn non_empty(text: String) -> Option<String> {
 }
 
 impl<E: WebSocketExecutor> RequestPanel<E> {
-    /// Save the current request to a .http file
-    pub fn save_request(&mut self, cx: &mut Context<Self>) {
+    /// Save the current request to a .http file. Returns whether it was
+    /// written in place; a request without a file opens a save dialog.
+    pub fn save_request(&mut self, cx: &mut Context<Self>) -> bool {
         let request = self.build_request(cx);
 
         // Save in place if a file is already loaded: only the loaded request's
@@ -36,33 +37,31 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                     index + 1,
                     path.display()
                 );
-                return;
+                return false;
             };
             if let Err(e) = std::fs::write(path, &content) {
                 log::error!("Failed to save request {}: {}", path.display(), e);
-            } else {
-                if self.external_change_pending {
-                    log::warn!("Overwrote external changes to {}", path.display());
-                }
-                log::info!("Saved: {}", path.display());
-                self.loaded_request = Some(request);
-                self.disk_content = Some(content);
-                self.external_change_pending = false;
-                self.save_feedback = true;
-                cx.notify();
-                cx.spawn(async move |this, cx| {
-                    cx.background_executor()
-                        .timer(std::time::Duration::from_millis(1500))
-                        .await;
-                    this.update(cx, |this, cx| {
-                        this.save_feedback = false;
-                        cx.notify();
-                    })
-                    .ok();
-                })
-                .detach();
+                return false;
             }
-            return;
+            if self.external_change_pending {
+                log::warn!("Overwrote external changes to {}", path.display());
+            }
+            log::info!("Saved: {}", path.display());
+            self.set_loaded_file(path.clone(), index, request, content, cx);
+            self.save_feedback = true;
+            cx.notify();
+            cx.spawn(async move |this, cx| {
+                cx.background_executor()
+                    .timer(std::time::Duration::from_millis(1500))
+                    .await;
+                this.update(cx, |this, cx| {
+                    this.save_feedback = false;
+                    cx.notify();
+                })
+                .ok();
+            })
+            .detach();
+            return true;
         }
 
         // Otherwise open save dialog
@@ -101,7 +100,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                     None => d,
                 }
             },
-            move |this, path, _cx| {
+            move |this, path, cx| {
                 last_paths::save_last_dir("save_request", &path);
                 let path = if path.extension().is_none_or(|ext| ext != "http") {
                     path.with_extension("http")
@@ -112,19 +111,17 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                     log::error!("Failed to save request {}: {}", path.display(), e);
                 } else {
                     log::info!("Saved: {}", path.display());
-                    this.current_file = Some(path);
-                    this.current_request_index = 0;
-                    this.loaded_request = Some(request);
-                    this.disk_content = Some(content);
+                    this.set_loaded_file(path, 0, request, content, cx);
                 }
             },
         );
+        false
     }
 
     /// The editor state as a parsed request. Starts from the request loaded
     /// from the file, so annotations the editor does not show (`@name`,
     /// `@description`, `@depends`, `@set`) are kept as they were.
-    fn build_request(&self, cx: &Context<Self>) -> http_parser::Request {
+    pub(super) fn build_request(&self, cx: &Context<Self>) -> http_parser::Request {
         let mut req = self.loaded_request.clone().unwrap_or_else(|| {
             http_parser::Request::new(http_parser::HttpMethod::Get, String::new())
         });

@@ -96,7 +96,7 @@ impl ExplorerPanel {
                     // Without the request on disk a save must not guess
                     // which block to rewrite; it asks for a file instead.
                     if let Some((content, request)) = request {
-                        panel.set_loaded_file(file, index, request, content);
+                        panel.set_loaded_file(file, index, request, content, cx);
                     }
                 });
             }

@@ -12,6 +12,7 @@ impl<E: WebSocketExecutor> Render for RequestPanel<E> {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.skip_blur = false;
         self.apply_pending_editors(window, cx);
+        self.refresh_dirty(cx);
         div()
             .id("request-panel")
             .size_full()
