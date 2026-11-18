@@ -85,6 +85,31 @@ async fn saving_the_middle_request_keeps_the_other_requests(cx: &mut TestAppCont
 }
 
 #[gpui::test]
+async fn disabled_headers_survive_a_load_and_save(cx: &mut TestAppContext) {
+    let tmp = TempDir::new("save-disabled");
+    let text = "### One\n\nGET https://a.test/x\nAccept: */*\n# X-Debug: 1\nX-On: 2\n";
+    let file = tmp.write("one.http", text);
+    let (p, cx) = panel(cx);
+    load(&p, cx, &file, 0);
+
+    p.read_with(cx, |p, _| {
+        let rows: Vec<_> = p
+            .headers
+            .iter()
+            .filter(|h| !h.key.is_empty())
+            .map(|h| (h.key.as_str(), h.enabled))
+            .collect();
+        assert_eq!(
+            rows,
+            vec![("Accept", true), ("X-Debug", false), ("X-On", true)]
+        );
+    });
+    p.update(cx, |p, cx| p.save_request(cx));
+
+    assert_eq!(std::fs::read_to_string(&file).unwrap(), text);
+}
+
+#[gpui::test]
 async fn saving_an_unchanged_single_request_file_rewrites_nothing(cx: &mut TestAppContext) {
     let tmp = TempDir::new("save-single");
     // Has a body: a GET would currently inherit the default body (B5).

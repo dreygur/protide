@@ -85,18 +85,29 @@ pub fn parse_blocks(content: &str) -> Result<Vec<RequestBlock>, ParseError> {
 
 /// `content` with request `index` rewritten from `request`. Every byte
 /// outside that request's span, the `###` title line included, is kept, and
-/// so are the blank lines that end the span. `None` when the content does
+/// so are the blank lines that open and end the span. `None` when the content does
 /// not parse or has no request `index`.
 pub fn replace_request(content: &str, index: usize, request: &Request) -> Option<String> {
     let span = parse_blocks(content).ok()?.get(index)?.span.clone();
     let old = &content[span.clone()];
+    let first = old.len() - old.trim_start().len();
+    let lead = &old[..old[..first].rfind('\n').map_or(0, |n| n + 1)];
     let kept = old.trim_end().len();
     let tail = old[kept..].find('\n').map_or("", |n| &old[kept + n + 1..]);
     let mut text = request.to_http().trim_end().to_string() + "\n";
     if content.contains("\r\n") {
         text = text.replace('\n', "\r\n");
     }
-    Some([&content[..span.start], &text, tail, &content[span.end..]].concat())
+    Some(
+        [
+            &content[..span.start],
+            lead,
+            &text,
+            tail,
+            &content[span.end..],
+        ]
+        .concat(),
+    )
 }
 
 #[cfg(test)]
@@ -239,6 +250,12 @@ GET {{base}}/me
         let content = "GET https://a.test\n\nGET https://b.test\n";
         let out = edited(content, 1, |r| r.url = "https://c.test".into());
         assert_eq!(out, "GET https://a.test\n\nGET https://c.test\n");
+    }
+
+    #[test]
+    fn blank_lines_between_the_title_and_the_request_are_kept() {
+        let content = "### A\n\nGET https://a.test\n\n### B\nGET https://b.test\n";
+        assert_eq!(edited(content, 0, |_| {}), content);
     }
 
     #[test]

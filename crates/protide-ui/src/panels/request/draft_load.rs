@@ -86,14 +86,14 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
         self.method_dropdown_open = false;
         self.variable_extractions.clear();
 
+        // Disabled headers load as disabled rows so a save writes them back.
         self.headers = req
             .headers
             .iter()
-            .filter(|h| h.enabled)
             .map(|h| KeyValuePair {
                 key: h.key.clone(),
                 value: h.value.clone(),
-                enabled: true,
+                enabled: h.enabled,
             })
             .collect();
         self.headers.push(KeyValuePair::default());
