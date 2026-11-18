@@ -130,12 +130,14 @@ pub fn code_input(state: &Entity<InputState>) -> Input {
         .text_size(px(theme::CODE_FONT_SIZE))
 }
 
-/// Simple text tooltip view.
-struct TooltipText(SharedString);
+/// Simple text tooltip view. The text is read on every render, so a tooltip
+/// still open after a click shows what the click changed.
+struct TooltipText(Box<dyn Fn(&App) -> SharedString>);
 
 impl gpui::Render for TooltipText {
     fn render(&mut self, _window: &mut Window, cx: &mut gpui::Context<Self>) -> impl IntoElement {
         let theme = theme::current(cx);
+        let text = (self.0)(cx);
         div()
             .px(px(8.0))
             .py(px(3.0))
@@ -144,7 +146,17 @@ impl gpui::Render for TooltipText {
             .border_color(theme.colors.border)
             .text_size(px(11.0))
             .text_color(theme.colors.text_primary)
-            .child(self.0.clone())
+            .child(text)
+    }
+}
+
+/// A tooltip builder whose text `text` computes from app state each render.
+pub fn tooltip_live(
+    text: impl Fn(&App) -> SharedString + Clone + 'static,
+) -> impl Fn(&mut Window, &mut App) -> gpui::AnyView {
+    move |_window, cx| {
+        let text = text.clone();
+        cx.new(|_| TooltipText(Box::new(text))).into()
     }
 }
 
@@ -153,5 +165,5 @@ pub fn tooltip_text(
     text: impl Into<SharedString>,
 ) -> impl Fn(&mut Window, &mut App) -> gpui::AnyView {
     let text: SharedString = text.into();
-    move |_window, cx| cx.new(|_| TooltipText(text.clone())).into()
+    tooltip_live(move |_| text.clone())
 }

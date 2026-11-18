@@ -1,5 +1,5 @@
 use super::*;
-use crate::components::tooltip_text;
+use crate::components::tooltip_live;
 use gpui::{
     App, Context, FontWeight, IntoElement, MouseButton, ParentElement, Styled, div, img,
     prelude::*, px,
@@ -149,10 +149,15 @@ impl MainWindow {
                         theme::toggle(window, cx);
                         cx.notify();
                     }))
-                    .tooltip(tooltip_text(match theme.mode {
-                        theme::ThemeMode::Light => "Theme: light",
-                        theme::ThemeMode::Dark => "Theme: dark",
-                        theme::ThemeMode::System => "Theme: follow system",
+                    // Read at render, not here: the tooltip stays open across
+                    // the click and must show the mode the click selected.
+                    .tooltip(tooltip_live(|cx| {
+                        match theme::current(cx).mode {
+                            theme::ThemeMode::Light => "Theme: light",
+                            theme::ThemeMode::Dark => "Theme: dark",
+                            theme::ThemeMode::System => "Theme: follow system",
+                        }
+                        .into()
                     }))
                     .child(match theme.mode {
                         theme::ThemeMode::Light => {
