@@ -361,7 +361,13 @@ mod tests {
             cx.set_global(crate::panels::RequestHistory::new());
             super::register_keybindings(cx);
         });
-        let (window, cx) = cx.add_window_view(|window, cx| MainWindow::build(window, cx, None));
+        let (window, cx) = cx.add_window_view(|window, cx| {
+            MainWindow::build(
+                window,
+                cx,
+                std::rc::Rc::new(|| SyncEngine::new(Default::default())),
+            )
+        });
         let focus_handle = window.read_with(cx, |mw, _| mw.focus.clone());
         cx.update(|window, app| window.focus(&focus_handle, app));
         cx.run_until_parked();
