@@ -79,27 +79,27 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
 
     /// Called from render, after queued editor contents have landed. The
     /// first call after a load records what a save would write; later calls
-    /// compare against it. Once dirty the check stops until the next load or
-    /// save, so typing does not rebuild the request on every frame. A binary
-    /// body never comes from a file, and reading it each frame would be
-    /// costly, so it simply counts as an edit.
+    /// compare against it, so an edit that is undone, such as a protocol
+    /// switched and back, is clean again. A binary body never comes from a
+    /// file, and reading it each frame would be costly, so it simply counts
+    /// as an edit.
     pub(super) fn refresh_dirty(&mut self, cx: &mut Context<Self>) {
-        if self.current_file.is_none() || self.dirty {
+        if self.current_file.is_none() {
             return;
         }
-        if self.body_type == BodyType::Binary {
-            self.dirty = true;
-            self.notify_explorer(cx);
-            return;
-        }
-        let now = self.build_request(cx).to_http();
-        match &self.clean_snapshot {
-            None => self.clean_snapshot = Some(now),
-            Some(clean) if *clean != now => {
-                self.dirty = true;
-                self.notify_explorer(cx);
+        let dirty = self.body_type == BodyType::Binary || {
+            let now = self.build_request(cx).to_http();
+            match &self.clean_snapshot {
+                Some(clean) => *clean != now,
+                None => {
+                    self.clean_snapshot = Some(now);
+                    false
+                }
             }
-            Some(_) => {}
+        };
+        if dirty != self.dirty {
+            self.dirty = dirty;
+            self.notify_explorer(cx);
         }
     }
 

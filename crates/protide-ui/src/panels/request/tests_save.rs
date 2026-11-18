@@ -1,6 +1,6 @@
 //! Saving a request loaded from a multi request .http file.
 
-use crate::panels::request::RequestPanel;
+use crate::panels::request::{RequestMode, RequestPanel};
 use crate::panels::response::ResponsePanel;
 use crate::test_support::{TempDir, init_theme};
 use gpui::{AppContext, Entity, TestAppContext, VisualTestContext};
@@ -159,6 +159,22 @@ async fn an_edit_marks_the_request_dirty_until_it_is_saved(cx: &mut TestAppConte
     });
 
     p.update(cx, |p, cx| assert!(p.save_request(cx)));
+    cx.run_until_parked();
+    p.read_with(cx, |p, _| assert_eq!(p.dirty_location(), None));
+}
+
+#[gpui::test]
+async fn a_protocol_switch_that_is_reverted_is_not_dirty(cx: &mut TestAppContext) {
+    let tmp = TempDir::new("save-protocol-dirty");
+    let file = tmp.write("users.http", USERS);
+    let (p, cx) = panel(cx);
+    load(&p, cx, &file, 0);
+
+    p.update(cx, |p, cx| p.set_request_mode(RequestMode::WebSocket, cx));
+    cx.run_until_parked();
+    p.read_with(cx, |p, _| assert!(p.dirty_location().is_some()));
+
+    p.update(cx, |p, cx| p.set_request_mode(RequestMode::Http, cx));
     cx.run_until_parked();
     p.read_with(cx, |p, _| assert_eq!(p.dirty_location(), None));
 }
