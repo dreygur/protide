@@ -1,32 +1,5 @@
 [advisories]
 ignore = [
-    # hickory-proto 0.25.x via libp2p-mdns 0.48 / libp2p 0.56 (latest).
-    # No fix available: waiting on libp2p >=0.57 to bump hickory-proto to 0.26.1.
-    "RUSTSEC-2026-0118",  # NSEC3 unbounded loop - no fixed version exists yet
-    "RUSTSEC-2026-0119",  # O(n²) name compression - fixed in hickory-proto 0.26.1
-
-    # More hickory 0.25 advisories, plus one in libp2p-gossipsub 0.49, all fixed
-    # only in libp2p 0.57. That release cannot resolve: libp2p-swarm 0.48 pins
-    # wasm-bindgen =0.2.108 and gpui needs ^0.2.120, on zed main too. Exposure is
-    # LAN only (mDNS packets, gossipsub peers) and only with the full-sync feature.
-    # Most hickory ones are DNSSEC or zone file bugs, code mDNS never runs.
-    "RUSTSEC-2026-0487",  # SVCB alpn text parse panic
-    "RUSTSEC-2026-0489",  # SVCB quote text parse panic
-    "RUSTSEC-2026-0490",  # zone file lexer panic on long token
-    "RUSTSEC-2026-0491",  # memory amplification from header record counts
-    "RUSTSEC-2026-0504",  # inverted NSEC3 comparison
-    "RUSTSEC-2026-0505",  # NSEC3 owner names not checked against zone
-    "RUSTSEC-2026-0511",  # NXDOMAIN accepted for empty non terminal
-    "RUSTSEC-2026-0512",  # unrelated signed RRset accepted as answer
-    "RUSTSEC-2026-0514",  # hickory-resolver returned unvalidated records
-    "RUSTSEC-2026-0530",  # parent side NSEC at zone cut
-    "RUSTSEC-2026-0531",  # child side NSEC as no DS proof
-    "RUSTSEC-2026-0532",  # parent side NSEC3 at zone cut
-    "RUSTSEC-2026-0549",  # NSEC3 NODATA at zone apex
-    "RUSTSEC-2026-0550",  # unsigned NSEC in nonexistence proof
-    "RUSTSEC-2026-0551",  # other class records marked secure
-    "RUSTSEC-2026-0534",  # gossipsub unbounded PRUNE backoff state
-
     # Unmaintained transitive deps pulled in by gpui/zed git dependencies.
     # Cannot be upgraded without upstream gpui changes.
     "RUSTSEC-2025-0052",  # async-std (via gpui http_client)

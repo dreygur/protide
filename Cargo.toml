@@ -8,6 +8,7 @@ members = [
     "crates/protide-mcp",
     "crates/protide-lsp",
 ]
+exclude = ["vendor"]
 
 [workspace.package]
 version = "0.1.0-alpha.5"
@@ -112,7 +113,7 @@ unicode-segmentation = "1"
 notify = "7"
 
 # P2P networking
-libp2p = { version = "0.56", features = ["tokio", "tcp", "quic", "noise", "yamux", "kad", "mdns", "gossipsub", "identify", "macros"] }
+libp2p = { version = "0.57", features = ["tokio", "tcp", "quic", "noise", "yamux", "kad", "mdns", "gossipsub", "identify", "macros"] }
 
 # PAKE cryptography
 spake2 = "0.4"
@@ -156,3 +157,10 @@ csv = "1.3"
 
 # gzip (de)compression for gRPC message-level compression
 flate2 = "1"
+
+# libp2p-swarm 0.48 pins wasm-bindgen-futures =0.4.58, which pins wasm-bindgen
+# =0.2.108; gpui needs ^0.2.120. Both edges are wasm-only, a target Protide never
+# builds. The vendored copy is 0.4.58 with its exact pins relaxed to carets.
+# Delete it once libp2p-swarm stops pinning.
+[patch.crates-io]
+wasm-bindgen-futures = { path = "vendor/wasm-bindgen-futures" }
