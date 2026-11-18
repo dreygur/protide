@@ -4,6 +4,7 @@ use gpui::{Context, IntoElement, ParentElement, SharedString, Styled, div, prelu
 
 use super::super::request_types::RequestMode;
 use super::RequestPanel;
+use crate::components::tab_item;
 use crate::theme;
 use protide_core::execution::ws::WebSocketExecutor;
 
@@ -77,50 +78,27 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                     },
                 };
 
-                div()
-                    .id(SharedString::from(format!("req-tab-{}", i)))
-                    .h_full()
-                    .px(px(16.0))
-                    .flex()
-                    .items_center()
-                    .gap(px(6.0))
-                    .cursor_pointer()
-                    .border_b_2()
-                    .when(is_active, |el| el.border_color(theme.colors.accent))
-                    .when(!is_active, |el| {
-                        el.border_color(gpui::transparent_black())
-                            .hover(|s| s.bg(theme.colors.hover_overlay))
-                    })
-                    .on_click(cx.listener(move |this, _, _, cx| {
-                        this.set_tab(i, cx);
-                    }))
-                    .child(
+                tab_item(
+                    SharedString::from(format!("req-tab-{}", i)),
+                    *label,
+                    is_active,
+                    cx,
+                )
+                .on_click(cx.listener(move |this, _, _, cx| {
+                    this.set_tab(i, cx);
+                }))
+                .when(count > 0, |el| {
+                    el.child(
                         div()
-                            .text_size(px(13.0))
-                            .font_weight(if is_active {
-                                gpui::FontWeight::MEDIUM
-                            } else {
-                                gpui::FontWeight::NORMAL
-                            })
-                            .text_color(if is_active {
-                                theme.colors.text_primary
-                            } else {
-                                theme.colors.text_secondary
-                            })
-                            .child(*label),
+                            .px(px(5.0))
+                            .py(px(1.0))
+                            .bg(theme.colors.accent.opacity(0.15))
+                            .text_size(px(10.0))
+                            .font_weight(gpui::FontWeight::MEDIUM)
+                            .text_color(theme.colors.accent)
+                            .child(format!("{}", count)),
                     )
-                    .when(count > 0, |el| {
-                        el.child(
-                            div()
-                                .px(px(5.0))
-                                .py(px(1.0))
-                                .bg(theme.colors.accent.opacity(0.15))
-                                .text_size(px(10.0))
-                                .font_weight(gpui::FontWeight::MEDIUM)
-                                .text_color(theme.colors.accent)
-                                .child(format!("{}", count)),
-                        )
-                    })
+                })
             }))
     }
 

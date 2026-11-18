@@ -82,6 +82,46 @@ pub fn toolbar_btn(id: impl Into<ElementId>, cx: &impl AppContext) -> Stateful<D
         })
 }
 
+/// Underlined tab used by every tab bar, so request and response tabs look alike.
+/// Caller adds .on_click() and any badge.
+pub fn tab_item(
+    id: impl Into<ElementId>,
+    label: impl Into<SharedString>,
+    is_active: bool,
+    cx: &impl AppContext,
+) -> Stateful<Div> {
+    let theme = theme::current(cx);
+    div()
+        .id(id.into())
+        .h_full()
+        .px(px(16.0))
+        .flex()
+        .items_center()
+        .gap(px(6.0))
+        .cursor_pointer()
+        .border_b_2()
+        .when(is_active, |el| el.border_color(theme.colors.accent))
+        .when(!is_active, |el| {
+            el.border_color(gpui::transparent_black())
+                .hover(|s| s.bg(theme.colors.hover_overlay))
+        })
+        .child(
+            div()
+                .text_size(px(13.0))
+                .font_weight(if is_active {
+                    gpui::FontWeight::MEDIUM
+                } else {
+                    gpui::FontWeight::NORMAL
+                })
+                .text_color(if is_active {
+                    theme.colors.text_primary
+                } else {
+                    theme.colors.text_secondary
+                })
+                .child(label.into()),
+        )
+}
+
 /// Simple text tooltip view.
 struct TooltipText(SharedString);
 
