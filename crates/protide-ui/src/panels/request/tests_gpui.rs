@@ -609,6 +609,31 @@ mod mode_and_tab_tests {
         });
     }
 
+    /// Params padded to three blank rows while Headers kept one; every
+    /// key value table now ends in exactly one blank row.
+    #[gpui::test]
+    async fn params_and_headers_end_in_one_blank_row(cx: &mut TestAppContext) {
+        let (p, cx) = panel(cx);
+        let trailing_blanks = |rows: &[crate::panels::request_types::KeyValuePair]| {
+            rows.iter()
+                .rev()
+                .take_while(|r| r.key.is_empty() && r.value.is_empty())
+                .count()
+        };
+        p.read_with(cx, |p, _| {
+            assert_eq!(trailing_blanks(&p.params), 1);
+            assert_eq!(trailing_blanks(&p.headers), 1);
+        });
+        p.update(cx, |p, cx| {
+            p.url = "http://h.test/x".into();
+            p.sync_params_from_url(cx);
+            assert_eq!(p.params.len(), 1);
+            p.url = "http://h.test/x?a=1".into();
+            p.sync_params_from_url(cx);
+            assert_eq!(p.params.len(), 2);
+        });
+    }
+
     fn key(keys: &str) -> gpui::KeyDownEvent {
         gpui::KeyDownEvent {
             keystroke: gpui::Keystroke::parse(keys).unwrap(),

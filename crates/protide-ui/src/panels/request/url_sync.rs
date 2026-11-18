@@ -33,17 +33,10 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                 });
             }
 
-            if new_params.is_empty() {
-                new_params.push(KeyValuePair::default());
-            }
-
+            new_params.push(KeyValuePair::default());
             self.params = new_params;
         } else {
             self.params = vec![KeyValuePair::default()];
-        }
-
-        while self.params.len() < 3 {
-            self.params.push(KeyValuePair::default());
         }
 
         self.syncing_params = false;
