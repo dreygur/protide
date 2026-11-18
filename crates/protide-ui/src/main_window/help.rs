@@ -13,10 +13,12 @@ impl MainWindow {
             ("Request", SAVE_KEYS, "Save request"),
             ("View", SIDEBAR_KEYS, "Toggle sidebar"),
             ("View", MOCK_SERVER_KEYS, "Toggle mock server"),
+            ("View", CONSOLE_KEYS, "Toggle console"),
             ("View", DOCS_KEYS, "Toggle API explorer"),
             ("Help", HELP_KEYS, "Show keyboard shortcuts"),
             ("Help", ABOUT_KEYS, "About Protide"),
             ("General", DISMISS_KEYS, "Close dialog / overlay"),
+            ("General", QUIT_KEYS, "Quit Protide"),
         ];
 
         div()

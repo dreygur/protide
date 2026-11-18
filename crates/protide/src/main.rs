@@ -5,8 +5,8 @@ use gpui_component_assets::Assets;
 use protide_core::sync::{SyncConfig, SyncEngine};
 use protide_ui::panels::RequestHistory;
 use protide_ui::{
-    MainWindow, Quit, SaveRequest, SendRequest, ShowAbout, ShowHelp, StartSync, ToggleMockServer,
-    ToggleSidebar, register_keybindings,
+    MainWindow, Quit, SaveRequest, SendRequest, ShowAbout, ShowHelp, StartSync, ToggleConsole,
+    ToggleDocs, ToggleMockServer, ToggleSidebar, register_keybindings,
 };
 use std::borrow::Cow;
 use std::rc::Rc;
@@ -100,6 +100,8 @@ fn main() -> Result<()> {
                 Menu::new("View").items([
                     MenuItem::action("Toggle Sidebar", ToggleSidebar),
                     MenuItem::action("Toggle Mock Server", ToggleMockServer),
+                    MenuItem::action("Toggle Console", ToggleConsole),
+                    MenuItem::action("Toggle API Explorer", ToggleDocs),
                 ]),
                 Menu::new("Help").items([MenuItem::action("Keyboard Shortcuts", ShowHelp)]),
             ]);

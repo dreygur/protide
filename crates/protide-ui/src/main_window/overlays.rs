@@ -220,6 +220,11 @@ impl MainWindow {
                     Box::new(|w, cx| w.dispatch_action(Box::new(ToggleMockServer), cx)),
                 ),
                 (
+                    "Toggle Console",
+                    CONSOLE_KEYS,
+                    Box::new(|w, cx| w.dispatch_action(Box::new(ToggleConsole), cx)),
+                ),
+                (
                     "Toggle API Explorer",
                     DOCS_KEYS,
                     Box::new(|w, cx| w.dispatch_action(Box::new(ToggleDocs), cx)),
