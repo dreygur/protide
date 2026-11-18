@@ -143,6 +143,11 @@ impl ExplorerPanel {
         &self.env_state
     }
 
+    /// Whether the environment variable editor is showing.
+    pub fn env_editor_open(&self) -> bool {
+        self.env_editor_open
+    }
+
     /// Return the open workspace path (if any).
     pub fn workspace_path(&self) -> Option<&PathBuf> {
         self.workspace_path.as_ref()

@@ -39,7 +39,7 @@ impl ExplorerPanel {
             env_row_drag: None,
             env_row_drag_over: None,
             collections_h: crate::prefs::get_f32("explorer.collections_h", 220.0),
-            env_h: crate::prefs::get_f32("explorer.env_h", 200.0),
+            env_h: crate::prefs::get_f32("explorer.env_h", 320.0),
             drag_coll: None,
             drag_env: None,
             main_window,
