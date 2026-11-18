@@ -1,12 +1,33 @@
 use super::*;
-use gpui::{Context, FontWeight, IntoElement, ParentElement, Styled, div, prelude::*, px};
+use gpui::{
+    Context, ElementId, FontWeight, Hsla, IntoElement, ParentElement, Stateful, Styled, div,
+    prelude::*, px,
+};
 use gpui_component::Sizable;
 use gpui_component::input::Input;
 use protide_core::mock_server::HttpMethod;
 
+fn add_button(id: &'static str, label: &'static str, accent: Hsla) -> Stateful<gpui::Div> {
+    div()
+        .id(ElementId::from(id))
+        .flex_1()
+        .px_3()
+        .py_1()
+        .cursor_pointer()
+        .border_1()
+        .border_color(accent.opacity(0.5))
+        .bg(accent.opacity(0.1))
+        .hover(|s| s.bg(accent.opacity(0.18)))
+        .text_color(accent)
+        .text_sm()
+        .text_center()
+        .child(label)
+}
+
 impl MockServerPanel {
     pub(super) fn render_add_form(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = theme::current(cx);
+        let accent = theme.colors.accent;
         let is_recording = self.server.is_recording();
         let new_method = self.new_route_method;
 
@@ -194,34 +215,11 @@ impl MockServerPanel {
                     .flex_wrap()
                     .gap_2()
                     .child(
-                        div()
-                            .id("add-route-btn")
-                            .flex_1()
-                            .px_3()
-                            .py_1()
-                            .cursor_pointer()
-                            .border_1()
-                            .border_color(theme.colors.accent.opacity(0.5))
-                            .bg(theme.colors.accent.opacity(0.1))
-                            .hover(|s| s.bg(theme.colors.accent.opacity(0.18)))
-                            .text_color(theme.colors.accent)
-                            .text_sm()
-                            .text_center()
-                            .child("Add Mock Route")
+                        add_button("add-route-btn", "Add Mock Route", accent)
                             .on_click(cx.listener(|this, _, _, cx| this.add_route(cx))),
                     )
                     .child(
-                        div()
-                            .id("add-proxy-btn")
-                            .flex_1()
-                            .px_3()
-                            .py_1()
-                            .cursor_pointer()
-                            .bg(theme.colors.bg_tertiary)
-                            .text_color(theme.colors.text_primary)
-                            .text_sm()
-                            .text_center()
-                            .child("Add Proxy Route")
+                        add_button("add-proxy-btn", "Add Proxy Route", accent)
                             .on_click(cx.listener(|this, _, _, cx| this.add_proxy_route(cx))),
                     ),
             )
