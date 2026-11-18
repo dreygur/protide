@@ -101,6 +101,34 @@ fn apply_browser_profile(user_headers: &[(String, String)]) -> Vec<(String, Stri
     result
 }
 
+/// An error's message followed by every source in its chain. reqwest's own
+/// message hides the cause ("error sending request" without "connection
+/// refused"), so the chain is the only place the user can see it. A source
+/// already quoted by the message so far is skipped.
+fn error_chain(err: &(dyn std::error::Error + 'static)) -> String {
+    let mut msg = err.to_string();
+    let mut source = err.source();
+    while let Some(cause) = source {
+        let text = cause.to_string();
+        if !msg.contains(&text) {
+            msg.push_str(": ");
+            msg.push_str(&text);
+        }
+        source = cause.source();
+    }
+    msg
+}
+
+/// Describe a failed send. A builder error means the URL could not be used,
+/// which reqwest reports only as "builder error".
+fn describe_send_error(err: &reqwest::Error, url: &str) -> String {
+    if err.is_builder() {
+        format!("Invalid URL '{}': {}", url, error_chain(err))
+    } else {
+        error_chain(err)
+    }
+}
+
 /// Execute a blocking HTTP (or GraphQL-over-HTTP) request.
 pub fn run_http(
     url: &str,
@@ -127,7 +155,7 @@ pub fn run_http(
         .timeout(Duration::from_secs(timeout_secs))
         .danger_accept_invalid_certs(!verify_ssl)
         .build()
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| error_chain(&e))?;
     let mut req_builder = client.request(req_method, &resolved_url);
 
     let is_multipart = matches!(resolved_body, ExecutionBody::Multipart(_));
@@ -169,7 +197,9 @@ pub fn run_http(
         }
     }
 
-    let response = req_builder.send().map_err(|e| e.to_string())?;
+    let response = req_builder
+        .send()
+        .map_err(|e| describe_send_error(&e, &resolved_url))?;
     let elapsed = start.elapsed();
     let status = response.status().as_u16();
     let status_text = status_text(status).to_string();
@@ -323,7 +353,53 @@ mod tests {
 
     #[test]
     fn rejects_unparsable_url() {
-        send("not-a-url", "GET", &[], &ExecutionBody::None).expect_err("bad URL must error");
+        let err =
+            send("not-a-url", "GET", &[], &ExecutionBody::None).expect_err("bad URL must error");
+        assert!(
+            err.starts_with("Invalid URL 'not-a-url'"),
+            "a builder error must name the invalid URL, got: {err}"
+        );
+    }
+
+    #[test]
+    fn connection_error_includes_its_cause() {
+        let port = std::net::TcpListener::bind("127.0.0.1:0")
+            .and_then(|l| l.local_addr())
+            .expect("bind a free port")
+            .port();
+        let url = format!("http://127.0.0.1:{port}/");
+        let err = send(&url, "GET", &[], &ExecutionBody::None).expect_err("closed port must error");
+        assert!(
+            err.to_lowercase().contains("refused"),
+            "the source chain must reach the OS cause, got: {err}"
+        );
+    }
+
+    #[derive(Debug)]
+    struct Layer(&'static str, Option<Box<Layer>>);
+
+    impl std::fmt::Display for Layer {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            f.write_str(self.0)
+        }
+    }
+
+    impl std::error::Error for Layer {
+        fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+            self.1.as_deref().map(|e| e as _)
+        }
+    }
+
+    #[test]
+    fn error_chain_joins_every_source_and_skips_repeats() {
+        let err = Layer(
+            "send failed: io",
+            Some(Box::new(Layer(
+                "io",
+                Some(Box::new(Layer("connection refused", None))),
+            ))),
+        );
+        assert_eq!(error_chain(&err), "send failed: io: connection refused");
     }
 
     // ── Bodies ───────────────────────────────────────────────────────────────
