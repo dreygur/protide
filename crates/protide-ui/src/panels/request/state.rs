@@ -46,42 +46,22 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
         self.active_tab = 0;
         self.active_edit = None;
         self.edit_selection = 0..0;
-        match mode {
-            RequestMode::GraphQL => {
-                self.method = HttpMethod::Post;
-            }
-            RequestMode::WebSocket => {
-                // WebSocket uses ws:// or wss:// URL
-                if !self.url.starts_with("ws://") && !self.url.starts_with("wss://") {
-                    self.url = "wss://echo.websocket.org".to_string();
-                    let len = self.url.chars().count();
-                    self.url_selection = len..len;
-                }
-            }
-            RequestMode::Grpc => {
-                // gRPC uses grpc:// URL scheme
-                if !self.url.contains("grpc") {
-                    self.url = "grpc://localhost:50051".to_string();
-                    let len = self.url.chars().count();
-                    self.url_selection = len..len;
-                }
-            }
-            RequestMode::Trpc => {
-                self.method = HttpMethod::Post;
-                if !self.url.ends_with("/trpc") {
-                    self.url = "http://localhost:3000/trpc".to_string();
-                    let len = self.url.chars().count();
-                    self.url_selection = len..len;
-                }
-            }
-            RequestMode::SocketIo => {
-                if !self.url.starts_with("http://") && !self.url.starts_with("https://") {
-                    self.url = "http://localhost:3000".to_string();
-                    let len = self.url.chars().count();
-                    self.url_selection = len..len;
-                }
-            }
-            RequestMode::Http => {}
+        if matches!(mode, RequestMode::GraphQL | RequestMode::Trpc) {
+            self.method = HttpMethod::Post;
+        }
+        // The default is only a starting point: a URL the user typed is
+        // never replaced.
+        let default_url = match mode {
+            RequestMode::WebSocket => "wss://echo.websocket.org",
+            RequestMode::Grpc => "grpc://localhost:50051",
+            RequestMode::Trpc => "http://localhost:3000/trpc",
+            RequestMode::SocketIo => "http://localhost:3000",
+            RequestMode::Http | RequestMode::GraphQL => "",
+        };
+        if self.url.is_empty() {
+            self.url = default_url.to_string();
+            let len = self.url.chars().count();
+            self.url_selection = len..len;
         }
         cx.notify();
     }

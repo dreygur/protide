@@ -381,6 +381,26 @@ mod mode_and_tab_tests {
     }
 
     #[gpui::test]
+    async fn switching_protocol_never_overwrites_the_users_url(cx: &mut TestAppContext) {
+        let (p, cx) = panel(cx);
+        let url = "https://api.example.com/things";
+        p.update(cx, |p, cx| {
+            p.url = url.to_string();
+            for mode in ALL_MODES {
+                p.set_request_mode(mode, cx);
+                assert_eq!(p.url, url, "{mode:?} replaced the user's URL");
+            }
+            p.set_request_mode(RequestMode::Http, cx);
+            p.url.clear();
+            p.set_request_mode(RequestMode::WebSocket, cx);
+            assert_eq!(
+                p.url, "wss://echo.websocket.org",
+                "an empty URL gets the default"
+            );
+        });
+    }
+
+    #[gpui::test]
     async fn re_selecting_the_current_protocol_keeps_the_open_tab(cx: &mut TestAppContext) {
         let (p, cx) = panel(cx);
         p.update(cx, |p, cx| {
@@ -460,15 +480,17 @@ mod mode_and_tab_tests {
     }
 
     #[gpui::test]
-    async fn protocol_switches_install_a_usable_default_url(cx: &mut TestAppContext) {
+    async fn protocol_switches_fill_an_empty_url_with_a_usable_default(cx: &mut TestAppContext) {
         let (p, cx) = panel(cx);
         p.update(cx, |p, cx| {
+            p.url.clear();
             p.set_request_mode(RequestMode::WebSocket, cx);
             assert!(
                 p.url.starts_with("ws://") || p.url.starts_with("wss://"),
                 "WebSocket mode left a non-ws URL: {}",
                 p.url
             );
+            p.url.clear();
             p.set_request_mode(RequestMode::Grpc, cx);
             assert!(p.url.contains("grpc"), "gRPC mode left {}", p.url);
         });
