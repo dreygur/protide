@@ -157,17 +157,6 @@ mod tests {
     }
 
     #[test]
-    fn a_persisted_pairing_code_survives_a_restart() {
-        let tmp = crate::test_support::TempDir::new("protide_pairing_code");
-        let path = tmp.path().join("pairing_code");
-        let first = crate::sync::load_or_create(&path, generate_pairing_code);
-        assert_eq!(
-            crate::sync::load_or_create(&path, generate_pairing_code),
-            first
-        );
-    }
-
-    #[test]
     fn test_full_handshake() {
         let password = "apple-banana-123";
 
