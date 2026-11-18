@@ -1,9 +1,21 @@
 //! Session persistence - saves and restores workspace state across app restarts.
 //! File: ~/.config/protide/session.json
 
+use log::warn;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+
+const KEYCHAIN_SERVICE: &str = "protide";
+
+type SecretSlot = fn(&mut RequestDraft) -> &mut String;
+
+/// Draft fields kept in the keychain instead of session.json.
+const SECRET_FIELDS: [(&str, SecretSlot); 3] = [
+    ("bearer_token", |d| &mut d.bearer_token),
+    ("basic_password", |d| &mut d.basic_password),
+    ("api_key_value", |d| &mut d.api_key_value),
+];
 
 /// Top-level session saved to disk.
 ///
@@ -54,10 +66,15 @@ pub struct RequestDraft {
     // ── Auth ──────────────────────────────────────────────────────────────────
     /// "none" | "bearer" | "basic" | "apikey"
     pub auth_type: String,
+    /// Secret fields are read from older session files (so they migrate) but
+    /// never written back: their values live in the OS keychain.
+    #[serde(skip_serializing)]
     pub bearer_token: String,
     pub basic_username: String,
+    #[serde(skip_serializing)]
     pub basic_password: String,
     pub api_key_name: String,
+    #[serde(skip_serializing)]
     pub api_key_value: String,
     /// "header" | "query"
     pub api_key_location: String,
@@ -117,14 +134,84 @@ fn save_to(file: &Path, state: &SessionState) {
     }
 }
 
+/// Where draft secrets live. A seam so tests never touch the real keychain.
+trait SecretStore {
+    /// The stored value, or `None` when absent or the store failed.
+    fn get(&self, key: &str) -> Option<String>;
+    /// Store `value`; an empty value removes the entry.
+    fn set(&self, key: &str, value: &str);
+}
+
+/// The OS keychain. Failures are logged and treated as "no secret" so a
+/// broken keychain never blocks session restore.
+struct Keychain;
+
+impl SecretStore for Keychain {
+    fn get(&self, key: &str) -> Option<String> {
+        match keyring::Entry::new(KEYCHAIN_SERVICE, key).and_then(|e| e.get_password()) {
+            Ok(value) => Some(value),
+            Err(keyring::Error::NoEntry) => None,
+            Err(e) => {
+                warn!("Keychain read failed for {key}: {e}");
+                None
+            }
+        }
+    }
+
+    fn set(&self, key: &str, value: &str) {
+        let result = keyring::Entry::new(KEYCHAIN_SERVICE, key).and_then(|e| {
+            if value.is_empty() {
+                e.delete_credential()
+            } else {
+                e.set_password(value)
+            }
+        });
+        match result {
+            Ok(()) | Err(keyring::Error::NoEntry) => {}
+            Err(e) => warn!("Keychain write failed for {key}: {e}"),
+        }
+    }
+}
+
+/// Visit every draft secret as (keychain key, value). Keys combine the
+/// workspace path and the field name.
+fn for_each_secret(state: &mut SessionState, mut visit: impl FnMut(String, &mut String)) {
+    for (workspace, entry) in &mut state.workspaces {
+        if let Some(draft) = entry.draft.as_mut() {
+            for (field, slot) in SECRET_FIELDS {
+                visit(format!("{workspace}#{field}"), slot(draft));
+            }
+        }
+    }
+}
+
+/// Fill secrets from `store`. A value still present (an older session file
+/// written before the keychain) wins, so it migrates on the next save.
+fn hydrate(state: &mut SessionState, store: &dyn SecretStore) {
+    for_each_secret(state, |key, value| {
+        if value.is_empty()
+            && let Some(secret) = store.get(&key)
+        {
+            *value = secret;
+        }
+    });
+}
+
+fn stash(state: &mut SessionState, store: &dyn SecretStore) {
+    for_each_secret(state, |key, value| store.set(&key, value));
+}
+
 /// Load session from disk, or return an empty default if the file doesn't exist.
 pub fn load() -> SessionState {
-    config_path().map(|p| load_from(&p)).unwrap_or_default()
+    let mut state = config_path().map(|p| load_from(&p)).unwrap_or_default();
+    hydrate(&mut state, &Keychain);
+    state
 }
 
 /// Write session to disk synchronously. Use before app exit where blocking is fine.
 pub fn save_sync(state: &SessionState) {
     let Some(path) = config_path() else { return };
+    stash(&mut state.clone(), &Keychain);
     save_to(&path, state);
 }
 
@@ -137,6 +224,109 @@ pub fn save_bg(state: SessionState) {
 mod tests {
     use super::*;
     use crate::test_support::TempDir;
+    use std::cell::RefCell;
+
+    #[derive(Default)]
+    struct MockStore(RefCell<HashMap<String, String>>);
+
+    impl SecretStore for MockStore {
+        fn get(&self, key: &str) -> Option<String> {
+            self.0.borrow().get(key).cloned()
+        }
+
+        fn set(&self, key: &str, value: &str) {
+            if value.is_empty() {
+                self.0.borrow_mut().remove(key);
+            } else {
+                self.0.borrow_mut().insert(key.into(), value.into());
+            }
+        }
+    }
+
+    fn with_secrets() -> SessionState {
+        let mut state = populated();
+        let draft = state.workspaces.get_mut("/ws").unwrap().draft.as_mut();
+        let draft = draft.unwrap();
+        draft.basic_password = "pw-secret".into();
+        draft.api_key_value = "key-secret".into();
+        state
+    }
+
+    #[test]
+    fn serialized_session_contains_no_secret_values() {
+        let json = serde_json::to_string(&with_secrets()).unwrap();
+        for needle in [
+            "bearer_token",
+            "basic_password",
+            "api_key_value",
+            "\"tok\"",
+            "pw-secret",
+            "key-secret",
+        ] {
+            assert!(!json.contains(needle), "{needle} leaked into {json}");
+        }
+    }
+
+    #[test]
+    fn secrets_round_trip_through_the_store_keyed_by_workspace() {
+        let mock_store = MockStore::default();
+        stash(&mut with_secrets(), &mock_store);
+        assert_eq!(
+            mock_store.get("/ws#basic_password").as_deref(),
+            Some("pw-secret")
+        );
+
+        let tmp = TempDir::new("session-secrets");
+        let file = tmp.join("session.json");
+        save_to(&file, &with_secrets());
+        let mut back = load_from(&file);
+        hydrate(&mut back, &mock_store);
+        let draft = back.workspaces["/ws"].draft.as_ref().unwrap();
+        assert_eq!(draft.bearer_token, "tok");
+        assert_eq!(draft.basic_password, "pw-secret");
+        assert_eq!(draft.api_key_value, "key-secret");
+    }
+
+    #[test]
+    fn an_old_session_with_inline_secrets_loads_and_migrates() {
+        let tmp = TempDir::new("session-old-secrets");
+        let file = tmp.write(
+            "session.json",
+            r#"{"workspaces":{"/ws":{"draft":{"bearer_token":"tok-secret","basic_password":"pw-secret"}}}}"#,
+        );
+        let mock_store = MockStore::default();
+        let mut back = load_from(&file);
+        hydrate(&mut back, &mock_store);
+        let draft = back.workspaces["/ws"].draft.as_ref().unwrap();
+        assert_eq!(draft.bearer_token, "tok-secret", "inline value restores");
+
+        stash(&mut back, &mock_store);
+        assert_eq!(
+            mock_store.get("/ws#bearer_token").as_deref(),
+            Some("tok-secret")
+        );
+        save_to(&file, &back);
+        let text = std::fs::read_to_string(&file).unwrap();
+        assert!(!text.contains("-secret"), "{text}");
+    }
+
+    #[test]
+    fn an_empty_store_leaves_the_rest_of_the_session_intact() {
+        let mock_store = MockStore::default();
+        let mut state = populated();
+        state
+            .workspaces
+            .get_mut("/ws")
+            .unwrap()
+            .draft
+            .as_mut()
+            .unwrap()
+            .bearer_token = String::new();
+        hydrate(&mut state, &mock_store);
+        let draft = state.workspaces["/ws"].draft.as_ref().unwrap();
+        assert_eq!(draft.bearer_token, "");
+        assert_eq!(draft.url, "https://api.example.com/日本語?q=🎉");
+    }
 
     fn populated() -> SessionState {
         let draft = RequestDraft {
@@ -202,7 +392,7 @@ mod tests {
         assert_eq!(draft.method, "POST");
         assert_eq!(draft.body, "{\"a\":1}");
         assert_eq!(draft.auth_type, "bearer");
-        assert_eq!(draft.bearer_token, "tok");
+        assert_eq!(draft.bearer_token, "", "secrets never reach the file");
         assert_eq!(draft.graphql_query, "query { me }");
         assert_eq!(
             draft.grpc_proto_path,

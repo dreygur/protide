@@ -127,6 +127,11 @@ zeroize = { version = "1", features = ["zeroize_derive"] }
 # Paths
 dirs = "6"
 
+# OS keychain for session secrets. Only backends that need no extra system
+# packages: Keychain on macOS, Credential Manager on Windows, kernel keyutils
+# on Linux (not dbus secret service).
+keyring = { version = "3.6", features = ["apple-native", "windows-native", "linux-native"] }
+
 # JavaScript engine
 rquickjs = { version = "0.6", features = ["classes", "properties"] }
 

@@ -28,6 +28,7 @@ urlencoding = { workspace = true }
 uuid = { workspace = true }
 chrono = { workspace = true }
 dirs = { workspace = true }
+keyring = { workspace = true }
 tokio = { workspace = true }
 async-channel = { workspace = true }
 unicode-segmentation = { workspace = true }
