@@ -12,6 +12,38 @@ pub const MAX_HISTORY_ENTRIES: usize = 200;
 
 const HISTORY_FILE: &str = "history.json";
 
+/// Replaces sensitive header values, since history lives in the workspace.
+const REDACTED: &str = "<redacted>";
+const SENSITIVE_HEADER_PARTS: [&str; 7] = [
+    "authorization",
+    "cookie",
+    "token",
+    "secret",
+    "password",
+    "api-key",
+    "apikey",
+];
+
+fn is_variable_only(value: &str) -> bool {
+    let v = value.trim();
+    v.starts_with("{{") && v.ends_with("}}") && v.matches("{{").count() == 1
+}
+
+fn redact(headers: Vec<(String, String)>) -> Vec<(String, String)> {
+    headers
+        .into_iter()
+        .map(|(key, value)| {
+            let lower = key.to_ascii_lowercase();
+            let sensitive = SENSITIVE_HEADER_PARTS.iter().any(|p| lower.contains(p));
+            if sensitive && !is_variable_only(&value) {
+                (key, REDACTED.to_string())
+            } else {
+                (key, value)
+            }
+        })
+        .collect()
+}
+
 /// A single history entry storing request/response data. The request is kept
 /// as written ({{vars}} unresolved) because it is written to disk.
 #[derive(Clone, Serialize, Deserialize)]
@@ -119,7 +151,7 @@ impl RequestHistory {
         let id = self.next_id;
         self.next_id += 1;
 
-        let entry = HistoryEntry::new(id, method, url, headers, body);
+        let entry = HistoryEntry::new(id, method, url, redact(headers), body);
         self.entries.insert(0, entry);
 
         // Trim to max size
@@ -384,5 +416,25 @@ mod tests {
         let url = format!("https://例え.jp/{}", "日本語".repeat(20));
         let entry = HistoryEntry::new(1, "GET".into(), url, vec![], None);
         assert!(entry.display_url().ends_with("..."));
+    }
+
+    #[test]
+    fn sensitive_header_values_are_redacted_but_variables_kept() {
+        let mut history = RequestHistory::new();
+        let headers = vec![
+            ("Authorization".to_string(), "Bearer abc123".to_string()),
+            ("x-api-key".to_string(), "k-live-9".to_string()),
+            ("Cookie".to_string(), "sid=42".to_string()),
+            ("X-Session-Token".to_string(), "{{token}}".to_string()),
+            ("Accept".to_string(), "application/json".to_string()),
+        ];
+        history.add("GET".into(), "https://a.test".into(), headers, None);
+
+        let saved = &history.entries()[0].headers;
+        assert_eq!(saved[0].1, REDACTED);
+        assert_eq!(saved[1].1, REDACTED);
+        assert_eq!(saved[2].1, REDACTED);
+        assert_eq!(saved[3].1, "{{token}}");
+        assert_eq!(saved[4].1, "application/json");
     }
 }
