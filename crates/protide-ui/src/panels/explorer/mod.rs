@@ -79,6 +79,10 @@ impl CollectionItem {
     }
 }
 
+/// A deferred change to the explorer, such as a load waiting on the unsaved
+/// edits prompt.
+pub type ExplorerAction = Box<dyn FnOnce(&mut ExplorerPanel, &mut Context<ExplorerPanel>)>;
+
 /// Edit target for environment variable editor
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum EnvEditTarget {

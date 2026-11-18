@@ -30,6 +30,20 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
         self.notify_explorer(cx);
     }
 
+    /// Detach the editor from its file, for a load that comes from
+    /// somewhere else: a save then asks for a file instead of rewriting
+    /// the request that was open before.
+    pub(super) fn clear_loaded_file(&mut self, cx: &mut Context<Self>) {
+        self.current_file = None;
+        self.current_request_index = 0;
+        self.loaded_request = None;
+        self.disk_content = None;
+        self.external_change_pending = false;
+        self.clean_snapshot = None;
+        self.dirty = false;
+        self.notify_explorer(cx);
+    }
+
     /// Load request `index` of `path` into the editor, with `content` the
     /// file text it was parsed from.
     pub(in crate::panels) fn load_file_request(

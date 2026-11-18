@@ -4,24 +4,19 @@ use gpui::Context;
 impl ExplorerPanel {
     /// Load a request from a tree row, selecting it. `row_index` is the row's
     /// request index, `None` for a single request file.
-    pub fn select_and_load(
-        &mut self,
-        path: PathBuf,
-        row_index: Option<usize>,
-        cx: &mut Context<Self>,
-    ) {
+    fn select_and_load(&mut self, path: PathBuf, row_index: Option<usize>, cx: &mut Context<Self>) {
         self.selected_item = Some(path.clone());
         self.selected_request = row_index;
         self.load_request_file(path, row_index.unwrap_or(0), cx);
     }
 
-    /// Open a request from a tree row without silently dropping unsaved
-    /// edits: switching away from a dirty request asks first, and reopening
+    /// Run `load` unless it would drop unsaved edits, in which case ask
+    /// first. `target` is the file request `load` opens, if any: reopening
     /// the dirty request itself keeps the edits.
-    pub(super) fn open_request(
+    pub(crate) fn guard_unsaved(
         &mut self,
-        path: PathBuf,
-        row_index: Option<usize>,
+        target: Option<(PathBuf, usize)>,
+        load: impl FnOnce(&mut Self, &mut Context<Self>) + 'static,
         cx: &mut Context<Self>,
     ) {
         let dirty = self
@@ -29,14 +24,30 @@ impl ExplorerPanel {
             .as_ref()
             .and_then(|rp| rp.read(cx).dirty_location());
         match dirty {
-            None => self.select_and_load(path, row_index, cx),
-            Some(loc) if loc == (path.clone(), row_index.unwrap_or(0)) => {}
+            None => load(self, cx),
+            Some(loc) if Some(&loc) == target.as_ref() => {}
             Some(_) => {
                 if let Some(win) = self.main_window.upgrade() {
-                    win.update(cx, |win, cx| win.confirm_discard(path, row_index, cx));
+                    win.update(cx, |win, cx| win.confirm_discard(Box::new(load), cx));
                 }
             }
         }
+    }
+
+    /// Open a file request (a tree row, the docs panel, a new or cloned
+    /// file) through the unsaved edits guard.
+    pub(crate) fn open_request(
+        &mut self,
+        path: PathBuf,
+        row_index: Option<usize>,
+        cx: &mut Context<Self>,
+    ) {
+        let target = (path.clone(), row_index.unwrap_or(0));
+        self.guard_unsaved(
+            Some(target),
+            move |this, cx| this.select_and_load(path, row_index, cx),
+            cx,
+        );
     }
 
     /// Toggle collections section expanded/collapsed

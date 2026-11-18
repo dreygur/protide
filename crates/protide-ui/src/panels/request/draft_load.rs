@@ -39,6 +39,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
         cx: &mut Context<Self>,
     ) {
         self.reset_request_fields(cx);
+        self.clear_loaded_file(cx);
         if let Some(m) = HttpMethod::from_str(&method) {
             self.method = m;
         }

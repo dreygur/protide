@@ -19,12 +19,21 @@ impl ExplorerPanel {
             })
         });
 
-        if let Some((method, url, headers, body)) = entry_data
-            && let Some(request_panel) = &self.request_panel
-        {
-            request_panel.update(cx, |panel, cx| {
-                panel.load_from_history(method, url, headers, body, cx);
-            });
+        if let Some((method, url, headers, body)) = entry_data {
+            self.guard_unsaved(
+                None,
+                move |this, cx| {
+                    this.selected_item = None;
+                    this.selected_request = None;
+                    if let Some(request_panel) = &this.request_panel {
+                        request_panel.update(cx, |panel, cx| {
+                            panel.load_from_history(method, url, headers, body, cx);
+                        });
+                    }
+                    cx.notify();
+                },
+                cx,
+            );
         }
     }
 

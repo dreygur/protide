@@ -183,3 +183,19 @@ async fn a_grpc_request_keeps_its_service_and_method_path(cx: &mut TestAppContex
         assert_eq!(std::fs::read_to_string(&file).unwrap(), text);
     }
 }
+
+#[gpui::test]
+async fn a_history_load_detaches_the_editor_from_its_file(cx: &mut TestAppContext) {
+    let tmp = TempDir::new("save-history");
+    let file = tmp.write("users.http", USERS);
+    let (p, cx) = panel(cx);
+    load(&p, cx, &file, 1);
+
+    p.update(cx, |p, cx| {
+        p.load_from_history("GET".into(), "https://h.test".into(), vec![], None, cx)
+    });
+
+    // With no loaded location a save asks for a file instead of
+    // overwriting request 1.
+    p.read_with(cx, |p, _| assert_eq!(p.loaded_location(), None));
+}

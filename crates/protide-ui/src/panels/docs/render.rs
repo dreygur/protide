@@ -46,7 +46,7 @@ impl DocsPanel {
                             this.selected_path = Some(path.clone());
                             if let Some(exp) = &this.explorer {
                                 exp.update(cx, |panel, cx| {
-                                    panel.load_request_file(path_for_try.clone(), 0, cx);
+                                    panel.open_request(path_for_try.clone(), None, cx);
                                 });
                             }
                             cx.notify();

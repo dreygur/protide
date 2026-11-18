@@ -1,9 +1,12 @@
 use super::MainWindow;
+use crate::panels::ExplorerAction;
 use gpui::{Context, ParentElement, Window};
 use gpui_component::WindowExt;
 use gpui_component::button::{Button, ButtonVariants};
 use gpui_component::dialog::DialogFooter;
+use std::cell::RefCell;
 use std::path::PathBuf;
+use std::rc::Rc;
 
 impl MainWindow {
     /// Called by ExplorerPanel when the workspace root changes.
@@ -56,38 +59,33 @@ impl MainWindow {
         cx.notify();
     }
 
-    /// Ask what to do with unsaved edits before loading another request.
-    pub fn confirm_discard(
-        &mut self,
-        path: PathBuf,
-        row_index: Option<usize>,
-        cx: &mut Context<Self>,
-    ) {
-        self.pending_switch = Some((path, row_index));
+    /// Ask what to do with unsaved edits before running `load`.
+    pub fn confirm_discard(&mut self, load: ExplorerAction, cx: &mut Context<Self>) {
+        self.pending_switch = Some(load);
         cx.notify();
     }
 
     /// Show the Save / Discard / Cancel prompt queued by `confirm_discard`.
     /// Escape and a click outside cancel, like the Cancel button.
     pub(super) fn open_discard_dialog(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let Some((path, row_index)) = self.pending_switch.take() else {
+        let Some(load) = self.pending_switch.take() else {
             return;
         };
+        // The dialog builder and its buttons are `Fn`; the load runs once.
+        let load = Rc::new(RefCell::new(Some(load)));
         let explorer = self.explorer.downgrade();
         let request_panel = self.request_panel.downgrade();
         window.open_alert_dialog(cx, move |alert, _, _| {
             let switch = {
-                let (explorer, request_panel, path) =
-                    (explorer.clone(), request_panel.clone(), path.clone());
+                let (explorer, request_panel, load) =
+                    (explorer.clone(), request_panel.clone(), load.clone());
                 move |save: bool, window: &mut Window, cx: &mut gpui::App| {
                     let saved = !save
                         || request_panel
                             .update(cx, |p, cx| p.save_request(cx))
                             .unwrap_or(false);
-                    if saved {
-                        explorer
-                            .update(cx, |e, cx| e.select_and_load(path.clone(), row_index, cx))
-                            .ok();
+                    if saved && let Some(load) = load.borrow_mut().take() {
+                        explorer.update(cx, |e, cx| load(e, cx)).ok();
                     }
                     window.close_dialog(cx);
                 }

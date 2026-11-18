@@ -38,7 +38,7 @@ impl ExplorerPanel {
                         {
                             this.collection_items = this.scan_directory(workspace);
                         }
-                        this.load_request_file(path, 0, cx);
+                        this.open_request(path, None, cx);
                     }
                     Err(e) => error!("Failed to create request {}: {}", path.display(), e),
                 }
@@ -76,7 +76,7 @@ impl ExplorerPanel {
                 {
                     self.collection_items = self.scan_directory(workspace);
                 }
-                self.load_request_file(new_path, 0, cx);
+                self.open_request(new_path, None, cx);
             }
             Err(e) => {
                 error!("Failed to clone: {}", e);
@@ -117,7 +117,7 @@ impl ExplorerPanel {
                         {
                             this.collection_items = this.scan_directory(workspace);
                         }
-                        this.load_request_file(path, 0, cx);
+                        this.open_request(path, None, cx);
                     }
                     Err(e) => error!("Failed to create request: {}", e),
                 }

@@ -25,7 +25,7 @@ pub mod runner;
 
 pub use console::{ConsoleEntry, ConsoleEntrySource, ConsolePanel, LogLevel};
 pub use docs::DocsPanel;
-pub use explorer::ExplorerPanel;
+pub use explorer::{ExplorerAction, ExplorerPanel};
 pub use history::RequestHistory;
 pub use mock_server::MockServerPanel;
 pub use request::RequestPanel;

@@ -346,3 +346,35 @@ fn a_shortcut_letter_is_never_typed_into_an_env_input(cx: &mut TestAppContext) {
         assert_eq!(p.new_env_name, "");
     });
 }
+
+#[gpui::test]
+async fn opening_another_request_never_drops_unsaved_edits(cx: &mut TestAppContext) {
+    use crate::panels::request::RequestPanel;
+    use crate::panels::response::ResponsePanel;
+
+    crate::test_support::init_theme(cx);
+    let tmp = TempDir::new("guard");
+    let a = tmp.write("a.http", "GET https://a.test\n");
+    let b = tmp.write("b.http", "GET https://b.test\n");
+    let (rp, cx) = cx.add_window_view(|window, cx| {
+        let response = cx.new(|cx| ResponsePanel::new(window, cx));
+        RequestPanel::new(window, cx, response)
+    });
+    let ex = cx.new(|cx| ExplorerPanel::new(cx, WeakEntity::new_invalid()));
+    ex.update(cx, |e, cx| e.set_request_panel(rp.clone(), cx));
+    ex.update(cx, |e, cx| e.open_request(a.clone(), None, cx));
+    cx.run_until_parked();
+    rp.update(cx, |p, cx| {
+        p.url = "https://edited.test".into();
+        cx.notify();
+    });
+    cx.run_until_parked();
+
+    // With no window to ask in, nothing may load over the edits.
+    ex.update(cx, |e, cx| e.open_request(b.clone(), None, cx));
+    ex.update(cx, |e, cx| e.open_request(a.clone(), None, cx));
+    rp.read_with(cx, |p, _| {
+        assert_eq!(p.url, "https://edited.test");
+        assert_eq!(p.loaded_location(), Some((a.clone(), 0)));
+    });
+}
