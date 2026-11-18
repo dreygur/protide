@@ -101,6 +101,15 @@ pub fn undefined_variables(env: Option<&EnvironmentState>, input: &str) -> Vec<S
         .collect()
 }
 
+/// A gRPC URL split into its server (`scheme://host[:port]`) and the
+/// `package.Service/Method` path after it, if any.
+pub fn split_grpc_url(url: &str) -> (&str, Option<&str>) {
+    match url.match_indices('/').nth(2) {
+        Some((i, _)) => (&url[..i], Some(&url[i + 1..]).filter(|p| !p.is_empty())),
+        None => (url, None),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -1,3 +1,4 @@
+use super::super::request_utils::split_grpc_url;
 use super::init::{DEFAULT_GRAPHQL_QUERY, EMPTY_JSON};
 use super::*;
 
@@ -137,16 +138,9 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                 self.url_selection = len..len;
             }
             Protocol::Grpc => {
-                // Extract scheme://host[:port] - everything up to the 3rd '/' (or whole URL if no path)
-                let server = {
-                    let parts: Vec<&str> = req.url.splitn(4, '/').collect();
-                    if parts.len() >= 3 {
-                        parts[..3].join("/")
-                    } else {
-                        req.url.clone()
-                    }
-                };
-                self.url = server;
+                // The URL bar holds the server; the service and method part is
+                // the method picker's, and is written back on save.
+                self.url = split_grpc_url(&req.url).0.to_string();
                 let len = self.url.chars().count();
                 self.url_selection = len..len;
                 if let Some(body) = &req.body {

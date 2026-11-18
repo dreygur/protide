@@ -1,3 +1,4 @@
+use super::super::request_utils::split_grpc_url;
 use super::*;
 
 impl<E: WebSocketExecutor> RequestPanel<E> {
@@ -27,6 +28,39 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
         self.clean_snapshot = None;
         self.dirty = false;
         self.notify_explorer(cx);
+    }
+
+    /// Load request `index` of `path` into the editor, with `content` the
+    /// file text it was parsed from.
+    pub(in crate::panels) fn load_file_request(
+        &mut self,
+        path: std::path::PathBuf,
+        index: usize,
+        request: http_parser::Request,
+        content: String,
+        cx: &mut Context<Self>,
+    ) {
+        self.load_from_parsed_request(&request, cx);
+        if !request.meta.variable_extractions.is_empty() {
+            self.set_variable_extractions(request.meta.variable_extractions.clone(), cx);
+        }
+        let proto_path = request.meta.proto_path.clone();
+        let method = split_grpc_url(&request.url).1.map(str::to_string);
+        self.set_loaded_file(path, index, request, content, cx);
+        if let Some(proto_path) = proto_path {
+            self.load_grpc_proto_from_path(proto_path.into(), cx);
+        }
+        // Select the method the file names, not the proto's first one or the
+        // previous request's, so a save writes the same URL back.
+        self.grpc_method = method.and_then(|name| {
+            self.grpc_methods
+                .iter()
+                .find(|m| m.full_name == name)
+                .cloned()
+        });
+        if let Some(m) = &self.grpc_method {
+            self.grpc_service = m.full_name.split('/').next().map(str::to_string);
+        }
     }
 
     /// Called from render, after queued editor contents have landed. The

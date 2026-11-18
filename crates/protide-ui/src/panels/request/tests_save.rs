@@ -48,8 +48,7 @@ fn load(p: &Entity<TestPanel>, cx: &mut VisualTestContext, file: &Path, index: u
     let content = std::fs::read_to_string(file).unwrap();
     let req = http_parser::parse(&content).unwrap().remove(index);
     p.update(cx, |p, cx| {
-        p.load_from_parsed_request(&req, cx);
-        p.set_loaded_file(file.to_path_buf(), index, req, content, cx);
+        p.load_file_request(file.to_path_buf(), index, req, content, cx)
     });
     cx.run_until_parked();
 }
@@ -162,4 +161,25 @@ async fn an_edit_marks_the_request_dirty_until_it_is_saved(cx: &mut TestAppConte
     p.update(cx, |p, cx| assert!(p.save_request(cx)));
     cx.run_until_parked();
     p.read_with(cx, |p, _| assert_eq!(p.dirty_location(), None));
+}
+
+const EMPLOYEE_PROTO: &str = include_str!("../../../../../e2e/grpc/employee.proto");
+
+#[gpui::test]
+async fn a_grpc_request_keeps_its_service_and_method_path(cx: &mut TestAppContext) {
+    let tmp = TempDir::new("save-grpc");
+    let proto = tmp.write("employee.proto", EMPLOYEE_PROTO);
+    let without = "### A\n# @protocol grpc\n\nGRPC grpc://{{host}}/e2e.testing.EmployeeService/ListEmployees\n\n{}\n";
+    let with = format!(
+        "### B\n# @protocol grpc\n# @proto {}\n\nGRPC grpc://{{{{host}}}}/e2e.testing.EmployeeService/CreateEmployee\n\n{{}}\n",
+        proto.display()
+    );
+    let (p, cx) = panel(cx);
+    for text in [without.to_string(), with] {
+        let file = tmp.write("grpc.http", &text);
+        load(&p, cx, &file, 0);
+        p.read_with(cx, |p, _| assert_eq!(p.url, "grpc://{{host}}"));
+        p.update(cx, |p, cx| p.save_request(cx));
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), text);
+    }
 }

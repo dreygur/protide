@@ -1,4 +1,4 @@
-use super::super::request_utils::{base64_encode, url_encode};
+use super::super::request_utils::{base64_encode, split_grpc_url, url_encode};
 use super::*;
 use gpui::Context;
 use http_parser::Protocol;
@@ -125,18 +125,27 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
         let mut req = self.loaded_request.clone().unwrap_or_else(|| {
             http_parser::Request::new(http_parser::HttpMethod::Get, String::new())
         });
-        let method = if self.request_mode == RequestMode::GraphQL {
-            "POST"
-        } else {
-            self.method.as_str()
+        // Only HTTP and tRPC show a method; GraphQL always posts, and the
+        // other protocols keep the method word the file used (e.g. GRPC).
+        let method = match self.request_mode {
+            RequestMode::GraphQL => Some("POST"),
+            RequestMode::Http | RequestMode::Trpc => Some(self.method.as_str()),
+            _ => None,
         };
-        if let Some(m) = http_parser::HttpMethod::from_str(method) {
+        if let Some(m) = method.and_then(http_parser::HttpMethod::from_str) {
             req.method = m;
         }
-        req.url = if self.request_mode == RequestMode::Trpc {
-            format!("{}{}", self.url, self.trpc_procedure)
-        } else {
-            self.url.clone()
+        req.url = match self.request_mode {
+            RequestMode::Trpc => format!("{}{}", self.url, self.trpc_procedure),
+            // The picked method, else the one the file named.
+            RequestMode::Grpc => {
+                let path = self.grpc_method.as_ref().map(|m| m.full_name.as_str());
+                match path.or_else(|| split_grpc_url(&req.url).1) {
+                    Some(path) => format!("{}/{}", self.url.trim_end_matches('/'), path),
+                    None => self.url.clone(),
+                }
+            }
+            _ => self.url.clone(),
         };
 
         // Only write @protocol when the method alone would not imply it, or
@@ -210,12 +219,9 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
     /// supports. Binary bodies are read from disk and written as text
     /// (lossy for genuinely non-UTF8 files - see limitation note below).
     ///
-    /// gRPC/tRPC/Socket.IO bodies are left as-is (body_editor passthrough,
-    /// matching prior behavior): those protocols have their own dedicated
-    /// editors (`grpc_message_editor`, `trpc_params_editor`,
-    /// `sio_payload_editor`) that this function does not read, so saving
-    /// those modes is a known follow-up rather than something this fix
-    /// covers.
+    /// gRPC and tRPC bodies come from their own editors, which is where a
+    /// load puts them. Socket.IO payloads are not loaded from the body, so
+    /// that mode still passes the plain body editor through.
     fn generate_body_content(&self, cx: &Context<Self>) -> String {
         if self.request_mode == RequestMode::GraphQL {
             let query = self.graphql_query_editor.read(cx).value().to_string();
@@ -271,6 +277,11 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                 .unwrap_or_default();
         }
 
-        self.body_editor.read(cx).value().to_string()
+        let editor = match self.request_mode {
+            RequestMode::Grpc => &self.grpc_message_editor,
+            RequestMode::Trpc => &self.trpc_params_editor,
+            _ => &self.body_editor,
+        };
+        editor.read(cx).value().to_string()
     }
 }

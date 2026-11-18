@@ -195,18 +195,8 @@ impl ExplorerPanel {
         if let Some((content, req)) = read_request(&path, index)
             && let Some(request_panel) = &self.request_panel
         {
-            let variable_extractions = req.meta.variable_extractions.clone();
-            let proto_path = req.meta.proto_path.clone().map(std::path::PathBuf::from);
-
             request_panel.update(cx, |panel, cx| {
-                panel.load_from_parsed_request(&req, cx);
-                if !variable_extractions.is_empty() {
-                    panel.set_variable_extractions(variable_extractions, cx);
-                }
-                panel.set_loaded_file(path.clone(), index, req, content, cx);
-                if let Some(pp) = proto_path {
-                    panel.load_grpc_proto_from_path(pp, cx);
-                }
+                panel.load_file_request(path, index, req, content, cx)
             });
         }
     }
