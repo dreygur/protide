@@ -2,10 +2,12 @@
 
 mod render;
 mod render_auth;
+mod render_auth_apikey_location;
 mod render_auth_basic_apikey;
 mod render_auth_content;
 mod render_body;
 mod render_body_form;
+mod render_body_form_type_btn;
 mod render_data;
 mod render_dropdowns;
 mod render_dropdowns_grpc;
@@ -29,6 +31,7 @@ mod render_trpc_pg_row;
 mod render_trpc_pg_sidebar;
 mod render_trpc_playground;
 mod render_url_bar;
+mod render_url_bar_text;
 mod render_websocket;
 
 mod body;

@@ -7,11 +7,11 @@ use gpui::{
 
 use super::super::request_types::{RequestMode, SioConnectionState, WsConnectionState};
 use super::RequestPanel;
-use super::url_metrics::{URL_FONT_SIZE, URL_INPUT_PADDING};
+use super::url_metrics::URL_INPUT_PADDING;
 use crate::components::icons::{
     ICON_ARROW_DOWN, ICON_CHEVRON_DOWN, ICON_CHEVRON_UP, ICON_CODE, ICON_MD, ICON_SM, icon,
 };
-use crate::components::{render_text_view_with_max_scrolled, toolbar_btn};
+use crate::components::toolbar_btn;
 use crate::theme;
 use protide_core::execution::ws::WebSocketExecutor;
 
@@ -322,22 +322,5 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                             .child("Import"),
                     ),
             )
-    }
-
-    pub(super) fn render_url_text(&self, is_focused: bool, cx: &Context<Self>) -> gpui::AnyElement {
-        let theme = theme::current(cx);
-        let scroll = self.effective_url_scroll(is_focused);
-        render_text_view_with_max_scrolled(
-            &self.url,
-            &self.url_selection,
-            is_focused,
-            URL_FONT_SIZE,
-            theme.colors.text_primary,
-            Some("Enter request URL..."),
-            theme.colors.text_muted,
-            None,
-            theme.colors.accent.opacity(0.25),
-            scroll,
-        )
     }
 }
