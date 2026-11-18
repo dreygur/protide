@@ -273,6 +273,8 @@ pub struct RequestPanel<E: WebSocketExecutor = TungsteniteExecutor> {
     /// The request as last loaded from or saved to `current_file`; saving
     /// starts from it so annotations the editor does not show survive
     pub(super) loaded_request: Option<http_parser::Request>,
+    /// Text of `current_file` as last loaded or written by the app
+    pub(super) disk_content: Option<String>,
     /// Set when the file watcher observes `current_file` change on disk
     /// while it's open here. Rendered as a visible warning on the Save
     /// button so the user can't blindly overwrite an external edit without

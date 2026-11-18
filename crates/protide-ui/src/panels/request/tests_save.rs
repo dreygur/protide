@@ -49,7 +49,7 @@ fn load(p: &Entity<TestPanel>, cx: &mut VisualTestContext, file: &Path, index: u
     let req = http_parser::parse(&content).unwrap().remove(index);
     p.update(cx, |p, cx| {
         p.load_from_parsed_request(&req, cx);
-        p.set_loaded_file(file.to_path_buf(), index, req);
+        p.set_loaded_file(file.to_path_buf(), index, req, content);
     });
     cx.run_until_parked();
 }
@@ -96,4 +96,23 @@ async fn saving_an_unchanged_single_request_file_rewrites_nothing(cx: &mut TestA
     p.update(cx, |p, cx| p.save_request(cx));
 
     assert_eq!(std::fs::read_to_string(&file).unwrap(), single);
+}
+
+#[gpui::test]
+async fn the_apps_own_save_is_not_an_external_change(cx: &mut TestAppContext) {
+    let tmp = TempDir::new("save-watch");
+    let file = tmp.write("users.http", USERS);
+    let (p, cx) = panel(cx);
+    load(&p, cx, &file, 2);
+
+    p.update(cx, |p, cx| {
+        p.url = "{{base}}/signin".into();
+        p.save_request(cx);
+    });
+    let on_disk = std::fs::read_to_string(&file).unwrap();
+    p.read_with(cx, |p, _| {
+        assert!(!p.is_external_change(&file, Some(&on_disk)));
+        assert!(p.is_external_change(&file, Some("GET https://other.test\n")));
+        assert!(!p.is_external_change(&tmp.join("other.http"), Some("x")));
+    });
 }

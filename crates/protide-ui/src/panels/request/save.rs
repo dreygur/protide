@@ -46,6 +46,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                 }
                 log::info!("Saved: {}", path.display());
                 self.loaded_request = Some(request);
+                self.disk_content = Some(content);
                 self.external_change_pending = false;
                 self.save_feedback = true;
                 cx.notify();
@@ -110,6 +111,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                     this.current_file = Some(path);
                     this.current_request_index = 0;
                     this.loaded_request = Some(request);
+                    this.disk_content = Some(content);
                 }
             },
         );

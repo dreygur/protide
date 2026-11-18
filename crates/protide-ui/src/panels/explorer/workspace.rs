@@ -1,10 +1,15 @@
 use super::*;
 use gpui::Context;
 
-/// Request `index` of the .http file at `path`, if it reads and parses.
-pub(super) fn read_request(path: &std::path::Path, index: usize) -> Option<http_parser::Request> {
+/// The text of the .http file at `path` and its request `index`, if the
+/// file reads and parses.
+pub(super) fn read_request(
+    path: &std::path::Path,
+    index: usize,
+) -> Option<(String, http_parser::Request)> {
     let content = fs::read_to_string(path).ok()?;
-    http_parser::parse(&content).ok()?.into_iter().nth(index)
+    let request = http_parser::parse(&content).ok()?.into_iter().nth(index)?;
+    Some((content, request))
 }
 
 impl ExplorerPanel {
@@ -112,17 +117,18 @@ impl ExplorerPanel {
                 match event {
                     WorkspaceEvent::FileCreated(p) | WorkspaceEvent::FileModified(p) => {
                         if !self.sync_skip_paths.remove(p) {
-                            if let Some(request_panel) = &self.request_panel {
-                                let is_open_file = request_panel.read(cx).current_file.as_deref()
-                                    == Some(p.as_path());
-                                if is_open_file {
-                                    request_panel.update(cx, |panel, cx| {
-                                        panel.external_change_pending = true;
-                                        cx.notify();
-                                    });
-                                }
+                            let content = fs::read_to_string(p).ok();
+                            if let Some(request_panel) = &self.request_panel
+                                && request_panel
+                                    .read(cx)
+                                    .is_external_change(p, content.as_deref())
+                            {
+                                request_panel.update(cx, |panel, cx| {
+                                    panel.external_change_pending = true;
+                                    cx.notify();
+                                });
                             }
-                            if let Ok(content) = fs::read_to_string(p) {
+                            if let Some(content) = content {
                                 let p = p.clone();
                                 let root = root.clone();
                                 if let Some(win) = self.main_window.upgrade() {
@@ -186,7 +192,7 @@ impl ExplorerPanel {
 
     /// Load request `index` of a .http file into the request panel
     pub fn load_request_file(&mut self, path: PathBuf, index: usize, cx: &mut Context<Self>) {
-        if let Some(req) = read_request(&path, index)
+        if let Some((content, req)) = read_request(&path, index)
             && let Some(request_panel) = &self.request_panel
         {
             let variable_extractions = req.meta.variable_extractions.clone();
@@ -197,7 +203,7 @@ impl ExplorerPanel {
                 if !variable_extractions.is_empty() {
                     panel.set_variable_extractions(variable_extractions, cx);
                 }
-                panel.set_loaded_file(path.clone(), index, req);
+                panel.set_loaded_file(path.clone(), index, req, content);
                 if let Some(pp) = proto_path {
                     panel.load_grpc_proto_from_path(pp, cx);
                 }

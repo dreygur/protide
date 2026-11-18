@@ -95,8 +95,8 @@ impl ExplorerPanel {
                     panel.restore_from_draft(&draft, cx);
                     // Without the request on disk a save must not guess
                     // which block to rewrite; it asks for a file instead.
-                    if let Some(request) = request {
-                        panel.set_loaded_file(file, index, request);
+                    if let Some((content, request)) = request {
+                        panel.set_loaded_file(file, index, request, content);
                     }
                 });
             }

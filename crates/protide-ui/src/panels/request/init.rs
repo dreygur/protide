@@ -239,6 +239,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             current_file: None,
             current_request_index: 0,
             loaded_request: None,
+            disk_content: None,
             external_change_pending: false,
             save_feedback: false,
             custom_method_input: String::new(),
