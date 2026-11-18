@@ -2,7 +2,8 @@ use anyhow::Result;
 use gpui::{AppContext as _, AssetSource, Menu, MenuItem, SharedString, WindowOptions, px, size};
 use gpui_component::Root;
 use gpui_component_assets::Assets;
-use protide_core::sync::{SyncConfig, SyncEngine};
+use protide_core::sync::pake::generate_pairing_code;
+use protide_core::sync::{SyncConfig, SyncEngine, load_or_create};
 use protide_ui::panels::RequestHistory;
 use protide_ui::{
     MainWindow, Quit, SaveRequest, SendRequest, ShowAbout, ShowHelp, StartSync, ToggleMockServer,
@@ -140,13 +141,19 @@ fn main() -> Result<()> {
                 let node_name = std::env::var("USER")
                     .or_else(|_| std::env::var("USERNAME"))
                     .unwrap_or_else(|_| "developer".into());
-                let pairing_code = protide_core::sync::pake::generate_pairing_code();
+                let config_dir = dirs::config_dir().map(|d| d.join("protide"));
+                // Persisted rather than derived from the node id, which peers
+                // see in live probe packets and so cannot seed a PAKE secret.
+                let pairing_code = match &config_dir {
+                    Some(dir) => load_or_create(&dir.join("pairing_code"), generate_pairing_code),
+                    None => generate_pairing_code(),
+                };
                 let mut engine = SyncEngine::new(SyncConfig {
                     node_name,
                     p2p_enabled: true,
                     live_probe_enabled: true,
                     pairing_code: Some(pairing_code),
-                    node_id_path: dirs::config_dir().map(|d| d.join("protide").join("node_id")),
+                    node_id_path: config_dir.map(|d| d.join("node_id")),
                     ..Default::default()
                 });
                 let _ = engine.init();

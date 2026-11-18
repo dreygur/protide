@@ -177,20 +177,25 @@ impl Default for SyncConfig {
     }
 }
 
-/// Load the persisted NodeId from `path`, or create and save a new one.
-pub fn load_or_create_node_id(path: &std::path::Path) -> NodeId {
+/// Load the trimmed value persisted at `path`, or persist `make()` there.
+pub fn load_or_create(path: &std::path::Path, make: impl FnOnce() -> String) -> String {
     if let Ok(s) = std::fs::read_to_string(path) {
-        let s = s.trim().to_string();
+        let s = s.trim();
         if !s.is_empty() {
-            return NodeId(s);
+            return s.to_string();
         }
     }
-    let id = NodeId::new();
+    let value = make();
     if let Some(parent) = path.parent() {
         let _ = std::fs::create_dir_all(parent);
     }
-    let _ = std::fs::write(path, &id.0);
-    id
+    let _ = std::fs::write(path, &value);
+    value
+}
+
+/// Load the persisted NodeId from `path`, or create and save a new one.
+pub fn load_or_create_node_id(path: &std::path::Path) -> NodeId {
+    NodeId(load_or_create(path, || NodeId::new().0))
 }
 
 pub(crate) fn timestamp_now() -> u64 {
