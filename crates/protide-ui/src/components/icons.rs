@@ -1,14 +1,26 @@
 //! Icon helper - wraps GPUI svg() with a fixed size and color.
 //! Icons come from gpui-component-assets (Lucide icon set).
 
-use gpui::{Hsla, IntoElement, Styled, px, svg};
+use gpui::{
+    Animation, AnimationExt, Hsla, IntoElement, Styled, Svg, Transformation, percentage, px, svg,
+};
+use std::time::Duration;
 
 pub const ICON_SM: f32 = 11.0;
 pub const ICON_MD: f32 = 13.0;
 
 /// Render a Lucide SVG icon at the given size and color.
-pub fn icon(path: &'static str, size: f32, color: Hsla) -> impl IntoElement {
+pub fn icon(path: &'static str, size: f32, color: Hsla) -> Svg {
     svg().path(path).size(px(size)).text_color(color)
+}
+
+/// The loader icon turning once a second, Zed's spinner pattern.
+pub fn spinner(id: &'static str, size: f32, color: Hsla) -> impl IntoElement {
+    icon(ICON_LOADER, size, color).with_animation(
+        id,
+        Animation::new(Duration::from_secs(1)).repeat(),
+        |icon, delta| icon.with_transformation(Transformation::rotate(percentage(delta))),
+    )
 }
 
 // ── Path constants ─────────────────────────────────────────────────────────

@@ -1,4 +1,5 @@
 use super::*;
+use crate::components::icons::spinner;
 use crate::main_window::shortcuts::{SEND_KEYS, shortcut_label};
 
 impl ResponsePanel {
@@ -13,12 +14,7 @@ impl ResponsePanel {
                 .items_center()
                 .justify_center()
                 .gap(px(12.0))
-                .child(
-                    div()
-                        .size(px(32.0))
-                        .border_3()
-                        .border_color(theme.colors.accent.opacity(0.4)),
-                )
+                .child(spinner("response-loading", 32.0, theme.colors.accent))
                 .child(
                     div()
                         .text_size(px(13.0))
