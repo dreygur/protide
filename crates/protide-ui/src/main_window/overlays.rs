@@ -1,3 +1,4 @@
+use super::shortcuts::*;
 use super::*;
 use gpui::{
     Context, FontWeight, IntoElement, MouseButton, ParentElement, Styled, div, hsla, prelude::*, px,
@@ -185,48 +186,48 @@ impl MainWindow {
             Some(0) => vec![
                 (
                     "About Protide",
-                    "",
+                    ABOUT_KEYS,
                     Box::new(|w, cx| w.dispatch_action(Box::new(ShowAbout), cx)),
                 ),
                 ("---", "", Box::new(|_, _| {})),
                 (
                     "Quit",
-                    "Ctrl+Q",
+                    QUIT_KEYS,
                     Box::new(|w, cx| w.dispatch_action(Box::new(Quit), cx)),
                 ),
             ],
             Some(1) => vec![
                 (
                     "Send Request",
-                    "Ctrl+Enter",
+                    SEND_KEYS,
                     Box::new(|w, cx| w.dispatch_action(Box::new(SendRequest), cx)),
                 ),
                 (
                     "Save Request",
-                    "Ctrl+S",
+                    SAVE_KEYS,
                     Box::new(|w, cx| w.dispatch_action(Box::new(SaveRequest), cx)),
                 ),
             ],
             Some(2) => vec![
                 (
                     "Toggle Sidebar",
-                    "Ctrl+B",
+                    SIDEBAR_KEYS,
                     Box::new(|w, cx| w.dispatch_action(Box::new(ToggleSidebar), cx)),
                 ),
                 (
                     "Toggle Mock Server",
-                    "Ctrl+Shift+M",
+                    MOCK_SERVER_KEYS,
                     Box::new(|w, cx| w.dispatch_action(Box::new(ToggleMockServer), cx)),
                 ),
                 (
                     "Toggle API Explorer",
-                    "Ctrl+Shift+D",
+                    DOCS_KEYS,
                     Box::new(|w, cx| w.dispatch_action(Box::new(ToggleDocs), cx)),
                 ),
             ],
             Some(3) => vec![(
                 "Keyboard Shortcuts",
-                "F1",
+                HELP_KEYS,
                 Box::new(|w, cx| w.dispatch_action(Box::new(ShowHelp), cx)),
             )],
             _ => vec![],
@@ -256,7 +257,7 @@ impl MainWindow {
                 items
                     .into_iter()
                     .enumerate()
-                    .map(|(i, (label, hint, action))| {
+                    .map(|(i, (label, keys, action))| {
                         if label == "---" {
                             return div()
                                 .id(("menu-sep", i))
@@ -286,13 +287,13 @@ impl MainWindow {
                                     .text_color(theme.colors.text_primary)
                                     .child(label),
                             )
-                            .when(!hint.is_empty(), |el| {
+                            .when(!keys.is_empty(), |el| {
                                 el.child(
                                     div()
                                         .text_size(px(10.0))
                                         .text_color(theme.colors.text_muted)
                                         .ml(px(24.0))
-                                        .child(hint),
+                                        .child(shortcut_label(keys)),
                                 )
                             })
                             .into_any_element()

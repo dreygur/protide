@@ -20,10 +20,6 @@ impl<E: WebSocketExecutor> Render for RequestPanel<E> {
             .relative()
             .track_focus(&self.body_focus)
             .capture_key_down(cx.listener(|this, event: &KeyDownEvent, _, cx| {
-                if event.keystroke.modifiers.control && event.keystroke.key == "s" {
-                    this.save_request(cx);
-                    return;
-                }
                 if event.keystroke.key == "escape" {
                     if this.mode_dropdown_open {
                         this.mode_dropdown_open = false;

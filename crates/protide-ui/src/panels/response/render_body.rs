@@ -1,4 +1,5 @@
 use super::*;
+use crate::main_window::shortcuts::shortcut_label;
 
 impl ResponsePanel {
     pub(super) fn render_body_tab(
@@ -196,7 +197,7 @@ impl ResponsePanel {
                             div()
                                 .text_size(px(10.0))
                                 .text_color(theme.colors.text_muted.opacity(0.6))
-                                .child("⌘F / Ctrl+F to search"),
+                                .child(format!("{} to search", shortcut_label("secondary-f"))),
                         )
                     }),
             )

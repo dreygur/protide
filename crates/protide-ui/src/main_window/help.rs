@@ -1,3 +1,4 @@
+use super::shortcuts::*;
 use super::*;
 use gpui::{
     Context, FontWeight, IntoElement, MouseButton, ParentElement, Styled, div, prelude::*, px,
@@ -8,14 +9,14 @@ impl MainWindow {
         let theme = theme::current(cx);
 
         let shortcuts: &[(&str, &str, &str)] = &[
-            ("Request", "Ctrl+Enter", "Send request"),
-            ("Request", "Ctrl+S", "Save request"),
-            ("View", "Ctrl+B", "Toggle sidebar"),
-            ("View", "Ctrl+Shift+M", "Toggle mock server"),
-            ("View", "Ctrl+Shift+D", "Toggle API explorer"),
-            ("Help", "F1", "Show keyboard shortcuts"),
-            ("Help", "Ctrl+Shift+A", "About Protide"),
-            ("General", "Escape", "Close dialog / overlay"),
+            ("Request", SEND_KEYS, "Send request"),
+            ("Request", SAVE_KEYS, "Save request"),
+            ("View", SIDEBAR_KEYS, "Toggle sidebar"),
+            ("View", MOCK_SERVER_KEYS, "Toggle mock server"),
+            ("View", DOCS_KEYS, "Toggle API explorer"),
+            ("Help", HELP_KEYS, "Show keyboard shortcuts"),
+            ("Help", ABOUT_KEYS, "About Protide"),
+            ("General", DISMISS_KEYS, "Close dialog / overlay"),
         ];
 
         div()
@@ -109,20 +110,25 @@ impl MainWindow {
                                                     .child(*desc),
                                             ),
                                     )
-                                    .child(div().flex().items_center().gap(px(3.0)).children(
-                                        key.split('+').map(|k| {
-                                            div()
-                                                .px(px(7.0))
-                                                .py(px(3.0))
-                                                .bg(theme.colors.bg_tertiary)
-                                                .border_1()
-                                                .border_color(theme.colors.border)
-                                                .text_size(px(10.0))
-                                                .font_weight(FontWeight::MEDIUM)
-                                                .text_color(theme.colors.text_primary)
-                                                .child(k.trim())
-                                        }),
-                                    ))
+                                    .child(
+                                        div().flex().items_center().gap(px(3.0)).children(
+                                            shortcut_label(key)
+                                                .split('+')
+                                                .map(|k| {
+                                                    div()
+                                                        .px(px(7.0))
+                                                        .py(px(3.0))
+                                                        .bg(theme.colors.bg_tertiary)
+                                                        .border_1()
+                                                        .border_color(theme.colors.border)
+                                                        .text_size(px(10.0))
+                                                        .font_weight(FontWeight::MEDIUM)
+                                                        .text_color(theme.colors.text_primary)
+                                                        .child(k.to_string())
+                                                })
+                                                .collect::<Vec<_>>(),
+                                        ),
+                                    )
                             })),
                     )
                     .child(

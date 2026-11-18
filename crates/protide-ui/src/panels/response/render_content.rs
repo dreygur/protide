@@ -1,4 +1,5 @@
 use super::*;
+use crate::main_window::shortcuts::{SEND_KEYS, shortcut_label};
 
 impl ResponsePanel {
     pub(super) fn render_content(&self, cx: &Context<Self>) -> impl IntoElement {
@@ -185,34 +186,23 @@ impl ResponsePanel {
                                 .child("Press"),
                         )
                         .child(
-                            div()
-                                .flex()
-                                .items_center()
-                                .gap(px(2.0))
-                                .child(
-                                    div()
-                                        .px(px(6.0))
-                                        .py(px(3.0))
-                                        .bg(theme.colors.bg_elevated)
-                                        .border_1()
-                                        .border_color(theme.colors.border)
-                                        .text_size(px(10.0))
-                                        .font_weight(gpui::FontWeight::MEDIUM)
-                                        .text_color(theme.colors.text_secondary)
-                                        .child("⌘"),
-                                )
-                                .child(
-                                    div()
-                                        .px(px(6.0))
-                                        .py(px(3.0))
-                                        .bg(theme.colors.bg_elevated)
-                                        .border_1()
-                                        .border_color(theme.colors.border)
-                                        .text_size(px(10.0))
-                                        .font_weight(gpui::FontWeight::MEDIUM)
-                                        .text_color(theme.colors.text_secondary)
-                                        .child("↵"),
-                                ),
+                            div().flex().items_center().gap(px(2.0)).children(
+                                shortcut_label(SEND_KEYS)
+                                    .split('+')
+                                    .map(|key| {
+                                        div()
+                                            .px(px(6.0))
+                                            .py(px(3.0))
+                                            .bg(theme.colors.bg_elevated)
+                                            .border_1()
+                                            .border_color(theme.colors.border)
+                                            .text_size(px(10.0))
+                                            .font_weight(gpui::FontWeight::MEDIUM)
+                                            .text_color(theme.colors.text_secondary)
+                                            .child(key.to_string())
+                                    })
+                                    .collect::<Vec<_>>(),
+                            ),
                         )
                         .child(
                             div()

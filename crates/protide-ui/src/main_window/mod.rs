@@ -7,6 +7,7 @@ mod overlays;
 mod render;
 mod render_response_strip;
 mod render_sidebar;
+pub(crate) mod shortcuts;
 mod statusbar;
 mod sync;
 mod titlebar;
@@ -15,7 +16,8 @@ mod visibility;
 use std::path::PathBuf;
 use std::rc::Rc;
 
-use gpui::{Context, Entity, FocusHandle, KeyBinding, WeakEntity, Window, prelude::*};
+use gpui::{Context, Entity, FocusHandle, WeakEntity, Window, prelude::*};
+pub use shortcuts::register_keybindings;
 
 gpui::actions!(
     main_window,
@@ -32,21 +34,6 @@ gpui::actions!(
         Quit
     ]
 );
-
-pub fn register_keybindings(cx: &mut gpui::App) {
-    cx.bind_keys([
-        KeyBinding::new("ctrl-enter", SendRequest, None),
-        KeyBinding::new("ctrl-s", SaveRequest, None),
-        KeyBinding::new("ctrl-b", ToggleSidebar, None),
-        KeyBinding::new("ctrl-shift-m", ToggleMockServer, None),
-        KeyBinding::new("ctrl-shift-c", ToggleConsole, None),
-        KeyBinding::new("ctrl-shift-d", ToggleDocs, None),
-        KeyBinding::new("f1", ShowHelp, None),
-        KeyBinding::new("ctrl-shift-a", ShowAbout, None),
-        KeyBinding::new("escape", DismissOverlay, None),
-        KeyBinding::new("ctrl-q", Quit, None),
-    ]);
-}
 
 use super::panels::presence::{ConnectionStatus, PeerSource, PresenceManager};
 use super::panels::{
@@ -360,6 +347,35 @@ mod tests {
                 !mw.show_runner,
                 "opening Help must close the already-open Test Runner overlay"
             );
+        });
+    }
+
+    /// REGRESSION: global shortcuts were bound to ctrl on every platform, so
+    /// cmd shortcuts did nothing on macOS. They must follow the platform
+    /// modifier: cmd on macOS, ctrl elsewhere.
+    #[gpui::test]
+    fn global_shortcuts_use_the_platform_modifier(cx: &mut TestAppContext) {
+        cx.update(|cx| {
+            cx.set_global(gpui_component::Theme::default());
+            crate::theme::init(cx);
+            cx.set_global(crate::panels::RequestHistory::new());
+            super::register_keybindings(cx);
+        });
+        let (window, cx) = cx.add_window_view(|window, cx| MainWindow::build(window, cx, None));
+        let focus_handle = window.read_with(cx, |mw, _| mw.focus.clone());
+        cx.update(|window, app| window.focus(&focus_handle, app));
+        cx.run_until_parked();
+
+        let about = if cfg!(target_os = "macos") {
+            "cmd-shift-a"
+        } else {
+            "ctrl-shift-a"
+        };
+        cx.simulate_keystrokes(about);
+        cx.run_until_parked();
+
+        window.read_with(cx, |mw, _| {
+            assert!(mw.show_about, "{about} should open the About overlay");
         });
     }
 }
