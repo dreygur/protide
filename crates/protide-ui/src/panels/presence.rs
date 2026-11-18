@@ -61,6 +61,8 @@ pub struct PresenceManager {
     pub enabled: bool,
     /// Show the pairing flyout
     pub show_pairing: bool,
+    /// This node's stable name, shown on the presence chip
+    pub display_name: SharedString,
     /// Current pairing code (generated or entered)
     pub pairing_code: SharedString,
     /// Last generated pairing code
@@ -83,6 +85,7 @@ impl PresenceManager {
             peers: Vec::new(),
             enabled: false,
             show_pairing: false,
+            display_name: SharedString::default(),
             pairing_code: SharedString::default(),
             generated_code: SharedString::default(),
             connection_status: ConnectionStatus::Idle,
@@ -94,6 +97,9 @@ impl PresenceManager {
     pub fn for_engine(engine: Option<&SyncEngine>) -> Self {
         let mut presence = Self::new();
         presence.enabled = engine.is_some();
+        if let Some(engine) = engine {
+            presence.display_name = SharedString::from(engine.node_id().display_name());
+        }
         if let Some(code) = engine.and_then(|e| e.config().pairing_code.as_deref()) {
             presence.pairing_code = SharedString::from(code.to_string());
             presence.generated_code = presence.pairing_code.clone();
@@ -181,5 +187,23 @@ impl PresenceManager {
             .iter()
             .filter(|p| p.source == PeerSource::UDPBroadcast || p.source == PeerSource::P2P)
             .collect()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use protide_core::sync::SyncConfig;
+
+    #[test]
+    fn the_chip_shows_the_node_name_not_the_pairing_code() {
+        let engine = SyncEngine::new(SyncConfig {
+            pairing_code: Some("apple-banana-123".into()),
+            ..Default::default()
+        });
+        let presence = PresenceManager::for_engine(Some(&engine));
+        assert_eq!(presence.display_name, engine.node_id().display_name());
+        assert_eq!(presence.pairing_code, "apple-banana-123");
+        assert_ne!(presence.display_name, presence.pairing_code);
     }
 }

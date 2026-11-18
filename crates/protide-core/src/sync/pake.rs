@@ -6,6 +6,8 @@ use spake2::{Ed25519Group, Identity, Password, Spake2};
 
 use rand::RngCore;
 
+use super::types::{ADJECTIVES, NOUNS};
+
 const PAKE_IDENTITY: &[u8] = b"protide-p2p-pairing";
 
 /// A SPAKE2 handshake result - two peers derive a shared key from a
@@ -127,16 +129,6 @@ pub fn verify_confirm(session: &PakeSession, blob: &[u8]) -> bool {
 /// Generate a human-readable pairing code (Magic Wormhole style).
 /// Format: adjective-noun-###   e.g. "apple-banana-123"
 pub fn generate_pairing_code() -> String {
-    const ADJECTIVES: &[&str] = &[
-        "apple", "brave", "calm", "dark", "eager", "fancy", "golden", "happy", "ivory", "jolly",
-        "keen", "lucky", "merry", "noble", "orange", "proud", "quiet", "rapid", "sharp", "tidy",
-    ];
-    const NOUNS: &[&str] = &[
-        "banana", "cherry", "dragon", "eagle", "falcon", "garden", "hammer", "island", "jaguar",
-        "knight", "lemon", "mango", "ninja", "ocean", "pilot", "queen", "river", "silver", "tiger",
-        "union",
-    ];
-
     let mut rng = OsRng;
     let adj = ADJECTIVES[rng.next_u32() as usize % ADJECTIVES.len()];
     let noun = NOUNS[rng.next_u32() as usize % NOUNS.len()];

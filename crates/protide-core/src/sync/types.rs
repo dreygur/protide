@@ -2,6 +2,31 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use uuid::Uuid;
 
+pub(crate) const ADJECTIVES: &[&str] = &[
+    "apple", "brave", "calm", "dark", "eager", "fancy", "golden", "happy", "ivory", "jolly",
+    "keen", "lucky", "merry", "noble", "orange", "proud", "quiet", "rapid", "sharp", "tidy",
+];
+pub(crate) const NOUNS: &[&str] = &[
+    "banana", "cherry", "dragon", "eagle", "falcon", "garden", "hammer", "island", "jaguar",
+    "knight", "lemon", "mango", "ninja", "ocean", "pilot", "queen", "river", "silver", "tiger",
+    "union",
+];
+
+/// FNV-1a: unlike `DefaultHasher`, its output never changes between Rust
+/// releases, so a name derived from it stays the same across upgrades.
+fn stable_hash(s: &str) -> u64 {
+    s.bytes().fold(0xcbf2_9ce4_8422_2325, |h, b| {
+        (h ^ u64::from(b)).wrapping_mul(0x0100_0000_01b3)
+    })
+}
+
+fn capitalized(word: &str) -> String {
+    let mut chars = word.chars();
+    chars
+        .next()
+        .map_or_else(String::new, |c| c.to_uppercase().chain(chars).collect())
+}
+
 /// Unique node identifier
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct NodeId(pub String);
@@ -21,6 +46,16 @@ impl NodeId {
             .nth(8)
             .map_or(self.0.len(), |(i, _)| i);
         &self.0[..end]
+    }
+
+    /// A stable name for the presence chip. The node id is already public in
+    /// live probe packets, so deriving from it reveals nothing; it is spelled
+    /// "Brave Falcon" so it never reads like an "adj-noun-###" pairing code.
+    pub fn display_name(&self) -> String {
+        let h = stable_hash(&self.0);
+        let adj = ADJECTIVES[(h % ADJECTIVES.len() as u64) as usize];
+        let noun = NOUNS[((h >> 32) % NOUNS.len() as u64) as usize];
+        format!("{} {}", capitalized(adj), capitalized(noun))
     }
 }
 
@@ -365,6 +400,23 @@ mod tests {
         assert_eq!(back.url, activity.url);
         // Every field is required - a partial payload is not silently defaulted.
         assert!(serde_json::from_str::<LiveActivity>(r#"{"node_id":"n1"}"#).is_err());
+    }
+
+    #[test]
+    fn the_same_node_id_always_gets_the_same_display_name() {
+        let id = NodeId("6f1c2a9e-0b4d-4e2a-9c1f-3d5e7a9b1c2d".into());
+        assert_eq!(id.display_name(), NodeId(id.0.clone()).display_name());
+        // Pinned so a changed hash, which would rename every user, fails here.
+        assert_eq!(id.display_name(), "Lucky Silver");
+    }
+
+    #[test]
+    fn a_display_name_never_looks_like_a_pairing_code() {
+        for _ in 0..50 {
+            let name = NodeId::new().display_name();
+            assert_eq!(name.split(' ').count(), 2, "{name}");
+            assert!(!name.contains('-') && !name.chars().any(|c| c.is_ascii_digit()));
+        }
     }
 
     #[test]

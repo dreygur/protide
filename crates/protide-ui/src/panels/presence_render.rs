@@ -62,15 +62,16 @@ impl PresenceManager {
                         ),
                 )
             })
-            // Pairing code badge (clickable)
-            .child(self.render_pairing_badge(theme))
+            // Name badge (clickable)
+            .child(self.render_name_badge(theme))
             .into_any_element()
     }
 
-    /// Render the pairing code badge (shown in the presence bar)
-    pub(super) fn render_pairing_badge(&self, theme: &theme::Theme) -> gpui::AnyElement {
-        let code = self.pairing_code.clone();
-        let has_code = !code.is_empty();
+    /// Render this node's name badge. The pairing code is a secret, so it
+    /// only appears inside the pairing flyout.
+    pub(super) fn render_name_badge(&self, theme: &theme::Theme) -> gpui::AnyElement {
+        let name = self.display_name.clone();
+        let has_name = !name.is_empty();
 
         div()
             .px(px(6.0))
@@ -96,15 +97,15 @@ impl PresenceManager {
                     .text_size(px(9.0))
                     .font_weight(gpui::FontWeight::SEMIBOLD)
                     .font_family("JetBrains Mono")
-                    .text_color(if has_code {
+                    .text_color(if has_name {
                         theme.colors.team_accent
                     } else {
                         theme.colors.text_muted
                     })
                     .child(if !self.enabled {
                         SharedString::from("OFF")
-                    } else if has_code {
-                        code
+                    } else if has_name {
+                        name
                     } else {
                         SharedString::from("PAIR")
                     }),
