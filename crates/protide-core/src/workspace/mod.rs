@@ -149,8 +149,17 @@ pub fn is_relevant(event: &WorkspaceEvent, root: &Path) -> bool {
         | WorkspaceEvent::DirDeleted(p) => p,
     };
     // Protide's own state files (environments with secrets, history) must never
-    // be broadcast to peers or trigger a tree rescan.
-    path.starts_with(root) && !path.starts_with(root.join(crate::storage::DATA_DIR))
+    // be broadcast to peers or trigger a tree rescan. Compared case
+    // insensitively because macOS and Windows treat `.PROTIDE` as the same folder.
+    let Ok(rel) = path.strip_prefix(root) else {
+        return false;
+    };
+    !rel.components().next().is_some_and(|first| {
+        first
+            .as_os_str()
+            .to_string_lossy()
+            .eq_ignore_ascii_case(crate::storage::DATA_DIR)
+    })
 }
 
 #[cfg(test)]
@@ -184,5 +193,10 @@ mod tests {
             root
         ));
         assert!(!is_relevant(&modified("/other/a.http"), root));
+        assert!(
+            !is_relevant(&modified("/ws/.PROTIDE/x"), root),
+            "case insensitive filesystems treat this as the same folder"
+        );
+        assert!(is_relevant(&modified("/ws/sub/.protide/a.http"), root));
     }
 }
