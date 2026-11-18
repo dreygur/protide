@@ -81,7 +81,11 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
         } else {
             &self.url
         };
-        let content = format!("### {}\n\n{}", title, request.to_http());
+        let content = format!(
+            "### {}\n\n{}",
+            http_parser::single_line(title),
+            request.to_http()
+        );
 
         let start_dir = last_paths::last_dir("save_request").or_else(dirs::home_dir);
         file_dialog::prompt(

@@ -37,6 +37,7 @@ mod error;
 mod lexer;
 mod parser;
 mod writer;
+pub use writer::single_line;
 
 #[cfg(test)]
 mod adversarial_tests;

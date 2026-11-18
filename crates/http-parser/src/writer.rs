@@ -13,6 +13,13 @@ fn protocol_name(protocol: Protocol) -> &'static str {
     }
 }
 
+/// A field that must stay on its own line, with CR and LF turned into
+/// spaces: a line break in a name, URL or header would otherwise start a new
+/// line the parser reads as an annotation, header or script.
+pub fn single_line(text: &str) -> String {
+    text.replace(['\r', '\n'], " ")
+}
+
 /// Bodies and scripts are parsed as lines joined by `\n`, so a trailing
 /// newline in `text` stands for a blank line and must be kept as one.
 fn push_section(out: &mut String, text: &str) {
@@ -28,30 +35,38 @@ impl Request {
         let meta = &self.meta;
         let mut out = String::new();
         if let Some(name) = &meta.name {
-            out.push_str(&format!("# @name {name}\n"));
+            out.push_str(&format!("# @name {}\n", single_line(name)));
         }
-        // A description can only span one annotation line; the rest would
-        // read back as stray content.
         if let Some(desc) = &meta.description {
-            let first = desc.lines().next().unwrap_or("");
-            out.push_str(&format!("# @description {first}\n"));
+            out.push_str(&format!("# @description {}\n", single_line(desc)));
         }
         if let Some(protocol) = meta.protocol {
             out.push_str(&format!("# @protocol {}\n", protocol_name(protocol)));
         }
         if let Some(proto) = &meta.proto_path {
-            out.push_str(&format!("# @proto {proto}\n"));
+            out.push_str(&format!("# @proto {}\n", single_line(proto)));
         }
         if !meta.depends.is_empty() {
-            out.push_str(&format!("# @depends {}\n", meta.depends.join(", ")));
+            out.push_str(&format!(
+                "# @depends {}\n",
+                single_line(&meta.depends.join(", "))
+            ));
         }
         if !out.is_empty() {
             out.push('\n');
         }
-        out.push_str(&format!("{} {}\n", self.method.as_str(), self.url));
+        out.push_str(&format!(
+            "{} {}\n",
+            self.method.as_str(),
+            single_line(&self.url)
+        ));
         for h in &self.headers {
             let prefix = if h.enabled { "" } else { "# " };
-            out.push_str(&format!("{prefix}{}: {}\n", h.key, h.value));
+            out.push_str(&format!(
+                "{prefix}{}: {}\n",
+                single_line(&h.key),
+                single_line(&h.value)
+            ));
         }
         if let Some(body) = &self.body {
             out.push('\n');
@@ -61,7 +76,11 @@ impl Request {
             out.push('\n');
         }
         for set in &meta.variable_extractions {
-            out.push_str(&format!("# @set {} = {}\n", set.name, set.expression));
+            out.push_str(&format!(
+                "# @set {} = {}\n",
+                single_line(&set.name),
+                single_line(&set.expression)
+            ));
         }
         let scripts = [
             ("pre-script", &self.scripts.pre_script),
@@ -132,18 +151,53 @@ mod tests {
     }
 
     #[test]
-    fn a_bare_request_is_just_its_request_line() {
+    fn a_bare_request_is_just_its_request_single_line() {
         let req = Request::new(HttpMethod::Get, "https://x.test".into());
         assert_eq!(req.to_http(), "GET https://x.test\n");
     }
 
     #[test]
-    fn only_the_first_description_line_is_written() {
+    fn a_multi_line_description_is_written_on_one_single_line() {
         let mut req = Request::new(HttpMethod::Get, "https://x.test".into());
         req.meta.description = Some("first\nsecond".into());
         assert_eq!(
             req.to_http(),
-            "# @description first\n\nGET https://x.test\n"
+            "# @description first second\n\nGET https://x.test\n"
+        );
+    }
+
+    #[test]
+    fn a_newline_in_a_single_line_field_cannot_inject_a_single_line() {
+        let evil = "x\r\n# @pre-script\nfetch(1)\r# @set a = b";
+        let mut req = Request::new(HttpMethod::Get, format!("https://x.test/{evil}"));
+        req.meta.name = Some(evil.into());
+        req.meta.proto_path = Some(evil.into());
+        req.meta.depends = vec![evil.into()];
+        req.headers = vec![
+            KeyValue::new(evil, evil),
+            KeyValue {
+                key: "X-Off".into(),
+                value: evil.into(),
+                enabled: false,
+            },
+        ];
+        req.meta.variable_extractions = vec![VariableExtraction {
+            name: evil.into(),
+            expression: evil.into(),
+        }];
+
+        let text = req.to_http();
+        assert!(
+            text.lines().all(|l| !l.starts_with("# @pre-script")),
+            "{text}"
+        );
+        assert_eq!(text.matches('\r').count(), 0, "{text}");
+        let back = &crate::parse(&text).unwrap()[0];
+        assert_eq!(back.scripts.pre_script, None);
+        assert_eq!(back.meta.variable_extractions.len(), 1);
+        assert_eq!(
+            back.meta.name.as_deref(),
+            Some("x  # @pre-script fetch(1) # @set a = b")
         );
     }
 }
