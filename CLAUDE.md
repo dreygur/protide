@@ -149,8 +149,10 @@ protide/
 4. **UI framework**: GPUI from Zed - GPU-accelerated, immediate mode style
 5. **Collaboration**: Local-first CRDT, no central server required
 6. **MCP**: JSON-RPC 2.0 over stdio - lets AI tools (Claude, etc.) drive requests
-7. **Website**: Next.js + Nextra (docs theme), statically exported to GitHub Pages. `zod` is pinned
-   to `~4.1` in `website/package.json` overrides - zod 4.4 breaks `nextra-theme-docs`' prop schemas.
+7. **Website**: Next.js + Nextra (docs theme), statically exported to GitHub Pages. zod >=4.4 rejects
+   `nextra-theme-docs` 4.6.1's `LayoutPropsSchema` (it requires `children`, which `Layout` strips
+   before parsing). `website/patches/` makes that key optional via `patch-package` on postinstall;
+   drop the patch once nextra ships the fix.
 
 ### GPUI Reference
 - **Zed editor is the authoritative GPUI example source.** Always look at Zed's source code for correct GPUI patterns before guessing.
