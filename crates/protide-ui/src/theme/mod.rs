@@ -151,6 +151,27 @@ fn theme_for_appearance(appearance: gpui::WindowAppearance, mode: ThemeMode) -> 
     theme
 }
 
+/// Install `theme` as the global and bring gpui-component's theme (which
+/// draws every `Input`, including the code editors' active line) to the same
+/// light/dark mode, otherwise a light Protide renders dark editor chrome.
+fn install(theme: Theme, cx: &mut App) {
+    let mode = if theme.is_dark {
+        gpui_component::ThemeMode::Dark
+    } else {
+        gpui_component::ThemeMode::Light
+    };
+    gpui_component::Theme::change(mode, None, cx);
+    let t = gpui_component::Theme::global_mut(cx);
+    t.radius = gpui::px(2.0);
+    t.radius_lg = gpui::px(4.0);
+    t.window_border = gpui::transparent_black();
+    t.colors.ring = theme.colors.focus_ring;
+    t.colors.foreground = theme.colors.text_primary;
+    t.colors.muted_foreground = theme.colors.text_secondary;
+    t.mono_font_family = "JetBrains Mono".into();
+    cx.set_global(theme);
+}
+
 /// Initialize theme based on the persisted user preference (defaulting to
 /// following the system light/dark setting).
 ///
@@ -164,8 +185,10 @@ fn theme_for_appearance(appearance: gpui::WindowAppearance, mode: ThemeMode) -> 
 /// call [`sync_with_window`] once a window exists (and keep it live via
 /// `observe_window_appearance`) to pick up the real value and future changes.
 pub fn init(cx: &mut App) {
-    let theme = theme_for_appearance(cx.window_appearance(), ThemeMode::load());
-    cx.set_global(theme);
+    install(
+        theme_for_appearance(cx.window_appearance(), ThemeMode::load()),
+        cx,
+    );
 }
 
 /// Re-sync the global theme from a window's current appearance.
@@ -179,14 +202,14 @@ pub fn sync_with_window(window: &gpui::Window, cx: &mut App) {
     if mode != ThemeMode::System {
         return;
     }
-    cx.set_global(theme_for_appearance(window.appearance(), mode));
+    install(theme_for_appearance(window.appearance(), mode), cx);
 }
 
 /// Explicitly select a theme mode (System/Light/Dark), persist the choice,
 /// and apply it immediately.
 pub fn set_mode(mode: ThemeMode, window: &gpui::Window, cx: &mut App) {
     mode.save();
-    cx.set_global(theme_for_appearance(window.appearance(), mode));
+    install(theme_for_appearance(window.appearance(), mode), cx);
 }
 
 /// Cycle the theme mode (System -> Light -> Dark -> System) and apply it.
@@ -289,6 +312,30 @@ mod tests {
                 mode
             );
         }
+    }
+
+    #[gpui::test]
+    fn gpui_component_follows_the_resolved_light_or_dark_theme(cx: &mut gpui::TestAppContext) {
+        // A stale dark gpui-component theme painted the code editors' active
+        // line near black under the light Protide theme.
+        cx.update(|cx| {
+            gpui_component::init(cx);
+            for theme in [Theme::light(), Theme::dark(), Theme::light()] {
+                let want_dark = theme.is_dark;
+                let text = theme.colors.text_primary;
+                install(theme, cx);
+                let component = gpui_component::Theme::global(cx);
+                assert_eq!(component.mode.is_dark(), want_dark);
+                assert_eq!(component.colors.foreground, text);
+                let active_line = component.highlight_theme.style.editor_active_line;
+                let active_line = active_line.expect("default themes set an active line");
+                assert_eq!(
+                    active_line.l < 0.5,
+                    want_dark,
+                    "active line {active_line:?}"
+                );
+            }
+        });
     }
 
     #[test]
