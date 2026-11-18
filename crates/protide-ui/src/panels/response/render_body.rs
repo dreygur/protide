@@ -42,7 +42,8 @@ impl ResponsePanel {
         let fl = self.formatted_lang.clone();
         let rb = self.raw_body.clone();
 
-        let line_count = self.body_viewer.read(cx).value().lines().count();
+        // Count like the editor gutter does: a trailing newline opens one more line.
+        let line_count = self.body_viewer.read(cx).value().split('\n').count();
         let is_copied = self.copy_feedback == Some(CopyFeedback::Body);
 
         let tab_btn = {
