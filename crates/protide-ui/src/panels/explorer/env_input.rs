@@ -9,21 +9,22 @@ fn char_to_byte(s: &str, char_idx: usize) -> usize {
         .unwrap_or(s.len())
 }
 
-fn ordered(selection: &Range<usize>) -> Range<usize> {
+pub(super) fn ordered(selection: &Range<usize>) -> Range<usize> {
     selection.start.min(selection.end)..selection.start.max(selection.end)
+}
+
+/// The bytes of `s` a char based selection covers, in either direction.
+pub(super) fn selected_bytes(s: &str, selection: &Range<usize>) -> Range<usize> {
+    let chars = ordered(selection);
+    char_to_byte(s, chars.start)..char_to_byte(s, chars.end)
 }
 
 use super::*;
 
 impl ExplorerPanel {
-    fn rename_selected_bytes(&self) -> Range<usize> {
-        let chars = ordered(&self.rename_selection);
-        char_to_byte(&self.rename_text, chars.start)..char_to_byte(&self.rename_text, chars.end)
-    }
-
     fn rename_replace_selection(&mut self, insert: &str, cx: &mut Context<Self>) {
         let start = ordered(&self.rename_selection).start;
-        let bytes = self.rename_selected_bytes();
+        let bytes = selected_bytes(&self.rename_text, &self.rename_selection);
         self.rename_text.replace_range(bytes, insert);
         let pos = start + insert.chars().count();
         self.rename_selection = pos..pos;
@@ -36,7 +37,7 @@ impl ExplorerPanel {
                 self.rename_selection = 0..self.rename_text.chars().count();
             }
             EditCommand::Copy | EditCommand::Cut => {
-                let bytes = self.rename_selected_bytes();
+                let bytes = selected_bytes(&self.rename_text, &self.rename_selection);
                 if bytes.is_empty() {
                     return;
                 }
@@ -119,17 +120,6 @@ impl ExplorerPanel {
         }
     }
 
-    fn delete_env_selection(&mut self, target: EnvEditTarget, cx: &mut Context<Self>) {
-        let range = ordered(&self.edit_selection);
-        self.save_edit_state();
-        let mut text = self.get_edit_text(target);
-        text.replace_range(range.clone(), "");
-        self.edit_selection = range.start..range.start;
-        self.set_edit_text(target, text, cx);
-        self.update_env_scroll(target);
-        cx.notify();
-    }
-
     fn handle_env_command(
         &mut self,
         target: EnvEditTarget,
@@ -139,17 +129,17 @@ impl ExplorerPanel {
     ) {
         match command {
             EditCommand::SelectAll => {
-                self.edit_selection = 0..self.get_edit_text(target).len();
+                self.edit_selection = 0..self.get_edit_text(target).chars().count();
             }
             EditCommand::Copy | EditCommand::Cut => {
-                let range = ordered(&self.edit_selection);
-                if range.is_empty() {
+                let text = self.get_edit_text(target);
+                let bytes = selected_bytes(&text, &self.edit_selection);
+                if bytes.is_empty() {
                     return;
                 }
-                let copied = self.get_edit_text(target)[range].to_string();
-                cx.write_to_clipboard(ClipboardItem::new_string(copied));
+                cx.write_to_clipboard(ClipboardItem::new_string(text[bytes].to_string()));
                 if command == EditCommand::Cut {
-                    self.delete_env_selection(target, cx);
+                    self.insert_text(target, "", cx);
                 }
             }
             EditCommand::Paste => {
@@ -165,7 +155,7 @@ impl ExplorerPanel {
                 let edge = if command == EditCommand::LineStart {
                     0
                 } else {
-                    self.get_edit_text(target).len()
+                    self.get_edit_text(target).chars().count()
                 };
                 self.edit_selection.end = edge;
                 if !shift {
@@ -207,17 +197,12 @@ impl ExplorerPanel {
                 }
             }
             "backspace" => {
+                let end = self.edit_selection.end;
+                if self.edit_selection.start == end && end > 0 {
+                    self.edit_selection = (end - 1)..end;
+                }
                 if self.edit_selection.start != self.edit_selection.end {
-                    self.delete_env_selection(target, cx);
-                } else if self.edit_selection.end > 0 {
-                    self.save_edit_state();
-                    let mut text = self.get_edit_text(target);
-                    let pos = self.edit_selection.end - 1;
-                    text.remove(pos);
-                    self.edit_selection = pos..pos;
-                    self.set_edit_text(target, text, cx);
-                    self.update_env_scroll(target);
-                    cx.notify();
+                    self.insert_text(target, "", cx);
                 }
             }
             "left" => {
@@ -231,7 +216,7 @@ impl ExplorerPanel {
                 }
             }
             "right" => {
-                let text_len = self.get_edit_text(target).len();
+                let text_len = self.get_edit_text(target).chars().count();
                 if self.edit_selection.end < text_len {
                     self.edit_selection.end += 1;
                     if !shift {

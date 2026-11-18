@@ -347,6 +347,79 @@ fn a_shortcut_letter_is_never_typed_into_an_env_input(cx: &mut TestAppContext) {
     });
 }
 
+/// Types `keys` into the New Environment input holding `text` with the
+/// cursor at char `cursor`, returning the text and selection afterwards.
+fn edit_new_env(
+    cx: &mut TestAppContext,
+    text: &str,
+    cursor: usize,
+    keys: &[&str],
+) -> (String, std::ops::Range<usize>) {
+    let p = panel(cx);
+    p.update(cx, |p, cx| {
+        p.new_env_name = text.into();
+        p.active_edit = Some(super::EnvEditTarget::NewEnvName);
+        p.edit_selection = cursor..cursor;
+        for keys in keys {
+            p.handle_edit_key(&key(keys), cx);
+        }
+        (p.new_env_name.clone(), p.edit_selection.clone())
+    })
+}
+
+/// REGRESSION: env inputs kept the cursor in bytes while rendering and the
+/// mouse speak chars, so multibyte text split a char or panicked.
+#[gpui::test]
+fn env_inputs_insert_after_multibyte_text_by_char(cx: &mut TestAppContext) {
+    assert_eq!(
+        edit_new_env(cx, "日本", 2, &["x->x"]),
+        ("日本x".into(), 3..3)
+    );
+    assert_eq!(
+        edit_new_env(cx, "日本", 1, &["é->é"]),
+        ("日é本".into(), 2..2)
+    );
+}
+
+#[gpui::test]
+fn env_inputs_backspace_a_whole_multibyte_char(cx: &mut TestAppContext) {
+    assert_eq!(
+        edit_new_env(cx, "a😀b", 2, &["backspace"]),
+        ("ab".into(), 1..1)
+    );
+    assert_eq!(
+        edit_new_env(cx, "日本", 2, &["backspace"]),
+        ("日".into(), 1..1)
+    );
+}
+
+#[gpui::test]
+fn env_inputs_delete_a_selected_multibyte_char(cx: &mut TestAppContext) {
+    assert_eq!(
+        edit_new_env(cx, "éa", 0, &["shift-right", "backspace"]),
+        ("a".into(), 0..0)
+    );
+}
+
+#[gpui::test]
+fn env_inputs_select_all_of_multibyte_text_and_type_over_it(cx: &mut TestAppContext) {
+    assert_eq!(
+        edit_new_env(cx, "日本語", 0, &["secondary-a", "x->x"]),
+        ("x".into(), 1..1)
+    );
+}
+
+#[gpui::test]
+fn env_inputs_move_one_char_over_multibyte_text(cx: &mut TestAppContext) {
+    let right = ["right", "right", "right", "right"];
+    assert_eq!(edit_new_env(cx, "日本", 0, &right), ("日本".into(), 2..2));
+    assert_eq!(
+        edit_new_env(cx, "日本", 2, &["left", "x->x"]),
+        ("日x本".into(), 2..2)
+    );
+    assert_eq!(edit_new_env(cx, "é😀", 0, &["end"]), ("é😀".into(), 2..2));
+}
+
 #[gpui::test]
 async fn opening_another_request_never_drops_unsaved_edits(cx: &mut TestAppContext) {
     use crate::panels::request::RequestPanel;

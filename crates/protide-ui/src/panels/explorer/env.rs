@@ -1,3 +1,4 @@
+use super::env_input::{ordered, selected_bytes};
 use super::*;
 use gpui::{Context, Window};
 
@@ -264,18 +265,10 @@ impl ExplorerPanel {
     ) {
         self.save_edit_state();
         let mut current = self.get_edit_text(target);
-
-        if self.edit_selection.start != self.edit_selection.end {
-            let start = self.edit_selection.start.min(self.edit_selection.end);
-            let end = self.edit_selection.start.max(self.edit_selection.end);
-            current.replace_range(start..end, "");
-            self.edit_selection = start..start;
-        }
-
-        let pos = self.edit_selection.end;
-        current.insert_str(pos, text);
-        let new_pos = pos + text.len();
-        self.edit_selection = new_pos..new_pos;
+        let start = ordered(&self.edit_selection).start;
+        current.replace_range(selected_bytes(&current, &self.edit_selection), text);
+        let pos = start + text.chars().count();
+        self.edit_selection = pos..pos;
         self.set_edit_text(target, current, cx);
         self.update_env_scroll(target);
         cx.notify();
