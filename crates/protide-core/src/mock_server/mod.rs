@@ -41,6 +41,11 @@ impl MockServer {
         self.addr
     }
 
+    /// Takes effect on the next `start`.
+    pub fn set_port(&mut self, port: u16) {
+        self.port = port;
+    }
+
     pub fn base_url(&self) -> Option<String> {
         self.addr.map(|addr| format!("http://{}", addr))
     }
@@ -133,7 +138,7 @@ impl MockServer {
                 let listener = match tokio::net::TcpListener::bind(addr).await {
                     Ok(l) => l,
                     Err(e) => {
-                        let _ = addr_tx.send(Err(e.to_string()));
+                        let _ = addr_tx.send(Err(format!("Cannot bind {}: {}", addr, e)));
                         return;
                     }
                 };
@@ -237,6 +242,23 @@ mod tests {
 
         server.stop();
         assert!(!server.is_running());
+    }
+
+    #[test]
+    fn starting_on_a_busy_port_reports_the_port_and_stays_stopped() {
+        let busy = std::net::TcpListener::bind("127.0.0.1:0").expect("bind a free port");
+        let port = busy.local_addr().expect("local addr").port();
+        let mut server = MockServer::new(8080);
+        server.set_port(port);
+
+        let err = server.start().expect_err("a taken port must not start");
+
+        assert!(
+            err.contains(&port.to_string()),
+            "error must name the port: {err}"
+        );
+        assert!(!server.is_running());
+        assert_eq!(server.base_url(), None);
     }
 
     /// Regression test for a fixed bug in `server.rs`'s proxy URL construction:

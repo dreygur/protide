@@ -1,5 +1,7 @@
 use super::*;
-use gpui::{Context, IntoElement, ParentElement, Render, Styled, Window, div, prelude::*};
+use gpui::{Context, IntoElement, ParentElement, Render, Styled, Window, div, prelude::*, px};
+use gpui_component::input::Input;
+use gpui_component::{Sizable, Size};
 use protide_core::mock_server::HttpMethod;
 
 pub(super) fn status_color(status: u16, colors: &crate::theme::Colors) -> gpui::Hsla {
@@ -17,6 +19,11 @@ impl Render for MockServerPanel {
         let is_running = self.server.is_running();
         let base_url = self.server.base_url();
         let routes = self.server.routes();
+        let (status_text, status_text_color) = match (base_url, &self.start_error) {
+            (Some(url), _) => (url, theme.colors.text_secondary),
+            (None, Some(err)) => (err.clone(), theme.colors.status_server_error),
+            (None, None) => ("Not running".to_string(), theme.colors.text_secondary),
+        };
 
         div()
             .id("mock-server-panel")
@@ -70,12 +77,16 @@ impl Render for MockServerPanel {
                     .border_b_1()
                     .border_color(theme.colors.border)
                     .bg(theme.colors.bg_secondary)
+                    .flex()
+                    .items_center()
+                    .justify_between()
+                    .gap_2()
                     .child(
                         div()
                             .flex()
                             .items_center()
                             .gap_2()
-                            .child(div().w_2().h_2().bg(if is_running {
+                            .child(div().w_2().h_2().flex_none().bg(if is_running {
                                 theme.colors.status_success
                             } else {
                                 theme.colors.text_muted
@@ -83,10 +94,30 @@ impl Render for MockServerPanel {
                             .child(
                                 div()
                                     .text_xs()
-                                    .text_color(theme.colors.text_secondary)
-                                    .child(base_url.unwrap_or_else(|| "Not running".to_string())),
+                                    .text_color(status_text_color)
+                                    .child(status_text),
                             ),
-                    ),
+                    )
+                    .when(!is_running, |el| {
+                        el.child(
+                            div()
+                                .flex()
+                                .flex_none()
+                                .items_center()
+                                .gap_2()
+                                .child(
+                                    div()
+                                        .text_xs()
+                                        .text_color(theme.colors.text_secondary)
+                                        .child("Port:"),
+                                )
+                                .child(
+                                    div()
+                                        .w(px(70.0))
+                                        .child(Input::new(&self.port_input).with_size(Size::Small)),
+                                ),
+                        )
+                    }),
             )
             .child(
                 div()

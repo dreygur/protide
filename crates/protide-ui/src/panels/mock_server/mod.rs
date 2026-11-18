@@ -9,9 +9,13 @@ use gpui::{Context, Entity, WeakEntity, Window, prelude::*};
 use gpui_component::input::InputState;
 use protide_core::mock_server::{HttpMethod, MockResponse, MockRoute, MockServer};
 
+const DEFAULT_PORT: u16 = 8080;
+
 pub struct MockServerPanel {
     pub(super) server: MockServer,
     pub(super) new_route_method: HttpMethod,
+    pub(super) port_input: Entity<InputState>,
+    pub(super) start_error: Option<String>,
     pub(super) status_input: Entity<InputState>,
     pub(super) mock_path_input: Entity<InputState>,
     pub(super) proxy_path_input: Entity<InputState>,
@@ -26,6 +30,11 @@ impl MockServerPanel {
         cx: &mut Context<Self>,
         main_window: WeakEntity<MainWindow>,
     ) -> Self {
+        let port_input = cx.new(|cx| {
+            InputState::new(window, cx)
+                .default_value(DEFAULT_PORT.to_string())
+                .placeholder(DEFAULT_PORT.to_string())
+        });
         let status_input = cx.new(|cx| {
             InputState::new(window, cx)
                 .default_value("200")
@@ -38,8 +47,10 @@ impl MockServerPanel {
         let record_target_input =
             cx.new(|cx| InputState::new(window, cx).placeholder("https://api.example.com"));
         Self {
-            server: MockServer::new(8080),
+            server: MockServer::new(DEFAULT_PORT),
             new_route_method: HttpMethod::Get,
+            port_input,
+            start_error: None,
             status_input,
             mock_path_input,
             proxy_path_input,
@@ -49,15 +60,27 @@ impl MockServerPanel {
         }
     }
 
+    fn start_server(&mut self, cx: &mut Context<Self>) {
+        let raw = self.port_input.read(cx).value().trim().to_string();
+        let port = if raw.is_empty() {
+            Ok(DEFAULT_PORT)
+        } else {
+            raw.parse::<u16>()
+                .map_err(|_| format!("Invalid port: {raw}"))
+        };
+        self.start_error = port
+            .and_then(|port| {
+                self.server.set_port(port);
+                self.server.start()
+            })
+            .err();
+    }
+
     pub(super) fn toggle_server(&mut self, cx: &mut Context<Self>) {
         if self.server.is_running() {
             self.server.stop();
-        } else if let Err(msg) = self.server.start()
-            && let Some(win) = self.main_window.upgrade()
-        {
-            win.update(cx, |win, cx| {
-                win.show_modal("Failed to Start Mock Server", msg, cx)
-            });
+        } else {
+            self.start_server(cx);
         }
         cx.notify();
     }
@@ -139,13 +162,8 @@ impl MockServerPanel {
                 Some(target)
             };
             self.server.set_record_mode(true, target);
-            if !self.server.is_running()
-                && let Err(msg) = self.server.start()
-                && let Some(win) = self.main_window.upgrade()
-            {
-                win.update(cx, |win, cx| {
-                    win.show_modal("Failed to Start Mock Server", msg, cx)
-                });
+            if !self.server.is_running() {
+                self.start_server(cx);
             }
         }
         cx.notify();
@@ -322,6 +340,36 @@ mod tests {
         p.update(cx, |p, cx| {
             p.import_recorded(cx);
             assert!(p.server.routes().is_empty());
+        });
+    }
+
+    #[gpui::test]
+    async fn starting_on_a_busy_port_shows_the_error_in_the_panel(cx: &mut TestAppContext) {
+        let busy = std::net::TcpListener::bind("127.0.0.1:0").expect("bind a free port");
+        let port = busy.local_addr().expect("local addr").port().to_string();
+        let (p, cx) = panel(cx);
+        let input = p.read_with(cx, |p, _| p.port_input.clone());
+        set(cx, &input, &port);
+        p.update(cx, |p, cx| p.toggle_server(cx));
+        p.read_with(cx, |p, _| {
+            assert!(!p.server.is_running());
+            let err = p
+                .start_error
+                .as_deref()
+                .expect("bind error kept for the panel");
+            assert!(err.contains(&port), "error must name the port: {err}");
+        });
+    }
+
+    #[gpui::test]
+    async fn an_unparseable_port_is_reported_without_starting(cx: &mut TestAppContext) {
+        let (p, cx) = panel(cx);
+        let input = p.read_with(cx, |p, _| p.port_input.clone());
+        set(cx, &input, "80800");
+        p.update(cx, |p, cx| p.toggle_server(cx));
+        p.read_with(cx, |p, _| {
+            assert!(!p.server.is_running());
+            assert!(p.start_error.is_some());
         });
     }
 
