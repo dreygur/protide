@@ -62,6 +62,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
 
         let exec_body =
             self.build_execution_body(is_graphql_mode, &method, &body_content, &substitute);
+        self.add_body_content_type(&mut headers, &exec_body);
 
         let exec_mode = if is_graphql_mode {
             ExecutionMode::GraphQL {

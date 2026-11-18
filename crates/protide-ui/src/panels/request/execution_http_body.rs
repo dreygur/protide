@@ -2,6 +2,19 @@ use super::super::request_utils::url_encode;
 use super::*;
 
 impl<E: WebSocketExecutor> RequestPanel<E> {
+    /// Add the body type's Content-Type for a text body unless the user set
+    /// one. Multipart is left alone: reqwest adds it with the boundary.
+    pub(super) fn add_body_content_type(
+        &self,
+        headers: &mut Vec<(String, String)>,
+        body: &ExecutionBody,
+    ) {
+        if let (ExecutionBody::Text(_), Some(content_type)) = (body, self.body_type.content_type())
+        {
+            add_default_header(headers, "Content-Type", content_type);
+        }
+    }
+
     pub(super) fn build_execution_body<F>(
         &self,
         is_graphql_mode: bool,

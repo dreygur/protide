@@ -1,6 +1,6 @@
 use std::time::{Duration, Instant};
 
-use super::{ExecutionBody, ExecutionMode, FormPartValue};
+use super::{ExecutionBody, ExecutionMode, FormPartValue, add_default_header};
 
 /// Raw HTTP response before scripting/extraction
 #[derive(Debug)]
@@ -47,12 +47,7 @@ fn resolve_request(
                 gql_body["operationName"] = serde_json::Value::String(op.clone());
             }
             let mut hdrs = headers.to_vec();
-            if !hdrs
-                .iter()
-                .any(|(k, _)| k.eq_ignore_ascii_case("content-type"))
-            {
-                hdrs.push(("Content-Type".to_string(), "application/json".to_string()));
-            }
+            add_default_header(&mut hdrs, "Content-Type", "application/json");
             Ok((
                 url.to_string(),
                 hdrs,

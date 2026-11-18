@@ -103,6 +103,14 @@ fn ser_duration_millis<S: serde::Serializer>(d: &Duration, s: S) -> Result<S::Ok
     s.serialize_u64(d.as_millis() as u64)
 }
 
+/// Append `name: value` unless `headers` already has `name` (case insensitive),
+/// so an explicit user header always wins over a default.
+pub fn add_default_header(headers: &mut Vec<(String, String)>, name: &str, value: &str) {
+    if !headers.iter().any(|(k, _)| k.eq_ignore_ascii_case(name)) {
+        headers.push((name.to_string(), value.to_string()));
+    }
+}
+
 /// Console note for a post-response script that ran but reported failure.
 ///
 /// A script that fails *after* the response is in hand must not fail the

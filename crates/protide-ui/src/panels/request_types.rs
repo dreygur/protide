@@ -148,6 +148,20 @@ pub enum BodyType {
     Binary,
 }
 
+impl BodyType {
+    /// The Content-Type this body type implies, `None` when the body itself
+    /// decides (binary files).
+    pub fn content_type(self) -> Option<&'static str> {
+        match self {
+            BodyType::Json => Some("application/json"),
+            BodyType::Xml => Some("application/xml"),
+            BodyType::Form => Some("application/x-www-form-urlencoded"),
+            BodyType::Raw => Some("text/plain"),
+            BodyType::Binary => None,
+        }
+    }
+}
+
 /// Request mode
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum RequestMode {

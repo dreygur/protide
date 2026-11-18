@@ -51,11 +51,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             url: self.with_auth_query(substitute(&self.url), &substitute),
             headers,
             body,
-            content_type: match self.body_type {
-                BodyType::Json => Some("application/json".to_string()),
-                BodyType::Xml => Some("application/xml".to_string()),
-                _ => None,
-            },
+            content_type: self.body_type.content_type().map(str::to_string),
         };
 
         let code = protide_core::codegen::generate(&request, language);

@@ -415,6 +415,37 @@ mod mode_and_tab_tests {
     }
 
     #[gpui::test]
+    async fn a_typed_text_body_gets_a_content_type_unless_the_user_set_one(
+        cx: &mut TestAppContext,
+    ) {
+        use protide_core::execution::ExecutionBody;
+        let (p, cx) = panel(cx);
+        let text = ExecutionBody::Text("{}".to_string());
+        let user_ct = vec![("content-type".to_string(), "text/x-custom".to_string())];
+        p.update(cx, |p, _| {
+            for (body_type, expected) in [
+                (BodyType::Json, "application/json"),
+                (BodyType::Xml, "application/xml"),
+                (BodyType::Form, "application/x-www-form-urlencoded"),
+            ] {
+                p.body_type = body_type;
+                let mut headers = Vec::new();
+                p.add_body_content_type(&mut headers, &text);
+                assert_eq!(
+                    headers,
+                    vec![("Content-Type".to_string(), expected.to_string())]
+                );
+            }
+            let mut headers = user_ct.clone();
+            p.add_body_content_type(&mut headers, &text);
+            assert_eq!(headers, user_ct, "a user Content-Type must win");
+            let mut headers = Vec::new();
+            p.add_body_content_type(&mut headers, &ExecutionBody::None);
+            assert!(headers.is_empty(), "no body means no Content-Type");
+        });
+    }
+
+    #[gpui::test]
     async fn switching_protocol_drops_any_in_progress_field_edit(cx: &mut TestAppContext) {
         // `active_edit` names a field of the *old* tab set; leaving it set would
         // route keystrokes into a field the new mode no longer shows.

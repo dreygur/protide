@@ -89,7 +89,7 @@ use protide_core::execution::ws::{
     WsMessage, WsRingBuffer,
 };
 use protide_core::execution::{
-    ExecutionBody, ExecutionMode, ExecutionRequest, FormPart, FormPartValue,
+    ExecutionBody, ExecutionMode, ExecutionRequest, FormPart, FormPartValue, add_default_header,
 };
 use std::marker::PhantomData;
 use std::ops::Range;

@@ -109,11 +109,8 @@ fn as_sent(request: &CodegenRequest) -> CodegenRequest {
     let mut headers = request.headers.clone();
     if body.is_some()
         && let Some(content_type) = &request.content_type
-        && !headers
-            .iter()
-            .any(|(k, _)| k.eq_ignore_ascii_case("content-type"))
     {
-        headers.push(("Content-Type".to_string(), content_type.clone()));
+        crate::execution::add_default_header(&mut headers, "Content-Type", content_type);
     }
     CodegenRequest {
         headers,

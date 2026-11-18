@@ -63,12 +63,8 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
         self.body_editor
             .update(cx, |s, cx| s.set_highlighter(lang, cx));
         // Update Content-Type header
-        let content_type = match body_type {
-            BodyType::Json => "application/json",
-            BodyType::Xml => "application/xml",
-            BodyType::Form => "application/x-www-form-urlencoded",
-            BodyType::Raw => "text/plain",
-            BodyType::Binary => return cx.notify(), // no content-type update for binary
+        let Some(content_type) = body_type.content_type() else {
+            return cx.notify();
         };
         if let Some(header) = self
             .headers
