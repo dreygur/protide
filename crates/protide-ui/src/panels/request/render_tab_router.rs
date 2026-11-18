@@ -2,7 +2,7 @@
 
 use gpui::{Context, IntoElement, ParentElement, SharedString, Styled, div, prelude::*, px};
 
-use super::super::request_types::RequestMode;
+use super::super::request_types::{AuthType, RequestMode};
 use super::RequestPanel;
 use crate::components::tab_item;
 use crate::theme;
@@ -23,7 +23,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             .iter()
             .filter(|h| h.enabled && !h.key.is_empty())
             .count();
-        let mode = self.request_mode;
+        let auth_count = usize::from(self.auth_type != AuthType::None);
 
         div()
             .h(px(40.0))
@@ -35,47 +35,11 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             .bg(theme.colors.bg_primary)
             .children(tab_labels.iter().enumerate().map(|(i, label)| {
                 let is_active = i == active_tab;
-                let count = match mode {
-                    RequestMode::GraphQL => {
-                        if i == 2 {
-                            header_count
-                        } else {
-                            0
-                        }
-                    }
-                    RequestMode::WebSocket => {
-                        if i == 1 {
-                            header_count
-                        } else {
-                            0
-                        }
-                    }
-                    RequestMode::SocketIo => {
-                        if i == 1 {
-                            header_count
-                        } else {
-                            0
-                        }
-                    }
-                    RequestMode::Grpc => {
-                        if i == 1 {
-                            header_count
-                        } else {
-                            0
-                        }
-                    }
-                    RequestMode::Trpc => {
-                        if i == 1 {
-                            header_count
-                        } else {
-                            0
-                        }
-                    }
-                    RequestMode::Http => match i {
-                        0 => param_count,
-                        1 => header_count,
-                        _ => 0,
-                    },
+                let count = match *label {
+                    "Params" => param_count,
+                    "Headers" | "Metadata" => header_count,
+                    "Auth" => auth_count,
+                    _ => 0,
                 };
 
                 tab_item(

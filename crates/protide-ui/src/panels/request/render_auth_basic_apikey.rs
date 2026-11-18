@@ -208,9 +208,9 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                                 },
                                 cx,
                             )),
-                    ),
+                    )
+                    .child(render_apikey_location_selector(&theme, location, cx)),
             )
-            .child(render_apikey_location_selector(&theme, location, cx))
             .into_any_element()
     }
 }

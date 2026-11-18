@@ -9,6 +9,7 @@ pub(super) fn render_apikey_location_selector<E: WebSocketExecutor>(
     cx: &mut gpui::Context<super::RequestPanel<E>>,
 ) -> gpui::Div {
     div()
+        .flex_shrink_0()
         .flex()
         .flex_col()
         .gap(px(6.0))
