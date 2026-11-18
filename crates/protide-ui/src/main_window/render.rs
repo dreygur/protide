@@ -304,5 +304,7 @@ impl Render for MainWindow {
                         )
                 )
             })
+            // Without this layer open_alert_dialog registers a dialog that never draws.
+            .children(gpui_component::Root::render_dialog_layer(window, cx))
     }
 }
