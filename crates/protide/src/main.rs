@@ -128,18 +128,9 @@ fn main() -> Result<()> {
             };
 
             let start_sync: StartSync = Rc::new(|| {
-                let node_name = std::env::var("USER")
-                    .or_else(|_| std::env::var("USERNAME"))
-                    .unwrap_or_else(|_| "developer".into());
-                let pairing_code = protide_core::sync::pake::generate_pairing_code();
-                let mut engine = SyncEngine::new(SyncConfig {
-                    node_name,
-                    p2p_enabled: true,
-                    live_probe_enabled: true,
-                    pairing_code: Some(pairing_code),
-                    node_id_path: dirs::config_dir().map(|d| d.join("protide").join("node_id")),
-                    ..Default::default()
-                });
+                let mut engine = SyncEngine::new(SyncConfig::lan(
+                    dirs::config_dir().map(|d| d.join("protide").join("node_id")),
+                ));
                 let _ = engine.init();
                 engine
             });

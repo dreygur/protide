@@ -212,6 +212,25 @@ impl Default for SyncConfig {
     }
 }
 
+impl SyncConfig {
+    /// The app's LAN sync config. Peers see the node by its stable display
+    /// name, the one the presence chip shows, never by the OS account name.
+    pub fn lan(node_id_path: Option<PathBuf>) -> Self {
+        let node_id = node_id_path
+            .as_deref()
+            .map(load_or_create_node_id)
+            .unwrap_or_default();
+        Self {
+            node_name: node_id.display_name(),
+            p2p_enabled: true,
+            live_probe_enabled: true,
+            pairing_code: Some(super::pake::generate_pairing_code()),
+            node_id_path,
+            ..Default::default()
+        }
+    }
+}
+
 /// Load the persisted NodeId from `path`, or create and save a new one.
 pub fn load_or_create_node_id(path: &std::path::Path) -> NodeId {
     if let Ok(s) = std::fs::read_to_string(path) {
@@ -459,6 +478,25 @@ mod tests {
         assert!(config.node_id_path.is_none());
         assert!(config.node_name.starts_with("protide-"));
         assert_ne!(SyncConfig::default().node_name, config.node_name);
+    }
+
+    /// REGRESSION: the app named its node after $USER, so every LAN peer
+    /// learned the local account name.
+    #[test]
+    fn the_lan_config_names_the_node_by_its_display_name_not_the_os_user() {
+        let tmp = TempDir::new("lan-config");
+        let path = tmp.path().join("node_id");
+        let config = SyncConfig::lan(Some(path.clone()));
+        let engine = crate::sync::SyncEngine::new(config.clone());
+        assert_eq!(config.node_name, engine.node_id().display_name());
+        for var in ["USER", "USERNAME"] {
+            if let Ok(user) = std::env::var(var) {
+                assert_ne!(config.node_name, user);
+            }
+        }
+        assert_eq!(config.node_id_path, Some(path));
+        assert!(config.p2p_enabled && config.live_probe_enabled);
+        assert!(config.pairing_code.is_some());
     }
 
     #[test]
