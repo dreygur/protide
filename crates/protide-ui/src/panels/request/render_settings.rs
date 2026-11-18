@@ -1,9 +1,11 @@
 use gpui::{Context, IntoElement, MouseButton, ParentElement, Styled, div, prelude::*, px};
 
 use super::RequestPanel;
-use crate::components::icons::{ICON_CHECK, ICON_CLOSE, ICON_MD, icon};
 use crate::theme;
 use protide_core::execution::ws::WebSocketExecutor;
+
+/// Wide enough that the Browser Profile hint stays on one line.
+const LABEL_W: f32 = 220.0;
 
 impl<E: WebSocketExecutor> RequestPanel<E> {
     pub(super) fn render_settings_tab(&mut self, cx: &mut Context<Self>) -> gpui::AnyElement {
@@ -25,7 +27,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                     .gap(px(12.0))
                     .child(
                         div()
-                            .w(px(160.0))
+                            .w(px(LABEL_W))
                             .text_size(px(13.0))
                             .text_color(theme.colors.text_secondary)
                             .child("Request Timeout (s)"),
@@ -58,48 +60,20 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                     .gap(px(12.0))
                     .child(
                         div()
-                            .w(px(160.0))
+                            .w(px(LABEL_W))
                             .text_size(px(13.0))
                             .text_color(theme.colors.text_secondary)
                             .child("Verify SSL Certificate"),
                     )
                     .child(
-                        div()
-                            .id("ssl-toggle")
-                            .w(px(48.0))
-                            .h(px(24.0))
-                            .flex()
-                            .items_center()
-                            .justify_center()
-                            .gap(px(4.0))
-                            .border_1()
-                            .border_color(if verify_ssl {
-                                theme.colors.accent
-                            } else {
-                                theme.colors.border
-                            })
-                            .bg(if verify_ssl {
-                                theme.colors.accent.opacity(0.12)
-                            } else {
-                                theme.colors.bg_secondary
-                            })
-                            .cursor_pointer()
+                        self.render_kv_checkbox("ssl-toggle".into(), verify_ssl, cx)
                             .on_mouse_down(
                                 MouseButton::Left,
                                 cx.listener(move |this, _, _, cx| {
                                     this.verify_ssl = !this.verify_ssl;
                                     cx.notify();
                                 }),
-                            )
-                            .child(icon(
-                                if verify_ssl { ICON_CHECK } else { ICON_CLOSE },
-                                ICON_MD,
-                                if verify_ssl {
-                                    theme.colors.accent
-                                } else {
-                                    theme.colors.text_muted
-                                },
-                            )),
+                            ),
                     )
                     .child(
                         div()
@@ -120,7 +94,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                     .gap(px(12.0))
                     .child(
                         div()
-                            .w(px(160.0))
+                            .w(px(LABEL_W))
                             .flex()
                             .flex_col()
                             .gap(px(2.0))
@@ -138,42 +112,14 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                             ),
                     )
                     .child(
-                        div()
-                            .id("impersonate-toggle")
-                            .w(px(48.0))
-                            .h(px(24.0))
-                            .flex()
-                            .items_center()
-                            .justify_center()
-                            .gap(px(4.0))
-                            .border_1()
-                            .border_color(if impersonate {
-                                theme.colors.accent
-                            } else {
-                                theme.colors.border
-                            })
-                            .bg(if impersonate {
-                                theme.colors.accent.opacity(0.12)
-                            } else {
-                                theme.colors.bg_secondary
-                            })
-                            .cursor_pointer()
+                        self.render_kv_checkbox("impersonate-toggle".into(), impersonate, cx)
                             .on_mouse_down(
                                 MouseButton::Left,
                                 cx.listener(move |this, _, _, cx| {
                                     this.impersonate_browser = !this.impersonate_browser;
                                     cx.notify();
                                 }),
-                            )
-                            .child(icon(
-                                if impersonate { ICON_CHECK } else { ICON_CLOSE },
-                                ICON_MD,
-                                if impersonate {
-                                    theme.colors.accent
-                                } else {
-                                    theme.colors.text_muted
-                                },
-                            )),
+                            ),
                     )
                     .child(
                         div()
