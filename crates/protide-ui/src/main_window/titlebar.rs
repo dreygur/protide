@@ -28,21 +28,13 @@ impl MainWindow {
                     .id("titlebar-drag")
                     .flex()
                     .items_center()
-                    .gap(px(7.0))
                     .px(px(8.0))
                     .h_full()
                     .cursor_pointer()
                     .on_mouse_down(MouseButton::Left, |_, window, _cx: &mut App| {
                         window.start_window_move();
                     })
-                    .child(img(crate::LOGO_ASSET_PATH).size(px(18.0)))
-                    .child(
-                        div()
-                            .text_size(px(12.0))
-                            .font_weight(FontWeight::BOLD)
-                            .text_color(theme.colors.text_primary)
-                            .child("Protide"),
-                    ),
+                    .child(img(crate::LOGO_ASSET_PATH).size(px(18.0))),
             )
             .child({
                 let open = self.open_menu;
