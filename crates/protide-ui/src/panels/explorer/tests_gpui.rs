@@ -275,3 +275,38 @@ fn collapsing_the_collections_section_is_a_toggle(cx: &mut TestAppContext) {
         assert_eq!(p.collections_expanded, start);
     });
 }
+
+fn key(keys: &str) -> gpui::KeyDownEvent {
+    gpui::KeyDownEvent {
+        keystroke: gpui::Keystroke::parse(keys).unwrap(),
+        is_held: false,
+        prefer_character_input: false,
+    }
+}
+
+/// REGRESSION: env inputs only honoured ctrl, so cmd-a and cmd-v did
+/// nothing on macOS.
+#[gpui::test]
+fn env_inputs_select_all_and_paste_with_the_platform_modifier(cx: &mut TestAppContext) {
+    let p = panel(cx);
+    cx.write_to_clipboard(gpui::ClipboardItem::new_string("staging".into()));
+    p.update(cx, |p, cx| {
+        p.new_env_name = "dev".into();
+        p.active_edit = Some(super::EnvEditTarget::NewEnvName);
+        p.edit_selection = 3..3;
+        for keys in ["secondary-a", "secondary-v"] {
+            p.handle_edit_key(&key(keys), cx);
+        }
+        assert_eq!(p.new_env_name, "staging");
+    });
+}
+
+#[gpui::test]
+fn a_shortcut_letter_is_never_typed_into_an_env_input(cx: &mut TestAppContext) {
+    let p = panel(cx);
+    p.update(cx, |p, cx| {
+        p.active_edit = Some(super::EnvEditTarget::NewEnvName);
+        p.handle_edit_key(&key("secondary-q->q"), cx);
+        assert_eq!(p.new_env_name, "");
+    });
+}

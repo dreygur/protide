@@ -1,4 +1,5 @@
 use super::*;
+use crate::components::edit_keys::{EditCommand, edit_command, typed_text};
 use crate::components::{find_word_end, find_word_start};
 use gpui::{ClipboardItem, Context, KeyDownEvent, MouseDownEvent, MouseMoveEvent, MouseUpEvent};
 
@@ -145,60 +146,50 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
         self.is_selecting = false;
     }
 
-    pub(super) fn handle_url_key(&mut self, event: &KeyDownEvent, cx: &mut Context<Self>) {
-        let key = event.keystroke.key.as_str();
-        let ctrl = event.keystroke.modifiers.control;
-        let shift = event.keystroke.modifiers.shift;
-
-        if ctrl {
-            match key {
-                "enter" => {
-                    self.send_request(cx);
-                    return;
-                }
-                "a" => {
-                    self.select_all(cx);
-                    return;
-                }
-                "c" => {
-                    if self.has_selection() {
-                        cx.write_to_clipboard(ClipboardItem::new_string(
-                            self.selected_text().to_string(),
-                        ));
-                    }
-                    return;
-                }
-                "x" => {
-                    if self.has_selection() {
-                        cx.write_to_clipboard(ClipboardItem::new_string(
-                            self.selected_text().to_string(),
-                        ));
+    fn handle_url_command(&mut self, command: EditCommand, shift: bool, cx: &mut Context<Self>) {
+        match command {
+            EditCommand::SelectAll => self.select_all(cx),
+            EditCommand::Copy | EditCommand::Cut => {
+                if self.has_selection() {
+                    cx.write_to_clipboard(ClipboardItem::new_string(self.selected_text()));
+                    if command == EditCommand::Cut {
                         self.delete_selection(cx);
                     }
-                    return;
                 }
-                "v" => {
-                    if let Some(item) = cx.read_from_clipboard()
-                        && let Some(text) = item.text()
-                    {
-                        self.insert_text(&text.replace('\n', ""), cx);
-                    }
-                    return;
-                }
-                "z" => {
-                    if shift {
-                        self.url_redo(cx);
-                    } else {
-                        self.url_undo(cx);
-                    }
-                    return;
-                }
-                "y" => {
-                    self.url_redo(cx);
-                    return;
-                }
-                _ => {}
             }
+            EditCommand::Paste => {
+                if let Some(item) = cx.read_from_clipboard()
+                    && let Some(text) = item.text()
+                {
+                    self.insert_text(&text.replace('\n', ""), cx);
+                }
+            }
+            EditCommand::Undo => self.url_undo(cx),
+            EditCommand::Redo => self.url_redo(cx),
+            EditCommand::LineStart | EditCommand::LineEnd => {
+                let edge = if command == EditCommand::LineStart {
+                    0
+                } else {
+                    self.url.chars().count()
+                };
+                if shift {
+                    self.url_selection.end = edge;
+                    cx.notify();
+                } else {
+                    self.move_to(edge, cx);
+                }
+            }
+        }
+    }
+
+    pub(super) fn handle_url_key(&mut self, event: &KeyDownEvent, cx: &mut Context<Self>) {
+        let key = event.keystroke.key.as_str();
+        let shift = event.keystroke.modifiers.shift;
+
+        if let Some(command) = edit_command(&event.keystroke) {
+            self.handle_url_command(command, shift, cx);
+            self.update_url_scroll();
+            return;
         }
 
         match key {
@@ -227,23 +218,6 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                     self.move_to(end, cx);
                 } else if self.cursor() < char_count {
                     self.move_to(self.cursor() + 1, cx);
-                }
-            }
-            "home" => {
-                if shift {
-                    self.url_selection.end = 0;
-                    cx.notify();
-                } else {
-                    self.move_to(0, cx);
-                }
-            }
-            "end" => {
-                let char_count = self.url.chars().count();
-                if shift {
-                    self.url_selection.end = char_count;
-                    cx.notify();
-                } else {
-                    self.move_to(char_count, cx);
                 }
             }
             "backspace" => {
@@ -278,8 +252,8 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                 self.send_request(cx);
             }
             _ => {
-                if let Some(ch) = &event.keystroke.key_char {
-                    self.insert_text(ch, cx);
+                if let Some(text) = typed_text(&event.keystroke) {
+                    self.insert_text(text, cx);
                 }
             }
         }

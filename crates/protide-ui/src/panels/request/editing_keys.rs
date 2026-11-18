@@ -1,56 +1,53 @@
 use super::*;
+use crate::components::edit_keys::{EditCommand, edit_command, typed_text};
 use gpui::{ClipboardItem, Context, KeyDownEvent};
 
 impl<E: WebSocketExecutor> RequestPanel<E> {
+    fn handle_edit_command(&mut self, command: EditCommand, shift: bool, cx: &mut Context<Self>) {
+        match command {
+            EditCommand::SelectAll => self.edit_select_all(cx),
+            EditCommand::Copy | EditCommand::Cut => {
+                if self.edit_has_selection() {
+                    cx.write_to_clipboard(ClipboardItem::new_string(self.edit_selected_text()));
+                    if command == EditCommand::Cut {
+                        self.edit_delete_selection(cx);
+                    }
+                }
+            }
+            EditCommand::Paste => {
+                if let Some(item) = cx.read_from_clipboard()
+                    && let Some(text) = item.text()
+                {
+                    self.edit_insert_text(&text.replace('\n', ""), cx);
+                }
+            }
+            EditCommand::Undo => self.edit_undo(cx),
+            EditCommand::Redo => self.edit_redo(cx),
+            EditCommand::LineStart | EditCommand::LineEnd => {
+                let edge = if command == EditCommand::LineStart {
+                    0
+                } else {
+                    usize::MAX
+                };
+                if shift {
+                    self.edit_select_to(edge, cx);
+                } else {
+                    self.edit_move_to(edge, cx);
+                }
+            }
+        }
+    }
+
     pub(super) fn handle_edit_key(&mut self, event: &KeyDownEvent, cx: &mut Context<Self>) {
         let Some(target) = self.active_edit else {
             return;
         };
         let key = event.keystroke.key.as_str();
-        let ctrl = event.keystroke.modifiers.control;
         let shift = event.keystroke.modifiers.shift;
 
-        if ctrl {
-            match key {
-                "a" => {
-                    self.edit_select_all(cx);
-                    return;
-                }
-                "c" => {
-                    if self.edit_has_selection() {
-                        cx.write_to_clipboard(ClipboardItem::new_string(self.edit_selected_text()));
-                    }
-                    return;
-                }
-                "x" => {
-                    if self.edit_has_selection() {
-                        cx.write_to_clipboard(ClipboardItem::new_string(self.edit_selected_text()));
-                        self.edit_delete_selection(cx);
-                    }
-                    return;
-                }
-                "v" => {
-                    if let Some(item) = cx.read_from_clipboard()
-                        && let Some(text) = item.text()
-                    {
-                        self.edit_insert_text(&text.replace('\n', ""), cx);
-                    }
-                    return;
-                }
-                "z" => {
-                    if shift {
-                        self.edit_redo(cx);
-                    } else {
-                        self.edit_undo(cx);
-                    }
-                    return;
-                }
-                "y" => {
-                    self.edit_redo(cx);
-                    return;
-                }
-                _ => {}
-            }
+        if let Some(command) = edit_command(&event.keystroke) {
+            self.handle_edit_command(command, shift, cx);
+            return;
         }
 
         match key {
@@ -79,23 +76,6 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                     self.edit_move_to(e, cx);
                 } else if self.edit_cursor() < n {
                     self.edit_move_to(self.edit_cursor() + 1, cx);
-                }
-            }
-            "home" => {
-                if shift {
-                    self.edit_selection.end = 0;
-                    cx.notify();
-                } else {
-                    self.edit_move_to(0, cx);
-                }
-            }
-            "end" => {
-                let n = self.get_edit_text(target).chars().count();
-                if shift {
-                    self.edit_selection.end = n;
-                    cx.notify();
-                } else {
-                    self.edit_move_to(n, cx);
                 }
             }
             "backspace" => {
@@ -142,8 +122,8 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                 self.move_to_next_field(cx);
             }
             _ => {
-                if let Some(ch) = &event.keystroke.key_char {
-                    self.edit_insert_text(ch, cx);
+                if let Some(text) = typed_text(&event.keystroke) {
+                    self.edit_insert_text(text, cx);
                 }
             }
         }

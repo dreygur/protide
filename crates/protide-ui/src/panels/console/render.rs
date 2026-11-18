@@ -38,7 +38,7 @@ impl Render for ConsolePanel {
             .border_color(theme.colors.border)
             .track_focus(&self.focus)
             .on_key_down(cx.listener(|this, event: &KeyDownEvent, _, cx| {
-                if event.keystroke.modifiers.control && event.keystroke.key.as_str() == "c" {
+                if event.keystroke.modifiers.secondary() && event.keystroke.key.as_str() == "c" {
                     if let Some(idx) = this.url_sel_entry
                         && let Some(entry) = this.entries.get(idx)
                     {

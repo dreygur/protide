@@ -1,6 +1,7 @@
 //! Shared UI components
 
 pub mod action_row;
+pub(crate) mod edit_keys;
 pub mod icons;
 pub mod selectable_text;
 pub mod text_view;

@@ -532,6 +532,50 @@ mod mode_and_tab_tests {
             assert_eq!(p.graphql_operation_name, "Me");
         });
     }
+
+    fn key(keys: &str) -> gpui::KeyDownEvent {
+        gpui::KeyDownEvent {
+            keystroke: gpui::Keystroke::parse(keys).unwrap(),
+            is_held: false,
+            prefer_character_input: false,
+        }
+    }
+
+    /// REGRESSION: the hand rolled inputs only honoured ctrl, so on macOS
+    /// cmd-a selected nothing and typing "50" over "20" gave "2050".
+    #[gpui::test]
+    async fn select_all_with_the_platform_modifier_then_typing_replaces_a_param_value(
+        cx: &mut TestAppContext,
+    ) {
+        use crate::panels::request_types::{EditTarget, KeyValuePair};
+        let (p, cx) = panel(cx);
+        p.update_in(cx, |p, window, cx| {
+            p.params = vec![KeyValuePair {
+                key: "limit".into(),
+                value: "20".into(),
+                enabled: true,
+            }];
+            p.start_editing(EditTarget::ParamValue(0), window, cx);
+            for keys in ["secondary-a", "5->5", "0->0"] {
+                p.handle_edit_key(&key(keys), cx);
+            }
+            assert_eq!(p.params[0].value, "50");
+        });
+    }
+
+    #[gpui::test]
+    async fn select_all_with_the_platform_modifier_then_typing_replaces_the_url(
+        cx: &mut TestAppContext,
+    ) {
+        let (p, cx) = panel(cx);
+        p.update(cx, |p, cx| {
+            p.url = "http://old".into();
+            for keys in ["secondary-a", "x->x"] {
+                p.handle_url_key(&key(keys), cx);
+            }
+            assert_eq!(p.url, "x");
+        });
+    }
 }
 
 #[cfg(test)]
