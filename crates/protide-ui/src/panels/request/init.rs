@@ -10,15 +10,11 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
         cx: &mut Context<Self>,
         response_panel: Entity<ResponsePanel>,
     ) -> Self {
-        let url = "https://httpbin.org/post".to_string();
-        let url_len = url.len();
-        let initial_body = "{\n  \"name\": \"Protide\",\n  \"version\": \"0.1.0\"\n}";
         let body_editor = cx.new(|cx| {
             InputState::new(window, cx)
                 .multi_line(true)
                 .code_editor("json")
                 .line_number(true)
-                .default_value(initial_body)
         });
         let pre_script_editor = cx.new(|cx| {
             InputState::new(window, cx)
@@ -102,9 +98,9 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
         let import_editor = cx.new(|cx| InputState::new(window, cx).multi_line(true));
         Self {
             active_tab: 0,
-            method: HttpMethod::Post,
-            url,
-            url_selection: url_len..url_len,
+            method: HttpMethod::Get,
+            url: String::new(),
+            url_selection: 0..0,
             method_dropdown_open: false,
             mode_dropdown_open: false,
             url_focus: cx.focus_handle(),
@@ -131,7 +127,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                 KeyValuePair::default(),
             ],
             form_data: vec![FormField::default()],
-            body: initial_body.to_string(),
+            body: String::new(),
             body_type: BodyType::Json,
             binary_file_path: None,
             syncing_params: false,
