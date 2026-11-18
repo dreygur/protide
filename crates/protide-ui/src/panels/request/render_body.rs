@@ -1,5 +1,6 @@
 //! Body tab rendering for RequestPanel
 
+use crate::components::code_input;
 use gpui::{Context, IntoElement, ParentElement, Styled, div, prelude::*, px};
 
 use super::super::request_types::BodyType;
@@ -24,11 +25,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                 .flex_1()
                 .w_full()
                 .overflow_hidden()
-                .child(
-                    gpui_component::input::Input::new(&self.body_editor)
-                        .appearance(false)
-                        .h_full(),
-                )
+                .child(code_input(&self.body_editor).appearance(false).h_full())
                 .into_any_element()
         };
 

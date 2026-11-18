@@ -17,6 +17,11 @@ pub use tokens::{BorderRadius, ComponentSizes, Opacity, Spacing, Typography, siz
 
 use gpui::{App, Hsla};
 
+/// Bundled monospace font, registered at startup from crates/protide/assets/fonts.
+pub const MONO_FONT: &str = "JetBrains Mono";
+/// Text size of every code view, so editors, text bodies and the JSON tree line up.
+pub const CODE_FONT_SIZE: f32 = 12.5;
+
 /// User-selectable theme mode. `System` tracks the OS light/dark setting;
 /// `Light`/`Dark` pin the theme regardless of OS setting.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -168,7 +173,7 @@ fn install(theme: Theme, cx: &mut App) {
     t.colors.ring = theme.colors.focus_ring;
     t.colors.foreground = theme.colors.text_primary;
     t.colors.muted_foreground = theme.colors.text_secondary;
-    t.mono_font_family = "JetBrains Mono".into();
+    t.mono_font_family = MONO_FONT.into();
     cx.set_global(theme);
 }
 

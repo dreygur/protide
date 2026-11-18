@@ -1,5 +1,6 @@
 //! Scripts tab rendering for RequestPanel
 
+use crate::components::code_input;
 use gpui::{
     Context, IntoElement, MouseDownEvent, MouseMoveEvent, ParentElement, Styled, div, prelude::*,
     px,
@@ -81,13 +82,13 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             .when(script_pre_open, |el| {
                 let editor_div = if single_open {
                     div().flex_1().w_full().overflow_hidden().child(
-                        gpui_component::input::Input::new(&self.pre_script_editor)
+                        code_input(&self.pre_script_editor)
                             .appearance(false)
                             .h_full(),
                     )
                 } else {
                     div().h(px(script_pre_h)).w_full().overflow_hidden().child(
-                        gpui_component::input::Input::new(&self.pre_script_editor)
+                        code_input(&self.pre_script_editor)
                             .appearance(false)
                             .h_full(),
                     )
@@ -166,13 +167,13 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             .when(script_post_open, |el| {
                 let editor_div = if single_open {
                     div().flex_1().w_full().overflow_hidden().child(
-                        gpui_component::input::Input::new(&self.post_script_editor)
+                        code_input(&self.post_script_editor)
                             .appearance(false)
                             .h_full(),
                     )
                 } else {
                     div().h(px(script_post_h)).w_full().overflow_hidden().child(
-                        gpui_component::input::Input::new(&self.post_script_editor)
+                        code_input(&self.post_script_editor)
                             .appearance(false)
                             .h_full(),
                     )
@@ -246,11 +247,11 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             )
             .when(script_tests_open, |el| {
                 el.child(
-                    div().flex_1().w_full().overflow_hidden().child(
-                        gpui_component::input::Input::new(&self.tests_editor)
-                            .appearance(false)
-                            .h_full(),
-                    ),
+                    div()
+                        .flex_1()
+                        .w_full()
+                        .overflow_hidden()
+                        .child(code_input(&self.tests_editor).appearance(false).h_full()),
                 )
             })
             // Pre-script drag overlay (only when multi-open and dragging)

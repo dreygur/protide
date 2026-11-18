@@ -1,5 +1,6 @@
 //! Import modal rendering for RequestPanel
 
+use crate::components::code_input;
 use gpui::{Context, IntoElement, ParentElement, Styled, div, prelude::*, px};
 
 use super::RequestPanel;
@@ -129,9 +130,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                                     .border_color(theme.colors.border)
                                     .overflow_hidden()
                                     .child(
-                                        gpui_component::input::Input::new(&self.import_editor)
-                                            .appearance(false)
-                                            .h_full(),
+                                        code_input(&self.import_editor).appearance(false).h_full(),
                                     ),
                             )
                             .when(import_error.is_some(), |el| {

@@ -1,4 +1,5 @@
 use super::*;
+use crate::components::code_input;
 use gpui::{
     Context, FontWeight, IntoElement, ParentElement, SharedString, Styled, div, prelude::*, px,
 };
@@ -7,7 +8,7 @@ impl MainWindow {
     pub(super) fn render_codegen_panel(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = theme::current(cx);
         let panel = self.request_panel.read(cx);
-        let editor = gpui_component::input::Input::new(&panel.codegen_editor)
+        let editor = code_input(&panel.codegen_editor)
             .disabled(true)
             .appearance(false)
             .h_full();

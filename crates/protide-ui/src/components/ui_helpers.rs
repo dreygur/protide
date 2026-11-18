@@ -1,7 +1,8 @@
 use crate::components::icons::{ICON_MD, ICON_SM, icon};
 use crate::theme;
 use gpui::prelude::*;
-use gpui::{App, AppContext, Div, ElementId, SharedString, Stateful, Window, div, px};
+use gpui::{App, AppContext, Div, ElementId, Entity, SharedString, Stateful, Window, div, px};
+use gpui_component::input::{Input, InputState};
 
 /// 22px icon-only button. Icon is dim text colour normally, full on hover.
 /// Caller adds .on_click() and optionally .tooltip().
@@ -120,6 +121,13 @@ pub fn tab_item(
                 })
                 .child(label.into()),
         )
+}
+
+/// Input set in the mono font, for every code editor and text body view.
+pub fn code_input(state: &Entity<InputState>) -> Input {
+    Input::new(state)
+        .font_family(theme::MONO_FONT)
+        .text_size(px(theme::CODE_FONT_SIZE))
 }
 
 /// Simple text tooltip view.

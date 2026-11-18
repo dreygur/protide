@@ -1,4 +1,5 @@
 use super::*;
+use crate::components::code_input;
 
 impl ResponsePanel {
     pub(super) fn render_extract_tab(
@@ -206,7 +207,7 @@ impl ResponsePanel {
                                 // Value display with syntax highlighting
                                 .child(
                                     div().id("extract-value").flex_1().overflow_hidden().child(
-                                        Input::new(&self.extraction_editor)
+                                        code_input(&self.extraction_editor)
                                             .disabled(true)
                                             .appearance(false)
                                             .h_full(),

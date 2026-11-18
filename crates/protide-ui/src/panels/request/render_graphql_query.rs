@@ -1,5 +1,6 @@
 //! GraphQL query and variables tab rendering for RequestPanel
 
+use crate::components::code_input;
 use gpui::{Context, IntoElement, ParentElement, Styled, div, prelude::*, px};
 
 use super::RequestPanel;
@@ -56,7 +57,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                     .border_color(theme.colors.border)
                     .overflow_hidden()
                     .child(
-                        gpui_component::input::Input::new(&self.graphql_query_editor)
+                        code_input(&self.graphql_query_editor)
                             .appearance(false)
                             .h_full(),
                     ),
@@ -117,7 +118,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                     .border_color(theme.colors.border)
                     .overflow_hidden()
                     .child(
-                        gpui_component::input::Input::new(&self.graphql_variables_editor)
+                        code_input(&self.graphql_variables_editor)
                             .appearance(false)
                             .h_full(),
                     ),

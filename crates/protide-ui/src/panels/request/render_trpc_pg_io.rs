@@ -2,10 +2,10 @@
 
 use super::super::request_types::TrpcProcKind;
 use super::RequestPanel;
+use crate::components::code_input;
 use crate::components::icons::{ICON_COPY, ICON_LOADER, ICON_MD, ICON_PLAY, ICON_SM, icon};
 use crate::theme;
 use gpui::{Context, IntoElement, ParentElement, Styled, div, prelude::*, px};
-use gpui_component::input::Input;
 use protide_core::execution::ws::WebSocketExecutor;
 
 impl<E: WebSocketExecutor> RequestPanel<E> {
@@ -78,7 +78,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             // JSON params editor
             .child(
                 div().flex_1().w_full().overflow_hidden().child(
-                    Input::new(&self.trpc_params_editor)
+                    code_input(&self.trpc_params_editor)
                         .appearance(false)
                         .h_full(),
                 ),
@@ -256,7 +256,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             // Result viewer (read-only syntax-highlighted)
             .child(
                 div().flex_1().w_full().overflow_hidden().child(
-                    Input::new(&self.trpc_pg_result_viewer)
+                    code_input(&self.trpc_pg_result_viewer)
                         .disabled(true)
                         .appearance(false)
                         .h_full(),

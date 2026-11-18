@@ -1,4 +1,5 @@
 use super::*;
+use crate::components::code_input;
 use crate::main_window::shortcuts::shortcut_label;
 
 impl ResponsePanel {
@@ -223,7 +224,7 @@ impl ResponsePanel {
                             .w_full()
                             .overflow_hidden()
                             .child(
-                                Input::new(&self.body_viewer)
+                                code_input(&self.body_viewer)
                                     .disabled(true)
                                     .appearance(false)
                                     .h_full(),
@@ -236,7 +237,7 @@ impl ResponsePanel {
                     .w_full()
                     .overflow_hidden()
                     .child(
-                        Input::new(&self.body_viewer)
+                        code_input(&self.body_viewer)
                             .disabled(true)
                             .appearance(false)
                             .h_full(),

@@ -1,4 +1,5 @@
 use super::*;
+use crate::components::code_input;
 use gpui::{
     Context, ElementId, FontWeight, Hsla, IntoElement, ParentElement, Stateful, Styled, div,
     prelude::*, px,
@@ -116,7 +117,7 @@ impl MockServerPanel {
                     .child(
                         div()
                             .h(px(72.0))
-                            .child(Input::new(&self.body_input).h_full()),
+                            .child(code_input(&self.body_input).h_full()),
                     ),
             )
             .child(

@@ -13,7 +13,7 @@ pub(super) const GUTTER_W: f32 = 44.0;
 pub(super) const INDENT_W: f32 = 16.0;
 pub(super) const CHEVRON_W: f32 = 16.0;
 pub(super) const ROW_H: f32 = 20.0;
-pub(super) const ROW_FONT: f32 = 12.5;
+pub(super) const ROW_FONT: f32 = theme::CODE_FONT_SIZE;
 pub(super) const GUTTER_FONT: f32 = 11.0;
 // Header table layout constants (response headers tab)
 pub(super) const HDR_LABEL_ROW_H: f32 = 22.0; // NAME/VALUE column header: py(6)*2 + font 10px

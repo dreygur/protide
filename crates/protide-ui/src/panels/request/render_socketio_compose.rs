@@ -1,3 +1,4 @@
+use crate::components::code_input;
 use gpui::{Context, IntoElement, ParentElement, Styled, div, prelude::*, px};
 
 use super::RequestPanel;
@@ -85,7 +86,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                             .border_color(theme.colors.border)
                             .overflow_hidden()
                             .child(
-                                gpui_component::input::Input::new(&self.sio_payload_editor)
+                                code_input(&self.sio_payload_editor)
                                     .appearance(false)
                                     .h_full(),
                             ),

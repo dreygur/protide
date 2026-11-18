@@ -1,5 +1,6 @@
 //! WebSocket messages tab rendering for RequestPanel
 
+use crate::components::code_input;
 use gpui::{
     Context, IntoElement, MouseDownEvent, MouseMoveEvent, ParentElement, SharedString, Styled, div,
     prelude::*, px,
@@ -274,7 +275,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                             .border_color(theme.colors.border)
                             .overflow_hidden()
                             .child(
-                                gpui_component::input::Input::new(&self.ws_message_editor)
+                                code_input(&self.ws_message_editor)
                                     .appearance(false)
                                     .h_full(),
                             ),
