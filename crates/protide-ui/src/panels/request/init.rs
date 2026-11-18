@@ -112,14 +112,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             _edit_blur_sub: None,
             response_panel,
             loading: false,
-            headers: vec![
-                KeyValuePair {
-                    key: "Content-Type".to_string(),
-                    value: "application/json".to_string(),
-                    enabled: true,
-                },
-                KeyValuePair::default(),
-            ],
+            headers: vec![KeyValuePair::default()],
             params: vec![KeyValuePair::default()],
             form_data: vec![FormField::default()],
             body: String::new(),

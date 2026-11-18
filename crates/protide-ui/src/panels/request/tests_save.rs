@@ -164,6 +164,12 @@ async fn an_edit_marks_the_request_dirty_until_it_is_saved(cx: &mut TestAppConte
 }
 
 #[gpui::test]
+async fn a_new_request_saves_no_default_headers(cx: &mut TestAppContext) {
+    let (p, cx) = panel(cx);
+    p.update(cx, |p, cx| assert_eq!(p.build_request(cx).headers, vec![]));
+}
+
+#[gpui::test]
 async fn a_protocol_switch_that_is_reverted_is_not_dirty(cx: &mut TestAppContext) {
     let tmp = TempDir::new("save-protocol-dirty");
     let file = tmp.write("users.http", USERS);
