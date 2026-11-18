@@ -44,7 +44,6 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                 sio_state,
                 is_connected,
                 is_connecting,
-                cx,
             ))
             // Namespace + event name row
             .child(

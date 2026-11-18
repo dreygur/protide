@@ -3,19 +3,16 @@
 use gpui::{ParentElement, SharedString, Styled, div, prelude::*, px};
 
 use super::super::request_types::SioConnectionState;
-use super::RequestPanel;
 use crate::components::icons::{
     ICON_ARROW_LEFT, ICON_ARROW_RIGHT, ICON_MD, ICON_PLAY, ICON_SM, icon,
 };
 use protide_core::execution::sio::{SioDirection, SioEvent};
-use protide_core::execution::ws::WebSocketExecutor;
 
-pub(super) fn render_sio_status_bar<E: WebSocketExecutor>(
+pub(super) fn render_sio_status_bar(
     theme: &crate::theme::Theme,
     sio_state: SioConnectionState,
     is_connected: bool,
     is_connecting: bool,
-    cx: &mut gpui::Context<RequestPanel<E>>,
 ) -> gpui::Div {
     div()
         .flex()
@@ -80,42 +77,6 @@ pub(super) fn render_sio_status_bar<E: WebSocketExecutor>(
                             SioConnectionState::Disconnected => "Disconnected",
                         }),
                 ),
-        )
-        .child(
-            div()
-                .id("sio-connect-btn")
-                .px(px(12.0))
-                .py(px(6.0))
-                .cursor_pointer()
-                .when(is_connected, |el| {
-                    el.bg(theme.colors.method_delete.opacity(0.15))
-                        .text_color(theme.colors.method_delete)
-                })
-                .when(!is_connected, |el| {
-                    el.bg(theme.colors.method_get.opacity(0.15))
-                        .text_color(theme.colors.method_get)
-                })
-                .when(is_connecting, |el| {
-                    el.cursor(gpui::CursorStyle::Arrow).opacity(0.5)
-                })
-                .hover(|s| s.opacity(0.8))
-                .text_size(px(11.0))
-                .font_weight(gpui::FontWeight::MEDIUM)
-                .on_click(cx.listener(move |this, _, _, cx| {
-                    if is_connecting {
-                        return;
-                    }
-                    if is_connected {
-                        this.disconnect_socketio(cx);
-                    } else {
-                        this.connect_socketio(cx);
-                    }
-                }))
-                .child(if is_connected {
-                    "Disconnect"
-                } else {
-                    "Connect"
-                }),
         )
 }
 

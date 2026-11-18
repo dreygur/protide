@@ -28,22 +28,22 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
 
         let (badge_label, badge_fg, badge_bg) = match ws_state {
             WsConnectionState::Connected => (
-                "CONNECTED",
+                "Connected",
                 theme.colors.method_get,
                 theme.colors.method_get.opacity(0.12),
             ),
             WsConnectionState::Connecting => (
-                "CONNECTING",
+                "Connecting...",
                 theme.colors.accent,
                 theme.colors.accent.opacity(0.12),
             ),
             WsConnectionState::Error => (
-                "ERROR",
+                "Error",
                 theme.colors.error,
                 theme.colors.error.opacity(0.12),
             ),
             WsConnectionState::Disconnected => (
-                "DISCONNECTED",
+                "Disconnected",
                 theme.colors.text_muted,
                 theme.colors.text_muted.opacity(0.12),
             ),
