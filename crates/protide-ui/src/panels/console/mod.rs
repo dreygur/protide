@@ -3,6 +3,7 @@
 mod entry;
 pub use entry::*;
 
+mod context_menu;
 mod render;
 mod rows;
 

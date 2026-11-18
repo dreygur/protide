@@ -2,6 +2,7 @@ use crate::panels::explorer::{CollectionItem, ExplorerPanel};
 use gpui::Entity;
 use std::path::PathBuf;
 
+mod detail;
 pub mod render;
 
 #[derive(Default)]
