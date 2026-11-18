@@ -84,7 +84,19 @@ impl MockServerPanel {
                             .text_color(theme.colors.text_muted)
                             .child("MOCK PATH"),
                     )
-                    .child(Input::new(&self.mock_path_input)),
+                    .child(Input::new(&self.mock_path_input))
+                    .child(
+                        div()
+                            .text_size(px(10.0))
+                            .font_weight(FontWeight::MEDIUM)
+                            .text_color(theme.colors.text_muted)
+                            .child("RESPONSE BODY"),
+                    )
+                    .child(
+                        div()
+                            .h(px(72.0))
+                            .child(Input::new(&self.body_input).h_full()),
+                    ),
             )
             .child(
                 div()

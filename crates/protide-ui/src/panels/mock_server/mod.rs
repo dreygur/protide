@@ -10,6 +10,7 @@ use gpui_component::input::InputState;
 use protide_core::mock_server::{HttpMethod, MockResponse, MockRoute, MockServer};
 
 const DEFAULT_PORT: u16 = 8080;
+const DEFAULT_BODY: &str = r#"{"message":"mock response"}"#;
 
 pub struct MockServerPanel {
     pub(super) server: MockServer,
@@ -18,6 +19,7 @@ pub struct MockServerPanel {
     pub(super) start_error: Option<String>,
     pub(super) status_input: Entity<InputState>,
     pub(super) mock_path_input: Entity<InputState>,
+    pub(super) body_input: Entity<InputState>,
     pub(super) proxy_path_input: Entity<InputState>,
     pub(super) proxy_target_input: Entity<InputState>,
     pub(super) record_target_input: Entity<InputState>,
@@ -41,6 +43,11 @@ impl MockServerPanel {
                 .placeholder("200")
         });
         let mock_path_input = cx.new(|cx| InputState::new(window, cx).placeholder("/api/mock"));
+        let body_input = cx.new(|cx| {
+            InputState::new(window, cx)
+                .multi_line(true)
+                .placeholder(DEFAULT_BODY)
+        });
         let proxy_path_input = cx.new(|cx| InputState::new(window, cx).placeholder("/api/*"));
         let proxy_target_input =
             cx.new(|cx| InputState::new(window, cx).placeholder("https://api.example.com"));
@@ -53,6 +60,7 @@ impl MockServerPanel {
             start_error: None,
             status_input,
             mock_path_input,
+            body_input,
             proxy_path_input,
             proxy_target_input,
             record_target_input,
@@ -100,8 +108,14 @@ impl MockServerPanel {
         } else {
             raw_path.trim().to_string()
         };
-        let response = MockResponse::new(status, r#"{"message":"mock response"}"#)
-            .with_header("Content-Type", "application/json");
+        let raw_body = self.body_input.read(cx).value().to_string();
+        let body = if raw_body.trim().is_empty() {
+            DEFAULT_BODY.to_string()
+        } else {
+            raw_body
+        };
+        let response =
+            MockResponse::new(status, body).with_header("Content-Type", "application/json");
         let route = MockRoute::new(self.new_route_method, path, response);
         self.server.add_route(route);
         cx.notify();
@@ -287,6 +301,21 @@ mod tests {
                     "bad status text must default to 200"
                 );
             }
+        });
+    }
+
+    #[gpui::test]
+    async fn a_route_uses_the_typed_body_or_the_default_when_blank(cx: &mut TestAppContext) {
+        let (p, cx) = panel(cx);
+        let input = p.read_with(cx, |p, _| p.body_input.clone());
+        set(cx, &input, r#"{"id":7}"#);
+        p.update(cx, |p, cx| p.add_route(cx));
+        set(cx, &input, "  ");
+        p.update(cx, |p, cx| p.add_route(cx));
+        p.read_with(cx, |p, _| {
+            let routes = p.server.routes();
+            assert_eq!(routes[0].response.body, r#"{"id":7}"#);
+            assert_eq!(routes[1].response.body, DEFAULT_BODY);
         });
     }
 

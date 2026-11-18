@@ -245,6 +245,26 @@ mod tests {
     }
 
     #[test]
+    fn a_route_serves_its_configured_body() {
+        let mut server = MockServer::new(0);
+        server.add_route(MockRoute::new(
+            HttpMethod::Get,
+            "/user",
+            MockResponse::new(201, r#"{"id":7}"#).with_header("Content-Type", "application/json"),
+        ));
+        let addr = server.start().expect("server should start");
+
+        let resp = test_client()
+            .get(format!("http://{}/user", addr))
+            .send()
+            .expect("request should complete");
+
+        assert_eq!(resp.status(), 201);
+        assert_eq!(resp.text().expect("body"), r#"{"id":7}"#);
+        server.stop();
+    }
+
+    #[test]
     fn starting_on_a_busy_port_reports_the_port_and_stays_stopped() {
         let busy = std::net::TcpListener::bind("127.0.0.1:0").expect("bind a free port");
         let port = busy.local_addr().expect("local addr").port();
