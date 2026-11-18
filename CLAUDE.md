@@ -86,12 +86,12 @@ protide/
 │   ├── protide-ui/                     # All GPUI UI code
 │   │   └── src/
 │   │       ├── lib.rs
-│   │       ├── theme.rs
+│   │       ├── theme/              # Theme, colour palettes, design tokens
 │   │       ├── prefs.rs
 │   │       ├── session.rs
 │   │       ├── last_paths.rs
 │   │       └── ui/
-│   │           ├── main_window/        # Main window layout (split into 9 files)
+│   │           ├── main_window/        # Main window layout (split into 12 files)
 │   │           ├── components/
 │   │           │   ├── action_row.rs
 │   │           │   ├── code_editor/    # Syntax-highlighted editor
@@ -103,16 +103,16 @@ protide/
 │   │           │   ├── ui_helpers.rs
 │   │           │   └── word_select.rs   # Double-click word/separator spans
 │   │           └── panels/
-│   │               ├── console.rs      # Log bus panel
+│   │               ├── console/        # Log bus panel
 │   │               ├── docs/           # API documentation viewer
-│   │               ├── explorer/       # File tree + environments (split into ~15 files)
+│   │               ├── explorer/       # File tree + environments (split into ~24 files)
 │   │               ├── history.rs
 │   │               ├── mock_server/    # Mock server panel (split into 3 files)
 │   │               ├── presence.rs     # Collaboration presence UI
-│   │               ├── request/        # Request panel (split into ~40 files)
+│   │               ├── request/        # Request panel (split into ~60 files)
 │   │               ├── request_types.rs
 │   │               ├── request_utils.rs
-│   │               └── response/       # Response panel (split into ~12 files)
+│   │               └── response/       # Response panel (split into ~19 files)
 │   ├── protide-core/                   # Business logic (no UI)
 │   │   └── src/
 │   │       ├── chaining/               # JSONPath extraction, @set
@@ -139,7 +139,7 @@ protide/
         ├── app/                        # / landing, /docs catch-all, sitemap
         ├── components/landing/         # landing page React components + UI mockups
         ├── content/                    # docs MDX + _meta.ts sidebar config
-        └── styles/                     # tokens.css (light-dark() mirror of theme.rs)
+        └── styles/                     # tokens.css (light-dark() mirror of theme/)
 ```
 
 ### Key Technical Decisions
