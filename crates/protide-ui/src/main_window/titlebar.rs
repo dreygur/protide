@@ -1,4 +1,5 @@
 use super::*;
+use crate::components::tooltip_text;
 use gpui::{
     App, Context, FontWeight, IntoElement, MouseButton, ParentElement, Styled, div, img,
     prelude::*, px,
@@ -156,6 +157,11 @@ impl MainWindow {
                         theme::toggle(window, cx);
                         cx.notify();
                     }))
+                    .tooltip(tooltip_text(match theme.mode {
+                        theme::ThemeMode::Light => "Theme: light",
+                        theme::ThemeMode::Dark => "Theme: dark",
+                        theme::ThemeMode::System => "Theme: follow system",
+                    }))
                     .child(match theme.mode {
                         theme::ThemeMode::Light => {
                             icon(ICON_SUN, 12.0, theme.colors.text_secondary).into_any_element()
@@ -163,14 +169,14 @@ impl MainWindow {
                         theme::ThemeMode::Dark => {
                             icon(ICON_MOON, 12.0, theme.colors.text_secondary).into_any_element()
                         }
-                        // No "system/auto" icon in the bundled Lucide set - use a distinct
-                        // glyph so this state is visually distinguishable from Light/Dark
-                        // even when System currently resolves to the same colors as Dark.
+                        // The bundled Lucide set has no "auto" icon; a small sun and
+                        // moon together stay distinct from Light and Dark even when
+                        // System resolves to the same colours as one of them.
                         theme::ThemeMode::System => div()
-                            .text_size(px(10.0))
-                            .font_weight(FontWeight::BOLD)
-                            .text_color(theme.colors.text_secondary)
-                            .child("A")
+                            .flex()
+                            .items_center()
+                            .child(icon(ICON_SUN, 9.0, theme.colors.text_secondary))
+                            .child(icon(ICON_MOON, 9.0, theme.colors.text_secondary))
                             .into_any_element(),
                     }),
             )
