@@ -1,5 +1,5 @@
 use super::*;
-use gpui::{Context, IntoElement, ParentElement, Styled, div, px, white};
+use gpui::{Context, IntoElement, ParentElement, Styled, div, px};
 
 impl ExplorerPanel {
     pub(super) fn render_collections_section(
@@ -146,7 +146,7 @@ impl ExplorerPanel {
                                 .hover(|s| {
                                     s.opacity(1.0).text_color(theme.colors.status_client_error)
                                 })
-                                .child(icon(ICON_CLOSE, ICON_MD, white())),
+                                .child(icon(ICON_CLOSE, ICON_MD, theme.colors.text_primary)),
                         ),
                 )
             })

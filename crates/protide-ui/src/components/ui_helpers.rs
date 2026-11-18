@@ -1,9 +1,9 @@
 use crate::components::icons::{ICON_MD, ICON_SM, icon};
 use crate::theme;
 use gpui::prelude::*;
-use gpui::{App, AppContext, Div, ElementId, SharedString, Stateful, Window, div, px, white};
+use gpui::{App, AppContext, Div, ElementId, SharedString, Stateful, Window, div, px};
 
-/// 22px icon-only button. Icon is dim white normally, full white on hover.
+/// 22px icon-only button. Icon is dim text colour normally, full on hover.
 /// Caller adds .on_click() and optionally .tooltip().
 pub fn icon_btn(
     id: impl Into<ElementId>,
@@ -27,7 +27,7 @@ pub fn icon_btn(
                 .justify_center()
                 .opacity(0.45)
                 .hover(|s| s.opacity(1.0))
-                .child(icon(icon_src, ICON_MD, white())),
+                .child(icon(icon_src, ICON_MD, theme.colors.text_primary)),
         )
 }
 
@@ -55,7 +55,7 @@ pub fn ghost_action_btn(
                 .justify_center()
                 .opacity(0.45)
                 .hover(|s| s.opacity(1.0))
-                .child(icon(icon_src, ICON_SM, white())),
+                .child(icon(icon_src, ICON_SM, theme.colors.text_primary)),
         )
 }
 
