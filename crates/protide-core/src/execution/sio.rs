@@ -149,6 +149,7 @@ async fn run_connection(
     use futures_util::{SinkExt, StreamExt};
     use tokio_tungstenite::{connect_async, tungstenite::Message};
 
+    super::tls::install_crypto_provider();
     let ws_url = build_ws_url(&params.url);
 
     let (mut write, mut read) = match tokio::time::timeout(

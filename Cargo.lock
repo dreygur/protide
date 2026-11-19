@@ -7013,6 +7013,7 @@ dependencies = [
  "rand 0.8.6",
  "reqwest",
  "rquickjs",
+ "rustls",
  "serde",
  "serde_json",
  "serde_yaml",

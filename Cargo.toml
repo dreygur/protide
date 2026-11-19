@@ -147,6 +147,8 @@ async-channel = "2"
 
 # WebSocket client
 tokio-tungstenite = { version = "0.26", features = ["rustls-tls-native-roots"] }
+# Named only to install `ring` as the process provider, see execution::tls.
+rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
 futures-util = "0.3"
 
 # Language server

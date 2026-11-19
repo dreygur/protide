@@ -161,6 +161,7 @@ async fn run_connection(
     use futures_util::{SinkExt, StreamExt};
     use tokio_tungstenite::connect_async;
 
+    super::tls::install_crypto_provider();
     let conn = tokio::time::timeout(
         std::time::Duration::from_secs(15),
         connect_async(&params.url),
@@ -391,6 +392,21 @@ mod tests {
                 WsEvent::Error(msg) => assert!(!msg.is_empty(), "empty error for {url:?}"),
                 other => panic!("expected Error for {url:?}, got {other:?}"),
             }
+        }
+    }
+
+    /// REGRESSION: with `full-sync`, libp2p enables rustls' `aws-lc-rs` beside
+    /// the `ring` the HTTP stack uses, so rustls cannot pick a provider on its
+    /// own and every `wss://` connect panicked its thread. The UI only saw
+    /// the channel close and showed "disconnected" with no reason.
+    #[test]
+    fn a_failed_tls_handshake_is_reported_not_panicked() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        std::thread::spawn(move || drop(listener.accept()));
+        match connect_and_take_first_event(&format!("wss://127.0.0.1:{port}")) {
+            WsEvent::Error(msg) => assert!(!msg.is_empty()),
+            other => panic!("expected Error, got {other:?}"),
         }
     }
 

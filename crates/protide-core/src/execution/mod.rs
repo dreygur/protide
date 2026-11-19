@@ -4,6 +4,7 @@ mod sio_codec;
 mod sio_handshake;
 #[cfg(test)]
 pub(crate) mod test_server;
+mod tls;
 pub mod ws;
 
 use std::collections::HashMap;
