@@ -168,11 +168,24 @@ pub fn is_relevant(event: &WorkspaceEvent, root: &Path) -> bool {
 }
 
 /// Windows device names that open a device instead of a file, with or
-/// without an extension.
-const RESERVED_NAMES: [&str; 22] = [
-    "con", "prn", "aux", "nul", "com1", "com2", "com3", "com4", "com5", "com6", "com7", "com8",
-    "com9", "lpt1", "lpt2", "lpt3", "lpt4", "lpt5", "lpt6", "lpt7", "lpt8", "lpt9",
-];
+/// without an extension. COM and LPT take a digit, including ¹ ² ³.
+const DEVICE_NAMES: [&str; 7] = ["con", "prn", "aux", "nul", "conin$", "conout$", "clock$"];
+const NUMBERED_DEVICES: [&str; 2] = ["com", "lpt"];
+
+fn is_device_name(name: &str) -> bool {
+    let stem = name.split('.').next().unwrap_or_default();
+    let stem = stem.trim_end_matches([' ', '.']).to_lowercase();
+    let numbered = NUMBERED_DEVICES.iter().any(|prefix| {
+        stem.strip_prefix(prefix).is_some_and(|rest| {
+            let mut chars = rest.chars();
+            let digit = chars
+                .next()
+                .is_some_and(|c| c.is_ascii_digit() || matches!(c, '¹' | '²' | '³'));
+            digit && chars.next().is_none()
+        })
+    });
+    numbered || DEVICE_NAMES.contains(&stem.as_str())
+}
 
 /// Whether a path component means the same file on every platform. Windows
 /// drops trailing dots and spaces, reads ':' as a stream, maps `~` names to
@@ -180,14 +193,7 @@ const RESERVED_NAMES: [&str; 22] = [
 /// specially, so any of those could pass a check here yet resolve elsewhere.
 fn portable_name(name: &std::ffi::OsStr) -> bool {
     let name = name.to_string_lossy();
-    let stem = name
-        .split('.')
-        .next()
-        .unwrap_or_default()
-        .to_ascii_lowercase();
-    !name.ends_with(['.', ' '])
-        && !name.contains([':', '\\', '~'])
-        && !RESERVED_NAMES.contains(&stem.as_str())
+    !name.ends_with(['.', ' ']) && !name.contains([':', '\\', '~']) && !is_device_name(&name)
 }
 
 /// Whether the deepest existing folder of `path` resolves inside `root` and
@@ -297,6 +303,11 @@ mod tests {
             "CON",
             "nul.http",
             "api/com1.txt",
+            "con .txt",
+            "COM¹",
+            "lpt0.http",
+            "conin$",
+            "clock$.http",
         ] {
             assert_eq!(synced_file_path(root, hostile), None, "{hostile}");
         }
