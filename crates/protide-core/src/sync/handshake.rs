@@ -540,11 +540,12 @@ mod tests {
         assert_eq!(paired_with(&events_a), Some("bob"));
     }
 
-    /// Gossipsub hands an entry only to nodes subscribed to its topic, so
-    /// `to` merges it only when it listens on the sender's sync topic.
+    /// Any LAN peer can subscribe to a sync topic, so delivery is not
+    /// gated on it: `to` merges `entry` only when it opens `from`'s seal.
     fn gossip(from: &SyncEngine, to: &mut SyncEngine, entry: CrdtEntry) -> bool {
-        from.sync_topic() == to.sync_topic()
-            && matches!(to.store.merge_remote(entry), MergeResult::Accepted(_))
+        let wire = from.seal_for_sync(&entry).unwrap();
+        to.accept_sync_msg(&wire, &mut Vec::new());
+        to.store.get(&entry.id).is_some()
     }
 
     // REGRESSION: each node's sync topic came from its own pairing code,
@@ -746,7 +747,8 @@ mod tests {
     }
 
     /// Resetting the group revokes earlier pairings: the node moves to a
-    /// new sync topic and a peer still holding the old secret is left out.
+    /// new key and topic, and a peer still holding the old secret can
+    /// neither read its new entries nor get its own accepted.
     #[test]
     fn resetting_the_group_drops_previously_paired_peers() {
         let (mut alice, mut bob) = (showing(CODE), engine("bob", None));
@@ -760,7 +762,12 @@ mod tests {
         let entry = alice.apply_local_change(DataType::Request, "{}".into());
         assert!(
             !gossip(&alice, &mut bob, entry),
-            "a dropped peer still syncs"
+            "a dropped peer still reads"
+        );
+        let theirs = bob.apply_local_change(DataType::Request, "{}".into());
+        assert!(
+            !gossip(&bob, &mut alice, theirs),
+            "a dropped peer still injects"
         );
     }
 

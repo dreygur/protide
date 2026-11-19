@@ -16,7 +16,7 @@ use super::p2p_swarm::{
     bootstrap_kademlia, build_swarm, handle_swarm_event, switch_own_pake_topic,
 };
 use super::p2p_topic::pake_topic;
-use super::types::{CrdtEntry, NodeId};
+use super::types::NodeId;
 
 // ── Command channel ───────────────────────────────────────────────────────────
 
@@ -32,6 +32,9 @@ pub enum SwarmCmd {
     SetPairingCode(String),
     /// Move CRDT sync to a new topic after joining a paired group
     SetSyncTopic(String),
+    /// Publish a sealed CRDT entry on the current sync topic. It shares
+    /// the command queue so it is never reordered across `SetSyncTopic`.
+    PublishSync(Vec<u8>),
 }
 
 // ── Events ────────────────────────────────────────────────────────────────────
@@ -39,7 +42,8 @@ pub enum SwarmCmd {
 /// Events from the P2P backend
 #[derive(Debug, Clone)]
 pub enum P2PEvent {
-    EntryReceived(CrdtEntry),
+    /// A sealed CRDT entry arrived on the sync topic, still unopened
+    SyncMsg(Vec<u8>),
     PeerJoined(PeerId),
     PeerLeft(PeerId),
     Error(String),
@@ -67,8 +71,6 @@ pub struct P2PSync {
     _event_tx: Sender<P2PEvent>,
     event_rx: Receiver<P2PEvent>,
     known_peers: HashSet<PeerId>,
-    /// Outgoing CRDT broadcast channel
-    broadcast_tx: Sender<CrdtEntry>,
     /// Command channel for subscribe/publish operations on dynamic topics
     cmd_tx: Sender<SwarmCmd>,
 }
@@ -83,7 +85,6 @@ impl P2PSync {
         sync_topic: String,
     ) -> Result<Self, String> {
         let (event_tx, event_rx) = mpsc::channel::<P2PEvent>();
-        let (broadcast_tx, broadcast_rx) = mpsc::channel::<CrdtEntry>();
         let (cmd_tx, cmd_rx) = mpsc::channel::<SwarmCmd>();
 
         // Generate keypair here so peer_id is known before the swarm thread starts.
@@ -184,16 +185,6 @@ impl P2PSync {
                     let mut pake_topics: HashMap<String, gossipsub::IdentTopic> = HashMap::new();
 
                     'run: loop {
-                        // Drain outgoing CRDT broadcasts
-                        while let Ok(entry) = broadcast_rx.try_recv() {
-                            if let Ok(data) = serde_json::to_vec(&entry) {
-                                let _ = swarm
-                                    .behaviour_mut()
-                                    .gossipsub
-                                    .publish(crdt_topic_thread.clone(), data);
-                            }
-                        }
-
                         // Drain commands (subscribe / publish on dynamic topics)
                         loop {
                             let cmd = match cmd_rx.try_recv() {
@@ -220,6 +211,13 @@ impl P2PSync {
                                     let _ = gossipsub.unsubscribe(&crdt_topic_thread);
                                     crdt_topic_thread = gossipsub::IdentTopic::new(topic);
                                     let _ = gossipsub.subscribe(&crdt_topic_thread);
+                                    continue;
+                                }
+                                SwarmCmd::PublishSync(data) => {
+                                    let _ = swarm
+                                        .behaviour_mut()
+                                        .gossipsub
+                                        .publish(crdt_topic_thread.clone(), data);
                                     continue;
                                 }
                             };
@@ -259,16 +257,14 @@ impl P2PSync {
             _event_tx: event_tx,
             event_rx,
             known_peers: HashSet::new(),
-            broadcast_tx,
             cmd_tx,
         })
     }
 
-    /// Broadcast a CRDT entry via Gossipsub.
-    pub fn broadcast_entry(&mut self, entry: &CrdtEntry) -> Result<(), String> {
-        self.broadcast_tx
-            .send(entry.clone())
-            .map_err(|e| format!("Broadcast channel error: {}", e))
+    /// Publish a sealed CRDT entry on the current sync topic. Callers seal
+    /// first (see `p2p_seal`); this never sees an entry in the clear.
+    pub fn publish_sync(&self, data: Vec<u8>) {
+        let _ = self.cmd_tx.send(SwarmCmd::PublishSync(data));
     }
 
     /// Subscribe to the PAKE topic for `code` and publish raw bytes on it.

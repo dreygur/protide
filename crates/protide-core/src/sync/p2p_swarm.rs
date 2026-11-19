@@ -17,7 +17,6 @@ use serde::{Deserialize, Serialize};
 
 use super::p2p::P2PEvent;
 use super::p2p_topic::PAKE_TOPIC_PREFIX;
-use super::types::CrdtEntry;
 
 /// Serialised payload for PAKE handshake messages over gossipsub
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -245,8 +244,9 @@ pub(super) fn handle_swarm_event(
                         payload,
                     });
                 }
-            } else if let Ok(entry) = serde_json::from_slice::<CrdtEntry>(&message.data) {
-                let _ = event_tx_thread.send(P2PEvent::EntryReceived(entry));
+            } else {
+                // Sealed: the engine opens it under the current group key.
+                let _ = event_tx_thread.send(P2PEvent::SyncMsg(message.data));
             }
         }
         SwarmEvent::Behaviour(ProtideBehaviourEvent::Mdns(mdns_event)) => match mdns_event {

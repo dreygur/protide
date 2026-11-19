@@ -13,11 +13,8 @@ impl SyncEngine {
             let _ = fs.write_entry(&entry);
         }
 
-        // Broadcast via P2P
         #[cfg(feature = "p2p-sync")]
-        if let Some(ref mut p2p) = self.p2p_sync {
-            let _ = p2p.broadcast_entry(&entry);
-        }
+        self.publish_entry(&entry);
 
         self.event_count += 1;
         entry
@@ -37,9 +34,7 @@ impl SyncEngine {
         }
 
         #[cfg(feature = "p2p-sync")]
-        if let Some(ref mut p2p) = self.p2p_sync {
-            let _ = p2p.broadcast_entry(&entry);
-        }
+        self.publish_entry(&entry);
 
         self.event_count += 1;
         Some(entry)
@@ -56,9 +51,7 @@ impl SyncEngine {
         }
 
         #[cfg(feature = "p2p-sync")]
-        if let Some(ref mut p2p) = self.p2p_sync {
-            let _ = p2p.broadcast_entry(&entry);
-        }
+        self.publish_entry(&entry);
 
         self.event_count += 1;
         Some(entry)
@@ -96,29 +89,34 @@ impl SyncEngine {
         }
     }
 
+    /// Merge an entry from a peer and report it when it is newer than ours.
+    pub(super) fn merge_remote_entry(
+        &mut self,
+        entry: types::CrdtEntry,
+        events: &mut Vec<SyncEvent>,
+    ) {
+        if let MergeResult::Accepted(_) = self.store.merge_remote(entry.clone()) {
+            push_entry_event(entry, events);
+        }
+    }
+
     /// Poll all backends for incoming events and drain them into the event channel.
     pub fn poll(&mut self) -> Vec<SyncEvent> {
         let mut events = Vec::new();
 
         // Poll file sync events
-        if let Some(ref mut fs) = self.file_sync {
-            for fs_event in fs.poll_events() {
-                match fs_event {
-                    FileSyncEvent::EntryReceived(entry) => {
-                        match self.store.merge_remote(entry.clone()) {
-                            MergeResult::Accepted(_) => {
-                                push_entry_event(entry, &mut events);
-                            }
-                            MergeResult::Stale => {}
-                        }
-                    }
-                    FileSyncEvent::EntryDeleted(_id) => {
-                        // Re-create the entry as a tombstone via remote merge
-                        // (the actual delete event will be handled when the tombstone is read)
-                    }
-                    FileSyncEvent::Error(e) => {
-                        events.push(SyncEvent::SyncError(e));
-                    }
+        let fs_events = self.file_sync.as_mut().map(|fs| fs.poll_events());
+        for fs_event in fs_events.unwrap_or_default() {
+            match fs_event {
+                FileSyncEvent::EntryReceived(entry) => {
+                    self.merge_remote_entry(entry, &mut events);
+                }
+                FileSyncEvent::EntryDeleted(_id) => {
+                    // Re-create the entry as a tombstone via remote merge
+                    // (the actual delete event will be handled when the tombstone is read)
+                }
+                FileSyncEvent::Error(e) => {
+                    events.push(SyncEvent::SyncError(e));
                 }
             }
         }
@@ -141,13 +139,8 @@ impl SyncEngine {
 
             for p2p_event in p2p_events {
                 match p2p_event {
-                    p2p::P2PEvent::EntryReceived(entry) => {
-                        match self.store.merge_remote(entry.clone()) {
-                            MergeResult::Accepted(_) => {
-                                push_entry_event(entry, &mut events);
-                            }
-                            MergeResult::Stale => {}
-                        }
+                    p2p::P2PEvent::SyncMsg(data) => {
+                        self.accept_sync_msg(&data, &mut events);
                     }
                     p2p::P2PEvent::PeerJoined(peer) => {
                         info!("[mDNS] Discovered peer: {}", peer);

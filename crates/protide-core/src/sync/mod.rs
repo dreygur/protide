@@ -24,6 +24,7 @@ pub mod types;
 
 mod engine;
 mod handshake;
+mod p2p_seal;
 mod p2p_swarm;
 mod p2p_topic;
 

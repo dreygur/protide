@@ -66,7 +66,8 @@ zeroize = { workspace = true, optional = true }
 
 [features]
 default = []
-p2p-sync = ["dep:libp2p", "dep:argon2"]
+# ChaCha20Poly1305 seals every CRDT entry on the sync topic
+p2p-sync = ["dep:libp2p", "dep:argon2", "dep:chacha20poly1305"]
 pake-auth = ["dep:spake2", "dep:chacha20poly1305", "dep:rand", "dep:zeroize"]
 full-sync = ["p2p-sync", "pake-auth"]
 
