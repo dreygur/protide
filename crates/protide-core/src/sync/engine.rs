@@ -166,6 +166,16 @@ impl SyncEngine {
                     p2p::P2PEvent::LocalAddr(addr) => {
                         events.push(SyncEvent::LocalAddr(addr));
                     }
+                    p2p::P2PEvent::PakeTopic(topic) => {
+                        #[cfg(feature = "pake-auth")]
+                        {
+                            self.pake_topic = Some(topic);
+                        }
+                        #[cfg(not(feature = "pake-auth"))]
+                        {
+                            let _ = topic;
+                        }
+                    }
                     p2p::P2PEvent::PakeMsg {
                         from,
                         topic,

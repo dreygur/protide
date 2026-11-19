@@ -11,7 +11,6 @@ impl SyncEngine {
     pub(crate) fn start_handshake(&mut self, code: &str) -> Result<Vec<u8>, String> {
         let (msg_b, state_b) = pake::pake_respond(code)?;
         self.pake_pending = Some(state_b);
-        self.pake_pending_code = code.to_string();
         let payload = p2p::PakeMsgPayload {
             kind: "init".to_string(),
             node_name: self.config.node_name.clone(),
@@ -25,10 +24,10 @@ impl SyncEngine {
     /// topic. Pushes UI events onto `events` and returns an optional
     /// `(topic, payload)` for the caller to publish back to the peer.
     ///
-    /// Messages are only acted on while a handshake we started is pending
-    /// (`pake_pending_code` non-empty) - the topic name is an Argon2id hash of
-    /// the pairing code (see `PairingTopics`) and cannot be reversed, so the
-    /// code we typed in ourselves is the only one we can use.
+    /// The topic name is an Argon2id hash of the pairing code (see
+    /// `PairingTopics`) and cannot be reversed, so an "init" is only answered
+    /// when it arrives on the cached topic of the code we show, and "resp"
+    /// or "confirm" only while a handshake we took part in is pending.
     pub(crate) fn handle_pake_msg(
         &mut self,
         from: String,
@@ -39,10 +38,6 @@ impl SyncEngine {
         confirm: Option<&[u8]>,
         events: &mut Vec<SyncEvent>,
     ) -> Option<(String, Vec<u8>)> {
-        let code = self.pake_pending_code.clone();
-        if code.is_empty() {
-            return None;
-        }
         match kind {
             // We are Alice: generate the A-side and finish, but don't trust
             // the handshake yet - SPAKE2's finish() only proves the peer's
@@ -50,6 +45,10 @@ impl SyncEngine {
             // our confirmation blob along with "resp" and wait for Bob's
             // "confirm" before declaring HandshakeComplete.
             "init" => {
+                if self.pake_topic.as_deref() != Some(topic.as_str()) {
+                    return None;
+                }
+                let code = self.config.pairing_code.clone()?;
                 let (msg_a, state_a) = pake::pake_initiate(&code).ok()?;
                 let session_a = match pake::pake_finish(state_a, pake_bytes) {
                     Ok(s) => s,
@@ -145,6 +144,7 @@ mod tests {
     use crate::sync::p2p_topic::PairingTopics;
 
     const CODE: &str = "amber-otter-river-tiger-482";
+    const OTHER: &str = "amber-otter-river-tiger-483";
 
     fn engine(name: &str, pairing_code: Option<&str>) -> SyncEngine {
         SyncEngine::new(SyncConfig {
@@ -152,6 +152,19 @@ mod tests {
             pairing_code: pairing_code.map(str::to_string),
             ..Default::default()
         })
+    }
+
+    /// Alice showing `code`, with its topic cached as the swarm reports it.
+    fn showing(code: &str) -> SyncEngine {
+        let mut alice = engine("alice", Some(code));
+        alice.pake_topic = Some(PairingTopics::derive(code).pake);
+        alice
+    }
+
+    /// Bob's "init" for `code`, published on that code's topic.
+    fn init_for(code: &str) -> (String, Vec<u8>) {
+        let init = engine("bob", None).start_handshake(code).unwrap();
+        (PairingTopics::derive(code).pake, init)
     }
 
     /// Feed one published payload into `to` as if gossipsub delivered it.
@@ -176,7 +189,7 @@ mod tests {
     /// Alice shows CODE, Bob types `typed` and his init lands on Alice's
     /// topic. Messages are pumped by hand until neither side replies.
     fn pair(typed: &str) -> (Vec<SyncEvent>, Vec<SyncEvent>) {
-        let mut alice = engine("alice", Some(CODE));
+        let mut alice = showing(CODE);
         let mut bob = engine("bob", None);
         let (mut events_a, mut events_b) = (Vec::new(), Vec::new());
         let init = bob.start_handshake(typed).unwrap();
@@ -200,9 +213,39 @@ mod tests {
         })
     }
 
+    /// True when `alice` neither answers `init` nor reports anything.
+    fn ignores(alice: &mut SyncEngine, init: (String, Vec<u8>)) -> bool {
+        let mut events = Vec::new();
+        deliver(alice, "bob", init, &mut events).is_none() && events.is_empty()
+    }
+
+    // REGRESSION: the side showing its code ignored every incoming init,
+    // because only the side that typed a code had a pending code set.
+    // Each side only reports HandshakeComplete after verifying the other's
+    // AEAD confirmation blob, so both completing proves equal session keys.
+    #[test]
+    fn the_side_showing_its_code_pairs_with_the_side_typing_it() {
+        let (events_a, events_b) = pair(CODE);
+        assert_eq!(paired_with(&events_a), Some("bob"));
+        assert_eq!(paired_with(&events_b), Some("alice"));
+    }
+
+    /// The topic is compared against the cached string only: with nothing
+    /// cached yet the init is dropped rather than running the KDF.
+    #[test]
+    fn an_init_before_the_topic_is_cached_is_ignored() {
+        let mut alice = engine("alice", Some(CODE));
+        assert!(ignores(&mut alice, init_for(CODE)));
+    }
+
+    #[test]
+    fn an_init_for_a_code_we_do_not_show_is_ignored() {
+        assert!(ignores(&mut showing(CODE), init_for(OTHER)));
+    }
+
     #[test]
     fn a_wrong_code_never_pairs() {
-        let (events_a, events_b) = pair("amber-otter-river-tiger-483");
+        let (events_a, events_b) = pair(OTHER);
         assert_eq!(paired_with(&events_a), None);
         assert_eq!(paired_with(&events_b), None);
     }

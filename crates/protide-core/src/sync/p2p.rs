@@ -70,6 +70,9 @@ pub enum P2PEvent {
     },
     /// Our own listen multiaddress - emitted once the swarm binds a port
     LocalAddr(String),
+    /// The PAKE topic of our own pairing code, sent once the swarm thread
+    /// has derived it and subscribed
+    PakeTopic(String),
 }
 
 // ── P2PSync ───────────────────────────────────────────────────────────────────
@@ -163,6 +166,7 @@ impl P2PSync {
                     if let Some(ref topics) = topics {
                         let pake_topic = gossipsub::IdentTopic::new(&topics.pake);
                         let _ = swarm.behaviour_mut().gossipsub.subscribe(&pake_topic);
+                        let _ = event_tx_thread.send(P2PEvent::PakeTopic(topics.pake.clone()));
                     }
 
                     // Listen on TCP
