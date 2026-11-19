@@ -6,8 +6,6 @@ use gpui::{
 
 impl Render for ExplorerPanel {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        // Poll file system changes on each render (cheap: just drains a channel)
-        self.poll_workspace_changes(cx);
         let theme = theme::current(cx);
 
         div()

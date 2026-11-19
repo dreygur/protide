@@ -2,8 +2,28 @@ use super::workspace::read_request;
 use super::*;
 use gpui::{Context, Entity};
 
+/// How often the workspace watcher is drained. A timer, not render: files
+/// changed outside the app must be seen (and synced) while nothing redraws.
+const WATCH_POLL_INTERVAL: std::time::Duration = std::time::Duration::from_millis(500);
+
 impl ExplorerPanel {
+    fn spawn_watch_poll(cx: &mut Context<Self>) {
+        cx.spawn(async move |this, cx| {
+            loop {
+                cx.background_executor().timer(WATCH_POLL_INTERVAL).await;
+                if this
+                    .update(cx, |panel, cx| panel.poll_workspace_changes(cx))
+                    .is_err()
+                {
+                    break;
+                }
+            }
+        })
+        .detach();
+    }
+
     pub fn new(cx: &mut Context<Self>, main_window: WeakEntity<MainWindow>) -> Self {
+        Self::spawn_watch_poll(cx);
         Self {
             request_panel: None,
             history_expanded: false,
