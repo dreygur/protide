@@ -9,19 +9,19 @@ use std::time::{Duration, Instant};
 use super::pake::Role;
 use super::*;
 
-/// Length of one guess budget window. Every answered init is one online
-/// guess at the shown code.
+/// Inits answered for one shown code over its whole life; every answered
+/// init is one online guess at it. The guess that reaches this replaces
+/// the code, and only a rotation resets the count, so no code ever takes
+/// more guesses however they are spread over time.
+const MAX_GUESSES_PER_CODE: u32 = 10;
+
+/// Length of the per peer throttle window.
 const GUESS_WINDOW: Duration = Duration::from_secs(60);
 
-/// Inits answered per peer in one window. A peer over it is ignored until
-/// the window ends, so one peer cannot force rotations on honest users.
+/// Inits answered per peer in one window. A peer over it is dropped until
+/// the window ends; this only throttles that peer and never rotates the
+/// code or turns anyone else away.
 const MAX_GUESSES_PER_PEER: u32 = 3;
-
-/// Inits answered across all peers in one window, however many PeerIds an
-/// attacker makes up. The guess that reaches it replaces the code, and
-/// further inits wait for the next window. It also bounds the per peer
-/// table, since every tracked peer has spent a guess.
-const MAX_GUESSES_PER_WINDOW: u32 = 10;
 
 /// How long a pending responder session accepts its peer's "confirm".
 /// Matches the UI's handshake timeout.
@@ -29,9 +29,10 @@ const PENDING_PAIRING_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// Most pending responder sessions held at once; the oldest is dropped to
 /// make room, so no peer can fill the table and lock others out. Every
-/// pending session cost a guess, so one window's budget always fits and
-/// an honest session is never evicted by the guesses that follow it.
-const MAX_PENDING_PAIRINGS: usize = MAX_GUESSES_PER_WINDOW as usize;
+/// pending session cost a guess, so the budgets of the current code and
+/// the one before it fit: an honest session survives the rest of its
+/// code's guesses and the rotation they cause.
+const MAX_PENDING_PAIRINGS: usize = 2 * MAX_GUESSES_PER_CODE as usize;
 
 /// The responder's session while it waits for its peer's "confirm".
 pub(super) struct PendingSession {
@@ -45,10 +46,12 @@ impl PendingSession {
     }
 }
 
-/// Guesses answered in the current window, in total and per peer.
+/// Guesses answered for the shown code, and per peer in the current
+/// throttle window. The per peer table only holds peers that spent one of
+/// the code's guesses, so it never outgrows MAX_GUESSES_PER_CODE.
 pub(super) struct GuessWindow {
     start: Instant,
-    total: u32,
+    for_code: u32,
     per_peer: HashMap<String, u32>,
 }
 
@@ -56,7 +59,7 @@ impl Default for GuessWindow {
     fn default() -> Self {
         Self {
             start: Instant::now(),
-            total: 0,
+            for_code: 0,
             per_peer: HashMap::new(),
         }
     }
@@ -82,7 +85,8 @@ impl SyncEngine {
     /// swarm derives and subscribes the new topic off this thread and
     /// reports it back; until then every init is ignored. Sessions already
     /// pending keep their keys, so peers whose init came first can still
-    /// confirm.
+    /// confirm. The new code starts with a fresh budget and no throttled
+    /// peers, so whoever types it is answered at once.
     fn regenerate_pairing_code(&mut self) {
         let code = pake::generate_pairing_code();
         if let Some(ref p2p) = self.p2p_sync {
@@ -90,21 +94,23 @@ impl SyncEngine {
         }
         self.config.pairing_code = Some(code);
         self.pake_topic = None;
+        self.guesses = GuessWindow::default();
     }
 
-    /// Spend one guess for `peer`, or refuse it when that peer or all peers
-    /// together are out of budget for the current window.
+    /// Spend one of the code's guesses for `peer`, or drop the init when
+    /// that peer is over its throttle for the current window.
     fn take_guess(&mut self, peer: &str) -> bool {
-        if self.guesses.start.elapsed() >= GUESS_WINDOW {
-            self.guesses = GuessWindow::default();
+        let guesses = &mut self.guesses;
+        if guesses.start.elapsed() >= GUESS_WINDOW {
+            guesses.start = Instant::now();
+            guesses.per_peer.clear();
         }
-        let window = &mut self.guesses;
-        let spent = window.per_peer.get(peer).copied().unwrap_or(0);
-        if window.total >= MAX_GUESSES_PER_WINDOW || spent >= MAX_GUESSES_PER_PEER {
+        let spent = guesses.per_peer.get(peer).copied().unwrap_or(0);
+        if spent >= MAX_GUESSES_PER_PEER {
             return false;
         }
-        window.per_peer.insert(peer.to_string(), spent + 1);
-        window.total += 1;
+        guesses.per_peer.insert(peer.to_string(), spent + 1);
+        guesses.for_code += 1;
         true
     }
 
@@ -180,7 +186,7 @@ impl SyncEngine {
                 };
                 let confirm_a = pake::confirm_blob(&session_a, Role::Responder);
                 self.hold_pending(from, session_a);
-                if self.guesses.total >= MAX_GUESSES_PER_WINDOW {
+                if self.guesses.for_code >= MAX_GUESSES_PER_CODE {
                     self.regenerate_pairing_code();
                 }
                 self.reply(topic, "resp", msg_a, Some(confirm_a), None)
@@ -681,23 +687,33 @@ mod tests {
         assert_eq!(paired_with(&events_a), Some("bob"));
     }
 
-    /// Many PeerIds together get MAX_GUESSES_PER_WINDOW answers per window.
-    /// The last one replaces the code; the old code then no longer pairs,
-    /// and the new one does once the swarm reports its topic and a new
-    /// window starts.
+    // REGRESSION: the guess budget reset with every window, so a code that
+    // was never rotated took unbounded guesses over time.
     #[test]
-    fn the_global_guess_rate_stays_bounded() {
+    fn a_code_answers_at_most_its_guess_budget_whatever_the_timing() {
         let mut alice = showing(CODE);
-        let answered: usize = (0..30)
+        let mut answered = 0;
+        for _ in 0..2 * MAX_GUESSES_PER_CODE {
+            answered += guesses(&mut alice, "mallory", MAX_GUESSES_PER_PEER as usize);
+            alice.guesses.start -= GUESS_WINDOW;
+        }
+        assert_eq!(answered, MAX_GUESSES_PER_CODE as usize);
+        assert_ne!(alice.config.pairing_code.as_deref(), Some(CODE), "rotated");
+    }
+
+    // REGRESSION: once a window's shared budget was spent every init was
+    // refused until the window ended, locking out the honest user too.
+    #[test]
+    fn after_a_rotation_the_new_code_pairs_at_once() {
+        let mut alice = showing(CODE);
+        let peers = MAX_GUESSES_PER_CODE as usize;
+        let answered: usize = (0..peers)
             .map(|i| guesses(&mut alice, &format!("p{i}"), 1))
             .sum();
-        assert_eq!(answered, MAX_GUESSES_PER_WINDOW as usize);
+        assert_eq!(answered, peers);
         let new_code = alice.config.pairing_code.clone().unwrap();
         assert_ne!(new_code, CODE);
-
         alice.pake_topic = Some(pake_topic(&new_code));
-        assert_eq!(guesses(&mut alice, "late", 1), 0, "window budget spent");
-        alice.guesses.start -= GUESS_WINDOW;
         assert!(ignores(&mut alice, init_for(CODE), "bob"));
         let (events_a, _) = pair(&mut alice, &new_code);
         assert_eq!(paired_with(&events_a), Some("bob"));
@@ -707,7 +723,7 @@ mod tests {
     fn an_honest_pending_session_survives_a_rotation() {
         let mut alice = showing(CODE);
         let confirm = bob_confirm(&mut alice);
-        let others = (MAX_GUESSES_PER_WINDOW - 1) as usize;
+        let others = (MAX_GUESSES_PER_CODE - 1) as usize;
         let answered: usize = (0..others)
             .map(|i| guesses(&mut alice, &format!("p{i}"), 1))
             .sum();
