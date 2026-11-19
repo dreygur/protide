@@ -12,15 +12,24 @@ use super::*;
 /// the code is replaced, so an online guesser gets this many tries per code.
 const MAX_FAILED_PAIRINGS: u32 = 5;
 
-/// How long the responder holds one pending session before a new init may
-/// replace it. Matches the UI's handshake timeout.
+/// How long a pending responder session accepts its peer's "confirm".
+/// Matches the UI's handshake timeout.
 const PENDING_PAIRING_TIMEOUT: Duration = Duration::from_secs(10);
 
-/// The responder's session while it waits for that peer's "confirm".
+/// Most pending responder sessions held at once; the oldest is dropped to
+/// make room, so no peer can fill the table and lock others out.
+const MAX_PENDING_PAIRINGS: usize = 8;
+
+/// The responder's session while it waits for its peer's "confirm".
 pub(super) struct PendingResponder {
-    peer: String,
     session: pake::PakeSession,
     since: Instant,
+}
+
+impl PendingResponder {
+    fn is_live(&self) -> bool {
+        self.since.elapsed() < PENDING_PAIRING_TIMEOUT
+    }
 }
 
 impl SyncEngine {
@@ -49,6 +58,26 @@ impl SyncEngine {
         self.config.pairing_code = Some(code);
         self.pake_topic = None;
         self.failed_pairings = 0;
+        self.pending_responders.clear();
+    }
+
+    /// Hold `session` for `peer` until it confirms, replacing that peer's
+    /// own earlier session and dropping expired ones, then the oldest when
+    /// the table is full.
+    fn hold_pending(&mut self, peer: String, session: pake::PakeSession) {
+        let pending = &mut self.pending_responders;
+        pending.retain(|_, p| p.is_live());
+        if pending.len() >= MAX_PENDING_PAIRINGS && !pending.contains_key(&peer) {
+            let oldest = pending
+                .iter()
+                .min_by_key(|(_, p)| p.since)
+                .map(|(k, _)| k.clone());
+            if let Some(oldest) = oldest {
+                pending.remove(&oldest);
+            }
+        }
+        let since = Instant::now();
+        pending.insert(peer, PendingResponder { session, since });
     }
 
     /// Process one PAKE handshake message received on a `protide-pake-*`
@@ -79,15 +108,6 @@ impl SyncEngine {
                 if !self.accepting_pairing || self.pake_topic.as_deref() != Some(topic.as_str()) {
                     return None;
                 }
-                // One session at a time, so an attacker's init cannot
-                // replace the real peer's before it times out.
-                if self
-                    .pake_pending_alice
-                    .as_ref()
-                    .is_some_and(|p| p.since.elapsed() < PENDING_PAIRING_TIMEOUT)
-                {
-                    return None;
-                }
                 let code = self.config.pairing_code.clone()?;
                 let (msg_a, state_a) = pake::pake_initiate(&code).ok()?;
                 let session_a = match pake::pake_finish(state_a, pake_bytes) {
@@ -101,11 +121,7 @@ impl SyncEngine {
                     }
                 };
                 let confirm_a = pake::confirm_blob(&session_a, Role::Responder);
-                self.pake_pending_alice = Some(PendingResponder {
-                    peer: from,
-                    session: session_a,
-                    since: Instant::now(),
-                });
+                self.hold_pending(from, session_a);
                 // Counted until a verified "confirm" resets it: a guesser
                 // who learns nothing never sends one.
                 self.failed_pairings += 1;
@@ -140,13 +156,16 @@ impl SyncEngine {
                 self.reply(topic, "confirm", Vec::new(), confirm_b)
             }
             // We are Alice: Bob has (claimed to have) proven he derived the
-            // same key as us. Only the peer whose init we answered may
-            // confirm; anyone else leaves the pending session untouched.
+            // same key as us. A confirm is only checked against the session
+            // of the peer that sent it, while it is live and the window open.
             "confirm" => {
-                if !matches!(&self.pake_pending_alice, Some(p) if p.peer == from) {
+                if !self.accepting_pairing {
                     return None;
                 }
-                let pending = self.pake_pending_alice.take()?;
+                let pending = self.pending_responders.remove(&from)?;
+                if !pending.is_live() {
+                    return None;
+                }
                 if confirm.is_some_and(|blob| {
                     pake::verify_confirm(&pending.session, Role::Initiator, blob)
                 }) {
@@ -270,11 +289,17 @@ mod tests {
         deliver(alice, from, msg, &mut events).is_none() && events.is_empty()
     }
 
-    /// Age Alice's pending session past the timeout, as an abandoned one.
-    fn expire(alice: &mut SyncEngine) {
-        if let Some(pending) = alice.pake_pending_alice.as_mut() {
-            pending.since -= PENDING_PAIRING_TIMEOUT;
-        }
+    /// Run Bob's side with the right code up to his "confirm", which is
+    /// returned undelivered while Alice holds his pending session.
+    fn bob_confirm(alice: &mut SyncEngine) -> (String, Vec<u8>) {
+        let mut bob = engine("bob", None);
+        let mut events = Vec::new();
+        let init = (
+            alice.pake_topic.clone().unwrap(),
+            bob.start_handshake(CODE).unwrap(),
+        );
+        let resp = deliver(alice, "bob", init, &mut events).unwrap();
+        deliver(&mut bob, "alice", resp, &mut events).unwrap()
     }
 
     // REGRESSION: the side showing its code ignored every incoming init,
@@ -303,13 +328,11 @@ mod tests {
         let mut alice = showing(CODE);
         for _ in 1..MAX_FAILED_PAIRINGS {
             pair(&mut alice, OTHER);
-            expire(&mut alice);
         }
         assert_eq!(alice.config.pairing_code.as_deref(), Some(CODE));
         let (events_a, events_b) = pair(&mut alice, OTHER);
         assert_eq!(paired_with(&events_a), None);
         assert_eq!(paired_with(&events_b), None);
-        expire(&mut alice);
 
         let new_code = alice.config.pairing_code.clone().unwrap();
         assert_ne!(new_code, CODE);
@@ -366,15 +389,44 @@ mod tests {
     #[test]
     fn a_confirm_from_another_peer_is_ignored() {
         let mut alice = showing(CODE);
-        let mut bob = engine("bob", None);
-        let (mut events_a, mut events_b) = (Vec::new(), Vec::new());
-        let topic = alice.pake_topic.clone().unwrap();
-        let init = (topic, bob.start_handshake(CODE).unwrap());
-        let resp = deliver(&mut alice, "bob", init, &mut events_a).unwrap();
-        let confirm = deliver(&mut bob, "alice", resp, &mut events_b).unwrap();
+        let confirm = bob_confirm(&mut alice);
         assert!(ignores(&mut alice, confirm.clone(), "mallory"));
-        deliver(&mut alice, "bob", confirm, &mut events_a);
-        assert_eq!(paired_with(&events_a), Some("bob"));
+        let mut events = Vec::new();
+        deliver(&mut alice, "bob", confirm, &mut events);
+        assert_eq!(paired_with(&events), Some("bob"));
+    }
+
+    #[test]
+    fn an_expired_sessions_confirm_is_rejected() {
+        let mut alice = showing(CODE);
+        let confirm = bob_confirm(&mut alice);
+        for pending in alice.pending_responders.values_mut() {
+            pending.since -= PENDING_PAIRING_TIMEOUT;
+        }
+        assert!(ignores(&mut alice, confirm, "bob"));
+    }
+
+    #[test]
+    fn a_full_pending_table_drops_its_oldest_session() {
+        let mut alice = showing(CODE);
+        for peer in 0..=MAX_PENDING_PAIRINGS {
+            let session = pake::PakeSession {
+                shared_key: [0; 32],
+            };
+            alice.hold_pending(peer.to_string(), session);
+        }
+        assert_eq!(alice.pending_responders.len(), MAX_PENDING_PAIRINGS);
+        assert!(!alice.pending_responders.contains_key("0"));
+    }
+
+    #[test]
+    fn closing_the_window_clears_pending_sessions() {
+        let mut alice = showing(CODE);
+        let confirm = bob_confirm(&mut alice);
+        alice.set_accepting_pairing(false);
+        assert!(alice.pending_responders.is_empty());
+        alice.set_accepting_pairing(true);
+        assert!(ignores(&mut alice, confirm, "bob"));
     }
 
     #[test]
@@ -387,15 +439,14 @@ mod tests {
         assert!(ignores(&mut alice, init_for(CODE), "bob"));
     }
 
+    // REGRESSION: one pending slot that ignored new inits let any peer
+    // lock out pairing by sending an init every timeout period.
     #[test]
-    fn a_new_init_waits_until_the_pending_session_times_out() {
+    fn an_attackers_pending_init_does_not_block_another_peer() {
         let mut alice = showing(CODE);
-        let topic = alice.pake_topic.clone().unwrap();
         let mut events = Vec::new();
-        let first = (topic.clone(), init_for(OTHER).1);
-        assert!(deliver(&mut alice, "mallory", first, &mut events).is_some());
-        assert!(ignores(&mut alice, (topic, init_for(CODE).1), "bob"));
-        expire(&mut alice);
+        let attack = (alice.pake_topic.clone().unwrap(), init_for(OTHER).1);
+        assert!(deliver(&mut alice, "mallory", attack, &mut events).is_some());
         let (events_a, _) = pair(&mut alice, CODE);
         assert_eq!(paired_with(&events_a), Some("bob"));
     }

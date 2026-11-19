@@ -76,11 +76,11 @@ pub struct SyncEngine {
     /// Pending PAKE handshake state (Bob's side - stored until Alice's response arrives)
     #[cfg(feature = "pake-auth")]
     pake_pending: Option<spake2::Spake2<spake2::Ed25519Group>>,
-    /// Alice's derived session, stored after sending "resp" while waiting for
-    /// Bob's "confirm" message so the handshake isn't considered complete
-    /// until both sides have proven they derived the same key.
+    /// Alice's derived sessions by the PeerId of the init sender, each held
+    /// after sending "resp" until that peer's "confirm" proves it derived
+    /// the same key.
     #[cfg(all(feature = "p2p-sync", feature = "pake-auth"))]
-    pake_pending_alice: Option<handshake::PendingResponder>,
+    pending_responders: std::collections::HashMap<String, handshake::PendingResponder>,
     /// PAKE topic of the code we show, reported by the swarm thread once it
     /// has run the slow KDF. Incoming messages are compared against this
     /// cached string, so no message ever triggers a derivation.
@@ -119,7 +119,7 @@ impl SyncEngine {
             #[cfg(feature = "pake-auth")]
             pake_pending: None,
             #[cfg(all(feature = "p2p-sync", feature = "pake-auth"))]
-            pake_pending_alice: None,
+            pending_responders: Default::default(),
             #[cfg(feature = "pake-auth")]
             pake_topic: None,
             #[cfg(feature = "pake-auth")]

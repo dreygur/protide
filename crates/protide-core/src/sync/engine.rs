@@ -270,11 +270,16 @@ impl SyncEngine {
     }
 
     /// Answer pairing requests for our shown code only while `_on`. The UI
-    /// passes whether the pairing window showing the code is open.
+    /// passes whether the pairing window showing the code is open; closing
+    /// it drops every pending session.
     pub fn set_accepting_pairing(&mut self, _on: bool) {
         #[cfg(feature = "pake-auth")]
         {
             self.accepting_pairing = _on;
+        }
+        #[cfg(all(feature = "p2p-sync", feature = "pake-auth"))]
+        if !_on {
+            self.pending_responders.clear();
         }
     }
 
