@@ -8,35 +8,15 @@ use futures_util::StreamExt;
 use libp2p::gossipsub;
 use libp2p::kad;
 use libp2p::{Multiaddr, PeerId, identity};
-use serde::{Deserialize, Serialize};
 
 use log::{error, info, warn};
 
+pub use super::p2p_swarm::PakeMsgPayload;
 use super::p2p_swarm::{
     bootstrap_kademlia, build_swarm, handle_swarm_event, switch_own_pake_topic,
 };
 use super::p2p_topic::pake_topic;
 use super::types::{CrdtEntry, NodeId};
-
-// ── Wire protocol ─────────────────────────────────────────────────────────────
-
-/// Serialised payload for PAKE handshake messages over gossipsub
-#[derive(Serialize, Deserialize)]
-pub struct PakeMsgPayload {
-    /// "init" (Bob → Alice), "resp" (Alice → Bob), or "confirm" (Bob → Alice,
-    /// final mutual key-confirmation step)
-    pub kind: String,
-    /// Display name of the sender
-    pub node_name: String,
-    /// Raw SPAKE2 public-key bytes (unused/empty for "confirm")
-    pub pake_bytes: Vec<u8>,
-    /// Role bound key-confirmation blob (see `pake::confirm_blob`), present on
-    /// "resp" and "confirm" messages once each side has derived a session
-    /// key. Proves the sender derived the same shared key as us - SPAKE2's
-    /// `finish()` alone does not guarantee that.
-    #[serde(default)]
-    pub confirm: Option<Vec<u8>>,
-}
 
 // ── Command channel ───────────────────────────────────────────────────────────
 
@@ -50,6 +30,8 @@ pub enum SwarmCmd {
     /// Replace our own pairing code: derive its PAKE topic, move our
     /// subscription there and report it back as `P2PEvent::PakeTopic`
     SetPairingCode(String),
+    /// Move CRDT sync to a new topic after joining a paired group
+    SetSyncTopic(String),
 }
 
 // ── Events ────────────────────────────────────────────────────────────────────
@@ -67,11 +49,7 @@ pub enum P2PEvent {
         /// The full topic string (a `protide-pake-<hash>` topic; the hash is
         /// an Argon2id derivation of the pairing code, see `p2p_topic::pake_topic`)
         topic: String,
-        node_name: String,
-        kind: String,
-        pake_bytes: Vec<u8>,
-        /// Role bound key-confirmation blob, see `PakeMsgPayload::confirm`
-        confirm: Option<Vec<u8>>,
+        payload: PakeMsgPayload,
     },
     /// Our own listen multiaddress - emitted once the swarm binds a port
     LocalAddr(String),
@@ -134,7 +112,7 @@ impl P2PSync {
                 // rather than on the caller's (UI) thread.
                 let own_pake_topic =
                     (!pairing_code_owned.is_empty()).then(|| pake_topic(&pairing_code_owned));
-                let crdt_topic_thread = gossipsub::IdentTopic::new(sync_topic);
+                let mut crdt_topic_thread = gossipsub::IdentTopic::new(sync_topic);
                 let rt = match tokio::runtime::Builder::new_current_thread()
                     .enable_all()
                     .build()
@@ -237,6 +215,13 @@ impl P2PSync {
                                     );
                                     continue;
                                 }
+                                SwarmCmd::SetSyncTopic(topic) => {
+                                    let gossipsub = &mut swarm.behaviour_mut().gossipsub;
+                                    let _ = gossipsub.unsubscribe(&crdt_topic_thread);
+                                    crdt_topic_thread = gossipsub::IdentTopic::new(topic);
+                                    let _ = gossipsub.subscribe(&crdt_topic_thread);
+                                    continue;
+                                }
                             };
                             // Publishing subscribes first so the peer's
                             // reply on the same topic reaches us.
@@ -298,6 +283,11 @@ impl P2PSync {
     /// Returns at once; the swarm thread derives the topic.
     pub fn set_pairing_code(&self, code: &str) {
         let _ = self.cmd_tx.send(SwarmCmd::SetPairingCode(code.to_string()));
+    }
+
+    /// Send and receive CRDT entries on `topic` from now on.
+    pub fn set_sync_topic(&self, topic: String) {
+        let _ = self.cmd_tx.send(SwarmCmd::SetSyncTopic(topic));
     }
 
     /// Publish raw bytes on an arbitrary topic (used for PAKE response).

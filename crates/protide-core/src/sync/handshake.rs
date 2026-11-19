@@ -43,6 +43,7 @@ impl SyncEngine {
             node_name: self.config.node_name.clone(),
             pake_bytes: msg_b,
             confirm: None,
+            group: None,
         };
         serde_json::to_vec(&payload).map_err(|e| format!("Serialisation error: {}", e))
     }
@@ -80,6 +81,15 @@ impl SyncEngine {
         pending.insert(peer, PendingResponder { session, since });
     }
 
+    /// Adopt the group secret the responder shared and move CRDT sync to
+    /// the group's topic, so both peers hear each other's entries.
+    fn join_group(&mut self, secret: GroupSecret) {
+        self.config.group_secret = Some(secret);
+        if let Some(ref p2p) = self.p2p_sync {
+            p2p.set_sync_topic(self.sync_topic());
+        }
+    }
+
     /// Process one PAKE handshake message received on a `protide-pake-*`
     /// topic. Pushes UI events onto `events` and returns an optional
     /// `(topic, payload)` for the caller to publish back to the peer.
@@ -92,18 +102,18 @@ impl SyncEngine {
         &mut self,
         from: String,
         topic: String,
-        node_name: String,
-        kind: &str,
-        pake_bytes: &[u8],
-        confirm: Option<&[u8]>,
+        msg: p2p::PakeMsgPayload,
         events: &mut Vec<SyncEvent>,
     ) -> Option<(String, Vec<u8>)> {
-        match kind {
+        let (node_name, pake_bytes) = (msg.node_name, msg.pake_bytes.as_slice());
+        let (confirm, group) = (msg.confirm.as_deref(), msg.group.as_deref());
+        match msg.kind.as_str() {
             // We are Alice: generate the A-side and finish, but don't trust
             // the handshake yet - SPAKE2's finish() only proves the peer's
             // message was well-formed, not that they used the same code. Send
             // our confirmation blob along with "resp" and wait for Bob's
-            // "confirm" before declaring HandshakeComplete.
+            // "confirm" before declaring HandshakeComplete. Our group secret
+            // goes along sealed: only a peer with the same key can open it.
             "init" => {
                 if !self.accepting_pairing || self.pake_topic.as_deref() != Some(topic.as_str()) {
                     return None;
@@ -121,6 +131,10 @@ impl SyncEngine {
                     }
                 };
                 let confirm_a = pake::confirm_blob(&session_a, Role::Responder);
+                let sealed = self
+                    .config
+                    .group_secret
+                    .and_then(|s| pake::seal_group_secret(&session_a, &s).ok());
                 self.hold_pending(from, session_a);
                 // Counted until a verified "confirm" resets it: a guesser
                 // who learns nothing never sends one.
@@ -128,19 +142,25 @@ impl SyncEngine {
                 if self.failed_pairings >= MAX_FAILED_PAIRINGS {
                     self.regenerate_pairing_code();
                 }
-                self.reply(topic, "resp", msg_a, confirm_a)
+                self.reply(topic, "resp", msg_a, confirm_a, sealed)
             }
             // We are Bob: finish with Alice's message, then verify her
             // confirmation blob before trusting the handshake. Only once that
-            // verifies do we declare HandshakeComplete and send our own
-            // confirmation back so Alice can too.
+            // verifies do we join her group, declare HandshakeComplete and
+            // send our own confirmation back so Alice can complete too.
             "resp" => {
                 let state_b = self.pake_pending.take()?;
                 let session_b = pake::pake_finish(state_b, pake_bytes).ok();
                 let confirmed = session_b.as_ref().is_some_and(|s| {
                     confirm.is_some_and(|blob| pake::verify_confirm(s, Role::Responder, blob))
                 });
-                if !confirmed {
+                // A sealed secret that fails to open under a confirmed key
+                // was tampered with: fail rather than pair without a group.
+                let joined = session_b
+                    .as_ref()
+                    .zip(group)
+                    .map(|(s, blob)| pake::open_group_secret(s, blob));
+                if !confirmed || joined == Some(None) {
                     info!("[PAKE] Handshake mismatch on 'resp' from peer {}", from);
                     events.push(SyncEvent::HandshakeFailed {
                         reason: "PAKE mismatch".to_string(),
@@ -148,12 +168,15 @@ impl SyncEngine {
                     return None;
                 }
                 info!("[PAKE] Handshake complete (resp) with peer {}", from);
+                if let Some(Some(secret)) = joined {
+                    self.join_group(secret);
+                }
                 events.push(SyncEvent::HandshakeComplete {
                     peer_id: from,
                     peer_name: node_name,
                 });
                 let confirm_b = pake::confirm_blob(&session_b?, Role::Initiator);
-                self.reply(topic, "confirm", Vec::new(), confirm_b)
+                self.reply(topic, "confirm", Vec::new(), confirm_b, None)
             }
             // We are Alice: Bob has (claimed to have) proven he derived the
             // same key as us. A confirm is only checked against the session
@@ -195,12 +218,14 @@ impl SyncEngine {
         kind: &str,
         pake_bytes: Vec<u8>,
         confirm: Vec<u8>,
+        group: Option<Vec<u8>>,
     ) -> Option<(String, Vec<u8>)> {
         let payload = p2p::PakeMsgPayload {
             kind: kind.to_string(),
             node_name: self.config.node_name.clone(),
             pake_bytes,
             confirm: Some(confirm),
+            group,
         };
         serde_json::to_vec(&payload).ok().map(|data| (topic, data))
     }
@@ -218,6 +243,7 @@ mod tests {
         SyncEngine::new(SyncConfig {
             node_name: name.to_string(),
             pairing_code: pairing_code.map(str::to_string),
+            group_secret: Some(pake::generate_group_secret()),
             ..Default::default()
         })
     }
@@ -244,34 +270,36 @@ mod tests {
         (topic, data): (String, Vec<u8>),
         events: &mut Vec<SyncEvent>,
     ) -> Option<(String, Vec<u8>)> {
-        let msg: p2p::PakeMsgPayload = serde_json::from_slice(&data).unwrap();
-        to.handle_pake_msg(
-            from.to_string(),
-            topic,
-            msg.node_name,
-            &msg.kind,
-            &msg.pake_bytes,
-            msg.confirm.as_deref(),
-            events,
-        )
+        let msg = serde_json::from_slice(&data).unwrap();
+        to.handle_pake_msg(from.to_string(), topic, msg, events)
     }
 
     /// Bob types `typed` and his init lands on Alice's cached topic.
-    /// Messages are pumped by hand until neither side replies.
-    fn pair(alice: &mut SyncEngine, typed: &str) -> (Vec<SyncEvent>, Vec<SyncEvent>) {
-        let mut bob = engine("bob", None);
-        let (mut events_a, mut events_b) = (Vec::new(), Vec::new());
+    /// Messages are pumped by hand until neither side replies. Returns both
+    /// sides' events and every message that went over the wire.
+    fn pair_with(
+        alice: &mut SyncEngine,
+        bob: &mut SyncEngine,
+        typed: &str,
+    ) -> (Vec<SyncEvent>, Vec<SyncEvent>, Vec<Vec<u8>>) {
+        let (mut events_a, mut events_b, mut wire) = (Vec::new(), Vec::new(), Vec::new());
         let init = bob.start_handshake(typed).unwrap();
         let mut next = alice.pake_topic.clone().map(|topic| (topic, init));
         let mut to_alice = true;
         while let Some(msg) = next.take() {
+            wire.push(msg.1.clone());
             next = if to_alice {
                 deliver(alice, "bob", msg, &mut events_a)
             } else {
-                deliver(&mut bob, "alice", msg, &mut events_b)
+                deliver(bob, "alice", msg, &mut events_b)
             };
             to_alice = !to_alice;
         }
+        (events_a, events_b, wire)
+    }
+
+    fn pair(alice: &mut SyncEngine, typed: &str) -> (Vec<SyncEvent>, Vec<SyncEvent>) {
+        let (events_a, events_b, _) = pair_with(alice, &mut engine("bob", None), typed);
         (events_a, events_b)
     }
 
@@ -378,6 +406,7 @@ mod tests {
             node_name: "mallory".to_string(),
             pake_bytes: Vec::new(),
             confirm: resp.confirm,
+            group: None,
         };
         let reflected = serde_json::to_vec(&reflected).unwrap();
         deliver(&mut alice, "mallory", (topic, reflected), &mut events);
@@ -449,5 +478,55 @@ mod tests {
         assert!(deliver(&mut alice, "mallory", attack, &mut events).is_some());
         let (events_a, _) = pair(&mut alice, CODE);
         assert_eq!(paired_with(&events_a), Some("bob"));
+    }
+
+    /// Gossipsub hands an entry only to nodes subscribed to its topic, so
+    /// `to` merges it only when it listens on the sender's sync topic.
+    fn gossip(from: &SyncEngine, to: &mut SyncEngine, entry: CrdtEntry) -> bool {
+        from.sync_topic() == to.sync_topic()
+            && matches!(to.store.merge_remote(entry), MergeResult::Accepted(_))
+    }
+
+    // REGRESSION: each node's sync topic came from its own pairing code,
+    // so two peers that had just paired never heard each other's entries.
+    #[test]
+    fn paired_peers_share_a_sync_topic_and_entries() {
+        let (mut alice, mut bob) = (showing(CODE), engine("bob", None));
+        let alice_secret = alice.config.group_secret;
+        let entry = alice.apply_local_change(DataType::Request, "{}".into());
+        assert!(
+            !gossip(&alice, &mut bob, entry.clone()),
+            "unpaired peers share"
+        );
+
+        let (events_a, _, _) = pair_with(&mut alice, &mut bob, CODE);
+        assert_eq!(paired_with(&events_a), Some("bob"));
+        assert_eq!(bob.config.group_secret, alice_secret);
+        assert_eq!(bob.sync_topic(), alice.sync_topic());
+        assert!(gossip(&alice, &mut bob, entry));
+    }
+
+    #[test]
+    fn the_group_secret_never_travels_in_the_clear() {
+        let (mut alice, mut bob) = (showing(CODE), engine("bob", None));
+        let secret = alice.config.group_secret.unwrap().0;
+        let (_, _, wire) = pair_with(&mut alice, &mut bob, CODE);
+        assert!(wire.len() >= 3, "init, resp and confirm went over the wire");
+        for data in &wire {
+            let msg: p2p::PakeMsgPayload = serde_json::from_slice(data).unwrap();
+            let fields = [Some(msg.pake_bytes), msg.confirm, msg.group];
+            for bytes in fields.iter().flatten() {
+                assert!(!bytes.windows(32).any(|w| w == secret));
+            }
+        }
+    }
+
+    #[test]
+    fn a_wrong_code_shares_no_group() {
+        let (mut alice, mut bob) = (showing(CODE), engine("bob", None));
+        let bob_secret = bob.config.group_secret;
+        pair_with(&mut alice, &mut bob, OTHER);
+        assert_eq!(bob.config.group_secret, bob_secret);
+        assert_ne!(bob.sync_topic(), alice.sync_topic());
     }
 }

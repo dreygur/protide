@@ -13,9 +13,34 @@ use libp2p::{Multiaddr, PeerId, Swarm, SwarmBuilder, identity};
 
 use log::{debug, info, warn};
 
-use super::p2p::{P2PEvent, PakeMsgPayload};
+use serde::{Deserialize, Serialize};
+
+use super::p2p::P2PEvent;
 use super::p2p_topic::PAKE_TOPIC_PREFIX;
 use super::types::CrdtEntry;
+
+/// Serialised payload for PAKE handshake messages over gossipsub
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PakeMsgPayload {
+    /// "init" (Bob → Alice), "resp" (Alice → Bob), or "confirm" (Bob → Alice,
+    /// final mutual key-confirmation step)
+    pub kind: String,
+    /// Display name of the sender
+    pub node_name: String,
+    /// Raw SPAKE2 public-key bytes (unused/empty for "confirm")
+    pub pake_bytes: Vec<u8>,
+    /// Role bound key-confirmation blob (see `pake::confirm_blob`), present on
+    /// "resp" and "confirm" messages once each side has derived a session
+    /// key. Proves the sender derived the same shared key as us - SPAKE2's
+    /// `finish()` alone does not guarantee that.
+    #[serde(default)]
+    pub confirm: Option<Vec<u8>>,
+    /// The responder's group secret on "resp", sealed under a key derived
+    /// from the PAKE session (see `pake::seal_group_secret`), so only a peer
+    /// that derived the same key can open it
+    #[serde(default)]
+    pub group: Option<Vec<u8>>,
+}
 
 #[derive(NetworkBehaviour)]
 #[behaviour(to_swarm = "ProtideBehaviourEvent")]
@@ -206,10 +231,7 @@ pub(super) fn handle_swarm_event(
                     let _ = event_tx_thread.send(P2PEvent::PakeMsg {
                         from,
                         topic: topic_str,
-                        node_name: payload.node_name,
-                        kind: payload.kind,
-                        pake_bytes: payload.pake_bytes,
-                        confirm: payload.confirm,
+                        payload,
                     });
                 }
             } else if let Ok(entry) = serde_json::from_slice::<CrdtEntry>(&message.data) {

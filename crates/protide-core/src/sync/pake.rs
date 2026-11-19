@@ -6,6 +6,8 @@ use spake2::{Ed25519Group, Identity, Password, Spake2};
 
 use rand::{Rng, RngCore};
 
+use super::types::GroupSecret;
+
 const PAKE_IDENTITY: &[u8] = b"protide-p2p-pairing";
 
 /// Pairing code vocabulary, kept apart from `types::ADJECTIVES` and
@@ -175,11 +177,31 @@ pub fn verify_confirm(session: &PakeSession, role: Role, blob: &[u8]) -> bool {
         .is_ok_and(|bytes| blake3::Hash::from(bytes) == confirm_value(session, role))
 }
 
+/// Key that seals the group secret, derived from the shared key under its
+/// own context so it is independent of the confirmation values.
+fn group_key(session: &PakeSession) -> PakeSession {
+    PakeSession {
+        shared_key: blake3::derive_key("protide pairing group secret v1", &session.shared_key),
+    }
+}
+
+/// Seal `secret` for the peer of `session` (ChaCha20Poly1305, random nonce).
+pub fn seal_group_secret(session: &PakeSession, secret: &GroupSecret) -> Result<Vec<u8>, String> {
+    encrypt_message(&group_key(session), &secret.0)
+}
+
+/// Open a group secret sealed by the peer, or `None` when the peer derived
+/// a different key or the blob was altered.
+pub fn open_group_secret(session: &PakeSession, blob: &[u8]) -> Option<GroupSecret> {
+    let bytes = decrypt_message(&group_key(session), blob).ok()?;
+    <[u8; 32]>::try_from(bytes).ok().map(GroupSecret)
+}
+
 /// Generate the secret of a new paired group: 32 random bytes.
-pub fn generate_group_secret() -> super::types::GroupSecret {
+pub fn generate_group_secret() -> GroupSecret {
     let mut bytes = [0u8; 32];
     OsRng.fill_bytes(&mut bytes);
-    super::types::GroupSecret(bytes)
+    GroupSecret(bytes)
 }
 
 /// Generate a pairing code that reads aloud easily, such as

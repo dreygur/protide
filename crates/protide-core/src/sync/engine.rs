@@ -179,11 +179,9 @@ impl SyncEngine {
                     p2p::P2PEvent::PakeMsg {
                         from,
                         topic,
-                        node_name,
-                        kind,
-                        pake_bytes,
-                        confirm,
+                        payload,
                     } => {
+                        let kind = &payload.kind;
                         info!(
                             "[PAKE] Received '{}' from {} on topic {}",
                             kind, from, topic
@@ -193,21 +191,15 @@ impl SyncEngine {
                             kind, from, topic
                         )));
                         #[cfg(feature = "pake-auth")]
-                        if let Some(resp) = self.handle_pake_msg(
-                            from.to_string(),
-                            topic,
-                            node_name,
-                            &kind,
-                            &pake_bytes,
-                            confirm.as_deref(),
-                            &mut events,
-                        ) {
+                        if let Some(resp) =
+                            self.handle_pake_msg(from.to_string(), topic, payload, &mut events)
+                        {
                             pake_resps.push(resp);
                         }
                         // Without pake-auth, handshake messages are silently ignored
                         #[cfg(not(feature = "pake-auth"))]
                         {
-                            let _ = (from, topic, node_name, kind, pake_bytes, confirm);
+                            let _ = (from, topic, payload);
                         }
                     }
                 }
