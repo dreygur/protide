@@ -217,6 +217,7 @@ pub(super) fn switch_own_pake_topic(
 }
 
 pub(super) fn handle_swarm_event(
+    swarm: &mut Swarm<ProtideBehaviour>,
     event: SwarmEvent<ProtideBehaviourEvent>,
     event_tx_thread: &Sender<P2PEvent>,
 ) {
@@ -250,14 +251,23 @@ pub(super) fn handle_swarm_event(
             }
         }
         SwarmEvent::Behaviour(ProtideBehaviourEvent::Mdns(mdns_event)) => match mdns_event {
+            // Discovery alone opens no connection: without the dial and the
+            // explicit gossipsub peer, every publish found nobody to send to.
             mdns::Event::Discovered(peers) => {
                 for (peer, addr) in peers {
                     info!("[mDNS] Discovered peer {} at {}", peer, addr);
+                    let behaviour = swarm.behaviour_mut();
+                    behaviour.gossipsub.add_explicit_peer(&peer);
+                    behaviour.kademlia.add_address(&peer, addr.clone());
+                    if let Err(e) = swarm.dial(addr) {
+                        debug!("[mDNS] Dial to {} failed: {}", peer, e);
+                    }
                     let _ = event_tx_thread.send(P2PEvent::PeerJoined(peer));
                 }
             }
             mdns::Event::Expired(peers) => {
                 for (peer, _addr) in peers {
+                    swarm.behaviour_mut().gossipsub.remove_explicit_peer(&peer);
                     let _ = event_tx_thread.send(P2PEvent::PeerLeft(peer));
                 }
             }

@@ -214,10 +214,13 @@ impl P2PSync {
                                     continue;
                                 }
                                 SwarmCmd::PublishSync(data) => {
-                                    let _ = swarm
+                                    if let Err(e) = swarm
                                         .behaviour_mut()
                                         .gossipsub
-                                        .publish(crdt_topic_thread.clone(), data);
+                                        .publish(crdt_topic_thread.clone(), data)
+                                    {
+                                        warn!("[P2P] Sync publish failed: {}", e);
+                                    }
                                     continue;
                                 }
                             };
@@ -228,8 +231,11 @@ impl P2PSync {
                                 let _ = swarm.behaviour_mut().gossipsub.subscribe(&t);
                                 pake_topics.insert(topic_str.clone(), t);
                             }
-                            if let Some(t) = pake_topics.get(&topic_str) {
-                                let _ = swarm.behaviour_mut().gossipsub.publish(t.clone(), data);
+                            if let Some(t) = pake_topics.get(&topic_str)
+                                && let Err(e) =
+                                    swarm.behaviour_mut().gossipsub.publish(t.clone(), data)
+                            {
+                                warn!("[P2P] Publish failed: {}", e);
                             }
                         }
 
@@ -245,7 +251,7 @@ impl P2PSync {
                             Err(_) => continue,
                         };
 
-                        handle_swarm_event(event, &event_tx_thread);
+                        handle_swarm_event(&mut swarm, event, &event_tx_thread);
                     }
                 });
             })
