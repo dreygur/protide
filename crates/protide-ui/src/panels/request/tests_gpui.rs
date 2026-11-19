@@ -816,4 +816,35 @@ mod url_double_click_tests {
             );
         });
     }
+
+    /// Holds the panel in a narrow column, as side panels leave it.
+    struct Narrow(gpui::Entity<TestPanel>);
+
+    impl gpui::Render for Narrow {
+        fn render(
+            &mut self,
+            _window: &mut gpui::Window,
+            _cx: &mut gpui::Context<Self>,
+        ) -> impl gpui::IntoElement {
+            use gpui::{ParentElement, Styled};
+            gpui::div()
+                .flex()
+                .size_full()
+                .child(gpui::div().w(gpui::px(600.0)).child(self.0.clone()))
+        }
+    }
+
+    #[gpui::test]
+    async fn url_bar_buttons_collapse_when_side_panels_take_the_width(cx: &mut TestAppContext) {
+        init_theme(cx);
+        let (narrow, cx) = cx.add_window_view(|window, cx| {
+            let response_panel = cx.new(|cx| ResponsePanel::new(window, cx));
+            Narrow(cx.new(|cx| TestPanel::new(window, cx, response_panel)))
+        });
+        cx.simulate_resize(gpui::size(gpui::px(1600.0), gpui::px(900.0)));
+        cx.run_until_parked();
+
+        let panel = narrow.read_with(cx, |n, _| n.0.clone());
+        panel.read_with(cx, |p, _| assert!(p.url_bar_compact));
+    }
 }

@@ -7,6 +7,7 @@ use gpui::{
 
 use super::super::request_types::{RequestMode, SioConnectionState, WsConnectionState};
 use super::RequestPanel;
+use super::render_url_bar_actions::COMPACT_BAR_W;
 use super::url_metrics::URL_INPUT_PADDING;
 use crate::components::icons::{ICON_CHEVRON_DOWN, ICON_CHEVRON_UP, ICON_SM, icon};
 use crate::theme;
@@ -24,6 +25,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
         let is_url_focused = self.url_focus.is_focused(window);
 
         div()
+            .relative()
             .w_full()
             .h(px(64.0))
             .flex()
@@ -276,7 +278,28 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                             }))
                             .child(send_label)
                     })
-                    .child(self.render_url_bar_actions(window, cx)),
+                    .child(self.render_url_bar_actions(cx)),
             )
+            // The whole bar's width, which the collapse does not change, so
+            // the decision cannot flip back and forth between frames.
+            .child({
+                let entity = cx.entity();
+                canvas(
+                    move |bounds, _, cx| {
+                        entity.update(cx, |this, cx| {
+                            let compact = f32::from(bounds.size.width) < COMPACT_BAR_W;
+                            if compact != this.url_bar_compact {
+                                this.url_bar_compact = compact;
+                                cx.notify();
+                            }
+                        });
+                    },
+                    |_, _, _, _| {},
+                )
+                .absolute()
+                .top_0()
+                .left_0()
+                .size_full()
+            })
     }
 }

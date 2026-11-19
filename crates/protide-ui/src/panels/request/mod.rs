@@ -147,6 +147,9 @@ pub struct RequestPanel<E: WebSocketExecutor = TungsteniteExecutor> {
     pub(super) is_selecting: bool,
     pub(super) url_input_left: f32,
     pub(super) url_input_width: f32,
+    /// Whether the URL bar painted last frame was too narrow for labelled
+    /// Code and Import buttons. Measured on the bar, so side panels count.
+    pub(super) url_bar_compact: bool,
     pub(super) url_scroll_offset: f32,
     /// Scroll the last painted frame applied to the URL text. Click mapping
     /// reads this rather than `url_scroll_offset`, because a click arrives

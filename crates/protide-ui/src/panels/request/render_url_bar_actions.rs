@@ -1,6 +1,6 @@
 //! Save, Code and Import buttons at the end of the URL bar
 
-use gpui::{Context, IntoElement, ParentElement, Styled, Window, div, prelude::*, px};
+use gpui::{Context, IntoElement, ParentElement, Styled, div, prelude::*, px};
 
 use super::RequestPanel;
 use crate::components::icons::{ICON_ARROW_DOWN, ICON_CODE, ICON_MD, ICON_SM, icon};
@@ -10,17 +10,14 @@ use protide_core::execution::ws::WebSocketExecutor;
 
 /// Fits "Saved!" and the changed on disk dot, so the label swap never moves the URL field.
 const SAVE_BTN_W: f32 = 64.0;
-/// Below this window width Code and Import drop their labels, leaving the room to the URL.
-const COMPACT_WINDOW_W: f32 = 1100.0;
+/// Below this URL bar width Code and Import drop their labels, leaving the
+/// room to the URL. Matches the old 1100px window with the default sidebar.
+pub(super) const COMPACT_BAR_W: f32 = 850.0;
 
 impl<E: WebSocketExecutor> RequestPanel<E> {
-    pub(super) fn render_url_bar_actions(
-        &self,
-        window: &Window,
-        cx: &mut Context<Self>,
-    ) -> impl IntoElement {
+    pub(super) fn render_url_bar_actions(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = theme::current(cx);
-        let compact = f32::from(window.viewport_size().width) < COMPACT_WINDOW_W;
+        let compact = self.url_bar_compact;
         let is_saved = self.save_feedback;
         let has_conflict = self.external_change_pending;
 
