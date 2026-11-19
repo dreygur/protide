@@ -15,7 +15,7 @@ use log::{error, info, warn};
 use super::p2p_swarm::{
     bootstrap_kademlia, build_swarm, handle_swarm_event, switch_own_pake_topic,
 };
-use super::p2p_topic::{GOSSIP_TOPIC, PairingTopics};
+use super::p2p_topic::pake_topic;
 use super::types::{CrdtEntry, NodeId};
 
 // ── Wire protocol ─────────────────────────────────────────────────────────────
@@ -65,7 +65,7 @@ pub enum P2PEvent {
     PakeMsg {
         from: PeerId,
         /// The full topic string (a `protide-pake-<hash>` topic; the hash is
-        /// an Argon2id derivation of the pairing code, see `PairingTopics`)
+        /// an Argon2id derivation of the pairing code, see `p2p_topic::pake_topic`)
         topic: String,
         node_name: String,
         kind: String,
@@ -96,12 +96,13 @@ pub struct P2PSync {
 }
 
 impl P2PSync {
-    /// Create and start a new P2P sync node.
-    /// `pairing_code` scopes gossip topics so only peers with the same code connect.
+    /// Create and start a new P2P sync node. CRDT entries travel on
+    /// `sync_topic`; handshakes for `pairing_code` arrive on its PAKE topic.
     pub fn start(
         node_id: NodeId,
         listen_port: Option<u16>,
         pairing_code: &str,
+        sync_topic: String,
     ) -> Result<Self, String> {
         let (event_tx, event_rx) = mpsc::channel::<P2PEvent>();
         let (broadcast_tx, broadcast_rx) = mpsc::channel::<CrdtEntry>();
@@ -129,13 +130,11 @@ impl P2PSync {
         std::thread::Builder::new()
             .name("protide-p2p".into())
             .spawn(move || {
-                // Topics come from a slow KDF, so derive them here rather
-                // than on the caller's (UI) thread.
-                let topics = (!pairing_code_owned.is_empty())
-                    .then(|| PairingTopics::derive(&pairing_code_owned));
-                let crdt_topic_thread = gossipsub::IdentTopic::new(
-                    topics.as_ref().map_or(GOSSIP_TOPIC, |t| t.crdt.as_str()),
-                );
+                // The PAKE topic comes from a slow KDF, so derive it here
+                // rather than on the caller's (UI) thread.
+                let own_pake_topic =
+                    (!pairing_code_owned.is_empty()).then(|| pake_topic(&pairing_code_owned));
+                let crdt_topic_thread = gossipsub::IdentTopic::new(sync_topic);
                 let rt = match tokio::runtime::Builder::new_current_thread()
                     .enable_all()
                     .build()
@@ -169,11 +168,11 @@ impl P2PSync {
 
                     // Also subscribe to our own PAKE topic so we hear handshake requests
                     let mut own_pake = None;
-                    if let Some(topics) = topics {
+                    if let Some(topic) = own_pake_topic {
                         switch_own_pake_topic(
                             &mut swarm.behaviour_mut().gossipsub,
                             &mut own_pake,
-                            topics.pake,
+                            topic,
                             &event_tx_thread,
                         );
                     }
@@ -228,14 +227,12 @@ impl P2PSync {
                             };
                             let (topic_str, data) = match cmd {
                                 SwarmCmd::Publish(topic_str, data) => (topic_str, data),
-                                SwarmCmd::PublishPake(code, data) => {
-                                    (PairingTopics::derive(&code).pake, data)
-                                }
+                                SwarmCmd::PublishPake(code, data) => (pake_topic(&code), data),
                                 SwarmCmd::SetPairingCode(code) => {
                                     switch_own_pake_topic(
                                         &mut swarm.behaviour_mut().gossipsub,
                                         &mut own_pake,
-                                        PairingTopics::derive(&code).pake,
+                                        pake_topic(&code),
                                         &event_tx_thread,
                                     );
                                     continue;

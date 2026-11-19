@@ -175,6 +175,13 @@ pub fn verify_confirm(session: &PakeSession, role: Role, blob: &[u8]) -> bool {
         .is_ok_and(|bytes| blake3::Hash::from(bytes) == confirm_value(session, role))
 }
 
+/// Generate the secret of a new paired group: 32 random bytes.
+pub fn generate_group_secret() -> super::types::GroupSecret {
+    let mut bytes = [0u8; 32];
+    OsRng.fill_bytes(&mut bytes);
+    super::types::GroupSecret(bytes)
+}
+
 /// Generate a pairing code that reads aloud easily, such as
 /// "amber-otter-river-tiger-482" (Magic Wormhole style).
 ///

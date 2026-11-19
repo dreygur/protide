@@ -85,7 +85,7 @@ impl SyncEngine {
     /// `(topic, payload)` for the caller to publish back to the peer.
     ///
     /// The topic name is an Argon2id hash of the pairing code (see
-    /// `PairingTopics`) and cannot be reversed, so an "init" is only answered
+    /// `p2p_topic::pake_topic`) and cannot be reversed, so an "init" is only answered
     /// when it arrives on the cached topic of the code we show, and "resp"
     /// or "confirm" only while a handshake we took part in is pending.
     pub(crate) fn handle_pake_msg(
@@ -209,7 +209,7 @@ impl SyncEngine {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::sync::p2p_topic::PairingTopics;
+    use crate::sync::p2p_topic::pake_topic;
 
     const CODE: &str = "amber-otter-river-tiger-482";
     const OTHER: &str = "amber-otter-river-tiger-483";
@@ -226,7 +226,7 @@ mod tests {
     /// cached as the swarm reports it.
     fn showing(code: &str) -> SyncEngine {
         let mut alice = engine("alice", Some(code));
-        alice.pake_topic = Some(PairingTopics::derive(code).pake);
+        alice.pake_topic = Some(pake_topic(code));
         alice.set_accepting_pairing(true);
         alice
     }
@@ -234,7 +234,7 @@ mod tests {
     /// Bob's "init" for `code`, published on that code's topic.
     fn init_for(code: &str) -> (String, Vec<u8>) {
         let init = engine("bob", None).start_handshake(code).unwrap();
-        (PairingTopics::derive(code).pake, init)
+        (pake_topic(code), init)
     }
 
     /// Feed one published payload into `to` as if gossipsub delivered it.
@@ -338,7 +338,7 @@ mod tests {
         assert_ne!(new_code, CODE);
         assert!(ignores(&mut alice, init_for(CODE), "bob"));
 
-        alice.pake_topic = Some(PairingTopics::derive(&new_code).pake);
+        alice.pake_topic = Some(pake_topic(&new_code));
         let (events_a, _) = pair(&mut alice, &new_code);
         assert_eq!(paired_with(&events_a), Some("bob"));
     }

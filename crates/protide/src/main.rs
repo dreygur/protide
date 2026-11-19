@@ -132,6 +132,7 @@ fn main() -> Result<()> {
             let start_sync: StartSync = Rc::new(|| {
                 let mut engine = SyncEngine::new(SyncConfig::lan(
                     dirs::config_dir().map(|d| d.join("protide").join("node_id")),
+                    None,
                 ));
                 let _ = engine.init();
                 engine

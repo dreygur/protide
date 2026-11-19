@@ -189,6 +189,20 @@ pub struct SyncConfig {
     pub pairing_code: Option<String>,
     /// Where to persist this node's identity UUID across restarts
     pub node_id_path: Option<PathBuf>,
+    /// Secret of the paired group this node belongs to; the CRDT sync topic
+    /// is derived from it
+    pub group_secret: Option<GroupSecret>,
+}
+
+/// 32 random bytes shared by every member of a paired group. Debug never
+/// prints the bytes, so a logged config cannot leak them.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub struct GroupSecret(pub [u8; 32]);
+
+impl std::fmt::Debug for GroupSecret {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("GroupSecret(..)")
+    }
 }
 
 impl Default for SyncConfig {
@@ -208,6 +222,7 @@ impl Default for SyncConfig {
             live_probe_port: 42069,
             pairing_code: None,
             node_id_path: None,
+            group_secret: None,
         }
     }
 }
@@ -215,13 +230,18 @@ impl Default for SyncConfig {
 impl SyncConfig {
     /// The app's LAN sync config. Peers see the node by its stable display
     /// name, the one the presence chip shows, never by the OS account name.
-    pub fn lan(node_id_path: Option<PathBuf>) -> Self {
+    /// `group_secret` is the persisted group to rejoin; with pake-auth a
+    /// node without one starts a group of its own.
+    pub fn lan(node_id_path: Option<PathBuf>, group_secret: Option<GroupSecret>) -> Self {
         let node_id = node_id_path
             .as_deref()
             .map(load_or_create_node_id)
             .unwrap_or_default();
         #[cfg(feature = "pake-auth")]
-        let pairing_code = Some(super::pake::generate_pairing_code());
+        let (pairing_code, group_secret) = (
+            Some(super::pake::generate_pairing_code()),
+            group_secret.or_else(|| Some(super::pake::generate_group_secret())),
+        );
         #[cfg(not(feature = "pake-auth"))]
         let pairing_code = None;
         Self {
@@ -230,6 +250,7 @@ impl SyncConfig {
             live_probe_enabled: true,
             pairing_code,
             node_id_path,
+            group_secret,
             ..Default::default()
         }
     }
@@ -490,7 +511,7 @@ mod tests {
     fn the_lan_config_names_the_node_by_its_display_name_not_the_os_user() {
         let tmp = TempDir::new("lan-config");
         let path = tmp.path().join("node_id");
-        let config = SyncConfig::lan(Some(path.clone()));
+        let config = SyncConfig::lan(Some(path.clone()), None);
         let engine = crate::sync::SyncEngine::new(config.clone());
         assert_eq!(config.node_name, engine.node_id().display_name());
         for var in ["USER", "USERNAME"] {
@@ -501,6 +522,18 @@ mod tests {
         assert_eq!(config.node_id_path, Some(path));
         assert!(config.p2p_enabled && config.live_probe_enabled);
         assert_eq!(config.pairing_code.is_some(), cfg!(feature = "pake-auth"));
+    }
+
+    /// A persisted group secret is rejoined; without one a pake-auth node
+    /// starts its own group. Debug output never shows the bytes.
+    #[test]
+    fn the_lan_config_keeps_a_given_group_secret() {
+        let secret = GroupSecret([9; 32]);
+        let config = SyncConfig::lan(None, Some(secret));
+        assert_eq!(config.group_secret, Some(secret));
+        assert!(!format!("{config:?}").contains("9, 9"));
+        let fresh = SyncConfig::lan(None, None).group_secret;
+        assert_eq!(fresh.is_some(), cfg!(feature = "pake-auth"));
     }
 
     #[test]

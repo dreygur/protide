@@ -26,12 +26,6 @@ const TOPIC_KDF_ITERATIONS: u32 = 2;
 /// never competes with the UI for cores.
 const TOPIC_KDF_LANES: u32 = 1;
 
-/// Gossipsub topic names scoped to one pairing code.
-pub(super) struct PairingTopics {
-    pub(super) crdt: String,
-    pub(super) pake: String,
-}
-
 /// Stretch `pairing_code` into a 32 byte key with Argon2id.
 ///
 /// Gossipsub topic subscriptions are visible to every peer on the mesh, so
@@ -54,8 +48,8 @@ fn pairing_key(pairing_code: &str) -> [u8; 32] {
     key
 }
 
-/// Topic name component for `domain`, derived from the stretched key.
-/// `domain` keeps the CRDT and PAKE topics of one code apart.
+/// Topic name component for `domain`, derived from a 32 byte key.
+/// `domain` keeps topics derived from one key apart.
 fn topic_hash(domain: &str, key: &[u8; 32]) -> String {
     let mut hasher = blake3::Hasher::new();
     hasher.update(domain.as_bytes());
@@ -64,15 +58,19 @@ fn topic_hash(domain: &str, key: &[u8; 32]) -> String {
     hasher.finalize().to_hex()[..32].to_string()
 }
 
-impl PairingTopics {
-    /// Derive both topics with a single Argon2id run.
-    pub(super) fn derive(pairing_code: &str) -> Self {
-        let key = pairing_key(pairing_code);
-        Self {
-            crdt: format!("{}-{}", GOSSIP_TOPIC, topic_hash("crdt", &key)),
-            pake: format!("{}{}", PAKE_TOPIC_PREFIX, topic_hash("pake", &key)),
-        }
-    }
+/// Gossipsub topic for PAKE handshakes on `pairing_code`. Runs Argon2id,
+/// so call it off the UI thread.
+pub(super) fn pake_topic(pairing_code: &str) -> String {
+    let key = pairing_key(pairing_code);
+    format!("{}{}", PAKE_TOPIC_PREFIX, topic_hash("pake", &key))
+}
+
+/// Gossipsub topic for CRDT sync within one paired group. The group secret
+/// is 32 random bytes, so a fast key derivation is enough: the topic cannot
+/// be enumerated and reveals nothing about the secret.
+pub(super) fn sync_topic(group_secret: &[u8; 32]) -> String {
+    let key = blake3::derive_key("protide sync topic v1", group_secret);
+    format!("{}-{}", GOSSIP_TOPIC, topic_hash("crdt", &key))
 }
 
 #[cfg(test)]
@@ -82,31 +80,34 @@ mod tests {
     const CODE: &str = "amber-otter-river-tiger-482";
 
     #[test]
-    fn both_peers_derive_the_same_topics_from_one_code() {
-        let alice = PairingTopics::derive(CODE);
-        let bob = PairingTopics::derive(CODE);
-        assert_eq!(alice.crdt, bob.crdt);
-        assert_eq!(alice.pake, bob.pake);
-        assert_ne!(alice.crdt, alice.pake);
-        assert!(alice.pake.starts_with(PAKE_TOPIC_PREFIX));
-
-        let other = PairingTopics::derive("amber-otter-river-tiger-483");
-        assert_ne!(alice.pake, other.pake);
-        assert_ne!(alice.crdt, other.crdt);
+    fn both_peers_derive_the_same_pake_topic_from_one_code() {
+        let topic = pake_topic(CODE);
+        assert_eq!(topic, pake_topic(CODE));
+        assert!(topic.starts_with(PAKE_TOPIC_PREFIX));
+        assert_ne!(topic, pake_topic("amber-otter-river-tiger-483"));
     }
 
     /// REGRESSION: the topic was blake3(domain ":" code), cheap enough to
     /// compute for every code. It must now go through the slow KDF.
     #[test]
     fn the_topic_is_not_the_old_plain_hash() {
-        let topics = PairingTopics::derive(CODE);
-        for (domain, topic) in [("pake", &topics.pake), ("crdt", &topics.crdt)] {
-            let mut hasher = blake3::Hasher::new();
-            hasher.update(domain.as_bytes());
-            hasher.update(b":");
-            hasher.update(CODE.as_bytes());
-            let plain = hasher.finalize().to_hex()[..32].to_string();
-            assert!(!topic.contains(&plain), "{domain} topic is the plain hash");
-        }
+        let mut hasher = blake3::Hasher::new();
+        hasher.update(b"pake:");
+        hasher.update(CODE.as_bytes());
+        let plain = hasher.finalize().to_hex()[..32].to_string();
+        assert!(!pake_topic(CODE).contains(&plain));
+    }
+
+    /// The sync topic comes from the group secret alone, so every member of
+    /// a group shares it whatever pairing code each one shows.
+    #[test]
+    fn the_sync_topic_depends_only_on_the_group_secret() {
+        let secret = [7u8; 32];
+        let topic = sync_topic(&secret);
+        assert_eq!(topic, sync_topic(&secret));
+        assert_ne!(topic, sync_topic(&[8u8; 32]));
+        assert!(topic.starts_with(GOSSIP_TOPIC));
+        let hex: String = secret.iter().map(|b| format!("{b:02x}")).collect();
+        assert!(!topic.contains(&hex[..16]), "topic leaks the secret");
     }
 }

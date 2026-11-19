@@ -185,7 +185,7 @@ impl SyncEngine {
         #[cfg(feature = "p2p-sync")]
         if self.config.p2p_enabled {
             let pairing_code = self.config.pairing_code.clone().unwrap_or_default();
-            match p2p::P2PSync::start(node_id.clone(), None, &pairing_code) {
+            match p2p::P2PSync::start(node_id.clone(), None, &pairing_code, self.sync_topic()) {
                 Ok(p2p) => {
                     self.p2p_sync = Some(p2p);
                     let _ = event_tx.send(SyncEvent::BackendStatus {
@@ -210,6 +210,16 @@ impl SyncEngine {
     /// Get the sync configuration
     pub fn config(&self) -> &SyncConfig {
         &self.config
+    }
+
+    /// The gossip topic CRDT entries travel on: the group's topic, or the
+    /// shared default for a node without a group.
+    #[cfg(feature = "p2p-sync")]
+    pub(crate) fn sync_topic(&self) -> String {
+        self.config.group_secret.map_or_else(
+            || p2p_topic::GOSSIP_TOPIC.to_string(),
+            |s| p2p_topic::sync_topic(&s.0),
+        )
     }
 
     /// Get the number of events processed
