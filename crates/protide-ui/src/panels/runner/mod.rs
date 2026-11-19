@@ -53,6 +53,7 @@ impl RunnerPanel {
             collection_path,
             env_vars,
             stop_on_failure: false,
+            trust: cx.default_global::<crate::panels::ScriptTrust>().0.clone(),
         };
 
         let (progress_tx, progress_rx) = async_channel::unbounded::<RunProgress>();

@@ -10,6 +10,7 @@ use async_channel::Sender;
 use http_parser::{Protocol, Request};
 
 use crate::execution::{self, ExecutionBody, ExecutionMode, ExecutionRequest, ExecutionResult};
+use crate::scripting::trust::TrustStore;
 
 /// Progress event sent through the channel during a run.
 #[derive(Debug, Clone)]
@@ -42,6 +43,25 @@ pub struct RunConfig {
     pub collection_path: PathBuf,
     pub env_vars: HashMap<String, String>,
     pub stop_on_failure: bool,
+    /// Scripts the user agreed to run; any other script refuses its request.
+    pub trust: TrustStore,
+}
+
+/// Refuse a request read from `path` whose scripts the user has not
+/// trusted. A run has no one to ask, so it fails instead of prompting.
+fn check_trusted(req: &Request, path: &Path, trust: &TrustStore) -> Result<(), String> {
+    let scripts = &req.scripts;
+    let texts = [&scripts.pre_script, &scripts.post_script, &scripts.tests];
+    if trust
+        .untrusted(texts.into_iter().flatten().map(String::as_str))
+        .is_empty()
+    {
+        return Ok(());
+    }
+    Err(format!(
+        "Untrusted script in {}: open the request and send it once to review and trust it",
+        path.display()
+    ))
 }
 
 /// Run all requests in a collection directory sequentially (blocking).
@@ -58,10 +78,12 @@ pub fn run_collection(config: RunConfig, tx: Sender<RunProgress>) {
             name: name.clone(),
         });
 
-        let exec_req = build_execution_request(&req, &env);
-        let result = std::thread::spawn(move || execution::execute(exec_req))
-            .join()
-            .unwrap_or_else(|_| Err("Request thread panicked".to_string()));
+        let result = check_trusted(&req, &path, &config.trust).and_then(|()| {
+            let exec_req = build_execution_request(&req, &env);
+            std::thread::spawn(move || execution::execute(exec_req))
+                .join()
+                .unwrap_or_else(|_| Err("Request thread panicked".to_string()))
+        });
 
         // Carry forward env changes
         if let Ok(ref res) = result {
@@ -279,5 +301,52 @@ mod tests {
         let requests = collect_requests(tmp.path());
         assert_eq!(requests.len(), 1);
         assert_eq!(requests[0].0, "myReq");
+    }
+
+    /// Run `dir` with `trust` and return each request's result. The URL is
+    /// a closed loopback port, so a request that does get sent fails fast
+    /// without touching the network.
+    fn run(dir: &Path, trust: TrustStore) -> Vec<Result<ExecutionResult, String>> {
+        let (tx, rx) = async_channel::unbounded();
+        let config = RunConfig {
+            collection_path: dir.to_path_buf(),
+            env_vars: HashMap::new(),
+            stop_on_failure: false,
+            trust,
+        };
+        run_collection(config, tx);
+        std::iter::from_fn(|| rx.try_recv().ok())
+            .filter_map(|event| match event {
+                RunProgress::Completed { result, .. } => Some(result.result),
+                _ => None,
+            })
+            .collect()
+    }
+
+    const SCRIPTED: &str = "GET http://127.0.0.1:1/\n\n# @pre-script\nenv.set('ran', 'yes');\n";
+
+    #[test]
+    fn an_untrusted_script_refuses_its_request_naming_the_file() {
+        let tmp = TempDir::new("protide_runner_untrusted");
+        let file = tmp.write("shared.http", SCRIPTED.as_bytes());
+
+        let results = run(tmp.path(), TrustStore::default());
+        let err = results[0].as_ref().unwrap_err();
+        assert!(err.contains("Untrusted script"), "{err}");
+        assert!(err.contains(&file.display().to_string()), "{err}");
+    }
+
+    #[test]
+    fn a_trusted_script_lets_its_request_run() {
+        let tmp = TempDir::new("protide_runner_trusted");
+        tmp.write("shared.http", SCRIPTED.as_bytes());
+        let script = collect_requests(tmp.path())[0].2.scripts.pre_script.clone();
+        let mut trust = TrustStore::default();
+        trust.trust(&script.unwrap()).unwrap();
+
+        let results = run(tmp.path(), trust);
+        if let Err(err) = &results[0] {
+            assert!(!err.contains("Untrusted script"), "{err}");
+        }
     }
 }

@@ -2,8 +2,9 @@ use anyhow::Result;
 use gpui::{AppContext as _, AssetSource, Menu, MenuItem, SharedString, WindowOptions, px, size};
 use gpui_component::Root;
 use gpui_component_assets::Assets;
+use protide_core::scripting::trust::TrustStore;
 use protide_core::sync::{SyncConfig, SyncEngine};
-use protide_ui::panels::RequestHistory;
+use protide_ui::panels::{RequestHistory, ScriptTrust};
 use protide_ui::{
     MainWindow, Quit, SaveRequest, SendRequest, ShowAbout, ShowHelp, StartSync, ToggleConsole,
     ToggleDocs, ToggleMockServer, ToggleSidebar, register_keybindings,
@@ -107,6 +108,7 @@ fn main() -> Result<()> {
             ]);
 
             cx.set_global(RequestHistory::new());
+            cx.set_global(ScriptTrust(TrustStore::app_default()));
 
             let window_options = WindowOptions {
                 window_bounds: Some(gpui::WindowBounds::Windowed(gpui::Bounds {

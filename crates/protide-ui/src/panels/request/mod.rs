@@ -59,6 +59,7 @@ mod graphql;
 mod import;
 mod init;
 mod save;
+mod script_trust;
 mod state;
 mod url_metrics;
 mod url_sync;
@@ -95,6 +96,7 @@ use protide_core::execution::ws::{
 use protide_core::execution::{
     ExecutionBody, ExecutionMode, ExecutionRequest, FormPart, FormPartValue, add_default_header,
 };
+pub use script_trust::ScriptTrust;
 use std::marker::PhantomData;
 use std::ops::Range;
 

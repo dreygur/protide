@@ -28,7 +28,7 @@ pub use docs::DocsPanel;
 pub use explorer::{ExplorerAction, ExplorerPanel};
 pub use history::RequestHistory;
 pub use mock_server::MockServerPanel;
-pub use request::RequestPanel;
+pub use request::{RequestPanel, ScriptTrust};
 pub use response::ResponsePanel;
 pub use response::format_size;
 pub(crate) use response::truncate_error;
