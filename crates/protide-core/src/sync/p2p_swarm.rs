@@ -22,8 +22,9 @@ use super::types::CrdtEntry;
 /// Serialised payload for PAKE handshake messages over gossipsub
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PakeMsgPayload {
-    /// "init" (Bob → Alice), "resp" (Alice → Bob), or "confirm" (Bob → Alice,
-    /// final mutual key-confirmation step)
+    /// "init" (Bob → Alice), "resp" (Alice → Bob), "confirm" (Bob → Alice,
+    /// mutual key confirmation) or "group" (Alice → Bob, sent only after
+    /// Bob's confirm verified)
     pub kind: String,
     /// Display name of the sender
     pub node_name: String,
@@ -35,7 +36,7 @@ pub struct PakeMsgPayload {
     /// `finish()` alone does not guarantee that.
     #[serde(default)]
     pub confirm: Option<Vec<u8>>,
-    /// The responder's group secret on "resp", sealed under a key derived
+    /// The responder's group secret on "group", sealed under a key derived
     /// from the PAKE session (see `pake::seal_group_secret`), so only a peer
     /// that derived the same key can open it
     #[serde(default)]
