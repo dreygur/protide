@@ -82,6 +82,19 @@ impl From<identify::Event> for ProtideBehaviourEvent {
     }
 }
 
+/// Gossipsub dedupes on this id, so it must cover the whole message: a
+/// prefix hash made distinct handshake messages collide and get dropped.
+fn message_id(msg: &gossipsub::Message) -> gossipsub::MessageId {
+    let mut hasher = blake3::Hasher::new();
+    if let Some(source) = &msg.source {
+        hasher.update(&source.to_bytes());
+    }
+    hasher.update(&msg.sequence_number.unwrap_or(0).to_be_bytes());
+    hasher.update(msg.topic.as_str().as_bytes());
+    hasher.update(&msg.data);
+    gossipsub::MessageId::from(&hasher.finalize().as_bytes()[..16])
+}
+
 pub(super) fn build_swarm(keypair: identity::Keypair) -> Result<Swarm<ProtideBehaviour>, String> {
     Ok(SwarmBuilder::with_existing_identity(keypair)
         .with_tokio()
@@ -99,12 +112,7 @@ pub(super) fn build_swarm(keypair: identity::Keypair) -> Result<Swarm<ProtideBeh
                 // Strict: every message must be signed by its source, so the
                 // PeerId the handshake binds sessions to is authenticated.
                 .validation_mode(gossipsub::ValidationMode::Strict)
-                .message_id_fn(|msg| {
-                    let data = &msg.data[..msg.data.len().min(64)];
-                    let mut hasher = blake3::Hasher::new();
-                    hasher.update(data);
-                    gossipsub::MessageId::from(&hasher.finalize().as_bytes()[..8])
-                })
+                .message_id_fn(message_id)
                 .build()
                 .map_err(|e| format!("Gossipsub config error: {:?}", e))?;
 
@@ -281,5 +289,38 @@ pub(super) fn handle_swarm_event(
             let _ = event_tx_thread.send(P2PEvent::LocalAddr(address.to_string()));
         }
         _ => {}
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn msg(data: &[u8], seqno: u64) -> gossipsub::Message {
+        gossipsub::Message {
+            source: Some(PeerId::random()),
+            data: data.to_vec(),
+            sequence_number: Some(seqno),
+            topic: gossipsub::IdentTopic::new("t").hash(),
+        }
+    }
+
+    /// REGRESSION: hashing only the first 64 bytes made two handshake
+    /// messages with the same JSON prefix collide, so gossipsub dropped the
+    /// second as a duplicate.
+    #[test]
+    fn messages_sharing_a_long_prefix_get_distinct_ids() {
+        let prefix = [b'x'; 80];
+        let mut a = prefix.to_vec();
+        a.extend_from_slice(b"one");
+        let mut b = prefix.to_vec();
+        b.extend_from_slice(b"two");
+        assert_ne!(message_id(&msg(&a, 1)), message_id(&msg(&b, 1)));
+    }
+
+    #[test]
+    fn the_same_message_gets_the_same_id() {
+        let m = msg(b"payload", 7);
+        assert_eq!(message_id(&m), message_id(&m.clone()));
     }
 }
