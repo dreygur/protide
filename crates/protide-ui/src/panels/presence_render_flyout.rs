@@ -103,7 +103,9 @@ impl PresenceManager {
                                 .justify_center()
                                 .child(
                                     div()
-                                        .text_size(px(16.0))
+                                        // 13px keeps the longest code (27
+                                        // chars) inside the 260px flyout.
+                                        .text_size(px(13.0))
                                         .font_weight(gpui::FontWeight::BOLD)
                                         .font_family("JetBrains Mono")
                                         .text_color(if has_code {

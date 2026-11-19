@@ -63,10 +63,8 @@ pub struct PresenceManager {
     pub show_pairing: bool,
     /// This node's stable name, shown on the presence chip
     pub display_name: SharedString,
-    /// Current pairing code (generated or entered)
+    /// This node's pairing code, from the engine config
     pub pairing_code: SharedString,
-    /// Last generated pairing code
-    pub generated_code: SharedString,
     /// Connection state for the join flow
     pub connection_status: ConnectionStatus,
     /// Flips every tick while Handshaking - drives pulsing border
@@ -87,7 +85,6 @@ impl PresenceManager {
             show_pairing: false,
             display_name: SharedString::default(),
             pairing_code: SharedString::default(),
-            generated_code: SharedString::default(),
             connection_status: ConnectionStatus::Idle,
             handshake_tick: false,
         }
@@ -102,7 +99,6 @@ impl PresenceManager {
         }
         if let Some(code) = engine.and_then(|e| e.config().pairing_code.as_deref()) {
             presence.pairing_code = SharedString::from(code.to_string());
-            presence.generated_code = presence.pairing_code.clone();
         }
         presence
     }
@@ -137,28 +133,6 @@ impl PresenceManager {
     /// Number of active peers
     pub fn peer_count(&self) -> usize {
         self.peers.len()
-    }
-
-    /// Generate a new pairing code
-    #[allow(unexpected_cfgs)]
-    pub fn generate_code(&mut self) {
-        #[cfg(feature = "pake-auth")]
-        {
-            self.generated_code =
-                SharedString::from(protide_core::sync::pake::generate_pairing_code());
-            self.pairing_code = self.generated_code.clone();
-        }
-        #[cfg(not(feature = "pake-auth"))]
-        {
-            use std::time::{SystemTime, UNIX_EPOCH};
-            let suffix = SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_millis() as u64
-                % 10000;
-            self.generated_code = SharedString::from(format!("protide-{:04}", suffix));
-            self.pairing_code = self.generated_code.clone();
-        }
     }
 
     /// Flip the pulse tick - call once per second while Handshaking

@@ -167,7 +167,7 @@ impl MainWindow {
         });
 
         let join_input =
-            cx.new(|cx| InputState::new(window, cx).placeholder("enter pairing code…"));
+            cx.new(|cx| InputState::new(window, cx).placeholder("amber otter river tiger 482"));
 
         let sync_engine = crate::prefs::collaboration_enabled().then(|| start_sync());
         let presence = PresenceManager::for_engine(sync_engine.as_ref());
