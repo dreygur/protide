@@ -94,9 +94,9 @@ pub struct SyncEngine {
     /// answered while it is, which limits online guessing to that window.
     #[cfg(feature = "pake-auth")]
     accepting_pairing: bool,
-    /// Inits answered for the shown code without a verified "confirm"
-    #[cfg(feature = "pake-auth")]
-    failed_pairings: u32,
+    /// Online guesses answered in the current window, in total and per peer
+    #[cfg(all(feature = "p2p-sync", feature = "pake-auth"))]
+    guesses: handshake::GuessWindow,
 }
 
 impl SyncEngine {
@@ -130,8 +130,8 @@ impl SyncEngine {
             pake_topic: None,
             #[cfg(feature = "pake-auth")]
             accepting_pairing: false,
-            #[cfg(feature = "pake-auth")]
-            failed_pairings: 0,
+            #[cfg(all(feature = "p2p-sync", feature = "pake-auth"))]
+            guesses: Default::default(),
         }
     }
 

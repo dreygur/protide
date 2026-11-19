@@ -3,22 +3,35 @@
 //! without a libp2p swarm.
 #![cfg(all(feature = "p2p-sync", feature = "pake-auth"))]
 
+use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
 use super::pake::Role;
 use super::*;
 
-/// Inits answered for one shown code without a verified "confirm" before
-/// the code is replaced, so an online guesser gets this many tries per code.
-const MAX_FAILED_PAIRINGS: u32 = 5;
+/// Length of one guess budget window. Every answered init is one online
+/// guess at the shown code.
+const GUESS_WINDOW: Duration = Duration::from_secs(60);
+
+/// Inits answered per peer in one window. A peer over it is ignored until
+/// the window ends, so one peer cannot force rotations on honest users.
+const MAX_GUESSES_PER_PEER: u32 = 3;
+
+/// Inits answered across all peers in one window, however many PeerIds an
+/// attacker makes up. The guess that reaches it replaces the code, and
+/// further inits wait for the next window. It also bounds the per peer
+/// table, since every tracked peer has spent a guess.
+const MAX_GUESSES_PER_WINDOW: u32 = 10;
 
 /// How long a pending responder session accepts its peer's "confirm".
 /// Matches the UI's handshake timeout.
 const PENDING_PAIRING_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// Most pending responder sessions held at once; the oldest is dropped to
-/// make room, so no peer can fill the table and lock others out.
-const MAX_PENDING_PAIRINGS: usize = 8;
+/// make room, so no peer can fill the table and lock others out. Every
+/// pending session cost a guess, so one window's budget always fits and
+/// an honest session is never evicted by the guesses that follow it.
+const MAX_PENDING_PAIRINGS: usize = MAX_GUESSES_PER_WINDOW as usize;
 
 /// The responder's session while it waits for its peer's "confirm".
 pub(super) struct PendingResponder {
@@ -29,6 +42,23 @@ pub(super) struct PendingResponder {
 impl PendingResponder {
     fn is_live(&self) -> bool {
         self.since.elapsed() < PENDING_PAIRING_TIMEOUT
+    }
+}
+
+/// Guesses answered in the current window, in total and per peer.
+pub(super) struct GuessWindow {
+    start: Instant,
+    total: u32,
+    per_peer: HashMap<String, u32>,
+}
+
+impl Default for GuessWindow {
+    fn default() -> Self {
+        Self {
+            start: Instant::now(),
+            total: 0,
+            per_peer: HashMap::new(),
+        }
     }
 }
 
@@ -50,7 +80,9 @@ impl SyncEngine {
 
     /// Replace the shown code so further guesses target a new one. The
     /// swarm derives and subscribes the new topic off this thread and
-    /// reports it back; until then every init is ignored.
+    /// reports it back; until then every init is ignored. Sessions already
+    /// pending keep their keys, so peers whose init came first can still
+    /// confirm.
     fn regenerate_pairing_code(&mut self) {
         let code = pake::generate_pairing_code();
         if let Some(ref p2p) = self.p2p_sync {
@@ -58,8 +90,22 @@ impl SyncEngine {
         }
         self.config.pairing_code = Some(code);
         self.pake_topic = None;
-        self.failed_pairings = 0;
-        self.pending_responders.clear();
+    }
+
+    /// Spend one guess for `peer`, or refuse it when that peer or all peers
+    /// together are out of budget for the current window.
+    fn take_guess(&mut self, peer: &str) -> bool {
+        if self.guesses.start.elapsed() >= GUESS_WINDOW {
+            self.guesses = GuessWindow::default();
+        }
+        let window = &mut self.guesses;
+        let spent = window.per_peer.get(peer).copied().unwrap_or(0);
+        if window.total >= MAX_GUESSES_PER_WINDOW || spent >= MAX_GUESSES_PER_PEER {
+            return false;
+        }
+        window.per_peer.insert(peer.to_string(), spent + 1);
+        window.total += 1;
+        true
     }
 
     /// Hold `session` for `peer` until it confirms, replacing that peer's
@@ -114,7 +160,10 @@ impl SyncEngine {
             // our confirmation blob along with "resp" and wait for Bob's
             // "confirm" before declaring HandshakeComplete.
             "init" => {
-                if !self.accepting_pairing || self.pake_topic.as_deref() != Some(topic.as_str()) {
+                if !self.accepting_pairing
+                    || self.pake_topic.as_deref() != Some(topic.as_str())
+                    || !self.take_guess(&from)
+                {
                     return None;
                 }
                 let code = self.config.pairing_code.clone()?;
@@ -131,10 +180,7 @@ impl SyncEngine {
                 };
                 let confirm_a = pake::confirm_blob(&session_a, Role::Responder);
                 self.hold_pending(from, session_a);
-                // Counted until a verified "confirm" resets it: a guesser
-                // who learns nothing never sends one.
-                self.failed_pairings += 1;
-                if self.failed_pairings >= MAX_FAILED_PAIRINGS {
+                if self.guesses.total >= MAX_GUESSES_PER_WINDOW {
                     self.regenerate_pairing_code();
                 }
                 self.reply(topic, "resp", msg_a, Some(confirm_a), None)
@@ -357,29 +403,6 @@ mod tests {
         assert!(ignores(&mut alice, init_for(CODE), "bob"));
     }
 
-    /// Each answered init is one online guess, so the shown code is
-    /// replaced after MAX_FAILED_PAIRINGS of them. The old code then no
-    /// longer pairs, and the new one does once the swarm reports its topic.
-    #[test]
-    fn the_code_changes_after_too_many_failed_pairings() {
-        let mut alice = showing(CODE);
-        for _ in 1..MAX_FAILED_PAIRINGS {
-            pair(&mut alice, OTHER);
-        }
-        assert_eq!(alice.config.pairing_code.as_deref(), Some(CODE));
-        let (events_a, events_b) = pair(&mut alice, OTHER);
-        assert_eq!(paired_with(&events_a), None);
-        assert_eq!(paired_with(&events_b), None);
-
-        let new_code = alice.config.pairing_code.clone().unwrap();
-        assert_ne!(new_code, CODE);
-        assert!(ignores(&mut alice, init_for(CODE), "bob"));
-
-        alice.pake_topic = Some(pake_topic(&new_code));
-        let (events_a, _) = pair(&mut alice, &new_code);
-        assert_eq!(paired_with(&events_a), Some("bob"));
-    }
-
     /// The topic is compared against the cached string only: with nothing
     /// cached yet the init is dropped rather than running the KDF.
     #[test]
@@ -565,5 +588,68 @@ mod tests {
         pair_with(&mut alice, &mut bob, OTHER);
         assert_eq!(bob.config.group_secret, bob_secret);
         assert_ne!(bob.sync_topic(), alice.sync_topic());
+    }
+
+    /// Send `count` wrong code inits to Alice's current topic from `peer`
+    /// and return how many she answered.
+    fn guesses(alice: &mut SyncEngine, peer: &str, count: usize) -> usize {
+        let mut events = Vec::new();
+        (0..count)
+            .filter(|_| {
+                let topic = alice.pake_topic.clone().unwrap_or_default();
+                let init = (topic, engine(peer, None).start_handshake(OTHER).unwrap());
+                deliver(alice, peer, init, &mut events).is_some()
+            })
+            .count()
+    }
+
+    // REGRESSION: every answered init counted toward one shared limit that
+    // rotated the code, so one peer spamming inits kept replacing the code
+    // under an honest user.
+    #[test]
+    fn one_spamming_peer_cannot_block_an_honest_peer() {
+        let mut alice = showing(CODE);
+        let answered = guesses(&mut alice, "mallory", 20);
+        assert_eq!(answered, MAX_GUESSES_PER_PEER as usize);
+        assert_eq!(alice.config.pairing_code.as_deref(), Some(CODE));
+        let (events_a, _) = pair(&mut alice, CODE);
+        assert_eq!(paired_with(&events_a), Some("bob"));
+    }
+
+    /// Many PeerIds together get MAX_GUESSES_PER_WINDOW answers per window.
+    /// The last one replaces the code; the old code then no longer pairs,
+    /// and the new one does once the swarm reports its topic and a new
+    /// window starts.
+    #[test]
+    fn the_global_guess_rate_stays_bounded() {
+        let mut alice = showing(CODE);
+        let answered: usize = (0..30)
+            .map(|i| guesses(&mut alice, &format!("p{i}"), 1))
+            .sum();
+        assert_eq!(answered, MAX_GUESSES_PER_WINDOW as usize);
+        let new_code = alice.config.pairing_code.clone().unwrap();
+        assert_ne!(new_code, CODE);
+
+        alice.pake_topic = Some(pake_topic(&new_code));
+        assert_eq!(guesses(&mut alice, "late", 1), 0, "window budget spent");
+        alice.guesses.start -= GUESS_WINDOW;
+        assert!(ignores(&mut alice, init_for(CODE), "bob"));
+        let (events_a, _) = pair(&mut alice, &new_code);
+        assert_eq!(paired_with(&events_a), Some("bob"));
+    }
+
+    #[test]
+    fn an_honest_pending_session_survives_a_rotation() {
+        let mut alice = showing(CODE);
+        let confirm = bob_confirm(&mut alice);
+        let others = (MAX_GUESSES_PER_WINDOW - 1) as usize;
+        let answered: usize = (0..others)
+            .map(|i| guesses(&mut alice, &format!("p{i}"), 1))
+            .sum();
+        assert_eq!(answered, others);
+        assert_ne!(alice.config.pairing_code.as_deref(), Some(CODE), "rotated");
+        let mut events = Vec::new();
+        deliver(&mut alice, "bob", confirm, &mut events);
+        assert_eq!(paired_with(&events), Some("bob"));
     }
 }
