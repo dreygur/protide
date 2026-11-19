@@ -220,11 +220,15 @@ impl SyncConfig {
             .as_deref()
             .map(load_or_create_node_id)
             .unwrap_or_default();
+        #[cfg(feature = "pake-auth")]
+        let pairing_code = Some(super::pake::generate_pairing_code());
+        #[cfg(not(feature = "pake-auth"))]
+        let pairing_code = None;
         Self {
             node_name: node_id.display_name(),
             p2p_enabled: true,
             live_probe_enabled: true,
-            pairing_code: Some(super::pake::generate_pairing_code()),
+            pairing_code,
             node_id_path,
             ..Default::default()
         }
