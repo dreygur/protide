@@ -35,6 +35,8 @@ notify = { workspace = true }
 rquickjs = { workspace = true }
 # Hashes scripts for the trust store, and keys sync content
 blake3 = { workspace = true }
+# Seals every CRDT entry on the sync topic and in a shared sync folder
+chacha20poly1305 = { workspace = true }
 
 axum = { workspace = true }
 hyper = { workspace = true }
@@ -59,16 +61,14 @@ flate2 = { workspace = true }
 # Optional sync dependencies
 libp2p = { workspace = true, optional = true }
 spake2 = { workspace = true, optional = true }
-chacha20poly1305 = { workspace = true, optional = true }
 argon2 = { workspace = true, optional = true }
 rand = { workspace = true, optional = true }
 zeroize = { workspace = true, optional = true }
 
 [features]
 default = []
-# ChaCha20Poly1305 seals every CRDT entry on the sync topic
-p2p-sync = ["dep:libp2p", "dep:argon2", "dep:chacha20poly1305"]
-pake-auth = ["dep:spake2", "dep:chacha20poly1305", "dep:rand", "dep:zeroize"]
+p2p-sync = ["dep:libp2p", "dep:argon2"]
+pake-auth = ["dep:spake2", "dep:rand", "dep:zeroize"]
 full-sync = ["p2p-sync", "pake-auth"]
 
 [lints]

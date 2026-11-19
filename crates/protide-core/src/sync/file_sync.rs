@@ -1,29 +1,48 @@
+use log::{debug, warn};
 use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
+use std::cell::Cell;
 use std::collections::HashSet;
 use std::fs;
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
-use std::sync::mpsc::{self, Receiver, Sender};
+use std::sync::mpsc::{self, Receiver};
 use uuid::Uuid;
 
-use super::types::{CrdtEntry, NodeId};
+use super::seal::{open_entry, seal_entry};
+use super::types::{CrdtEntry, GroupSecret, NodeId};
+
+/// Associated data bound into every entry sealed for a sync folder. It is
+/// the same for every file, so the folder needs no knowledge of file names
+/// to open one, and it differs from every gossip topic, so a folder seal
+/// never opens as a P2P message or the reverse.
+const FOLDER_AAD: &str = "protide file sync v1";
 
 /// BYOB file sync - watches a `.protide/` folder and synchronizes individual `.crdt` files.
 ///
-/// Each CRDT entry is stored as a separate JSON file keyed by UUID.
-/// This eliminates merge conflicts at the file level since each request
-/// has its own file. Dropbox/Google Drive/OneDrive handle the transport.
+/// Each CRDT entry is stored as a separate file keyed by UUID, sealed under
+/// the key of the sync group, so anyone else with access to the shared
+/// folder can neither read nor inject entries. One file per request
+/// eliminates merge conflicts at the file level. Dropbox/Google Drive/OneDrive
+/// handle the transport.
 pub struct FileSync {
     /// Root of the .protide sync folder
     root: PathBuf,
     _node_id: NodeId,
-    _event_tx: Sender<FileSyncEvent>,
-    /// Receiver for file system events
-    event_rx: Receiver<FileSyncEvent>,
+    /// Receiver for file system changes seen by the watcher
+    watch_rx: Receiver<Watched>,
     /// File watcher
     _watcher: Option<RecommendedWatcher>,
     /// Known entry filenames (to detect deletes)
     known_entries: HashSet<Uuid>,
+    /// Whether the warning that folder sync needs a group was logged
+    warned_no_group: Cell<bool>,
+}
+
+/// A change the watcher saw in the entries folder, opened on poll under
+/// the group key current at that time.
+enum Watched {
+    Changed(PathBuf),
+    Removed(Uuid),
 }
 
 /// Events from the file sync backend
@@ -55,13 +74,12 @@ impl FileSync {
                 .map_err(|e| format!("Failed to write node_id: {}", e))?;
         }
 
-        let (event_tx, event_rx) = mpsc::channel::<FileSyncEvent>();
+        let (watch_tx, watch_rx) = mpsc::channel::<Watched>();
 
         // Scan existing entries
         let known_entries = Self::scan_existing(&entries_dir);
 
         // Set up file watcher
-        let watcher_tx = event_tx.clone();
         let mut watcher =
             notify::recommended_watcher(move |result: Result<Event, notify::Error>| {
                 if let Ok(event) = result
@@ -70,13 +88,11 @@ impl FileSync {
                     for path in &event.paths {
                         match event.kind {
                             EventKind::Create(_) | EventKind::Modify(_) => {
-                                if let Some(entry) = Self::read_entry(path) {
-                                    let _ = watcher_tx.send(FileSyncEvent::EntryReceived(entry));
-                                }
+                                let _ = watch_tx.send(Watched::Changed(path.clone()));
                             }
                             EventKind::Remove(_) => {
                                 if let Some(uuid) = Self::path_to_uuid(path) {
-                                    let _ = watcher_tx.send(FileSyncEvent::EntryDeleted(uuid));
+                                    let _ = watch_tx.send(Watched::Removed(uuid));
                                 }
                             }
                             _ => {}
@@ -93,21 +109,35 @@ impl FileSync {
         Ok(Self {
             root: protide_dir,
             _node_id: node_id,
-            _event_tx: event_tx,
-            event_rx,
+            watch_rx,
             _watcher: Some(watcher),
             known_entries,
+            warned_no_group: Cell::new(false),
         })
     }
 
-    /// Write a CRDT entry to disk as an individual `.crdt` file
-    pub fn write_entry(&self, entry: &CrdtEntry) -> Result<(), String> {
+    /// Write a CRDT entry to disk as an individual `.crdt` file, sealed
+    /// under the key of `secret`. A node without a group has no key and
+    /// writes nothing; the first such write logs why.
+    pub fn write_entry(
+        &self,
+        secret: Option<&GroupSecret>,
+        entry: &CrdtEntry,
+    ) -> Result<(), String> {
+        let Some(secret) = secret else {
+            if !self.warned_no_group.replace(true) {
+                warn!(
+                    "[FileSync] Folder sync needs a sync group: nothing is written to the \
+                     shared folder until this node pairs with a group"
+                );
+            }
+            return Ok(());
+        };
+        let data = seal_entry(secret, FOLDER_AAD, entry).ok_or("Failed to seal entry")?;
         let path = self.entry_path(&entry.id);
-        let json = serde_json::to_string(entry)
-            .map_err(|e| format!("Failed to serialize entry: {}", e))?;
         // Atomic write: write to temp file, then rename
         let tmp_path = self.entry_path_tmp(&entry.id);
-        fs::write(&tmp_path, &json).map_err(|e| format!("Failed to write entry: {}", e))?;
+        fs::write(&tmp_path, &data).map_err(|e| format!("Failed to write entry: {}", e))?;
         fs::rename(&tmp_path, &path).map_err(|e| format!("Failed to finalize entry: {}", e))?;
         Ok(())
     }
@@ -122,30 +152,34 @@ impl FileSync {
         }
     }
 
-    /// Poll for file system events (non-blocking)
-    pub fn poll_events(&mut self) -> Vec<FileSyncEvent> {
+    /// Poll for file system events (non-blocking), opening changed files
+    /// under the key of `secret`
+    pub fn poll_events(&mut self, secret: Option<&GroupSecret>) -> Vec<FileSyncEvent> {
         let mut events = Vec::new();
-        while let Ok(evt) = self.event_rx.try_recv() {
-            match &evt {
-                FileSyncEvent::EntryReceived(entry) => {
-                    self.known_entries.insert(entry.id);
+        while let Ok(seen) = self.watch_rx.try_recv() {
+            match seen {
+                Watched::Changed(path) => {
+                    if let Some(entry) = Self::open_file(&path, secret) {
+                        self.known_entries.insert(entry.id);
+                        events.push(FileSyncEvent::EntryReceived(entry));
+                    }
                 }
-                FileSyncEvent::EntryDeleted(id) => {
-                    self.known_entries.remove(id);
+                Watched::Removed(id) => {
+                    self.known_entries.remove(&id);
+                    events.push(FileSyncEvent::EntryDeleted(id));
                 }
-                _ => {}
             }
-            events.push(evt);
         }
         events
     }
 
-    /// Read all entries currently on disk (for initial sync)
-    pub fn read_all_entries(&self) -> Vec<CrdtEntry> {
+    /// Read all entries currently on disk that open under the key of
+    /// `secret` (for initial sync)
+    pub fn read_all_entries(&self, secret: Option<&GroupSecret>) -> Vec<CrdtEntry> {
         let entries_dir = self.root.join("entries");
         Self::scan_existing(&entries_dir)
             .iter()
-            .filter_map(|uuid| Self::read_entry(&self.entry_path(uuid)))
+            .filter_map(|uuid| Self::open_file(&self.entry_path(uuid), secret))
             .collect()
     }
 
@@ -164,9 +198,16 @@ impl FileSync {
         self.root.join("entries").join(format!("{}.crdt.tmp", id))
     }
 
-    fn read_entry(path: &Path) -> Option<CrdtEntry> {
-        let content = fs::read_to_string(path).ok()?;
-        serde_json::from_str(&content).ok()
+    /// The entry in the file at `path`, opened under the key of `secret`.
+    /// A file that does not open is skipped unread: it was sealed by
+    /// another group, altered, or written in the clear by an older version.
+    fn open_file(path: &Path, secret: Option<&GroupSecret>) -> Option<CrdtEntry> {
+        let data = fs::read(path).ok()?;
+        let entry = secret.and_then(|s| open_entry(s, FOLDER_AAD, &data));
+        if entry.is_none() {
+            debug!("[FileSync] Skipped a sync file that did not open");
+        }
+        entry
     }
 
     fn scan_existing(entries_dir: &Path) -> HashSet<Uuid> {
@@ -227,46 +268,147 @@ pub fn default_sync_folder() -> Option<PathBuf> {
 
 #[cfg(test)]
 mod tests {
+    use super::super::seal::NONCE_LEN;
     use super::*;
-    use crate::sync::DataType;
     use crate::sync::crdt::CrdtStore;
+    use crate::sync::{DataType, SyncConfig, SyncEngine};
     use crate::test_support::TempDir;
 
+    const FIELD_VALUE: &str = "https://internal.example/token-4f2a";
+    const GROUP: GroupSecret = GroupSecret([1; 32]);
+    const OTHER_GROUP: GroupSecret = GroupSecret([2; 32]);
+
+    fn folder() -> TempDir {
+        TempDir::new("protide_file_sync_test")
+    }
+
+    fn node(tmp: &TempDir) -> FileSync {
+        FileSync::open(tmp.path(), NodeId::new()).unwrap()
+    }
+
+    fn request_entry() -> CrdtEntry {
+        let data = format!(r#"{{"url":"{FIELD_VALUE}"}}"#);
+        CrdtStore::new(NodeId::new()).apply_local(DataType::Request, data)
+    }
+
+    /// Paths of every file in the entries folder.
+    fn entry_files(sync: &FileSync) -> Vec<PathBuf> {
+        let dir = fs::read_dir(sync.root().join("entries")).unwrap();
+        dir.flatten().map(|e| e.path()).collect()
+    }
+
+    /// An engine on the folder of `tmp`, in the group of `secret` if any.
+    fn engine(tmp: &TempDir, secret: Option<GroupSecret>) -> SyncEngine {
+        let mut engine = SyncEngine::new(SyncConfig {
+            sync_folder: Some(tmp.path().to_path_buf()),
+            group_secret: secret,
+            ..Default::default()
+        });
+        engine.init().unwrap();
+        engine
+    }
+
     #[test]
-    fn test_write_and_read_entry() {
-        let tmp = TempDir::new("protide_file_sync_test");
+    fn two_nodes_in_the_same_group_share_entries_through_the_folder() {
+        let tmp = folder();
+        let (alice, bob) = (node(&tmp), node(&tmp));
+        let entry = request_entry();
+        alice.write_entry(Some(&GROUP), &entry).unwrap();
 
-        let node = NodeId::new();
-        let sync = FileSync::open(tmp.path(), node).unwrap();
-
-        let mut store = CrdtStore::new(NodeId::new());
-        let entry = store.apply_local(
-            DataType::Request,
-            r#"{"url":"https://api.example.com"}"#.into(),
-        );
-
-        sync.write_entry(&entry).unwrap();
-
-        let entries = sync.read_all_entries();
+        let entries = bob.read_all_entries(Some(&GROUP));
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].id, entry.id);
-        assert_eq!(entries[0].data, r#"{"url":"https://api.example.com"}"#);
+        assert_eq!(entries[0].data, entry.data);
+    }
+
+    #[test]
+    fn an_engine_loads_the_entries_another_member_wrote() {
+        let tmp = folder();
+        let mut alice = engine(&tmp, Some(GROUP));
+        let entry = alice.apply_local_change(DataType::Request, FIELD_VALUE.into());
+        let bob = engine(&tmp, Some(GROUP));
+        assert_eq!(bob.store.get(&entry.id).unwrap().data, FIELD_VALUE);
+    }
+
+    /// REGRESSION: entries were written as plaintext JSON, readable by
+    /// anyone with access to the shared folder.
+    #[test]
+    fn the_folder_holds_nothing_another_group_or_a_loner_can_read() {
+        let tmp = folder();
+        let alice = node(&tmp);
+        alice.write_entry(Some(&GROUP), &request_entry()).unwrap();
+
+        let plain = FIELD_VALUE.as_bytes();
+        for path in entry_files(&alice) {
+            let data = fs::read(path).unwrap();
+            assert!(!data.windows(plain.len()).any(|w| w == plain));
+            assert!(serde_json::from_slice::<CrdtEntry>(&data).is_err());
+        }
+        let outsider = node(&tmp);
+        assert!(outsider.read_all_entries(Some(&OTHER_GROUP)).is_empty());
+        assert!(outsider.read_all_entries(None).is_empty());
+        let mut loner = engine(&tmp, None);
+        assert!(loner.store.is_empty());
+        assert!(loner.poll().is_empty());
+    }
+
+    #[test]
+    fn files_from_another_group_or_in_the_clear_are_rejected() {
+        let tmp = folder();
+        let (alice, mallory) = (node(&tmp), node(&tmp));
+        mallory
+            .write_entry(Some(&OTHER_GROUP), &request_entry())
+            .unwrap();
+        let legacy = request_entry();
+        let json = serde_json::to_vec(&legacy).unwrap();
+        fs::write(alice.entry_path(&legacy.id), json).unwrap();
+
+        assert_eq!(entry_files(&alice).len(), 2);
+        assert!(alice.read_all_entries(Some(&GROUP)).is_empty());
+    }
+
+    #[test]
+    fn a_tampered_file_is_rejected() {
+        let tmp = folder();
+        let sync = node(&tmp);
+        let entry = request_entry();
+        sync.write_entry(Some(&GROUP), &entry).unwrap();
+        let path = sync.entry_path(&entry.id);
+        let intact = fs::read(&path).unwrap();
+
+        for i in [0, NONCE_LEN, intact.len() - 1] {
+            let mut tampered = intact.clone();
+            tampered[i] ^= 1;
+            fs::write(&path, &tampered).unwrap();
+            assert!(sync.read_all_entries(Some(&GROUP)).is_empty(), "byte {i}");
+        }
+        fs::write(&path, &intact).unwrap();
+        assert_eq!(sync.read_all_entries(Some(&GROUP)).len(), 1);
+    }
+
+    #[test]
+    fn a_node_without_a_group_writes_nothing() {
+        let tmp = folder();
+        let sync = node(&tmp);
+        sync.write_entry(None, &request_entry()).unwrap();
+        sync.write_entry(None, &request_entry()).unwrap();
+        assert!(entry_files(&sync).is_empty());
+
+        let mut loner = engine(&tmp, None);
+        loner.apply_local_change(DataType::Request, FIELD_VALUE.into());
+        assert!(entry_files(&sync).is_empty());
     }
 
     #[test]
     fn test_delete_entry() {
-        let tmp = TempDir::new("protide_file_sync_del_test");
+        let tmp = folder();
+        let sync = node(&tmp);
+        let entry = request_entry();
 
-        let node = NodeId::new();
-        let sync = FileSync::open(tmp.path(), node).unwrap();
-
-        let mut store = CrdtStore::new(NodeId::new());
-        let entry = store.apply_local(DataType::Request, "data".into());
-
-        sync.write_entry(&entry).unwrap();
-        assert_eq!(sync.read_all_entries().len(), 1);
+        sync.write_entry(Some(&GROUP), &entry).unwrap();
+        assert_eq!(sync.read_all_entries(Some(&GROUP)).len(), 1);
 
         sync.delete_entry(&entry.id).unwrap();
-        assert_eq!(sync.read_all_entries().len(), 0);
+        assert_eq!(sync.read_all_entries(Some(&GROUP)).len(), 0);
     }
 }

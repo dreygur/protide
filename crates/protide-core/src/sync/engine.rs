@@ -4,14 +4,18 @@
 use super::*;
 
 impl SyncEngine {
+    /// Write `entry` to the sync folder, sealed under our group key. A node
+    /// without a group writes nothing there.
+    fn write_to_folder(&self, entry: &types::CrdtEntry) {
+        if let Some(ref fs) = self.file_sync {
+            let _ = fs.write_entry(self.config.group_secret.as_ref(), entry);
+        }
+    }
+
     /// Apply a local change to the CRDT store and propagate to all backends.
     pub fn apply_local_change(&mut self, data_type: DataType, data: String) -> types::CrdtEntry {
         let entry = self.store.apply_local(data_type, data);
-
-        // Write to file sync
-        if let Some(ref fs) = self.file_sync {
-            let _ = fs.write_entry(&entry);
-        }
+        self.write_to_folder(&entry);
 
         #[cfg(feature = "p2p-sync")]
         self.publish_entry(&entry);
@@ -28,10 +32,7 @@ impl SyncEngine {
         data: String,
     ) -> Option<types::CrdtEntry> {
         let entry = self.store.update_local(id, data_type, data)?;
-
-        if let Some(ref fs) = self.file_sync {
-            let _ = fs.write_entry(&entry);
-        }
+        self.write_to_folder(&entry);
 
         #[cfg(feature = "p2p-sync")]
         self.publish_entry(&entry);
@@ -46,9 +47,9 @@ impl SyncEngine {
 
         if let Some(ref fs) = self.file_sync {
             let _ = fs.delete_entry(&id);
-            // Also write the tombstone
-            let _ = fs.write_entry(&entry);
         }
+        // Also write the tombstone
+        self.write_to_folder(&entry);
 
         #[cfg(feature = "p2p-sync")]
         self.publish_entry(&entry);
@@ -105,7 +106,8 @@ impl SyncEngine {
         let mut events = Vec::new();
 
         // Poll file sync events
-        let fs_events = self.file_sync.as_mut().map(|fs| fs.poll_events());
+        let secret = self.config.group_secret;
+        let fs_events = (self.file_sync.as_mut()).map(|fs| fs.poll_events(secret.as_ref()));
         for fs_event in fs_events.unwrap_or_default() {
             match fs_event {
                 FileSyncEvent::EntryReceived(entry) => {

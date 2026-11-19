@@ -27,6 +27,7 @@ mod handshake;
 mod p2p_seal;
 mod p2p_swarm;
 mod p2p_topic;
+mod seal;
 
 use std::path::PathBuf;
 use std::sync::mpsc::{self, Receiver, Sender};
@@ -152,7 +153,7 @@ impl SyncEngine {
             match FileSync::open(sync_folder, node_id.clone()) {
                 Ok(fs) => {
                     // Load existing entries from disk
-                    let entries = fs.read_all_entries();
+                    let entries = fs.read_all_entries(self.config.group_secret.as_ref());
                     for entry in &entries {
                         self.store.merge_remote(entry.clone());
                     }
