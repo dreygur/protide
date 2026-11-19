@@ -180,7 +180,7 @@ make verify     # fmt-check -> clippy (-D warnings) -> test -> audit
 make hooks      # one-time: enable .githooks (pre-commit fmt+clippy, pre-push verify)
 ```
 
-- **870 tests** (107 http-parser + 379 protide-core + 284 protide-ui + 98 lsp + 2 mcp),
+- **879 tests** (107 http-parser + 388 protide-core + 284 protide-ui + 98 lsp + 2 mcp),
   none `#[ignore]`d — the five recorded defects are fixed, see **Fixed Defects** below.
   `protide-core` drops tests without `--features full-sync`; the PAKE tests are
   `#![cfg(feature = "pake-auth")]`.
