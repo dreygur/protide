@@ -3,12 +3,25 @@
 //! without a libp2p swarm.
 #![cfg(all(feature = "p2p-sync", feature = "pake-auth"))]
 
+use std::time::{Duration, Instant};
+
 use super::pake::Role;
 use super::*;
 
 /// Inits answered for one shown code without a verified "confirm" before
 /// the code is replaced, so an online guesser gets this many tries per code.
 const MAX_FAILED_PAIRINGS: u32 = 5;
+
+/// How long the responder holds one pending session before a new init may
+/// replace it. Matches the UI's handshake timeout.
+const PENDING_PAIRING_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// The responder's session while it waits for that peer's "confirm".
+pub(super) struct PendingResponder {
+    peer: String,
+    session: pake::PakeSession,
+    since: Instant,
+}
 
 impl SyncEngine {
     /// Begin a handshake as Bob for `code`: store the B side state and
@@ -66,6 +79,15 @@ impl SyncEngine {
                 if !self.accepting_pairing || self.pake_topic.as_deref() != Some(topic.as_str()) {
                     return None;
                 }
+                // One session at a time, so an attacker's init cannot
+                // replace the real peer's before it times out.
+                if self
+                    .pake_pending_alice
+                    .as_ref()
+                    .is_some_and(|p| p.since.elapsed() < PENDING_PAIRING_TIMEOUT)
+                {
+                    return None;
+                }
                 let code = self.config.pairing_code.clone()?;
                 let (msg_a, state_a) = pake::pake_initiate(&code).ok()?;
                 let session_a = match pake::pake_finish(state_a, pake_bytes) {
@@ -79,7 +101,11 @@ impl SyncEngine {
                     }
                 };
                 let confirm_a = pake::confirm_blob(&session_a, Role::Responder);
-                self.pake_pending_alice = Some(session_a);
+                self.pake_pending_alice = Some(PendingResponder {
+                    peer: from,
+                    session: session_a,
+                    since: Instant::now(),
+                });
                 // Counted until a verified "confirm" resets it: a guesser
                 // who learns nothing never sends one.
                 self.failed_pairings += 1;
@@ -114,12 +140,16 @@ impl SyncEngine {
                 self.reply(topic, "confirm", Vec::new(), confirm_b)
             }
             // We are Alice: Bob has (claimed to have) proven he derived the
-            // same key as us.
+            // same key as us. Only the peer whose init we answered may
+            // confirm; anyone else leaves the pending session untouched.
             "confirm" => {
-                let session_a = self.pake_pending_alice.take()?;
-                if confirm
-                    .is_some_and(|blob| pake::verify_confirm(&session_a, Role::Initiator, blob))
-                {
+                if !matches!(&self.pake_pending_alice, Some(p) if p.peer == from) {
+                    return None;
+                }
+                let pending = self.pake_pending_alice.take()?;
+                if confirm.is_some_and(|blob| {
+                    pake::verify_confirm(&pending.session, Role::Initiator, blob)
+                }) {
                     info!("[PAKE] Handshake complete (confirm) with peer {}", from);
                     self.failed_pairings = 0;
                     events.push(SyncEvent::HandshakeComplete {
@@ -239,6 +269,13 @@ mod tests {
         deliver(alice, from, msg, &mut events).is_none() && events.is_empty()
     }
 
+    /// Age Alice's pending session past the timeout, as an abandoned one.
+    fn expire(alice: &mut SyncEngine) {
+        if let Some(pending) = alice.pake_pending_alice.as_mut() {
+            pending.since -= PENDING_PAIRING_TIMEOUT;
+        }
+    }
+
     // REGRESSION: the side showing its code ignored every incoming init,
     // because only the side that typed a code had a pending code set.
     // Each side only reports HandshakeComplete after verifying the other's
@@ -265,11 +302,13 @@ mod tests {
         let mut alice = showing(CODE);
         for _ in 1..MAX_FAILED_PAIRINGS {
             pair(&mut alice, OTHER);
+            expire(&mut alice);
         }
         assert_eq!(alice.config.pairing_code.as_deref(), Some(CODE));
         let (events_a, events_b) = pair(&mut alice, OTHER);
         assert_eq!(paired_with(&events_a), None);
         assert_eq!(paired_with(&events_b), None);
+        expire(&mut alice);
 
         let new_code = alice.config.pairing_code.clone().unwrap();
         assert_ne!(new_code, CODE);
@@ -319,5 +358,34 @@ mod tests {
         let reflected = serde_json::to_vec(&reflected).unwrap();
         deliver(&mut alice, "mallory", (topic, reflected), &mut events);
         assert_eq!(paired_with(&events), None);
+    }
+
+    // REGRESSION: any peer's "confirm" was checked against the pending
+    // session, and a bad one cleared it for the real peer too.
+    #[test]
+    fn a_confirm_from_another_peer_is_ignored() {
+        let mut alice = showing(CODE);
+        let mut bob = engine("bob", None);
+        let (mut events_a, mut events_b) = (Vec::new(), Vec::new());
+        let topic = alice.pake_topic.clone().unwrap();
+        let init = (topic, bob.start_handshake(CODE).unwrap());
+        let resp = deliver(&mut alice, "bob", init, &mut events_a).unwrap();
+        let confirm = deliver(&mut bob, "alice", resp, &mut events_b).unwrap();
+        assert!(ignores(&mut alice, confirm.clone(), "mallory"));
+        deliver(&mut alice, "bob", confirm, &mut events_a);
+        assert_eq!(paired_with(&events_a), Some("bob"));
+    }
+
+    #[test]
+    fn a_new_init_waits_until_the_pending_session_times_out() {
+        let mut alice = showing(CODE);
+        let topic = alice.pake_topic.clone().unwrap();
+        let mut events = Vec::new();
+        let first = (topic.clone(), init_for(OTHER).1);
+        assert!(deliver(&mut alice, "mallory", first, &mut events).is_some());
+        assert!(ignores(&mut alice, (topic, init_for(CODE).1), "bob"));
+        expire(&mut alice);
+        let (events_a, _) = pair(&mut alice, CODE);
+        assert_eq!(paired_with(&events_a), Some("bob"));
     }
 }
