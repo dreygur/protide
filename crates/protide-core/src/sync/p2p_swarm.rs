@@ -96,7 +96,9 @@ pub(super) fn build_swarm(keypair: identity::Keypair) -> Result<Swarm<ProtideBeh
             let pid = key.public().to_peer_id();
 
             let gs_config = gossipsub::ConfigBuilder::default()
-                .validation_mode(gossipsub::ValidationMode::Permissive)
+                // Strict: every message must be signed by its source, so the
+                // PeerId the handshake binds sessions to is authenticated.
+                .validation_mode(gossipsub::ValidationMode::Strict)
                 .message_id_fn(|msg| {
                     let data = &msg.data[..msg.data.len().min(64)];
                     let mut hasher = blake3::Hasher::new();

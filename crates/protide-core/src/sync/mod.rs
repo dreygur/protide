@@ -80,11 +80,11 @@ pub struct SyncEngine {
     /// after sending "resp" until that peer's "confirm" proves it derived
     /// the same key.
     #[cfg(all(feature = "p2p-sync", feature = "pake-auth"))]
-    pending_responders: std::collections::HashMap<String, handshake::PendingResponder>,
+    pending_responders: std::collections::HashMap<String, handshake::PendingSession>,
     /// Bob's verified session and the peer it is with, kept after sending
     /// "confirm" to open the group secret that peer then releases
     #[cfg(all(feature = "p2p-sync", feature = "pake-auth"))]
-    pending_initiator: Option<(String, pake::PakeSession)>,
+    pending_initiator: Option<(String, handshake::PendingSession)>,
     /// PAKE topic of the code we show, reported by the swarm thread once it
     /// has run the slow KDF. Incoming messages are compared against this
     /// cached string, so no message ever triggers a derivation.

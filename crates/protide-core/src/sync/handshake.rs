@@ -34,12 +34,12 @@ const PENDING_PAIRING_TIMEOUT: Duration = Duration::from_secs(10);
 const MAX_PENDING_PAIRINGS: usize = MAX_GUESSES_PER_WINDOW as usize;
 
 /// The responder's session while it waits for its peer's "confirm".
-pub(super) struct PendingResponder {
+pub(super) struct PendingSession {
     session: pake::PakeSession,
     since: Instant,
 }
 
-impl PendingResponder {
+impl PendingSession {
     fn is_live(&self) -> bool {
         self.since.elapsed() < PENDING_PAIRING_TIMEOUT
     }
@@ -124,7 +124,7 @@ impl SyncEngine {
             }
         }
         let since = Instant::now();
-        pending.insert(peer, PendingResponder { session, since });
+        pending.insert(peer, PendingSession { session, since });
     }
 
     /// Adopt the group secret the responder shared and move CRDT sync to
@@ -202,25 +202,33 @@ impl SyncEngine {
                     return None;
                 }
                 let confirm_b = pake::confirm_blob(&session_b, Role::Initiator);
-                self.pending_initiator = Some((from, session_b));
+                let since = Instant::now();
+                let pending = PendingSession {
+                    session: session_b,
+                    since,
+                };
+                self.pending_initiator = Some((from, pending));
                 self.reply(topic, "confirm", Vec::new(), Some(confirm_b), None)
             }
             // We are Bob: Alice verified our confirm and released her group
             // secret, sealed. Only the peer whose "resp" we verified counts;
             // a seal that fails to open under that key was tampered with.
             "group" => {
-                let (_, session) = self.pending_initiator.take_if(|(peer, _)| *peer == from)?;
-                match group.map(|blob| pake::open_group_secret(&session, blob)) {
-                    Some(None) => {
-                        info!("[PAKE] Group secret from peer {} did not open", from);
-                        events.push(SyncEvent::HandshakeFailed {
-                            reason: "PAKE mismatch".to_string(),
-                        });
-                        return None;
-                    }
-                    Some(Some(secret)) => self.join_group(secret),
-                    None => {}
+                let (peer, pending) = self.pending_initiator.as_ref()?;
+                if *peer != from || !pending.is_live() {
+                    return None;
                 }
+                // The sealed secret is what authenticates this message: a
+                // missing or unopenable one leaves the session for the real
+                // "group" and reports nothing.
+                let Some(secret) =
+                    group.and_then(|blob| pake::open_group_secret(&pending.session, blob))
+                else {
+                    info!("[PAKE] Group secret from peer {} did not open", from);
+                    return None;
+                };
+                self.pending_initiator = None;
+                self.join_group(secret);
                 info!("[PAKE] Handshake complete (group) with peer {}", from);
                 events.push(SyncEvent::HandshakeComplete {
                     peer_id: from,
@@ -250,10 +258,12 @@ impl SyncEngine {
                         peer_id: from,
                         peer_name: node_name,
                     });
-                    let sealed = self
+                    // Always sealed: a node without a group starts one.
+                    let secret = *self
                         .config
                         .group_secret
-                        .and_then(|s| pake::seal_group_secret(&pending.session, &s).ok());
+                        .get_or_insert_with(pake::generate_group_secret);
+                    let sealed = pake::seal_group_secret(&pending.session, &secret).ok();
                     return self.reply(topic, "group", Vec::new(), None, sealed);
                 }
                 info!("[PAKE] Handshake mismatch on 'confirm' from peer {}", from);
@@ -562,23 +572,78 @@ mod tests {
         }
     }
 
-    #[test]
-    fn a_group_from_another_peer_is_ignored() {
-        let (mut alice, mut bob) = (showing(CODE), engine("bob", None));
+    /// Run a valid handshake up to Alice's "group" message, undelivered.
+    fn group_for(alice: &mut SyncEngine, bob: &mut SyncEngine) -> (String, Vec<u8>) {
         let mut events = Vec::new();
         let init = (
             alice.pake_topic.clone().unwrap(),
             bob.start_handshake(CODE).unwrap(),
         );
-        let resp = deliver(&mut alice, "bob", init, &mut events).unwrap();
-        let confirm = deliver(&mut bob, "alice", resp, &mut events).unwrap();
-        let group = deliver(&mut alice, "bob", confirm, &mut events).unwrap();
-        let mut events_b = Vec::new();
-        assert!(deliver(&mut bob, "mallory", group.clone(), &mut events_b).is_none());
-        assert_eq!(paired_with(&events_b), None);
-        deliver(&mut bob, "alice", group, &mut events_b);
-        assert_eq!(paired_with(&events_b), Some("alice"));
+        let resp = deliver(alice, "bob", init, &mut events).unwrap();
+        let confirm = deliver(bob, "alice", resp, &mut events).unwrap();
+        deliver(alice, "bob", confirm, &mut events).unwrap()
+    }
+
+    /// `msg` with its sealed group replaced by `group`.
+    fn with_group((topic, data): &(String, Vec<u8>), group: Option<Vec<u8>>) -> (String, Vec<u8>) {
+        let mut msg: p2p::PakeMsgPayload = serde_json::from_slice(data).unwrap();
+        msg.group = group;
+        (topic.clone(), serde_json::to_vec(&msg).unwrap())
+    }
+
+    #[test]
+    fn a_group_from_another_peer_is_ignored() {
+        let (mut alice, mut bob) = (showing(CODE), engine("bob", None));
+        let group = group_for(&mut alice, &mut bob);
+        assert!(ignores(&mut bob, group.clone(), "mallory"));
+        let mut events = Vec::new();
+        deliver(&mut bob, "alice", group, &mut events);
+        assert_eq!(paired_with(&events), Some("alice"));
         assert_eq!(bob.sync_topic(), alice.sync_topic());
+    }
+
+    // REGRESSION: a "group" without a sealed secret still completed the
+    // handshake, so it was not authenticated by the session at all.
+    #[test]
+    fn a_group_without_a_valid_seal_completes_nothing() {
+        let (mut alice, mut bob) = (showing(CODE), engine("bob", None));
+        let group = group_for(&mut alice, &mut bob);
+        assert!(ignores(&mut bob, with_group(&group, None), "alice"));
+        assert!(ignores(
+            &mut bob,
+            with_group(&group, Some(vec![7; 60])),
+            "alice"
+        ));
+        let mut events = Vec::new();
+        deliver(&mut bob, "alice", group, &mut events);
+        assert_eq!(
+            paired_with(&events),
+            Some("alice"),
+            "the real group still completes"
+        );
+    }
+
+    #[test]
+    fn an_expired_initiator_session_ignores_group() {
+        let (mut alice, mut bob) = (showing(CODE), engine("bob", None));
+        let group = group_for(&mut alice, &mut bob);
+        if let Some((_, pending)) = bob.pending_initiator.as_mut() {
+            pending.since -= PENDING_PAIRING_TIMEOUT;
+        }
+        assert!(ignores(&mut bob, group, "alice"));
+    }
+
+    /// A responder that has no group yet starts one rather than sending
+    /// an unsealed "group".
+    #[test]
+    fn a_responder_without_a_group_starts_one_to_share() {
+        let (mut alice, mut bob) = (showing(CODE), engine("bob", None));
+        alice.config.group_secret = None;
+        let (events_a, events_b, _) = pair_with(&mut alice, &mut bob, CODE);
+        assert_eq!(paired_with(&events_a), Some("bob"));
+        assert_eq!(paired_with(&events_b), Some("alice"));
+        assert!(alice.config.group_secret.is_some());
+        assert_eq!(bob.config.group_secret, alice.config.group_secret);
     }
 
     #[test]
