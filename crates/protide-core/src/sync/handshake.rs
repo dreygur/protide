@@ -5,6 +5,10 @@
 
 use super::*;
 
+/// Inits answered for one shown code without a verified "confirm" before
+/// the code is replaced, so an online guesser gets this many tries per code.
+const MAX_FAILED_PAIRINGS: u32 = 5;
+
 impl SyncEngine {
     /// Begin a handshake as Bob for `code`: store the B side state and
     /// return the serialised "init" payload to publish on the code's topic.
@@ -18,6 +22,19 @@ impl SyncEngine {
             confirm: None,
         };
         serde_json::to_vec(&payload).map_err(|e| format!("Serialisation error: {}", e))
+    }
+
+    /// Replace the shown code so further guesses target a new one. The
+    /// swarm derives and subscribes the new topic off this thread and
+    /// reports it back; until then every init is ignored.
+    fn regenerate_pairing_code(&mut self) {
+        let code = pake::generate_pairing_code();
+        if let Some(ref p2p) = self.p2p_sync {
+            p2p.set_pairing_code(&code);
+        }
+        self.config.pairing_code = Some(code);
+        self.pake_topic = None;
+        self.failed_pairings = 0;
     }
 
     /// Process one PAKE handshake message received on a `protide-pake-*`
@@ -45,7 +62,7 @@ impl SyncEngine {
             // our confirmation blob along with "resp" and wait for Bob's
             // "confirm" before declaring HandshakeComplete.
             "init" => {
-                if self.pake_topic.as_deref() != Some(topic.as_str()) {
+                if !self.accepting_pairing || self.pake_topic.as_deref() != Some(topic.as_str()) {
                     return None;
                 }
                 let code = self.config.pairing_code.clone()?;
@@ -63,6 +80,12 @@ impl SyncEngine {
                 match pake::confirm_blob(&session_a) {
                     Ok(confirm_a) => {
                         self.pake_pending_alice = Some(session_a);
+                        // Counted until a verified "confirm" resets it: a
+                        // guesser who learns nothing never sends one.
+                        self.failed_pairings += 1;
+                        if self.failed_pairings >= MAX_FAILED_PAIRINGS {
+                            self.regenerate_pairing_code();
+                        }
                         self.reply(topic, "resp", msg_a, confirm_a)
                     }
                     Err(e) => {
@@ -104,6 +127,7 @@ impl SyncEngine {
                 let session_a = self.pake_pending_alice.take()?;
                 if confirm.is_some_and(|blob| pake::verify_confirm(&session_a, blob)) {
                     info!("[PAKE] Handshake complete (confirm) with peer {}", from);
+                    self.failed_pairings = 0;
                     events.push(SyncEvent::HandshakeComplete {
                         peer_id: from,
                         peer_name: node_name,
@@ -154,10 +178,12 @@ mod tests {
         })
     }
 
-    /// Alice showing `code`, with its topic cached as the swarm reports it.
+    /// Alice showing `code` in an open pairing window, with its topic
+    /// cached as the swarm reports it.
     fn showing(code: &str) -> SyncEngine {
         let mut alice = engine("alice", Some(code));
         alice.pake_topic = Some(PairingTopics::derive(code).pake);
+        alice.set_accepting_pairing(true);
         alice
     }
 
@@ -186,18 +212,17 @@ mod tests {
         )
     }
 
-    /// Alice shows CODE, Bob types `typed` and his init lands on Alice's
-    /// topic. Messages are pumped by hand until neither side replies.
-    fn pair(typed: &str) -> (Vec<SyncEvent>, Vec<SyncEvent>) {
-        let mut alice = showing(CODE);
+    /// Bob types `typed` and his init lands on Alice's cached topic.
+    /// Messages are pumped by hand until neither side replies.
+    fn pair(alice: &mut SyncEngine, typed: &str) -> (Vec<SyncEvent>, Vec<SyncEvent>) {
         let mut bob = engine("bob", None);
         let (mut events_a, mut events_b) = (Vec::new(), Vec::new());
         let init = bob.start_handshake(typed).unwrap();
-        let mut next = Some((PairingTopics::derive(CODE).pake, init));
+        let mut next = alice.pake_topic.clone().map(|topic| (topic, init));
         let mut to_alice = true;
         while let Some(msg) = next.take() {
             next = if to_alice {
-                deliver(&mut alice, "bob", msg, &mut events_a)
+                deliver(alice, "bob", msg, &mut events_a)
             } else {
                 deliver(&mut bob, "alice", msg, &mut events_b)
             };
@@ -225,9 +250,39 @@ mod tests {
     // AEAD confirmation blob, so both completing proves equal session keys.
     #[test]
     fn the_side_showing_its_code_pairs_with_the_side_typing_it() {
-        let (events_a, events_b) = pair(CODE);
+        let (events_a, events_b) = pair(&mut showing(CODE), CODE);
         assert_eq!(paired_with(&events_a), Some("bob"));
         assert_eq!(paired_with(&events_b), Some("alice"));
+    }
+
+    #[test]
+    fn an_init_is_ignored_while_the_pairing_window_is_closed() {
+        let mut alice = showing(CODE);
+        alice.set_accepting_pairing(false);
+        assert!(ignores(&mut alice, init_for(CODE)));
+    }
+
+    /// Each answered init is one online guess, so the shown code is
+    /// replaced after MAX_FAILED_PAIRINGS of them. The old code then no
+    /// longer pairs, and the new one does once the swarm reports its topic.
+    #[test]
+    fn the_code_changes_after_too_many_failed_pairings() {
+        let mut alice = showing(CODE);
+        for _ in 1..MAX_FAILED_PAIRINGS {
+            pair(&mut alice, OTHER);
+        }
+        assert_eq!(alice.config.pairing_code.as_deref(), Some(CODE));
+        let (events_a, events_b) = pair(&mut alice, OTHER);
+        assert_eq!(paired_with(&events_a), None);
+        assert_eq!(paired_with(&events_b), None);
+
+        let new_code = alice.config.pairing_code.clone().unwrap();
+        assert_ne!(new_code, CODE);
+        assert!(ignores(&mut alice, init_for(CODE)));
+
+        alice.pake_topic = Some(PairingTopics::derive(&new_code).pake);
+        let (events_a, _) = pair(&mut alice, &new_code);
+        assert_eq!(paired_with(&events_a), Some("bob"));
     }
 
     /// The topic is compared against the cached string only: with nothing
@@ -245,7 +300,7 @@ mod tests {
 
     #[test]
     fn a_wrong_code_never_pairs() {
-        let (events_a, events_b) = pair(OTHER);
+        let (events_a, events_b) = pair(&mut showing(CODE), OTHER);
         assert_eq!(paired_with(&events_a), None);
         assert_eq!(paired_with(&events_b), None);
     }

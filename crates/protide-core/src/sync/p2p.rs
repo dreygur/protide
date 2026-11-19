@@ -12,7 +12,9 @@ use serde::{Deserialize, Serialize};
 
 use log::{error, info, warn};
 
-use super::p2p_swarm::{bootstrap_kademlia, build_swarm, handle_swarm_event};
+use super::p2p_swarm::{
+    bootstrap_kademlia, build_swarm, handle_swarm_event, switch_own_pake_topic,
+};
 use super::p2p_topic::{GOSSIP_TOPIC, PairingTopics};
 use super::types::{CrdtEntry, NodeId};
 
@@ -45,6 +47,9 @@ pub enum SwarmCmd {
     /// Publish bytes on the PAKE topic of a pairing code. The topic is
     /// derived on the swarm thread because the KDF is slow.
     PublishPake(String, Vec<u8>),
+    /// Replace our own pairing code: derive its PAKE topic, move our
+    /// subscription there and report it back as `P2PEvent::PakeTopic`
+    SetPairingCode(String),
 }
 
 // ── Events ────────────────────────────────────────────────────────────────────
@@ -163,10 +168,14 @@ impl P2PSync {
                     }
 
                     // Also subscribe to our own PAKE topic so we hear handshake requests
-                    if let Some(ref topics) = topics {
-                        let pake_topic = gossipsub::IdentTopic::new(&topics.pake);
-                        let _ = swarm.behaviour_mut().gossipsub.subscribe(&pake_topic);
-                        let _ = event_tx_thread.send(P2PEvent::PakeTopic(topics.pake.clone()));
+                    let mut own_pake = None;
+                    if let Some(topics) = topics {
+                        switch_own_pake_topic(
+                            &mut swarm.behaviour_mut().gossipsub,
+                            &mut own_pake,
+                            topics.pake,
+                            &event_tx_thread,
+                        );
                     }
 
                     // Listen on TCP
@@ -221,6 +230,15 @@ impl P2PSync {
                                 SwarmCmd::Publish(topic_str, data) => (topic_str, data),
                                 SwarmCmd::PublishPake(code, data) => {
                                     (PairingTopics::derive(&code).pake, data)
+                                }
+                                SwarmCmd::SetPairingCode(code) => {
+                                    switch_own_pake_topic(
+                                        &mut swarm.behaviour_mut().gossipsub,
+                                        &mut own_pake,
+                                        PairingTopics::derive(&code).pake,
+                                        &event_tx_thread,
+                                    );
+                                    continue;
                                 }
                             };
                             // Publishing subscribes first so the peer's
@@ -277,6 +295,12 @@ impl P2PSync {
         let _ = self
             .cmd_tx
             .send(SwarmCmd::PublishPake(code.to_string(), data));
+    }
+
+    /// Listen for handshakes on the PAKE topic of a new pairing code.
+    /// Returns at once; the swarm thread derives the topic.
+    pub fn set_pairing_code(&self, code: &str) {
+        let _ = self.cmd_tx.send(SwarmCmd::SetPairingCode(code.to_string()));
     }
 
     /// Publish raw bytes on an arbitrary topic (used for PAKE response).

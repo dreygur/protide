@@ -68,8 +68,17 @@ impl MainWindow {
             return;
         };
 
+        // Pairing requests are only answered while the flyout shows the code,
+        // and the engine may replace the code, so mirror whatever it shows.
+        engine.set_accepting_pairing(self.presence.show_pairing);
         let events = engine.tick();
         let channel_events = engine.drain_events();
+        if let Some(code) = engine.config().pairing_code.as_deref()
+            && self.presence.pairing_code.as_ref() != code
+        {
+            self.presence.pairing_code = code.to_string().into();
+            cx.notify();
+        }
         let all_events: Vec<SyncEvent> = events.into_iter().chain(channel_events).collect();
 
         let mut changed = false;

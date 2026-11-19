@@ -165,6 +165,22 @@ pub(super) fn bootstrap_kademlia(swarm: &mut Swarm<ProtideBehaviour>) {
     }
 }
 
+/// Move our own PAKE subscription to `pake` and report it to the engine,
+/// which caches it so incoming messages never run the KDF.
+pub(super) fn switch_own_pake_topic(
+    gossipsub: &mut gossipsub::Behaviour,
+    own: &mut Option<gossipsub::IdentTopic>,
+    pake: String,
+    events: &Sender<P2PEvent>,
+) {
+    let topic = gossipsub::IdentTopic::new(&pake);
+    if let Some(old) = own.replace(topic.clone()) {
+        let _ = gossipsub.unsubscribe(&old);
+    }
+    let _ = gossipsub.subscribe(&topic);
+    let _ = events.send(P2PEvent::PakeTopic(pake));
+}
+
 pub(super) fn handle_swarm_event(
     event: SwarmEvent<ProtideBehaviourEvent>,
     event_tx_thread: &Sender<P2PEvent>,

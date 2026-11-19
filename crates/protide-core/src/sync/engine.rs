@@ -269,6 +269,15 @@ impl SyncEngine {
         Ok(())
     }
 
+    /// Answer pairing requests for our shown code only while `_on`. The UI
+    /// passes whether the pairing window showing the code is open.
+    pub fn set_accepting_pairing(&mut self, _on: bool) {
+        #[cfg(feature = "pake-auth")]
+        {
+            self.accepting_pairing = _on;
+        }
+    }
+
     /// Perform a periodic tick - call this from a timer (e.g., every 1 second)
     pub fn tick(&mut self) -> Vec<SyncEvent> {
         self.poll()

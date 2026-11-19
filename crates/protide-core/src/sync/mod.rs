@@ -86,6 +86,13 @@ pub struct SyncEngine {
     /// cached string, so no message ever triggers a derivation.
     #[cfg(feature = "pake-auth")]
     pake_topic: Option<String>,
+    /// Whether the pairing window showing our code is open. Inits are only
+    /// answered while it is, which limits online guessing to that window.
+    #[cfg(feature = "pake-auth")]
+    accepting_pairing: bool,
+    /// Inits answered for the shown code without a verified "confirm"
+    #[cfg(feature = "pake-auth")]
+    failed_pairings: u32,
 }
 
 impl SyncEngine {
@@ -115,6 +122,10 @@ impl SyncEngine {
             pake_pending_alice: None,
             #[cfg(feature = "pake-auth")]
             pake_topic: None,
+            #[cfg(feature = "pake-auth")]
+            accepting_pairing: false,
+            #[cfg(feature = "pake-auth")]
+            failed_pairings: 0,
         }
     }
 
