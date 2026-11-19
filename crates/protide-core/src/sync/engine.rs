@@ -280,7 +280,7 @@ impl SyncEngine {
 
     /// Belong to the group of `secret` and move CRDT sync to its topic, so
     /// every member hears the others' entries.
-    #[cfg(feature = "p2p-sync")]
+    #[cfg(all(feature = "p2p-sync", feature = "pake-auth"))]
     pub(crate) fn join_group(&mut self, secret: GroupSecret) {
         self.config.group_secret = Some(secret);
         if let Some(ref p2p) = self.p2p_sync {

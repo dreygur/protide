@@ -74,7 +74,7 @@ pub struct SyncEngine {
     /// Number of events processed
     event_count: u64,
     /// Pending PAKE handshake state (Bob's side - stored until Alice's response arrives)
-    #[cfg(feature = "pake-auth")]
+    #[cfg(all(feature = "p2p-sync", feature = "pake-auth"))]
     pake_pending: Option<spake2::Spake2<spake2::Ed25519Group>>,
     /// Alice's derived sessions by the PeerId of the init sender, each held
     /// after sending "resp" until that peer's "confirm" proves it derived
@@ -88,7 +88,7 @@ pub struct SyncEngine {
     /// PAKE topic of the code we show, reported by the swarm thread once it
     /// has run the slow KDF. Incoming messages are compared against this
     /// cached string, so no message ever triggers a derivation.
-    #[cfg(feature = "pake-auth")]
+    #[cfg(all(feature = "p2p-sync", feature = "pake-auth"))]
     pake_topic: Option<String>,
     /// Whether the pairing window showing our code is open. Inits are only
     /// answered while it is, which limits online guessing to that window.
@@ -124,13 +124,13 @@ impl SyncEngine {
             event_count: 0,
             #[cfg(feature = "p2p-sync")]
             p2p_sync: None,
-            #[cfg(feature = "pake-auth")]
+            #[cfg(all(feature = "p2p-sync", feature = "pake-auth"))]
             pake_pending: None,
             #[cfg(all(feature = "p2p-sync", feature = "pake-auth"))]
             pending_responders: Default::default(),
             #[cfg(all(feature = "p2p-sync", feature = "pake-auth"))]
             pending_initiator: None,
-            #[cfg(feature = "pake-auth")]
+            #[cfg(all(feature = "p2p-sync", feature = "pake-auth"))]
             pake_topic: None,
             #[cfg(feature = "pake-auth")]
             accepting_pairing: false,
