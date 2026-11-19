@@ -4,11 +4,47 @@ use chacha20poly1305::aead::{Aead, KeyInit, OsRng};
 use chacha20poly1305::{ChaCha20Poly1305, Key, Nonce};
 use spake2::{Ed25519Group, Identity, Password, Spake2};
 
-use rand::RngCore;
-
-use super::types::{ADJECTIVES, NOUNS};
+use rand::{Rng, RngCore};
 
 const PAKE_IDENTITY: &[u8] = b"protide-p2p-pairing";
+
+/// Pairing code vocabulary, kept apart from `types::ADJECTIVES` and
+/// `types::NOUNS` so existing display names never change. Exactly 256
+/// distinct words of 3 to 5 letters: each word carries 8 bits and a whole
+/// code still fits the pairing flyout.
+const CODE_WORDS: [&str; 256] = [
+    "acorn", "actor", "agent", "alarm", "album", "alpha", "amber", "angel", "apple", "arena",
+    "arrow", "atlas", "bacon", "badge", "baker", "basil", "beach", "berry", "bison", "blade",
+    "bloom", "board", "bread", "brick", "brook", "cabin", "cable", "camel", "candy", "canoe",
+    "cargo", "cedar", "chalk", "chess", "cliff", "clock", "cloud", "comet", "coral", "crane",
+    "crown", "daisy", "dance", "delta", "denim", "diary", "donut", "drama", "dream", "drift",
+    "drum", "dune", "eagle", "earth", "easel", "elbow", "elder", "ember", "epoch", "essay",
+    "fable", "fancy", "feast", "ferry", "fiber", "field", "flame", "flute", "focus", "forge",
+    "fox", "frost", "gamma", "gecko", "ghost", "giant", "glass", "globe", "glove", "gold", "goose",
+    "grape", "grass", "guide", "hazel", "heart", "hedge", "heron", "hill", "honey", "horse",
+    "hotel", "husky", "icon", "igloo", "index", "inlet", "iris", "iron", "ivory", "ivy", "jazz",
+    "jelly", "jewel", "joker", "judge", "juice", "jumbo", "kayak", "kebab", "kiosk", "kite",
+    "kiwi", "knife", "koala", "label", "lake", "lamp", "laser", "latte", "lava", "lemon", "lime",
+    "linen", "lion", "llama", "lotus", "lunar", "magic", "mango", "maple", "march", "medal",
+    "melon", "metal", "mint", "moose", "motor", "mouse", "music", "nacho", "navy", "nest", "night",
+    "ninja", "noble", "north", "novel", "nylon", "oasis", "ocean", "olive", "omega", "onion",
+    "opera", "orbit", "otter", "owl", "panda", "paper", "pasta", "peach", "pearl", "penny",
+    "piano", "pilot", "pine", "pixel", "pizza", "plaza", "polar", "prism", "puppy", "quail",
+    "queen", "quest", "quiet", "quill", "quilt", "quiz", "radar", "radio", "rain", "ranch",
+    "raven", "rhino", "ridge", "river", "robin", "robot", "rose", "ruby", "sail", "salad", "salsa",
+    "scarf", "scout", "shark", "shell", "slate", "sloth", "snail", "snow", "solar", "spark",
+    "spice", "squid", "stone", "storm", "sugar", "table", "tango", "tempo", "tent", "tiger",
+    "toast", "token", "topaz", "torch", "tower", "trail", "train", "tulip", "ultra", "uncle",
+    "union", "unity", "urban", "vapor", "vault", "venus", "verse", "video", "villa", "viola",
+    "viper", "vocal", "wafer", "wagon", "waltz", "water", "whale", "wheat", "wolf", "world",
+    "wren", "xenon", "yacht", "yeti", "yoga", "yolk", "zebra", "zero", "zesty", "zinc", "zone",
+];
+
+/// Words per pairing code.
+const CODE_WORD_COUNT: usize = 4;
+
+/// The numeric suffix is drawn from `0..CODE_NUMBER_RANGE` (three digits).
+const CODE_NUMBER_RANGE: u32 = 1000;
 
 /// A SPAKE2 handshake result - two peers derive a shared key from a
 /// low-entropy password/pairing code without revealing it over the wire.
@@ -126,15 +162,30 @@ pub fn verify_confirm(session: &PakeSession, blob: &[u8]) -> bool {
     }
 }
 
-/// Generate a human-readable pairing code (Magic Wormhole style).
-/// Format: adjective-noun-###   e.g. "apple-banana-123"
+/// Generate a pairing code that reads aloud easily, such as
+/// "amber-otter-river-tiger-482" (Magic Wormhole style).
+///
+/// The code is both the PAKE password and the seed of the gossip topic, so
+/// it must resist enumeration: four words of 8 bits plus three digits give
+/// 256^4 * 1000 codes, about 2^41.97.
 pub fn generate_pairing_code() -> String {
     let mut rng = OsRng;
-    let adj = ADJECTIVES[rng.next_u32() as usize % ADJECTIVES.len()];
-    let noun = NOUNS[rng.next_u32() as usize % NOUNS.len()];
-    let num = rng.next_u32() % 1000;
+    let mut parts: Vec<String> = (0..CODE_WORD_COUNT)
+        .map(|_| CODE_WORDS[rng.gen_range(0..CODE_WORDS.len())].to_string())
+        .collect();
+    parts.push(format!("{:03}", rng.gen_range(0..CODE_NUMBER_RANGE)));
+    parts.join("-")
+}
 
-    format!("{}-{}-{:03}", adj, noun, num)
+/// Canonical form of a typed pairing code: lowercase words joined by single
+/// hyphens, so "Amber Otter  river TIGER 482" pairs with the generated code.
+pub fn normalize_pairing_code(input: &str) -> String {
+    input
+        .split(|c: char| c.is_whitespace() || c == '-')
+        .filter(|word| !word.is_empty())
+        .map(str::to_ascii_lowercase)
+        .collect::<Vec<_>>()
+        .join("-")
 }
 
 #[cfg(test)]
@@ -142,10 +193,47 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_generate_code() {
-        let code = generate_pairing_code();
-        assert!(code.contains('-'));
-        assert_eq!(code.split('-').count(), 3);
+    fn a_generated_code_is_four_known_words_and_three_digits() {
+        for _ in 0..50 {
+            let code = generate_pairing_code();
+            let parts: Vec<&str> = code.split('-').collect();
+            assert_eq!(parts.len(), CODE_WORD_COUNT + 1, "{code}");
+            assert!(
+                parts[..CODE_WORD_COUNT]
+                    .iter()
+                    .all(|w| CODE_WORDS.contains(w))
+            );
+            let number = parts[CODE_WORD_COUNT];
+            assert!(number.len() == 3 && number.chars().all(|c| c.is_ascii_digit()));
+            assert_eq!(normalize_pairing_code(&code), code, "already canonical");
+        }
+    }
+
+    /// The code space must stay out of enumeration reach: at least 2^40.
+    #[test]
+    fn the_code_space_holds_at_least_forty_bits() {
+        let unique: std::collections::HashSet<_> = CODE_WORDS.iter().collect();
+        assert_eq!(unique.len(), CODE_WORDS.len(), "duplicate code word");
+        assert!(
+            CODE_WORDS.iter().all(|w| {
+                (3..=5).contains(&w.len()) && w.chars().all(|c| c.is_ascii_lowercase())
+            })
+        );
+        let bits = CODE_WORD_COUNT as f64 * (CODE_WORDS.len() as f64).log2()
+            + f64::from(CODE_NUMBER_RANGE).log2();
+        assert!(bits >= 40.0, "{bits} bits");
+    }
+
+    #[test]
+    fn typed_codes_ignore_case_and_spaces_versus_hyphens() {
+        let canonical = "amber-otter-river-tiger-482";
+        for typed in [
+            canonical,
+            "Amber Otter River Tiger 482",
+            "  AMBER-otter  river - tiger 482\n",
+        ] {
+            assert_eq!(normalize_pairing_code(typed), canonical, "{typed:?}");
+        }
     }
 
     #[test]

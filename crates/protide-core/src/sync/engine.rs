@@ -238,7 +238,7 @@ impl SyncEngine {
     pub fn initiate_handshake(&mut self, _code: &str) -> Result<(), String> {
         #[cfg(all(feature = "p2p-sync", feature = "pake-auth"))]
         {
-            let code = _code;
+            let code = &pake::normalize_pairing_code(_code);
             info!("[PAKE] initiate_handshake called for code: {}", code);
             // Bob calls pake_respond to generate his B-side key
             let (msg_b, state_b) = pake::pake_respond(code)?;

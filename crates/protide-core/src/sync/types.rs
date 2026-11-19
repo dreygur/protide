@@ -50,7 +50,7 @@ impl NodeId {
 
     /// A stable name for the presence chip. The node id is already public in
     /// live probe packets, so deriving from it reveals nothing; it is spelled
-    /// "Brave Falcon" so it never reads like an "adj-noun-###" pairing code.
+    /// "Brave Falcon" so it never reads like a hyphenated pairing code.
     pub fn display_name(&self) -> String {
         let h = stable_hash(&self.0);
         let adj = ADJECTIVES[(h % ADJECTIVES.len() as u64) as usize];
