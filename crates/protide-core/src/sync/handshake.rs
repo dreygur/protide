@@ -11,8 +11,8 @@ impl SyncEngine {
     /// `(topic, payload)` for the caller to publish back to the peer.
     ///
     /// Messages are only acted on while a handshake we started is pending
-    /// (`pake_pending_code` non-empty) - the topic name is a one-way hash of
-    /// the pairing code (see `p2p::topic_hash`) and cannot be reversed, so the
+    /// (`pake_pending_code` non-empty) - the topic name is an Argon2id hash of
+    /// the pairing code (see `PairingTopics`) and cannot be reversed, so the
     /// code we typed in ourselves is the only one we can use.
     pub(crate) fn handle_pake_msg(
         &mut self,

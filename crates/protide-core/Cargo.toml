@@ -60,12 +60,13 @@ flate2 = { workspace = true }
 libp2p = { workspace = true, optional = true }
 spake2 = { workspace = true, optional = true }
 chacha20poly1305 = { workspace = true, optional = true }
+argon2 = { workspace = true, optional = true }
 rand = { workspace = true, optional = true }
 zeroize = { workspace = true, optional = true }
 
 [features]
 default = []
-p2p-sync = ["dep:libp2p"]
+p2p-sync = ["dep:libp2p", "dep:argon2"]
 pake-auth = ["dep:spake2", "dep:chacha20poly1305", "dep:rand", "dep:zeroize"]
 full-sync = ["p2p-sync", "pake-auth"]
 

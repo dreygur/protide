@@ -229,7 +229,7 @@ impl SyncEngine {
 
     /// Initiate a PAKE handshake with a peer who published the given `code`.
     ///
-    /// - Subscribes to the `protide-pake-{code}` gossipsub topic.
+    /// - Subscribes to the code's PAKE topic (derived off this thread).
     /// - Broadcasts Bob's SPAKE2 public key as an "init" message.
     /// - Stores Bob's state so it can be finished when Alice's "resp" arrives.
     ///
@@ -246,7 +246,6 @@ impl SyncEngine {
             self.pake_pending_code = code.to_string();
 
             if let Some(ref p2p) = self.p2p_sync {
-                p2p.subscribe_pake_topic(code);
                 let payload = p2p::PakeMsgPayload {
                     kind: "init".to_string(),
                     node_name: self.config.node_name.clone(),

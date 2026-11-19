@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 use log::{error, info, warn};
 
 use super::p2p_swarm::{bootstrap_kademlia, build_swarm, handle_swarm_event};
-use super::p2p_topic::{crdt_topic_string, pake_topic_string};
+use super::p2p_topic::{GOSSIP_TOPIC, PairingTopics};
 use super::types::{CrdtEntry, NodeId};
 
 // ── Wire protocol ─────────────────────────────────────────────────────────────
@@ -40,10 +40,11 @@ pub struct PakeMsgPayload {
 
 /// Commands from the SyncEngine to the libp2p event loop.
 pub enum SwarmCmd {
-    /// Subscribe to a new gossipsub topic (e.g. the PAKE topic for a peer's code)
-    Subscribe(String),
     /// Publish bytes on a given gossipsub topic
     Publish(String, Vec<u8>),
+    /// Publish bytes on the PAKE topic of a pairing code. The topic is
+    /// derived on the swarm thread because the KDF is slow.
+    PublishPake(String, Vec<u8>),
 }
 
 // ── Events ────────────────────────────────────────────────────────────────────
@@ -59,7 +60,7 @@ pub enum P2PEvent {
     PakeMsg {
         from: PeerId,
         /// The full topic string (a `protide-pake-<hash>` topic; the hash is
-        /// a one-way derivation of the pairing code, see `topic_hash`)
+        /// an Argon2id derivation of the pairing code, see `PairingTopics`)
         topic: String,
         node_name: String,
         kind: String,
@@ -80,7 +81,6 @@ pub struct P2PSync {
     _event_tx: Sender<P2PEvent>,
     event_rx: Receiver<P2PEvent>,
     known_peers: HashSet<PeerId>,
-    _crdt_topic: gossipsub::IdentTopic,
     /// Outgoing CRDT broadcast channel
     broadcast_tx: Sender<CrdtEntry>,
     /// Command channel for subscribe/publish operations on dynamic topics
@@ -105,12 +105,6 @@ impl P2PSync {
         let keypair = identity::Keypair::generate_ed25519();
         let peer_id = PeerId::from(keypair.public());
 
-        let crdt_topic_str = crdt_topic_string(pairing_code);
-
-        // Build the IdentTopic now so we can store it in the struct; clone it for the thread.
-        let crdt_topic = gossipsub::IdentTopic::new(&crdt_topic_str);
-        let crdt_topic_thread = crdt_topic.clone();
-
         info!("[P2P] Node starting. Local PeerID: {}", peer_id);
         info!(
             "[P2P] Requested listen addr: /ip4/0.0.0.0/tcp/{}",
@@ -127,6 +121,13 @@ impl P2PSync {
         std::thread::Builder::new()
             .name("protide-p2p".into())
             .spawn(move || {
+                // Topics come from a slow KDF, so derive them here rather
+                // than on the caller's (UI) thread.
+                let topics = (!pairing_code_owned.is_empty())
+                    .then(|| PairingTopics::derive(&pairing_code_owned));
+                let crdt_topic_thread = gossipsub::IdentTopic::new(
+                    topics.as_ref().map_or(GOSSIP_TOPIC, |t| t.crdt.as_str()),
+                );
                 let rt = match tokio::runtime::Builder::new_current_thread()
                     .enable_all()
                     .build()
@@ -159,9 +160,8 @@ impl P2PSync {
                     }
 
                     // Also subscribe to our own PAKE topic so we hear handshake requests
-                    if !pairing_code_owned.is_empty() {
-                        let pake_topic =
-                            gossipsub::IdentTopic::new(pake_topic_string(&pairing_code_owned));
+                    if let Some(ref topics) = topics {
+                        let pake_topic = gossipsub::IdentTopic::new(&topics.pake);
                         let _ = swarm.behaviour_mut().gossipsub.subscribe(&pake_topic);
                     }
 
@@ -213,25 +213,21 @@ impl P2PSync {
                                 // stops listening.
                                 Err(mpsc::TryRecvError::Disconnected) => break 'run,
                             };
-                            match cmd {
-                                SwarmCmd::Subscribe(topic_str) => {
-                                    let t = gossipsub::IdentTopic::new(&topic_str);
-                                    let _ = swarm.behaviour_mut().gossipsub.subscribe(&t);
-                                    pake_topics.insert(topic_str, t);
+                            let (topic_str, data) = match cmd {
+                                SwarmCmd::Publish(topic_str, data) => (topic_str, data),
+                                SwarmCmd::PublishPake(code, data) => {
+                                    (PairingTopics::derive(&code).pake, data)
                                 }
-                                SwarmCmd::Publish(topic_str, data) => {
-                                    if !pake_topics.contains_key(&topic_str) {
-                                        let t = gossipsub::IdentTopic::new(&topic_str);
-                                        let _ = swarm.behaviour_mut().gossipsub.subscribe(&t);
-                                        pake_topics.insert(topic_str.clone(), t);
-                                    }
-                                    if let Some(t) = pake_topics.get(&topic_str) {
-                                        let _ = swarm
-                                            .behaviour_mut()
-                                            .gossipsub
-                                            .publish(t.clone(), data);
-                                    }
-                                }
+                            };
+                            // Publishing subscribes first so the peer's
+                            // reply on the same topic reaches us.
+                            if !pake_topics.contains_key(&topic_str) {
+                                let t = gossipsub::IdentTopic::new(&topic_str);
+                                let _ = swarm.behaviour_mut().gossipsub.subscribe(&t);
+                                pake_topics.insert(topic_str.clone(), t);
+                            }
+                            if let Some(t) = pake_topics.get(&topic_str) {
+                                let _ = swarm.behaviour_mut().gossipsub.publish(t.clone(), data);
                             }
                         }
 
@@ -259,7 +255,6 @@ impl P2PSync {
             _event_tx: event_tx,
             event_rx,
             known_peers: HashSet::new(),
-            _crdt_topic: crdt_topic,
             broadcast_tx,
             cmd_tx,
         })
@@ -272,18 +267,12 @@ impl P2PSync {
             .map_err(|e| format!("Broadcast channel error: {}", e))
     }
 
-    /// Subscribe to the PAKE topic for `code` so we can receive handshake messages.
-    pub fn subscribe_pake_topic(&self, code: &str) {
-        let _ = self
-            .cmd_tx
-            .send(SwarmCmd::Subscribe(pake_topic_string(code)));
-    }
-
-    /// Publish raw bytes on the PAKE topic for `code`.
+    /// Subscribe to the PAKE topic for `code` and publish raw bytes on it.
+    /// Returns at once; the swarm thread derives the topic.
     pub fn publish_on_pake_topic(&self, code: &str, data: Vec<u8>) {
         let _ = self
             .cmd_tx
-            .send(SwarmCmd::Publish(pake_topic_string(code), data));
+            .send(SwarmCmd::PublishPake(code.to_string(), data));
     }
 
     /// Publish raw bytes on an arbitrary topic (used for PAKE response).
