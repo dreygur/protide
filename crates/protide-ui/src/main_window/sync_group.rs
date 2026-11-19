@@ -27,6 +27,8 @@ impl MainWindow {
 
     /// Ask before resetting the sync group; Cancel and Escape do nothing.
     fn open_reset_group_dialog(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        // The flyout is a deferred overlay and would paint over the dialog.
+        self.presence.show_pairing = false;
         let this = cx.entity().downgrade();
         window.open_alert_dialog(cx, move |alert, _, _| {
             let this = this.clone();
