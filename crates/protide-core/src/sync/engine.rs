@@ -245,20 +245,8 @@ impl SyncEngine {
             let code = &pake::normalize_pairing_code(_code);
             // The code is the PAKE password: never log it.
             info!("[PAKE] initiate_handshake called");
-            // Bob calls pake_respond to generate his B-side key
-            let (msg_b, state_b) = pake::pake_respond(code)?;
-            self.pake_pending = Some(state_b);
-            self.pake_pending_code = code.to_string();
-
+            let data = self.start_handshake(code)?;
             if let Some(ref p2p) = self.p2p_sync {
-                let payload = p2p::PakeMsgPayload {
-                    kind: "init".to_string(),
-                    node_name: self.config.node_name.clone(),
-                    pake_bytes: msg_b,
-                    confirm: None,
-                };
-                let data = serde_json::to_vec(&payload)
-                    .map_err(|e| format!("Serialisation error: {}", e))?;
                 p2p.publish_on_pake_topic(code, data);
                 info!(
                     "[PAKE] Init packet published on a hashed PAKE topic (code not sent over the wire)"

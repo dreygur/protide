@@ -6,6 +6,21 @@
 use super::*;
 
 impl SyncEngine {
+    /// Begin a handshake as Bob for `code`: store the B side state and
+    /// return the serialised "init" payload to publish on the code's topic.
+    pub(crate) fn start_handshake(&mut self, code: &str) -> Result<Vec<u8>, String> {
+        let (msg_b, state_b) = pake::pake_respond(code)?;
+        self.pake_pending = Some(state_b);
+        self.pake_pending_code = code.to_string();
+        let payload = p2p::PakeMsgPayload {
+            kind: "init".to_string(),
+            node_name: self.config.node_name.clone(),
+            pake_bytes: msg_b,
+            confirm: None,
+        };
+        serde_json::to_vec(&payload).map_err(|e| format!("Serialisation error: {}", e))
+    }
+
     /// Process one PAKE handshake message received on a `protide-pake-*`
     /// topic. Pushes UI events onto `events` and returns an optional
     /// `(topic, payload)` for the caller to publish back to the peer.
@@ -121,5 +136,74 @@ impl SyncEngine {
             confirm: Some(confirm),
         };
         serde_json::to_vec(&payload).ok().map(|data| (topic, data))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::sync::p2p_topic::PairingTopics;
+
+    const CODE: &str = "amber-otter-river-tiger-482";
+
+    fn engine(name: &str, pairing_code: Option<&str>) -> SyncEngine {
+        SyncEngine::new(SyncConfig {
+            node_name: name.to_string(),
+            pairing_code: pairing_code.map(str::to_string),
+            ..Default::default()
+        })
+    }
+
+    /// Feed one published payload into `to` as if gossipsub delivered it.
+    fn deliver(
+        to: &mut SyncEngine,
+        from: &str,
+        (topic, data): (String, Vec<u8>),
+        events: &mut Vec<SyncEvent>,
+    ) -> Option<(String, Vec<u8>)> {
+        let msg: p2p::PakeMsgPayload = serde_json::from_slice(&data).unwrap();
+        to.handle_pake_msg(
+            from.to_string(),
+            topic,
+            msg.node_name,
+            &msg.kind,
+            &msg.pake_bytes,
+            msg.confirm.as_deref(),
+            events,
+        )
+    }
+
+    /// Alice shows CODE, Bob types `typed` and his init lands on Alice's
+    /// topic. Messages are pumped by hand until neither side replies.
+    fn pair(typed: &str) -> (Vec<SyncEvent>, Vec<SyncEvent>) {
+        let mut alice = engine("alice", Some(CODE));
+        let mut bob = engine("bob", None);
+        let (mut events_a, mut events_b) = (Vec::new(), Vec::new());
+        let init = bob.start_handshake(typed).unwrap();
+        let mut next = Some((PairingTopics::derive(CODE).pake, init));
+        let mut to_alice = true;
+        while let Some(msg) = next.take() {
+            next = if to_alice {
+                deliver(&mut alice, "bob", msg, &mut events_a)
+            } else {
+                deliver(&mut bob, "alice", msg, &mut events_b)
+            };
+            to_alice = !to_alice;
+        }
+        (events_a, events_b)
+    }
+
+    fn paired_with(events: &[SyncEvent]) -> Option<&str> {
+        events.iter().find_map(|e| match e {
+            SyncEvent::HandshakeComplete { peer_name, .. } => Some(peer_name.as_str()),
+            _ => None,
+        })
+    }
+
+    #[test]
+    fn a_wrong_code_never_pairs() {
+        let (events_a, events_b) = pair("amber-otter-river-tiger-483");
+        assert_eq!(paired_with(&events_a), None);
+        assert_eq!(paired_with(&events_b), None);
     }
 }
