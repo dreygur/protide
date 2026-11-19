@@ -275,6 +275,32 @@ impl SyncEngine {
         }
     }
 
+    /// Belong to the group of `secret` and move CRDT sync to its topic, so
+    /// every member hears the others' entries.
+    #[cfg(feature = "p2p-sync")]
+    pub(crate) fn join_group(&mut self, secret: GroupSecret) {
+        self.config.group_secret = Some(secret);
+        if let Some(ref p2p) = self.p2p_sync {
+            p2p.set_sync_topic(self.sync_topic());
+        }
+    }
+
+    /// Leave the current group for a new one of our own, so peers paired
+    /// before stay on the old topic and must pair again. Returns the new
+    /// secret for the caller to persist, or `None` without `full-sync`.
+    pub fn reset_group(&mut self) -> Option<GroupSecret> {
+        #[cfg(all(feature = "p2p-sync", feature = "pake-auth"))]
+        {
+            let secret = pake::generate_group_secret();
+            self.join_group(secret);
+            Some(secret)
+        }
+        #[cfg(not(all(feature = "p2p-sync", feature = "pake-auth")))]
+        {
+            None
+        }
+    }
+
     /// Perform a periodic tick - call this from a timer (e.g., every 1 second)
     pub fn tick(&mut self) -> Vec<SyncEvent> {
         self.poll()

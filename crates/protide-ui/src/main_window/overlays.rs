@@ -113,6 +113,7 @@ impl MainWindow {
                     .child(paste_btn)
                     .child(connect_btn),
             )
+            .child(self.render_reset_group_button(cx))
             .when_some(error_msg, |el, msg| {
                 let error_color = theme.colors.error;
                 el.child(

@@ -10,6 +10,7 @@ mod render_sidebar;
 pub(crate) mod shortcuts;
 mod statusbar;
 mod sync;
+mod sync_group;
 mod titlebar;
 mod trust_dialog;
 mod visibility;

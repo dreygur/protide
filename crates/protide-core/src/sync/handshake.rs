@@ -133,15 +133,6 @@ impl SyncEngine {
         pending.insert(peer, PendingSession { session, since });
     }
 
-    /// Adopt the group secret the responder shared and move CRDT sync to
-    /// the group's topic, so both peers hear each other's entries.
-    fn join_group(&mut self, secret: GroupSecret) {
-        self.config.group_secret = Some(secret);
-        if let Some(ref p2p) = self.p2p_sync {
-            p2p.set_sync_topic(self.sync_topic());
-        }
-    }
-
     /// Process one PAKE handshake message received on a `protide-pake-*`
     /// topic. Pushes UI events onto `events` and returns an optional
     /// `(topic, payload)` for the caller to publish back to the peer.
@@ -732,5 +723,24 @@ mod tests {
         let mut events = Vec::new();
         deliver(&mut alice, "bob", confirm, &mut events);
         assert_eq!(paired_with(&events), Some("bob"));
+    }
+
+    /// Resetting the group revokes earlier pairings: the node moves to a
+    /// new sync topic and a peer still holding the old secret is left out.
+    #[test]
+    fn resetting_the_group_drops_previously_paired_peers() {
+        let (mut alice, mut bob) = (showing(CODE), engine("bob", None));
+        pair_with(&mut alice, &mut bob, CODE);
+        assert_eq!(bob.sync_topic(), alice.sync_topic());
+        let old_topic = alice.sync_topic();
+
+        let secret = alice.reset_group();
+        assert_eq!(secret, alice.config.group_secret);
+        assert_ne!(alice.sync_topic(), old_topic);
+        let entry = alice.apply_local_change(DataType::Request, "{}".into());
+        assert!(
+            !gossip(&alice, &mut bob, entry),
+            "a dropped peer still syncs"
+        );
     }
 }
