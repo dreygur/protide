@@ -21,6 +21,7 @@
 pub mod context;
 pub mod results;
 mod runtime;
+pub mod trust;
 
 pub use context::{RequestData, ResponseData, ScriptContext};
 pub use results::{ScriptError, ScriptOutcome};

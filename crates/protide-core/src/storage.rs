@@ -1,4 +1,5 @@
-//! Per workspace state files kept under `<workspace>/.protide/`.
+//! JSON state files: per workspace ones under `<workspace>/.protide/`, and
+//! app wide ones such as the script trust store.
 
 use serde::Serialize;
 use serde::de::DeserializeOwned;

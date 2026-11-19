@@ -33,6 +33,8 @@ dirs = { workspace = true }
 notify = { workspace = true }
 
 rquickjs = { workspace = true }
+# Hashes scripts for the trust store, and keys sync content
+blake3 = { workspace = true }
 
 axum = { workspace = true }
 hyper = { workspace = true }
@@ -58,14 +60,13 @@ flate2 = { workspace = true }
 libp2p = { workspace = true, optional = true }
 spake2 = { workspace = true, optional = true }
 chacha20poly1305 = { workspace = true, optional = true }
-blake3 = { workspace = true, optional = true }
 rand = { workspace = true, optional = true }
 zeroize = { workspace = true, optional = true }
 
 [features]
 default = []
-p2p-sync = ["dep:libp2p", "dep:blake3"]
-pake-auth = ["dep:spake2", "dep:chacha20poly1305", "dep:blake3", "dep:rand", "dep:zeroize"]
+p2p-sync = ["dep:libp2p"]
+pake-auth = ["dep:spake2", "dep:chacha20poly1305", "dep:rand", "dep:zeroize"]
 full-sync = ["p2p-sync", "pake-auth"]
 
 [lints]
