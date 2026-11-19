@@ -249,6 +249,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
             form_row_drag: None,
             form_row_drag_over: None,
             editor_pending: Vec::new(),
+            pending_trust: None,
             _executor: PhantomData,
         }
     }

@@ -23,6 +23,8 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
     /// Save the current request to a .http file. Returns whether it was
     /// written in place; a request without a file opens a save dialog.
     pub fn save_request(&mut self, cx: &mut Context<Self>) -> bool {
+        // A reopened file must not ask about scripts the user wrote here.
+        self.trust_edited_scripts(cx);
         let request = self.build_request(cx);
 
         // Save in place if a file is already loaded: only the loaded request's

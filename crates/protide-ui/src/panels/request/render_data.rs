@@ -85,7 +85,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                         MouseButton::Left,
                         cx.listener(|this, _, _, cx| {
                             if !this.data_running {
-                                this.run_with_csv(cx);
+                                this.run_trusted(Self::run_with_csv, cx);
                             }
                         }),
                     )

@@ -11,6 +11,7 @@ pub(crate) mod shortcuts;
 mod statusbar;
 mod sync;
 mod titlebar;
+mod trust_dialog;
 mod visibility;
 
 use std::path::PathBuf;

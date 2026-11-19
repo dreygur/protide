@@ -258,7 +258,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                                         if matches!(this.ws_state, WsConnectionState::Connected) {
                                             this.disconnect_websocket(cx);
                                         } else {
-                                            this.connect_websocket(cx);
+                                            this.run_trusted(Self::connect_websocket, cx);
                                         }
                                     }
                                     RequestMode::SocketIo => {

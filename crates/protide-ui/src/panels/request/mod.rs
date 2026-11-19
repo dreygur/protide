@@ -70,6 +70,8 @@ mod tests;
 mod tests_gpui;
 #[cfg(test)]
 mod tests_save;
+#[cfg(test)]
+mod tests_trust;
 
 use super::console::{ConsoleEntry, ConsoleEntrySource, ConsolePanel, LogLevel};
 use super::explorer::ExplorerPanel;
@@ -188,6 +190,8 @@ pub struct RequestPanel<E: WebSocketExecutor = TungsteniteExecutor> {
     pub(super) body_focus: FocusHandle,
     pub(super) explorer_panel: Option<Entity<ExplorerPanel>>,
     pub(super) body_editor: Entity<InputState>,
+    /// Scripts as last loaded. Editor text that differs is the user's own
+    /// and trusted; equal text needs trust before it runs.
     pub(super) pre_script: String,
     pub(super) post_script: String,
     pub(super) tests: String,
@@ -310,5 +314,6 @@ pub struct RequestPanel<E: WebSocketExecutor = TungsteniteExecutor> {
     /// Editor content updates deferred until render() (set_value needs &mut Window).
     /// Each entry is (target editor, new content); applied and cleared on next render.
     pub(super) editor_pending: Vec<(PendingEditor, String)>,
+    pub(super) pending_trust: Option<script_trust::PendingTrust<E>>,
     _executor: PhantomData<E>,
 }

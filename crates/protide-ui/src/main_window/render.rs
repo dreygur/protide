@@ -8,6 +8,7 @@ use gpui_component::WindowExt;
 impl Render for MainWindow {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.open_discard_dialog(window, cx);
+        self.open_trust_dialog(window, cx);
         if let Some((title, msg, is_confirm)) = self.pending_alert.take() {
             if is_confirm {
                 if let Some(path) = self.pending_delete.take() {

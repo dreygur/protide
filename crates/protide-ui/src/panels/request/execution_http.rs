@@ -4,7 +4,12 @@ use super::*;
 use gpui::Context;
 
 impl<E: WebSocketExecutor> RequestPanel<E> {
+    /// Send the request once its scripts are trusted.
     pub fn send_request(&mut self, cx: &mut Context<Self>) {
+        self.run_trusted(Self::send_trusted_request, cx);
+    }
+
+    fn send_trusted_request(&mut self, cx: &mut Context<Self>) {
         if self.loading || self.url.is_empty() {
             return;
         }
