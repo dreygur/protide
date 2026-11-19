@@ -289,11 +289,13 @@ impl SyncEngine {
     }
 
     /// Leave the current group for a new one of our own, so peers paired
-    /// before stay on the old topic and must pair again. Returns the new
-    /// secret for the caller to persist, or `None` without `full-sync`.
+    /// before stay on the old topic and must pair again. Handshakes in
+    /// flight are abandoned and the code replaced. Returns the new secret
+    /// for the caller to persist, or `None` without `full-sync`.
     pub fn reset_group(&mut self) -> Option<GroupSecret> {
         #[cfg(all(feature = "p2p-sync", feature = "pake-auth"))]
         {
+            self.abandon_handshakes();
             let secret = pake::generate_group_secret();
             self.join_group(secret);
             Some(secret)

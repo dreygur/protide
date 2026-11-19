@@ -102,6 +102,16 @@ impl SyncEngine {
         self.guesses = GuessWindow::default();
     }
 
+    /// Abandon every handshake in flight on either side and replace the
+    /// shown code, so none begun before a group reset can finish and
+    /// receive the new secret.
+    pub(super) fn abandon_handshakes(&mut self) {
+        self.pending_responders.clear();
+        self.pending_initiator = None;
+        self.pake_pending = None;
+        self.regenerate_pairing_code();
+    }
+
     /// Spend one of the code's guesses for `peer`, or drop the init when
     /// that peer is over its throttle for the current window.
     fn take_guess(&mut self, peer: &str) -> bool {
@@ -752,6 +762,31 @@ mod tests {
             !gossip(&alice, &mut bob, entry),
             "a dropped peer still syncs"
         );
+    }
+
+    /// No handshake begun before a reset may finish and receive the new
+    /// secret, on either side, and the shown code is replaced.
+    #[test]
+    fn a_handshake_begun_before_a_reset_does_not_complete() {
+        let (mut alice, mut bob) = (showing(CODE), engine("bob", None));
+        let mut events = Vec::new();
+        let init = (
+            alice.pake_topic.clone().unwrap(),
+            bob.start_handshake(CODE).unwrap(),
+        );
+        let resp = deliver(&mut alice, "bob", init, &mut events).unwrap();
+        let confirm = deliver(&mut bob, "alice", resp, &mut events).unwrap();
+        alice.reset_group();
+        assert_ne!(alice.config.pairing_code.as_deref(), Some(CODE));
+        assert!(
+            ignores(&mut alice, confirm, "bob"),
+            "responder side finished"
+        );
+
+        let (mut alice, mut bob) = (showing(CODE), engine("bob", None));
+        let group = group_for(&mut alice, &mut bob);
+        bob.reset_group();
+        assert!(ignores(&mut bob, group, "alice"), "initiator side finished");
     }
 
     /// Spend the shown code's whole guess budget from distinct peers, then
