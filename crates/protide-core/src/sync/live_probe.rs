@@ -4,6 +4,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver};
 use std::thread;
 use std::time::Duration;
+use url::Url;
 
 use super::types::{LiveActivity, NodeId};
 
@@ -13,6 +14,23 @@ const MAGIC_PREAMBLE: &[u8] = b"PROTIDE_LIVE";
 /// Read buffer size of the listener thread. Datagrams larger than this are
 /// truncated by `recv_from` and therefore fail to decode.
 const MAX_PACKET: usize = 2048;
+
+/// The part of `url` safe to broadcast in the clear: scheme, host, port and
+/// path. Query, fragment and userinfo can carry credentials and are
+/// dropped. A URL that does not parse, or has no host, is sent as nothing.
+fn shareable_url(url: &str) -> String {
+    let Ok(mut url) = Url::parse(url) else {
+        return String::new();
+    };
+    if url.cannot_be_a_base() {
+        return String::new();
+    }
+    url.set_query(None);
+    url.set_fragment(None);
+    let _ = url.set_username("");
+    let _ = url.set_password(None);
+    url.into()
+}
 
 /// Frame an activity as a wire packet: `MAGIC_PREAMBLE || JSON`.
 fn encode_packet(activity: &LiveActivity) -> Result<Vec<u8>, String> {
@@ -98,7 +116,9 @@ impl LiveProbe {
         })
     }
 
-    /// Broadcast a live activity to all peers on the local subnet.
+    /// Broadcast a live activity to all peers on the local subnet. The
+    /// packet is plaintext, so the URL goes out stripped to what
+    /// `shareable_url` keeps, and headers are never sent.
     pub fn broadcast(
         &self,
         request_name: &str,
@@ -114,7 +134,7 @@ impl LiveProbe {
             status,
             time_ms,
             method: method.to_string(),
-            url: url.to_string(),
+            url: shareable_url(url),
         };
 
         let packet = encode_packet(&activity)?;
@@ -175,6 +195,35 @@ mod tests {
         assert_eq!(a.time_ms, b.time_ms);
         assert_eq!(a.method, b.method);
         assert_eq!(a.url, b.url);
+    }
+
+    /// REGRESSION: the full request URL went out in a plaintext broadcast,
+    /// query string credentials included.
+    #[test]
+    fn a_broadcast_url_keeps_only_scheme_host_port_and_path() {
+        let cases = [
+            (
+                "https://api.example.com/v1/users?api_key=s3cr3t&q=1",
+                "https://api.example.com/v1/users",
+            ),
+            (
+                "https://bob:hunter2@api.example.com:8443/login",
+                "https://api.example.com:8443/login",
+            ),
+            (
+                "http://localhost:3000/cb#access_token=abc",
+                "http://localhost:3000/cb",
+            ),
+            (
+                "https://user@api.example.com/a?token=t#f",
+                "https://api.example.com/a",
+            ),
+            ("not a url", ""),
+            ("mailto:alice@example.com?subject=key", ""),
+        ];
+        for (url, shared) in cases {
+            assert_eq!(shareable_url(url), shared, "for {url}");
+        }
     }
 
     #[test]
