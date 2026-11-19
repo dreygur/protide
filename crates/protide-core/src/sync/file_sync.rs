@@ -11,11 +11,16 @@ use uuid::Uuid;
 use super::seal::{open_entry, seal_entry};
 use super::types::{CrdtEntry, GroupSecret, NodeId};
 
-/// Associated data bound into every entry sealed for a sync folder. It is
-/// the same for every file, so the folder needs no knowledge of file names
-/// to open one, and it differs from every gossip topic, so a folder seal
-/// never opens as a P2P message or the reverse.
+/// Context of every entry sealed for a sync folder. It differs from every
+/// gossip topic, so a folder seal never opens as a P2P message or the
+/// reverse.
 const FOLDER_AAD: &str = "protide file sync v1";
+
+/// Associated data of the file of entry `id`: the folder context bound to
+/// the id, so a sealed entry never opens under another file name.
+fn folder_aad(id: &Uuid) -> String {
+    format!("{FOLDER_AAD}|{id}")
+}
 
 /// BYOB file sync - watches a `.protide/` folder and synchronizes individual `.crdt` files.
 ///
@@ -133,7 +138,8 @@ impl FileSync {
             }
             return Ok(());
         };
-        let data = seal_entry(secret, FOLDER_AAD, entry).ok_or("Failed to seal entry")?;
+        let aad = folder_aad(&entry.id);
+        let data = seal_entry(secret, &aad, entry).ok_or("Failed to seal entry")?;
         let path = self.entry_path(&entry.id);
         // Atomic write: write to temp file, then rename
         let tmp_path = self.entry_path_tmp(&entry.id);
@@ -198,12 +204,16 @@ impl FileSync {
         self.root.join("entries").join(format!("{}.crdt.tmp", id))
     }
 
-    /// The entry in the file at `path`, opened under the key of `secret`.
-    /// A file that does not open is skipped unread: it was sealed by
-    /// another group, altered, or written in the clear by an older version.
+    /// The entry in the file at `path`, opened under the key of `secret`
+    /// for the id its name carries. A file that does not open, or holds
+    /// another entry, is skipped unread: it was sealed by another group,
+    /// altered, renamed, or written in the clear by an older version.
     fn open_file(path: &Path, secret: Option<&GroupSecret>) -> Option<CrdtEntry> {
+        let id = Self::path_to_uuid(path)?;
         let data = fs::read(path).ok()?;
-        let entry = secret.and_then(|s| open_entry(s, FOLDER_AAD, &data));
+        let entry = secret
+            .and_then(|s| open_entry(s, &folder_aad(&id), &data))
+            .filter(|entry| entry.id == id);
         if entry.is_none() {
             debug!("[FileSync] Skipped a sync file that did not open");
         }
@@ -271,7 +281,7 @@ mod tests {
     use super::super::seal::NONCE_LEN;
     use super::*;
     use crate::sync::crdt::CrdtStore;
-    use crate::sync::{DataType, SyncConfig, SyncEngine};
+    use crate::sync::{DataType, SyncConfig, SyncEngine, SyncEvent};
     use crate::test_support::TempDir;
 
     const FIELD_VALUE: &str = "https://internal.example/token-4f2a";
@@ -384,6 +394,66 @@ mod tests {
         }
         fs::write(&path, &intact).unwrap();
         assert_eq!(sync.read_all_entries(Some(&GROUP)).len(), 1);
+    }
+
+    /// REGRESSION: with a fixed associated data, a sealed entry copied to
+    /// the file name of another entry still opened.
+    #[test]
+    fn a_sealed_file_copied_to_another_name_is_rejected() {
+        let tmp = folder();
+        let sync = node(&tmp);
+        let (entry, other) = (request_entry(), request_entry());
+        sync.write_entry(Some(&GROUP), &entry).unwrap();
+        let sealed = fs::read(sync.entry_path(&entry.id)).unwrap();
+        fs::remove_file(sync.entry_path(&entry.id)).unwrap();
+        fs::write(sync.entry_path(&other.id), sealed).unwrap();
+        assert!(sync.read_all_entries(Some(&GROUP)).is_empty());
+    }
+
+    /// The sealed file of `id` currently in the folder of `tmp`.
+    fn sealed_file(tmp: &TempDir, id: &Uuid) -> Vec<u8> {
+        fs::read(node(tmp).entry_path(id)).unwrap()
+    }
+
+    /// Put `sealed` back as the file of `id` and merge whatever the folder
+    /// then holds into `to`, returning the events the merge reported.
+    fn replay(tmp: &TempDir, to: &mut SyncEngine, id: &Uuid, sealed: &[u8]) -> Vec<SyncEvent> {
+        let reader = node(tmp);
+        fs::write(reader.entry_path(id), sealed).unwrap();
+        let entries = reader.read_all_entries(Some(&GROUP));
+        assert_eq!(entries.len(), 1, "the replayed file opens");
+        let mut events = Vec::new();
+        for entry in entries {
+            to.merge_remote_entry(entry, &mut events);
+        }
+        events
+    }
+
+    #[test]
+    fn replaying_an_older_sealed_version_changes_nothing() {
+        let tmp = folder();
+        let mut alice = engine(&tmp, Some(GROUP));
+        let id = alice.apply_local_change(DataType::Request, "v1".into()).id;
+        let v1 = sealed_file(&tmp, &id);
+        alice.update_local_change(id, DataType::Request, "v2".into());
+
+        let mut bob = engine(&tmp, Some(GROUP));
+        assert!(replay(&tmp, &mut bob, &id, &v1).is_empty());
+        assert_eq!(bob.store.get(&id).unwrap().data, "v2");
+    }
+
+    #[test]
+    fn replaying_a_version_from_before_a_delete_changes_nothing() {
+        let tmp = folder();
+        let mut alice = engine(&tmp, Some(GROUP));
+        let id = alice.apply_local_change(DataType::Request, "v1".into()).id;
+        let live = sealed_file(&tmp, &id);
+        alice.delete_local_change(id);
+
+        let mut bob = engine(&tmp, Some(GROUP));
+        assert!(bob.store.get(&id).unwrap().deleted);
+        assert!(replay(&tmp, &mut bob, &id, &live).is_empty());
+        assert!(bob.store.get(&id).unwrap().deleted);
     }
 
     #[test]
