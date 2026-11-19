@@ -167,19 +167,51 @@ pub fn is_relevant(event: &WorkspaceEvent, root: &Path) -> bool {
     !starts_in_data_dir(rel)
 }
 
-/// Where a file a peer sent may be written, or `None`. Only plain names are
-/// allowed (no `..`, root or `.`), never under `.protide`, and never through
-/// a symlinked directory, so a peer cannot write outside the workspace.
+/// Windows device names that open a device instead of a file, with or
+/// without an extension.
+const RESERVED_NAMES: [&str; 22] = [
+    "con", "prn", "aux", "nul", "com1", "com2", "com3", "com4", "com5", "com6", "com7", "com8",
+    "com9", "lpt1", "lpt2", "lpt3", "lpt4", "lpt5", "lpt6", "lpt7", "lpt8", "lpt9",
+];
+
+/// Whether a path component means the same file on every platform. Windows
+/// drops trailing dots and spaces, reads ':' as a stream, maps `~` names to
+/// 8.3 short names (`PROTID~1` is `.protide`) and treats device names
+/// specially, so any of those could pass a check here yet resolve elsewhere.
+fn portable_name(name: &std::ffi::OsStr) -> bool {
+    let name = name.to_string_lossy();
+    let stem = name
+        .split('.')
+        .next()
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    !name.ends_with(['.', ' '])
+        && !name.contains([':', '\\', '~'])
+        && !RESERVED_NAMES.contains(&stem.as_str())
+}
+
+/// Whether the deepest existing folder of `path` resolves inside `root` and
+/// outside its `.protide`, after symlinks and short names are resolved.
+fn resolves_inside(root: &Path, path: &Path) -> bool {
+    let Ok(root) = root.canonicalize() else {
+        return false;
+    };
+    let existing = path.ancestors().find(|p| p.exists());
+    let Some(Ok(resolved)) = existing.map(Path::canonicalize) else {
+        return false;
+    };
+    resolved.starts_with(&root)
+        && !starts_in_data_dir(resolved.strip_prefix(&root).unwrap_or(&resolved))
+}
+
+/// Where a file a peer sent may be written, or `None`. Only plain, portable
+/// names are allowed (no `..`, root or `.`), never under `.protide`, and
+/// never through a symlinked directory, so a peer cannot write outside the
+/// workspace.
 pub fn synced_file_path(root: &Path, relative: &str) -> Option<PathBuf> {
     let rel = Path::new(relative);
-    // Windows drops trailing dots and spaces and reads ':' as a stream, so a
-    // name could compare unequal here yet open `.protide` or escape there.
-    let portable = |name: &std::ffi::OsStr| {
-        let name = name.to_string_lossy();
-        !name.ends_with(['.', ' ']) && !name.contains([':', '\\'])
-    };
     let plain = rel.components().all(|c| match c {
-        std::path::Component::Normal(name) => portable(name),
+        std::path::Component::Normal(name) => portable_name(name),
         _ => false,
     });
     if relative.is_empty() || !plain || starts_in_data_dir(rel) {
@@ -196,7 +228,7 @@ pub fn synced_file_path(root: &Path, relative: &str) -> Option<PathBuf> {
             return None;
         }
     }
-    Some(current)
+    resolves_inside(root, &current).then_some(current)
 }
 
 #[cfg(test)]
@@ -260,6 +292,11 @@ mod tests {
             ".protide /environments.json",
             "a.http:stream",
             "sub\\..\\..\\escape.http",
+            // 8.3 short names and DOS devices
+            "PROTID~1/environments.json",
+            "CON",
+            "nul.http",
+            "api/com1.txt",
         ] {
             assert_eq!(synced_file_path(root, hostile), None, "{hostile}");
         }
