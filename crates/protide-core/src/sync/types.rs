@@ -500,7 +500,7 @@ mod tests {
         }
         assert_eq!(config.node_id_path, Some(path));
         assert!(config.p2p_enabled && config.live_probe_enabled);
-        assert!(config.pairing_code.is_some());
+        assert_eq!(config.pairing_code.is_some(), cfg!(feature = "pake-auth"));
     }
 
     #[test]
