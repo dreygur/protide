@@ -151,7 +151,8 @@ impl SyncEngine {
                     pake::verify_confirm(&pending.session, Role::Initiator, blob)
                 }) {
                     info!("[PAKE] Handshake complete (confirm) with peer {}", from);
-                    self.failed_pairings = 0;
+                    // Single use: a code that paired once never pairs again.
+                    self.regenerate_pairing_code();
                     events.push(SyncEvent::HandshakeComplete {
                         peer_id: from,
                         peer_name: node_name,
@@ -374,6 +375,16 @@ mod tests {
         assert!(ignores(&mut alice, confirm.clone(), "mallory"));
         deliver(&mut alice, "bob", confirm, &mut events_a);
         assert_eq!(paired_with(&events_a), Some("bob"));
+    }
+
+    #[test]
+    fn a_code_pairs_only_once() {
+        let mut alice = showing(CODE);
+        let (events_a, _) = pair(&mut alice, CODE);
+        assert_eq!(paired_with(&events_a), Some("bob"));
+        assert_ne!(alice.config.pairing_code.as_deref(), Some(CODE));
+        assert!(alice.pake_topic.is_none());
+        assert!(ignores(&mut alice, init_for(CODE), "bob"));
     }
 
     #[test]
