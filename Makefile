@@ -1,4 +1,4 @@
-.PHONY: deps deps-visual-qa build release run bundle-mac test test-core test-ui test-lsp test-mcp test-parser check clippy fmt fmt-check audit verify hooks clean help
+.PHONY: deps deps-visual-qa build release run bundle-mac cask test test-core test-ui test-lsp test-mcp test-parser check clippy fmt fmt-check audit verify hooks clean help
 
 help:
 	@echo "make verify          - run before pushing: fmt-check, clippy, test, audit"
@@ -10,6 +10,7 @@ help:
 	@echo "make release         - release build (recommended for actually running the app)"
 	@echo "make run             - cargo run --release"
 	@echo "make bundle-mac      - build target/Protide.app (macOS: needed for the Dock/Finder icon)"
+	@echo "make cask            - render Casks/protide.rb for the released .dmg of this version"
 	@echo "make test            - run the full workspace test suite, crate by crate"
 	@echo "make check           - cargo check across the whole workspace, crate by crate"
 	@echo "make clippy          - cargo clippy crate by crate, warnings are errors"
@@ -65,6 +66,9 @@ run:
 
 bundle-mac: release
 	packaging/macos/bundle.sh
+
+cask:
+	packaging/macos/cask.sh
 
 test: test-core test-ui test-lsp test-mcp test-parser
 

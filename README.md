@@ -69,6 +69,21 @@ cargo install --git https://github.com/dreygur/protide protide-lsp
 
 ## Installation
 
+### Homebrew (macOS)
+
+This installs `Protide.app` and puts `protide` on your PATH. Apple Silicon only
+for now. The cask lives in this repo, so tap it by URL. Homebrew asks you to
+trust a third party tap once before it installs from it:
+
+```bash
+brew tap dreygur/protide https://github.com/dreygur/protide
+brew trust dreygur/protide
+brew install --cask dreygur/protide/protide
+```
+
+The cask clears the quarantine flag after install, so the app opens without
+the Gatekeeper prompt.
+
 ### Build from source
 
 ```bash
