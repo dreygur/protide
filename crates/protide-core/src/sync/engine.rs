@@ -132,8 +132,12 @@ impl SyncEngine {
                 .map(|p| p.poll_events())
                 .unwrap_or_default();
 
-            // (topic, serialised PakeMsgPayload) to publish after processing
+            // (topic, serialised PakeMsgPayload) to publish after processing.
+            // Only PAKE handling pushes to it.
+            #[cfg(feature = "pake-auth")]
             let mut pake_resps: Vec<(String, Vec<u8>)> = Vec::new();
+            #[cfg(not(feature = "pake-auth"))]
+            let pake_resps: Vec<(String, Vec<u8>)> = Vec::new();
 
             for p2p_event in p2p_events {
                 match p2p_event {
@@ -239,7 +243,8 @@ impl SyncEngine {
         #[cfg(all(feature = "p2p-sync", feature = "pake-auth"))]
         {
             let code = &pake::normalize_pairing_code(_code);
-            info!("[PAKE] initiate_handshake called for code: {}", code);
+            // The code is the PAKE password: never log it.
+            info!("[PAKE] initiate_handshake called");
             // Bob calls pake_respond to generate his B-side key
             let (msg_b, state_b) = pake::pake_respond(code)?;
             self.pake_pending = Some(state_b);

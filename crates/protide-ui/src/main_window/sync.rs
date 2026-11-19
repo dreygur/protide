@@ -37,7 +37,7 @@ impl MainWindow {
                 Ok(()) => {
                     self.console_panel.update(cx, |panel, cx| {
                         panel.log(
-                            ConsoleEntry::team(format!("Handshaking with code: {}", code)),
+                            ConsoleEntry::team("Handshaking with the entered code".to_string()),
                             cx,
                         );
                     });
