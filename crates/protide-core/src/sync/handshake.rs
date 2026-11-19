@@ -3,6 +3,7 @@
 //! without a libp2p swarm.
 #![cfg(all(feature = "p2p-sync", feature = "pake-auth"))]
 
+use super::pake::Role;
 use super::*;
 
 /// Inits answered for one shown code without a verified "confirm" before
@@ -77,24 +78,15 @@ impl SyncEngine {
                         return None;
                     }
                 };
-                match pake::confirm_blob(&session_a) {
-                    Ok(confirm_a) => {
-                        self.pake_pending_alice = Some(session_a);
-                        // Counted until a verified "confirm" resets it: a
-                        // guesser who learns nothing never sends one.
-                        self.failed_pairings += 1;
-                        if self.failed_pairings >= MAX_FAILED_PAIRINGS {
-                            self.regenerate_pairing_code();
-                        }
-                        self.reply(topic, "resp", msg_a, confirm_a)
-                    }
-                    Err(e) => {
-                        events.push(SyncEvent::HandshakeFailed {
-                            reason: format!("Failed to build confirmation: {}", e),
-                        });
-                        None
-                    }
+                let confirm_a = pake::confirm_blob(&session_a, Role::Responder);
+                self.pake_pending_alice = Some(session_a);
+                // Counted until a verified "confirm" resets it: a guesser
+                // who learns nothing never sends one.
+                self.failed_pairings += 1;
+                if self.failed_pairings >= MAX_FAILED_PAIRINGS {
+                    self.regenerate_pairing_code();
                 }
+                self.reply(topic, "resp", msg_a, confirm_a)
             }
             // We are Bob: finish with Alice's message, then verify her
             // confirmation blob before trusting the handshake. Only once that
@@ -103,9 +95,9 @@ impl SyncEngine {
             "resp" => {
                 let state_b = self.pake_pending.take()?;
                 let session_b = pake::pake_finish(state_b, pake_bytes).ok();
-                let confirmed = session_b
-                    .as_ref()
-                    .is_some_and(|s| confirm.is_some_and(|blob| pake::verify_confirm(s, blob)));
+                let confirmed = session_b.as_ref().is_some_and(|s| {
+                    confirm.is_some_and(|blob| pake::verify_confirm(s, Role::Responder, blob))
+                });
                 if !confirmed {
                     info!("[PAKE] Handshake mismatch on 'resp' from peer {}", from);
                     events.push(SyncEvent::HandshakeFailed {
@@ -118,14 +110,16 @@ impl SyncEngine {
                     peer_id: from,
                     peer_name: node_name,
                 });
-                let confirm_b = pake::confirm_blob(&session_b?).ok()?;
+                let confirm_b = pake::confirm_blob(&session_b?, Role::Initiator);
                 self.reply(topic, "confirm", Vec::new(), confirm_b)
             }
             // We are Alice: Bob has (claimed to have) proven he derived the
             // same key as us.
             "confirm" => {
                 let session_a = self.pake_pending_alice.take()?;
-                if confirm.is_some_and(|blob| pake::verify_confirm(&session_a, blob)) {
+                if confirm
+                    .is_some_and(|blob| pake::verify_confirm(&session_a, Role::Initiator, blob))
+                {
                     info!("[PAKE] Handshake complete (confirm) with peer {}", from);
                     self.failed_pairings = 0;
                     events.push(SyncEvent::HandshakeComplete {
@@ -238,16 +232,17 @@ mod tests {
         })
     }
 
-    /// True when `alice` neither answers `init` nor reports anything.
-    fn ignores(alice: &mut SyncEngine, init: (String, Vec<u8>)) -> bool {
+    /// True when `alice` neither answers `msg` from `from` nor reports
+    /// anything.
+    fn ignores(alice: &mut SyncEngine, msg: (String, Vec<u8>), from: &str) -> bool {
         let mut events = Vec::new();
-        deliver(alice, "bob", init, &mut events).is_none() && events.is_empty()
+        deliver(alice, from, msg, &mut events).is_none() && events.is_empty()
     }
 
     // REGRESSION: the side showing its code ignored every incoming init,
     // because only the side that typed a code had a pending code set.
     // Each side only reports HandshakeComplete after verifying the other's
-    // AEAD confirmation blob, so both completing proves equal session keys.
+    // key confirmation, so both completing proves equal session keys.
     #[test]
     fn the_side_showing_its_code_pairs_with_the_side_typing_it() {
         let (events_a, events_b) = pair(&mut showing(CODE), CODE);
@@ -259,7 +254,7 @@ mod tests {
     fn an_init_is_ignored_while_the_pairing_window_is_closed() {
         let mut alice = showing(CODE);
         alice.set_accepting_pairing(false);
-        assert!(ignores(&mut alice, init_for(CODE)));
+        assert!(ignores(&mut alice, init_for(CODE), "bob"));
     }
 
     /// Each answered init is one online guess, so the shown code is
@@ -278,7 +273,7 @@ mod tests {
 
         let new_code = alice.config.pairing_code.clone().unwrap();
         assert_ne!(new_code, CODE);
-        assert!(ignores(&mut alice, init_for(CODE)));
+        assert!(ignores(&mut alice, init_for(CODE), "bob"));
 
         alice.pake_topic = Some(PairingTopics::derive(&new_code).pake);
         let (events_a, _) = pair(&mut alice, &new_code);
@@ -290,12 +285,12 @@ mod tests {
     #[test]
     fn an_init_before_the_topic_is_cached_is_ignored() {
         let mut alice = engine("alice", Some(CODE));
-        assert!(ignores(&mut alice, init_for(CODE)));
+        assert!(ignores(&mut alice, init_for(CODE), "bob"));
     }
 
     #[test]
     fn an_init_for_a_code_we_do_not_show_is_ignored() {
-        assert!(ignores(&mut showing(CODE), init_for(OTHER)));
+        assert!(ignores(&mut showing(CODE), init_for(OTHER), "bob"));
     }
 
     #[test]
@@ -303,5 +298,26 @@ mod tests {
         let (events_a, events_b) = pair(&mut showing(CODE), OTHER);
         assert_eq!(paired_with(&events_a), None);
         assert_eq!(paired_with(&events_b), None);
+    }
+
+    // REGRESSION: both sides sent the same kind of confirmation, so an
+    // attacker without the code could send Alice's own confirmation from
+    // "resp" straight back as "confirm" and complete the handshake.
+    #[test]
+    fn reflecting_the_responders_confirm_back_does_not_pair() {
+        let mut alice = showing(CODE);
+        let mut events = Vec::new();
+        let init = (alice.pake_topic.clone().unwrap(), init_for(OTHER).1);
+        let (topic, resp) = deliver(&mut alice, "mallory", init, &mut events).unwrap();
+        let resp: p2p::PakeMsgPayload = serde_json::from_slice(&resp).unwrap();
+        let reflected = p2p::PakeMsgPayload {
+            kind: "confirm".to_string(),
+            node_name: "mallory".to_string(),
+            pake_bytes: Vec::new(),
+            confirm: resp.confirm,
+        };
+        let reflected = serde_json::to_vec(&reflected).unwrap();
+        deliver(&mut alice, "mallory", (topic, reflected), &mut events);
+        assert_eq!(paired_with(&events), None);
     }
 }

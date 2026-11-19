@@ -130,36 +130,49 @@ pub fn decrypt_message(session: &PakeSession, encrypted: &[u8]) -> Result<Vec<u8
         .map_err(|_| "Decryption error: wrong key or tampered data".to_string())
 }
 
-/// Fixed plaintext used for post-SPAKE2 key confirmation.
+/// Which side of the handshake a key confirmation comes from.
 ///
-/// SPAKE2's `finish()` only checks that the peer's message is a well-formed
-/// curve point - it never proves the two sides actually derived the *same*
-/// key (that only happens if both used the same password/pairing code). To
-/// get a real proof, each side encrypts this constant under its own derived
-/// key (AEAD via ChaCha20Poly1305, see `encrypt_message`) and sends the
-/// ciphertext to the peer. The peer can only decrypt it successfully -
-/// ChaCha20Poly1305's Poly1305 tag check is constant-time - if it derived
-/// the identical key, which only happens when both sides used the same
-/// password. This is the standard "encrypt a known value, verify decryption"
-/// key-confirmation pattern (cf. TLS Finished, Noise handshake payloads).
-const CONFIRM_TAG: &[u8] = b"protide-pake-confirm";
-
-/// Build this side's key-confirmation blob to send to the peer.
-pub fn confirm_blob(session: &PakeSession) -> Result<Vec<u8>, String> {
-    encrypt_message(session, CONFIRM_TAG)
+/// SPAKE2's `finish()` only checks that the peer's message is a well formed
+/// curve point; it never proves both sides derived the same key. Each side
+/// therefore sends a value only the holder of that key can compute. The
+/// value is bound to the sender's role, so a side never accepts its own
+/// confirmation reflected back at it: the initiator (who typed the code)
+/// sends the initiator value and the responder (who shows it) the
+/// responder value, and each checks the other role's value.
+#[derive(Debug, Clone, Copy)]
+pub enum Role {
+    Initiator,
+    Responder,
 }
 
-/// Verify a confirmation blob received from the peer against our own
-/// derived key. Returns `true` only if it decrypts (AEAD-authenticated) to
-/// the expected constant - i.e. the peer derived the same key we did. The
-/// authentication check inside `decrypt_message` is constant-time; the final
-/// equality against the public constant compares already-authenticated,
-/// non-secret data, so no additional constant-time handling is needed there.
-pub fn verify_confirm(session: &PakeSession, blob: &[u8]) -> bool {
-    match decrypt_message(session, blob) {
-        Ok(pt) => pt == CONFIRM_TAG,
-        Err(_) => false,
+impl Role {
+    fn confirm_context(self) -> &'static str {
+        match self {
+            Role::Initiator => "protide pairing confirm initiator",
+            Role::Responder => "protide pairing confirm responder",
+        }
     }
+}
+
+/// Key confirmation value for `role`, derived from the shared key.
+fn confirm_value(session: &PakeSession, role: Role) -> blake3::Hash {
+    blake3::Hash::from(blake3::derive_key(
+        role.confirm_context(),
+        &session.shared_key,
+    ))
+}
+
+/// This side's key confirmation blob, sent to the peer as `role`.
+pub fn confirm_blob(session: &PakeSession, role: Role) -> Vec<u8> {
+    confirm_value(session, role).as_bytes().to_vec()
+}
+
+/// Whether `blob` is the peer's confirmation for `role` under our derived
+/// key, i.e. the peer derived the same key and sent it as that role.
+/// `blake3::Hash` compares in constant time.
+pub fn verify_confirm(session: &PakeSession, role: Role, blob: &[u8]) -> bool {
+    <[u8; 32]>::try_from(blob)
+        .is_ok_and(|bytes| blake3::Hash::from(bytes) == confirm_value(session, role))
 }
 
 /// Generate a pairing code that reads aloud easily, such as
@@ -309,16 +322,16 @@ mod tests {
         assert_ne!(session_a.shared_key, session_b.shared_key);
 
         // Explicit key confirmation must catch the mismatch: each side's
-        // confirm blob only decrypts correctly under the SAME derived key.
-        let confirm_a = confirm_blob(&session_a).unwrap();
-        let confirm_b = confirm_blob(&session_b).unwrap();
+        // confirm blob only verifies under the SAME derived key.
+        let confirm_a = confirm_blob(&session_a, Role::Responder);
+        let confirm_b = confirm_blob(&session_b, Role::Initiator);
 
         assert!(
-            !verify_confirm(&session_b, &confirm_a),
+            !verify_confirm(&session_b, Role::Responder, &confirm_a),
             "B must reject A's confirmation blob - different codes were used"
         );
         assert!(
-            !verify_confirm(&session_a, &confirm_b),
+            !verify_confirm(&session_a, Role::Initiator, &confirm_b),
             "A must reject B's confirmation blob - different codes were used"
         );
     }
@@ -335,10 +348,15 @@ mod tests {
         let session_a = pake_finish(state_a, &msg_b).unwrap();
         let session_b = pake_finish(state_b, &msg_a).unwrap();
 
-        let confirm_a = confirm_blob(&session_a).unwrap();
-        let confirm_b = confirm_blob(&session_b).unwrap();
+        let confirm_a = confirm_blob(&session_a, Role::Responder);
+        let confirm_b = confirm_blob(&session_b, Role::Initiator);
 
-        assert!(verify_confirm(&session_b, &confirm_a));
-        assert!(verify_confirm(&session_a, &confirm_b));
+        assert!(verify_confirm(&session_b, Role::Responder, &confirm_a));
+        assert!(verify_confirm(&session_a, Role::Initiator, &confirm_b));
+
+        // A side's own confirmation never passes as the peer's role.
+        assert_ne!(confirm_a, confirm_b);
+        assert!(!verify_confirm(&session_a, Role::Initiator, &confirm_a));
+        assert!(!verify_confirm(&session_b, Role::Responder, &confirm_b));
     }
 }

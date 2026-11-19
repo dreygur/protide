@@ -30,7 +30,7 @@ pub struct PakeMsgPayload {
     pub node_name: String,
     /// Raw SPAKE2 public-key bytes (unused/empty for "confirm")
     pub pake_bytes: Vec<u8>,
-    /// AEAD key-confirmation blob (see `pake::confirm_blob`), present on
+    /// Role bound key-confirmation blob (see `pake::confirm_blob`), present on
     /// "resp" and "confirm" messages once each side has derived a session
     /// key. Proves the sender derived the same shared key as us - SPAKE2's
     /// `finish()` alone does not guarantee that.
@@ -70,7 +70,7 @@ pub enum P2PEvent {
         node_name: String,
         kind: String,
         pake_bytes: Vec<u8>,
-        /// AEAD key-confirmation blob, see `PakeMsgPayload::confirm`
+        /// Role bound key-confirmation blob, see `PakeMsgPayload::confirm`
         confirm: Option<Vec<u8>>,
     },
     /// Our own listen multiaddress - emitted once the swarm binds a port
