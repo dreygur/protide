@@ -138,6 +138,17 @@ fn scan_dir(dir: &Path, depth: usize, out: &mut Vec<CollectionEntry>) {
     }
 }
 
+/// Whether `rel` begins with Protide's own state folder. Compared case
+/// insensitively because macOS and Windows treat `.PROTIDE` as the same folder.
+fn starts_in_data_dir(rel: &Path) -> bool {
+    rel.components().next().is_some_and(|first| {
+        first
+            .as_os_str()
+            .to_string_lossy()
+            .eq_ignore_ascii_case(crate::storage::DATA_DIR)
+    })
+}
+
 /// Format a `Duration` debounce: collect events within `debounce` interval.
 /// Returns whether any of the given paths are within `root`.
 pub fn is_relevant(event: &WorkspaceEvent, root: &Path) -> bool {
@@ -149,17 +160,36 @@ pub fn is_relevant(event: &WorkspaceEvent, root: &Path) -> bool {
         | WorkspaceEvent::DirDeleted(p) => p,
     };
     // Protide's own state files (environments with secrets, history) must never
-    // be broadcast to peers or trigger a tree rescan. Compared case
-    // insensitively because macOS and Windows treat `.PROTIDE` as the same folder.
+    // be broadcast to peers or trigger a tree rescan.
     let Ok(rel) = path.strip_prefix(root) else {
         return false;
     };
-    !rel.components().next().is_some_and(|first| {
-        first
-            .as_os_str()
-            .to_string_lossy()
-            .eq_ignore_ascii_case(crate::storage::DATA_DIR)
-    })
+    !starts_in_data_dir(rel)
+}
+
+/// Where a file a peer sent may be written, or `None`. Only plain names are
+/// allowed (no `..`, root or `.`), never under `.protide`, and never through
+/// a symlinked directory, so a peer cannot write outside the workspace.
+pub fn synced_file_path(root: &Path, relative: &str) -> Option<PathBuf> {
+    let rel = Path::new(relative);
+    let plain = rel
+        .components()
+        .all(|c| matches!(c, std::path::Component::Normal(_)));
+    if relative.is_empty() || !plain || starts_in_data_dir(rel) {
+        return None;
+    }
+
+    let mut current = root.to_path_buf();
+    for component in rel.components() {
+        current.push(component);
+        let is_link = std::fs::symlink_metadata(&current)
+            .map(|m| m.file_type().is_symlink())
+            .unwrap_or(false);
+        if is_link {
+            return None;
+        }
+    }
+    Some(current)
 }
 
 #[cfg(test)]
@@ -198,5 +228,37 @@ mod tests {
             "case insensitive filesystems treat this as the same folder"
         );
         assert!(is_relevant(&modified("/ws/sub/.protide/a.http"), root));
+    }
+
+    /// REGRESSION: a peer's relative path was joined onto the workspace
+    /// unchecked, so "../../.ssh/authorized_keys" wrote anywhere on disk.
+    #[test]
+    fn a_synced_path_cannot_leave_the_workspace() {
+        let tmp = TempDir::new("synced_path");
+        let root = tmp.path();
+        assert_eq!(
+            synced_file_path(root, "api/users.http"),
+            Some(root.join("api/users.http"))
+        );
+        for hostile in [
+            "../escape.http",
+            "api/../../escape.http",
+            "/etc/passwd",
+            "",
+            ".protide/environments.json",
+            ".PROTIDE/history.json",
+            "./a.http",
+        ] {
+            assert_eq!(synced_file_path(root, hostile), None, "{hostile}");
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_synced_path_cannot_go_through_a_symlink() {
+        let tmp = TempDir::new("synced_symlink");
+        let outside = TempDir::new("synced_symlink_target");
+        std::os::unix::fs::symlink(outside.path(), tmp.path().join("link")).unwrap();
+        assert_eq!(synced_file_path(tmp.path(), "link/a.http"), None);
     }
 }

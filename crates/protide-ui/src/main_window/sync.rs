@@ -231,8 +231,21 @@ impl MainWindow {
                     deleted,
                 } => {
                     let workspace = self.explorer.read(cx).workspace_path().cloned();
-                    if let Some(workspace) = workspace {
-                        let full_path = workspace.join(&relative_path);
+                    let full_path = workspace
+                        .as_deref()
+                        .and_then(|w| protide_core::workspace::synced_file_path(w, &relative_path));
+                    if workspace.is_some() && full_path.is_none() {
+                        self.console_panel.update(cx, |panel, cx| {
+                            panel.log(
+                                ConsoleEntry::warning(format!(
+                                    "[sync] refused a file outside the workspace: {}",
+                                    relative_path
+                                )),
+                                cx,
+                            );
+                        });
+                    }
+                    if let Some(full_path) = full_path {
                         self.explorer.update(cx, |exp, _| {
                             exp.sync_skip_paths.insert(full_path.clone());
                         });
