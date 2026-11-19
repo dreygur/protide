@@ -15,6 +15,11 @@ use super::*;
 /// more guesses however they are spread over time.
 const MAX_GUESSES_PER_CODE: u32 = 10;
 
+/// Forced rotations (a code's guess budget ran out) allowed while the
+/// pairing window stays open. The next one pauses pairing until the window
+/// is opened again, so a sustained attack needs the user to keep reopening.
+const MAX_FORCED_ROTATIONS: u32 = 3;
+
 /// Length of the per peer throttle window.
 const GUESS_WINDOW: Duration = Duration::from_secs(60);
 
@@ -179,6 +184,11 @@ impl SyncEngine {
                 self.hold_pending(from, session_a);
                 if self.guesses.for_code >= MAX_GUESSES_PER_CODE {
                     self.regenerate_pairing_code();
+                    self.forced_rotations += 1;
+                    if self.forced_rotations >= MAX_FORCED_ROTATIONS {
+                        self.set_accepting_pairing(false);
+                        events.push(SyncEvent::PairingPaused);
+                    }
                 }
                 self.reply(topic, "resp", msg_a, Some(confirm_a), None)
             }
@@ -741,6 +751,52 @@ mod tests {
         assert!(
             !gossip(&alice, &mut bob, entry),
             "a dropped peer still syncs"
+        );
+    }
+
+    /// Spend the shown code's whole guess budget from distinct peers, then
+    /// cache the new code's topic as the swarm would. Returns the events.
+    fn exhaust_code(alice: &mut SyncEngine) -> Vec<SyncEvent> {
+        let mut events = Vec::new();
+        for i in 0..MAX_GUESSES_PER_CODE {
+            let topic = alice.pake_topic.clone().unwrap_or_default();
+            let init = (topic, engine("x", None).start_handshake(OTHER).unwrap());
+            deliver(alice, &format!("p{i}"), init, &mut events);
+        }
+        let code = alice.config.pairing_code.clone().unwrap();
+        alice.pake_topic = Some(pake_topic(&code));
+        events
+    }
+
+    #[test]
+    fn pairing_pauses_after_repeated_forced_rotations_until_reopened() {
+        let paused =
+            |events: &[SyncEvent]| events.iter().any(|e| matches!(e, SyncEvent::PairingPaused));
+        let mut alice = showing(CODE);
+        for round in 1..MAX_FORCED_ROTATIONS {
+            assert!(!paused(&exhaust_code(&mut alice)));
+            if round == 1 {
+                // The rotation after a successful pairing is not forced and
+                // must not count toward the pause.
+                let code = alice.config.pairing_code.clone().unwrap();
+                let (events_a, _) = pair(&mut alice, &code);
+                assert!(!paused(&events_a));
+                alice.pake_topic = Some(pake_topic(alice.config.pairing_code.as_deref().unwrap()));
+            }
+        }
+        assert!(alice.accepting_pairing);
+
+        assert!(paused(&exhaust_code(&mut alice)));
+        assert!(!alice.accepting_pairing);
+        let code = alice.config.pairing_code.clone().unwrap();
+        assert!(ignores(&mut alice, init_for(&code), "bob"));
+
+        alice.set_accepting_pairing(true);
+        let (events_a, _) = pair(&mut alice, &code);
+        assert_eq!(
+            paired_with(&events_a),
+            Some("bob"),
+            "reopening resumes pairing"
         );
     }
 }

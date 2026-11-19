@@ -140,6 +140,9 @@ pub enum SyncEvent {
     HandshakeComplete { peer_id: String, peer_name: String },
     /// PAKE handshake failed (wrong code or crypto error)
     HandshakeFailed { reason: String },
+    /// Pairing stopped answering after repeated forced code rotations; it
+    /// resumes when the pairing window is opened again
+    PairingPaused,
     /// Internal P2P diagnostic log (mDNS discovery, PAKE steps, DHT events)
     P2PDiagnostic(String),
     /// Our own libp2p listen multiaddress - logged once on startup

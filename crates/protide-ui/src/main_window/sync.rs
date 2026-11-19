@@ -197,6 +197,21 @@ impl MainWindow {
                     });
                     changed = true;
                 }
+                SyncEvent::PairingPaused => {
+                    // Closing the flyout keeps the engine paused until the
+                    // user opens it again.
+                    self.presence.show_pairing = false;
+                    self.presence.reset_connection();
+                    self.console_panel.update(cx, |panel, cx| {
+                        panel.log(
+                            ConsoleEntry::system(
+                                "Pairing paused after repeated failed attempts, reopen to try again",
+                            ),
+                            cx,
+                        );
+                    });
+                    changed = true;
+                }
                 SyncEvent::P2PDiagnostic(msg) => {
                     self.console_panel.update(cx, |panel, cx| {
                         panel.log(ConsoleEntry::system(msg), cx);

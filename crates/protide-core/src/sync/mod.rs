@@ -97,6 +97,10 @@ pub struct SyncEngine {
     /// Online guesses answered in the current window, in total and per peer
     #[cfg(all(feature = "p2p-sync", feature = "pake-auth"))]
     guesses: handshake::GuessWindow,
+    /// Codes replaced because their guess budget ran out since the pairing
+    /// window was opened
+    #[cfg(all(feature = "p2p-sync", feature = "pake-auth"))]
+    forced_rotations: u32,
 }
 
 impl SyncEngine {
@@ -132,6 +136,8 @@ impl SyncEngine {
             accepting_pairing: false,
             #[cfg(all(feature = "p2p-sync", feature = "pake-auth"))]
             guesses: Default::default(),
+            #[cfg(all(feature = "p2p-sync", feature = "pake-auth"))]
+            forced_rotations: 0,
         }
     }
 
