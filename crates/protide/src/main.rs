@@ -130,10 +130,17 @@ fn main() -> Result<()> {
             };
 
             let start_sync: StartSync = Rc::new(|| {
+                let saved = protide_ui::session::load_group_secret();
                 let mut engine = SyncEngine::new(SyncConfig::lan(
                     dirs::config_dir().map(|d| d.join("protide").join("node_id")),
-                    None,
+                    saved,
                 ));
+                // A node without a saved group just started its own: keep it.
+                if saved.is_none()
+                    && let Some(secret) = engine.config().group_secret
+                {
+                    protide_ui::session::save_group_secret(&secret);
+                }
                 let _ = engine.init();
                 engine
             });

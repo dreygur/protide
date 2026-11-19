@@ -1,7 +1,10 @@
 //! Session persistence - saves and restores workspace state across app restarts.
 //! File: ~/.config/protide/session.json
 
+use base64::Engine;
+use base64::engine::general_purpose::STANDARD as BASE64;
 use log::warn;
+use protide_core::sync::GroupSecret;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -203,6 +206,30 @@ fn stash(state: &mut SessionState, store: &dyn SecretStore) {
     for_each_secret(state, |key, value| store.set(&key, value));
 }
 
+/// Keychain entry holding this node's sync group secret. Workspace keys are
+/// absolute paths, so this never collides with a draft secret.
+const GROUP_SECRET_KEY: &str = "sync#group_secret";
+
+fn read_group_secret(store: &dyn SecretStore) -> Option<GroupSecret> {
+    let bytes = BASE64.decode(store.get(GROUP_SECRET_KEY)?).ok()?;
+    <[u8; 32]>::try_from(bytes).ok().map(GroupSecret)
+}
+
+fn write_group_secret(store: &dyn SecretStore, secret: &GroupSecret) {
+    store.set(GROUP_SECRET_KEY, &BASE64.encode(secret.0));
+}
+
+/// The persisted sync group secret, so a restart rejoins the same group.
+pub fn load_group_secret() -> Option<GroupSecret> {
+    read_group_secret(&Keychain)
+}
+
+/// Persist the sync group secret in the OS keychain, never in a file. A
+/// keychain failure is logged and the engine keeps the secret in memory.
+pub fn save_group_secret(secret: &GroupSecret) {
+    write_group_secret(&Keychain, secret);
+}
+
 /// Load session from disk, or return an empty default if the file doesn't exist.
 pub fn load() -> SessionState {
     let mut state = config_path().map(|p| load_from(&p)).unwrap_or_default();
@@ -267,6 +294,19 @@ mod tests {
         ] {
             assert!(!json.contains(needle), "{needle} leaked into {json}");
         }
+    }
+
+    /// The sync group secret lives only in the keychain, so a restart
+    /// rejoins the same group; an unreadable entry starts a new one.
+    #[test]
+    fn the_group_secret_round_trips_through_the_store() {
+        let mock_store = MockStore::default();
+        assert_eq!(read_group_secret(&mock_store), None);
+        let secret = GroupSecret([5; 32]);
+        write_group_secret(&mock_store, &secret);
+        assert_eq!(read_group_secret(&mock_store), Some(secret));
+        mock_store.set(GROUP_SECRET_KEY, "not base64 of 32 bytes");
+        assert_eq!(read_group_secret(&mock_store), None);
     }
 
     #[test]

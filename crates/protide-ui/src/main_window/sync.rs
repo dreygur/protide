@@ -170,6 +170,10 @@ impl MainWindow {
                     changed = true;
                 }
                 SyncEvent::HandshakeComplete { peer_id, peer_name } => {
+                    // The initiator may have joined the responder's group.
+                    if let Some(secret) = engine.config().group_secret {
+                        crate::session::save_group_secret(&secret);
+                    }
                     self.handshake_started = None;
                     self.presence
                         .set_connected(peer_id.clone(), peer_name.clone());
