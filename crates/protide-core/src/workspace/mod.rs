@@ -172,9 +172,16 @@ pub fn is_relevant(event: &WorkspaceEvent, root: &Path) -> bool {
 /// a symlinked directory, so a peer cannot write outside the workspace.
 pub fn synced_file_path(root: &Path, relative: &str) -> Option<PathBuf> {
     let rel = Path::new(relative);
-    let plain = rel
-        .components()
-        .all(|c| matches!(c, std::path::Component::Normal(_)));
+    // Windows drops trailing dots and spaces and reads ':' as a stream, so a
+    // name could compare unequal here yet open `.protide` or escape there.
+    let portable = |name: &std::ffi::OsStr| {
+        let name = name.to_string_lossy();
+        !name.ends_with(['.', ' ']) && !name.contains([':', '\\'])
+    };
+    let plain = rel.components().all(|c| match c {
+        std::path::Component::Normal(name) => portable(name),
+        _ => false,
+    });
     if relative.is_empty() || !plain || starts_in_data_dir(rel) {
         return None;
     }
@@ -248,6 +255,11 @@ mod tests {
             ".protide/environments.json",
             ".PROTIDE/history.json",
             "./a.http",
+            // Windows strips trailing dots and spaces, and reads ':' as a stream
+            ".protide./environments.json",
+            ".protide /environments.json",
+            "a.http:stream",
+            "sub\\..\\..\\escape.http",
         ] {
             assert_eq!(synced_file_path(root, hostile), None, "{hostile}");
         }
