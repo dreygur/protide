@@ -58,24 +58,6 @@ impl SyncEngine {
         Some(entry)
     }
 
-    /// Broadcast a workspace file change (create/modify/delete) to all P2P peers.
-    pub fn broadcast_workspace_file(
-        &mut self,
-        workspace_root: &std::path::Path,
-        file_path: &std::path::Path,
-        content: String,
-        deleted: bool,
-    ) {
-        let rel = file_path.strip_prefix(workspace_root).unwrap_or(file_path);
-        let payload = serde_json::json!({
-            "path": rel.to_string_lossy(),
-            "content": content,
-            "deleted": deleted,
-        })
-        .to_string();
-        self.apply_local_change(DataType::WorkspaceFile, payload);
-    }
-
     /// Broadcast a live activity event via UDP
     pub fn broadcast_live_activity(
         &self,

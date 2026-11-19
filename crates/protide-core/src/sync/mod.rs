@@ -28,6 +28,7 @@ mod p2p_seal;
 mod p2p_swarm;
 mod p2p_topic;
 mod seal;
+mod workspace_file;
 
 use std::path::PathBuf;
 use std::sync::mpsc::{self, Receiver, Sender};
