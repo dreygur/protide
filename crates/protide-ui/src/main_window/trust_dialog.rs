@@ -1,6 +1,6 @@
 use super::MainWindow;
 use crate::theme;
-use gpui::{Context, ParentElement, SharedString, Styled, Window, div, prelude::*, px};
+use gpui::{App, Context, ParentElement, SharedString, Styled, Window, div, prelude::*, px};
 use gpui_component::WindowExt;
 use gpui_component::button::{Button, ButtonVariants};
 use gpui_component::dialog::DialogFooter;
@@ -10,8 +10,8 @@ const WARNING: &str = "This request runs a script you have not trusted. It may c
 
 impl MainWindow {
     /// Show the untrusted scripts of a send the request panel held back,
-    /// with Run and trust / Cancel. Escape and a click outside leave the
-    /// send unrun; the next send asks again.
+    /// with Run and trust / Cancel. Every other way of closing it, such as
+    /// Escape, cancels the send just as Cancel does.
     pub(super) fn open_trust_dialog(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let Some(scripts) = self.request_panel.update(cx, |p, _| p.trust_prompt()) else {
             return;
@@ -20,8 +20,13 @@ impl MainWindow {
         let panel = self.request_panel.downgrade();
         window.open_alert_dialog(cx, move |alert, _, cx| {
             let colors = theme::current(cx).colors;
-            let (run, cancel) = (panel.clone(), panel.clone());
+            let (run, weak) = (panel.clone(), panel.clone());
+            let cancel = move |cx: &mut App| {
+                weak.update(cx, |p, cx| p.resolve_trust(false, cx)).ok();
+            };
+            let on_close = cancel.clone();
             alert
+                .on_close(move |_, _, cx| on_close(cx))
                 .width(px(640.0))
                 .title("Run untrusted script?")
                 .description(
@@ -43,7 +48,7 @@ impl MainWindow {
                     DialogFooter::new()
                         .child(Button::new("trust-cancel").label("Cancel").on_click(
                             move |_, window, cx| {
-                                cancel.update(cx, |p, cx| p.resolve_trust(false, cx)).ok();
+                                cancel(cx);
                                 window.close_dialog(cx);
                             },
                         ))
