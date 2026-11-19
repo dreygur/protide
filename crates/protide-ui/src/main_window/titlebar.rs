@@ -5,6 +5,12 @@ use gpui::{
     prelude::*, px,
 };
 
+/// The theme toggle shows the theme in effect; in system mode that is the
+/// palette the OS appearance resolved to. The tooltip names the mode.
+fn theme_icon(theme: &theme::Theme) -> &'static str {
+    if theme.is_dark { ICON_MOON } else { ICON_SUN }
+}
+
 impl MainWindow {
     pub(super) fn render_title_bar(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = theme::current(cx);
@@ -159,23 +165,7 @@ impl MainWindow {
                         }
                         .into()
                     }))
-                    .child(match theme.mode {
-                        theme::ThemeMode::Light => {
-                            icon(ICON_SUN, 12.0, theme.colors.text_secondary).into_any_element()
-                        }
-                        theme::ThemeMode::Dark => {
-                            icon(ICON_MOON, 12.0, theme.colors.text_secondary).into_any_element()
-                        }
-                        // The bundled Lucide set has no "auto" icon; a small sun and
-                        // moon together stay distinct from Light and Dark even when
-                        // System resolves to the same colours as one of them.
-                        theme::ThemeMode::System => div()
-                            .flex()
-                            .items_center()
-                            .child(icon(ICON_SUN, 9.0, theme.colors.text_secondary))
-                            .child(icon(ICON_MOON, 9.0, theme.colors.text_secondary))
-                            .into_any_element(),
-                    }),
+                    .child(icon(theme_icon(&theme), 12.0, theme.colors.text_secondary)),
             )
             .when(!is_macos, |el| {
                 el.child(
@@ -237,5 +227,23 @@ impl MainWindow {
                         ),
                 )
             })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// REGRESSION: system mode drew a sun and a moon side by side. The
+    /// toggle shows one icon, for the theme actually in effect.
+    #[test]
+    fn the_toggle_shows_one_icon_for_the_resolved_theme() {
+        let mut dark = theme::Theme::dark();
+        dark.mode = theme::ThemeMode::System;
+        let mut light = theme::Theme::light();
+        light.mode = theme::ThemeMode::System;
+
+        assert_eq!(theme_icon(&dark), ICON_MOON);
+        assert_eq!(theme_icon(&light), ICON_SUN);
     }
 }
