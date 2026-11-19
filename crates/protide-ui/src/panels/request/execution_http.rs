@@ -1,12 +1,13 @@
 use super::super::request_utils::undefined_variables;
 use super::graphql::dns_troubleshoot_hint;
+use super::script_trust::ALL_SCRIPTS;
 use super::*;
 use gpui::Context;
 
 impl<E: WebSocketExecutor> RequestPanel<E> {
     /// Send the request once its scripts are trusted.
     pub fn send_request(&mut self, cx: &mut Context<Self>) {
-        self.run_trusted(Self::send_trusted_request, cx);
+        self.run_trusted(ALL_SCRIPTS, Self::send_trusted_request, cx);
     }
 
     fn send_trusted_request(&mut self, cx: &mut Context<Self>) {

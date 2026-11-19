@@ -14,6 +14,11 @@ impl gpui::Global for ScriptTrust {}
 /// Work that runs the request's scripts, such as a send.
 type Run<E> = fn(&mut RequestPanel<E>, &mut Context<RequestPanel<E>>);
 
+/// How many scripts, in the order pre, post, tests, an action runs. A send
+/// runs all three; a WebSocket connect runs only the pre script.
+pub(super) const ALL_SCRIPTS: usize = 3;
+pub(super) const PRE_SCRIPT: usize = 1;
+
 /// A run held back until the user decides on its untrusted scripts.
 pub(crate) struct PendingTrust<E: WebSocketExecutor> {
     scripts: Vec<String>,
@@ -52,15 +57,16 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
         trust_scripts(&edited, cx);
     }
 
-    /// Do `run` now if every script is trusted, else hold it until the
-    /// user has seen the untrusted ones and decided.
-    pub(super) fn run_trusted(&mut self, run: Run<E>, cx: &mut Context<Self>) {
+    /// Do `run` now if the first `count` scripts, the ones it runs, are
+    /// trusted, else hold it until the user has seen the untrusted ones and
+    /// decided.
+    pub(super) fn run_trusted(&mut self, count: usize, run: Run<E>, cx: &mut Context<Self>) {
         self.trust_edited_scripts(cx);
         let texts = self.scripts_with_origin(cx).map(|(text, _)| text);
         let scripts: Vec<String> = cx
             .default_global::<ScriptTrust>()
             .0
-            .untrusted(texts.iter().map(String::as_str))
+            .untrusted(texts[..count].iter().map(String::as_str))
             .into_iter()
             .map(str::to_string)
             .collect();

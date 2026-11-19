@@ -8,6 +8,7 @@ use gpui::{
 use super::super::request_types::{RequestMode, SioConnectionState, WsConnectionState};
 use super::RequestPanel;
 use super::render_url_bar_actions::COMPACT_BAR_W;
+use super::script_trust::PRE_SCRIPT;
 use super::url_metrics::URL_INPUT_PADDING;
 use crate::components::icons::{ICON_CHEVRON_DOWN, ICON_CHEVRON_UP, ICON_SM, icon};
 use crate::theme;
@@ -258,7 +259,11 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                                         if matches!(this.ws_state, WsConnectionState::Connected) {
                                             this.disconnect_websocket(cx);
                                         } else {
-                                            this.run_trusted(Self::connect_websocket, cx);
+                                            this.run_trusted(
+                                                PRE_SCRIPT,
+                                                Self::connect_websocket,
+                                                cx,
+                                            );
                                         }
                                     }
                                     RequestMode::SocketIo => {

@@ -4,6 +4,7 @@
 use crate::panels::ScriptTrust;
 use crate::panels::explorer::ExplorerPanel;
 use crate::panels::request::RequestPanel;
+use crate::panels::request::script_trust::PRE_SCRIPT;
 use crate::panels::response::ResponsePanel;
 use crate::test_support::init_theme;
 use gpui::{AppContext, Entity, TestAppContext, VisualTestContext, WeakEntity};
@@ -100,6 +101,22 @@ async fn a_loaded_script_runs_only_after_the_user_trusts_it(cx: &mut TestAppCont
     cx.run_until_parked();
     assert_eq!(env_var(&explorer, cx).as_deref(), Some("yes"));
     assert!(is_trusted(SCRIPT, cx));
+}
+
+#[gpui::test]
+async fn a_connect_asks_only_about_the_pre_script(cx: &mut TestAppContext) {
+    let (panel, _, cx) = loaded_panel(cx, "\n# @post-script\nlet a = 1;\n# @tests\nlet b = 2;");
+
+    panel.update(cx, |p, cx| {
+        p.run_trusted(
+            PRE_SCRIPT,
+            |p, _| {
+                p.loading = true;
+            },
+            cx,
+        );
+    });
+    panel.read_with(cx, |p, _| assert!(p.pending_trust.is_none() && p.loading));
 }
 
 #[gpui::test]

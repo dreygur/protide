@@ -1,4 +1,5 @@
 use super::RequestPanel;
+use super::script_trust::ALL_SCRIPTS;
 use crate::panels::file_dialog::{self, Pick};
 use crate::panels::request_types::DataRunRow;
 use crate::theme;
@@ -85,7 +86,7 @@ impl<E: WebSocketExecutor> RequestPanel<E> {
                         MouseButton::Left,
                         cx.listener(|this, _, _, cx| {
                             if !this.data_running {
-                                this.run_trusted(Self::run_with_csv, cx);
+                                this.run_trusted(ALL_SCRIPTS, Self::run_with_csv, cx);
                             }
                         }),
                     )
