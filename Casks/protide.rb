@@ -1,6 +1,6 @@
 cask "protide" do
-  version "0.1.0-alpha.6"
-  sha256 "92e8ba09c498e66956f67eb19b30457184abd5a36046dd68f27741ccaeb48a03"
+  version "0.1.0-alpha.7"
+  sha256 "e6064dcee21db583b11533de806cbce2ea3966cb9e2a97bd46a6c9954308b161"
 
   url "https://github.com/dreygur/protide/releases/download/v#{version}/protide-v#{version}-macos-arm64.dmg"
   name "Protide"
